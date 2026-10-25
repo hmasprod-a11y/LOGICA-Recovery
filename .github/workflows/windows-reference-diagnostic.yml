@@ -85,6 +85,15 @@ jobs:
           } | Where-Object { $_ } | Group-Object | Sort-Object Count -Descending)
           Write-Host "Build exit: $exit"
           foreach ($g in $groups) { Write-Host "$($g.Name): $($g.Count)" }
+          # Emit only a compact diagnostic category summary; no source code is printed.
+          foreach ($code in @('CS0621','CS0104','CS0246','CS0549')) {
+            $samples = @($lines | Select-String -Pattern ("error " + $code + ":") | Select-Object -First 2)
+            foreach ($sample in $samples) {
+              $msg = ($sample.Line -split ("error " + $code + ":"),2)[-1].Trim()
+              $msg = $msg -replace '[A-Za-z]:\\[^ ]+', '[path]'
+              Write-Host ($code + ' detail: ' + $msg.Substring(0,[Math]::Min(240,$msg.Length)))
+            }
+          }
           if ($exit -ne 0) { throw 'Build did not succeed; original sources unchanged.' }
       - name: Clean temporary sources
         if: always()
