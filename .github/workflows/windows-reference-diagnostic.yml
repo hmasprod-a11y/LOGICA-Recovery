@@ -30,7 +30,8 @@ jobs:
           foreach ($group in @($xml.Project.ItemGroup)) {
             foreach ($ref in @($group.Reference)) {
               if ($null -ne $ref -and $ref.HintPath -match 'Microsoft[.]NETCore[.]App[/\\]10[.]') {
-                $ref.RemoveChild($ref.HintPath) | Out-Null
+                $node = $ref.SelectSingleNode('HintPath')
+                if ($null -ne $node) { [void]$ref.RemoveChild($node) }
                 $removed++
               }
             }
