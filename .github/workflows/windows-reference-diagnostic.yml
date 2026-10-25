@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'input/LOGICA-dependencies.zip'
+      - 'input/LOGICA-source-complete.tar.gz'
       - '.github/workflows/windows-reference-diagnostic.yml'
 jobs:
   diagnose:
@@ -227,10 +228,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: logica-windows-build
-          path: |
-            ${{ runner.temp }}/logica-diagnostic/**/bin/**/*.exe
-            ${{ runner.temp }}/logica-diagnostic/**/bin/**/*.dll
-            ${{ runner.temp }}/logica-diagnostic/**/bin/**/*.config
+          path: ${{ runner.temp }}/logica-diagnostic/**/bin/**
           if-no-files-found: warn
           retention-days: 14
       - name: Clean temporary sources
