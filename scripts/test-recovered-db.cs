@@ -25,6 +25,13 @@ class RecoveredCheck {
  }
  if(verified!=125)throw new Exception("Not all original data tables were checked: "+verified);
  Console.WriteLine("PASS all 125 original table row counts preserved (one documented compatibility setting added)");
+ foreach(string column in new[]{"Catégorie","Qté"}) {
+  using(var c=connection.CreateCommand()){
+   c.CommandText=column=="Catégorie"?"SELECT `Catégorie` FROM TABLE_PASS LIMIT 0":"SELECT `Qté` FROM TABLE_01 LIMIT 0";
+   using(var reader=c.ExecuteReader()){if(reader.GetName(0)!=column)throw new Exception("Accented database metadata is corrupted");}
+  }
+ }
+ Console.WriteLine("PASS accented role and quantity column names are decoded correctly");
  connection.Close();form.Show();Application.DoEvents();
  if(((Control)Get(form,"Panel_TENTATIVE_CONNEXION")).Visible)throw new Exception("Original startup connection failure: "+((Control)Get(form,"Label_ERREUR")).Text);
  lock(errors){if(errors.Count>0)throw new Exception("Original startup modal errors: "+string.Join(" | ",errors.ToArray()));}
@@ -35,6 +42,25 @@ class RecoveredCheck {
   var home=(Control)Get(form,"Panel_HOME");
   if(activationVisible || !home.Controls.Contains(login) || !login.Visible || !((Control)Get(login,"Panel_login")).Visible)throw new Exception("Development did not reach the original user login");
   Console.WriteLine("PASS Debug reaches original user login; machine activation hidden; user authentication preserved");
+  string adminPin;string adminName;
+  connection.Open();
+  using(var c=connection.CreateCommand()){
+   c.CommandText="SELECT ListPass, ListUser FROM TABLE_PASS WHERE `Catégorie`='ADMIN' LIMIT 1";
+   using(var reader=c.ExecuteReader()){if(!reader.Read())throw new Exception("No original administrator fixture");adminPin=reader.GetString(0);adminName=reader.GetString(1);}
+  }
+  connection.Close();
+  var pin=(Control)Get(login,"Text_NUM");
+  var method=login.GetType().GetMethod("Butt_ok_Click",BindingFlags.Instance|BindingFlags.NonPublic);
+  foreach(string invalid in new[]{"invalid-test-pin","' OR 1=1 --"}){
+   pin.Text=invalid;using(var button=new Button(){Name="CI_LOGIN"})method.Invoke(login,new object[]{button,EventArgs.Empty});
+   if(!((Control)Get(login,"Panel_login")).Visible || module.GetField("_USERCATEGORIE").GetValue(null) as string=="ADMIN")throw new Exception("Invalid credentials were accepted");
+  }
+  Console.WriteLine("PASS wrong PIN and SQL-like input remain unauthenticated");
+  pin.Text=adminPin;using(var button=new Button(){Name="CI_LOGIN"})method.Invoke(login,new object[]{button,EventArgs.Empty});
+  lock(errors){if(errors.Count>0)throw new Exception("Login modal errors: "+string.Join(" | ",errors.ToArray()));}
+  if((string)module.GetField("_USERCATEGORIE").GetValue(null)!="ADMIN" || (string)module.GetField("_USERNAME").GetValue(null)!=adminName || ((Control)Get(login,"Panel_login")).Visible || !((Control)Get(login,"Panel_menu")).Visible)throw new Exception("Real administrator login did not reach the menu");
+  Console.WriteLine("PASS original administrator PIN reaches the menu with its role and permissions");
+
  }else{
   if(!activationVisible)throw new Exception("Release activation behavior changed");
   Console.WriteLine("PASS Release retains original machine activation");

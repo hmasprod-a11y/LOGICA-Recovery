@@ -66,7 +66,7 @@ try {
   }
   [IO.File]::WriteAllText($marker,"Original snapshot imported without replacing an existing database. "+[DateTime]::UtcNow.ToString('o'))
  }
- $env:LOGICA_DB_CONNECTION_STRING="Server=127.0.0.1;Port=$Port;Database=$dbName;Uid=root;Pwd=$password;SslMode=None;Connection Timeout=10;"
+ $env:LOGICA_DB_CONNECTION_STRING="Server=127.0.0.1;Port=$Port;Database=$dbName;Uid=root;Pwd=$password;SslMode=None;Character Set=utf8mb4;Connection Timeout=10;"
  $counts=& "$ServerBin/mariadb.exe" "--defaults-extra-file=$clientFile" -N -B $dbName -e 'SELECT COUNT(*) FROM TABLE_ARTICLES; SELECT COUNT(*) FROM TABLE_VENTES_ENTETE;'
  Write-Host ('Base locale prete. Produits et tickets : '+($counts -join ', '))
  if($VerifyOnly){if([int]$counts[0] -ne 120 -or [int]$counts[1] -ne 11){throw 'Les nombres de lignes importees ne correspondent pas au fichier original'};Write-Host 'PASS portable launcher imports original database and preserves row counts'}

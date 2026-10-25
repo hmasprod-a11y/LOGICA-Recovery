@@ -319,7 +319,10 @@ internal sealed class Module1
 		_PORT_DB = "3306";
 		_USER_ID = "allo_superette_todo_market_user";
 		_PASS_ID = "F#@1f%lx8@EI#Ff@3c@b#";
-		cn_SQL = new MySqlConnection(Environment.GetEnvironmentVariable("LOGICA_DB_CONNECTION_STRING") ?? new MySqlConnectionStringBuilder { Server = _CHEMIN_DB, Port = uint.Parse(_PORT_DB), Database = _NAME_DB, UserID = _USER_ID, Password = _PASS_ID, CharacterSet = "utf8", ConnectionTimeout = 10 }.ConnectionString);
+		MySqlConnectionStringBuilder connectionSettings = new MySqlConnectionStringBuilder(Environment.GetEnvironmentVariable("LOGICA_DB_CONNECTION_STRING") ?? new MySqlConnectionStringBuilder { Server = _CHEMIN_DB, Port = uint.Parse(_PORT_DB), Database = _NAME_DB, UserID = _USER_ID, Password = _PASS_ID, CharacterSet = "utf8", ConnectionTimeout = 10 }.ConnectionString);
+		// Apply UTF-8 to environment overrides too, preserving accented result column names.
+		connectionSettings.CharacterSet = "utf8mb4";
+		cn_SQL = new MySqlConnection(connectionSettings.ConnectionString);
 		da1 = new MySqlDataAdapter();
 		dt1 = new DataTable();
 		dt_LA = new DataTable();
