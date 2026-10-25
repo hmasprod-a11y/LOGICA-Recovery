@@ -307,6 +307,22 @@ jobs:
             if ($updated -ne $body) { [IO.File]::WriteAllText($file.FullName,$updated); $total++ }
           }
           Write-Host "Corrected mouse overrides in $total files."
+      - name: Fix final identified protected renderer and Form access
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA'
+          $repairs = @(
+            @('MBMenuRendere.cs','((ToolStripProfessionalRenderer)this).OnRenderMenuItemBackground(', 'base.OnRenderMenuItemBackground('),
+            @('FormDialog_CLAVIER.cs','((Form)this).CreateParams', 'base.CreateParams')
+          )
+          foreach ($repair in $repairs) {
+            $file = Join-Path $root $repair[0]
+            $text = [IO.File]::ReadAllText($file)
+            if ($text.Contains($repair[1])) {
+              [IO.File]::WriteAllText($file,$text.Replace($repair[1],$repair[2]))
+              Write-Host "Corrected protected access in $($repair[0])"
+            } else { Write-Host "Pattern not present in $($repair[0]); skipped." }
+          }
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
