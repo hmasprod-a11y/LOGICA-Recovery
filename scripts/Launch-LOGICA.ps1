@@ -8,7 +8,13 @@ $credentialFile=Join-Path $root 'bd/mysql-credential.xml'
 $marker=Join-Path $root 'bd/mysql-import-complete.txt'
 $process=$null
 $clientFile=$null
+$ownsLock=$false
+$hash=[Security.Cryptography.SHA256]::Create()
+try {$lockId=([BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes($root.ToLowerInvariant())))).Replace('-','')} finally {$hash.Dispose()}
+$lock=New-Object Threading.Mutex($false, ('Local\LOGICA-Portable-'+$lockId))
 try {
+ $ownsLock=$lock.WaitOne(0)
+ if(-not $ownsLock){Write-Host 'LOGICA est deja ouvert depuis ce dossier.';return}
  if(-not $ServerBin){
   $serverRoot=Join-Path $root 'bd/mysql-server'
   $server=Get-ChildItem $serverRoot -Recurse -Filter mariadbd.exe -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -78,4 +84,7 @@ finally {
   if(-not $process.WaitForExit(15000)){Write-Host 'Le serveur termine encore ses ecritures. Ne pas supprimer son dossier.'}
  }
  if($clientFile -and (Test-Path $clientFile)){Remove-Item $clientFile -Force}
+ if($ownsLock){$lock.ReleaseMutex()}
+ $lock.Dispose()
 }
+

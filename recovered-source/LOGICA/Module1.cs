@@ -301,6 +301,20 @@ internal sealed class Module1
 		}
 	}
 
+	public static void EnsureRecoveredSettings()
+	{
+		// Add only settings introduced after the recovered Access snapshot.
+		foreach (string[] item in new[] { new[] { "GROUPES", "False" }, new[] { "GROUPES_LISTE", "" } })
+		{
+			using (MySqlCommand command = new MySqlCommand("INSERT INTO TABLE_PARAMETRES (OBJET, VALEUR) SELECT @key, @value WHERE NOT EXISTS (SELECT 1 FROM TABLE_PARAMETRES WHERE OBJET=@key)", cn_SQL))
+			{
+				command.Parameters.AddWithValue("@key", item[0]);
+				command.Parameters.AddWithValue("@value", item[1]);
+				command.ExecuteNonQuery();
+			}
+		}
+	}
+
 	static Module1()
 	{
 		//IL_00ce: Unknown result type (might be due to invalid IL or missing references)
@@ -1232,3 +1246,4 @@ internal sealed class Module1
 		}
 	}
 }
+

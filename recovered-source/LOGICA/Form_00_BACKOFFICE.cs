@@ -4030,11 +4030,12 @@ public class Form_00_BACKOFFICE : Form
 		//IL_00cd: Expected Obj, but got Unknown
 		((Control)Panel2).Visible = true;
 		((Control)Panel2).BringToFront();
-		MyProject.Forms.Form_0_TEMPLATE.Label_DB.Text = Label_DB_1.Text;
-		Module1._CHEMIN_DB = Label_DB_1.Text;
-		string text = "1433";
-		string text2 = "logica";
-		string text3 = "Sniper19912908Jawadino";
-		Module1.cn_SQL = new MySqlConnection("Data Source=" + Module1._CHEMIN_DB + "," + text + "; Initial Catalog=" + Module1._NAME_DB + "; User ID=" + text2 + ";Password=" + text3 + "");
+		// Keep the active portable server, port, database and credentials.
+		// The recovered application's old hard-coded endpoint is unrelated to this database.
+		MySqlConnectionStringBuilder settings = new MySqlConnectionStringBuilder(Module1.cn_SQL.ConnectionString);
+		MyProject.Forms.Form_0_TEMPLATE.Label_DB.Text = settings.Server;
+		Module1._CHEMIN_DB = settings.Server;
+
 	}
 }
+

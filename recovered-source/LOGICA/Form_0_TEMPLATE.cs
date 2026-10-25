@@ -5221,6 +5221,7 @@ public class Form_0_TEMPLATE : Form
 				{
 					Module1.cn_SQL.Open();
 				}
+				Module1.EnsureRecoveredSettings();
 				val.CommandText = "select    *     from     TABLE_PARAMETRES       ";
 				val.Connection = Module1.cn_SQL;
 				val.ExecuteNonQuery();
@@ -5812,3 +5813,4 @@ public class Form_0_TEMPLATE : Form
 		Application.Restart();
 	}
 }
+

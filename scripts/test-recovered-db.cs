@@ -60,6 +60,32 @@ class RecoveredCheck {
   lock(errors){if(errors.Count>0)throw new Exception("Login modal errors: "+string.Join(" | ",errors.ToArray()));}
   if((string)module.GetField("_USERCATEGORIE").GetValue(null)!="ADMIN" || (string)module.GetField("_USERNAME").GetValue(null)!=adminName || ((Control)Get(login,"Panel_login")).Visible || !((Control)Get(login,"Panel_menu")).Visible)throw new Exception("Real administrator login did not reach the menu");
   Console.WriteLine("PASS original administrator PIN reaches the menu with its role and permissions");
+  string beforeConnection=connection.ConnectionString;
+  var backoffice=Get(forms,"Form_00_BACKOFFICE");
+  ((Control)Get(backoffice,"Label_DB_1")).Text="obsolete-host.invalid";
+  backoffice.GetType().GetMethod("Button_RJ1_Click",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(backoffice,new object[]{new Button(){Name="CI_BACKOFFICE"},EventArgs.Empty});
+  if(!Object.ReferenceEquals(connection,module.GetField("cn_SQL").GetValue(null)) || connection.ConnectionString!=beforeConnection)throw new Exception("Backoffice replaced the portable database connection");
+  Console.WriteLine("PASS Backoffice preserves active portable database endpoint and credentials");
+  for(int repeat=0;repeat<2;repeat++){
+   var config=(Form)Get(forms,"FormDialog_2_Configuration");config.Show();Application.DoEvents();
+   var options=(ListView)Get(config,"ListView1");
+   foreach(string key in new[]{"GROUPES","BLOCAGE_STOCK_INSUFFISANT","MODELE_TICKET"})if(options.FindItemWithText(key,false,0)==null)throw new Exception("Configuration missing "+key);
+   if(((DataGridView)Get(config,"DataGridView_MODELE_TICKET")).Rows.Count!=5)throw new Exception("Receipt templates did not load exactly once");
+   config.Close();
+  }
+  lock(errors){if(errors.Count>0)throw new Exception("Configuration errors: "+string.Join(" | ",errors.ToArray()));}
+  Console.WriteLine("PASS configuration opens and reopens with stock/group options and receipt templates");
+  var articles=(Form)Get(forms,"Form_2_ARTICLES");articles.Show();Application.DoEvents();
+  var products=(DataGridView)Get(articles,"DataGridView1");
+  if(products.Rows.Count!=30 || ((ComboBox)Get(articles,"Combo_FAMILLE")).Items.Count!=15)throw new Exception("Products or families failed to load");
+  if(((Control)Get(articles,"TextBox_NBR_CODE_ARTICLE")).Text!="4")throw new Exception("Product barcode settings did not load");
+  lock(errors){if(errors.Count>0)throw new Exception("Product page errors: "+string.Join(" | ",errors.ToArray()));}
+  articles.Close();
+  connection.Open();module.GetMethod("EnsureRecoveredSettings").Invoke(null,null);module.GetMethod("EnsureRecoveredSettings").Invoke(null,null);
+  using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM TABLE_PARAMETRES WHERE OBJET IN ('GROUPES','GROUPES_LISTE')";if(Convert.ToInt32(c.ExecuteScalar())!=2)throw new Exception("Compatibility settings duplicated");}
+  connection.Close();
+  Console.WriteLine("PASS products page loads 30 original products and 15 families; missing settings upgrade is idempotent");
+
 
  }else{
   if(!activationVisible)throw new Exception("Release activation behavior changed");
@@ -68,3 +94,4 @@ class RecoveredCheck {
  form.Dispose();return 0;
  }catch(Exception e){Console.WriteLine("FAIL "+e);return 1;}finally{stop=true;}}
 }
+

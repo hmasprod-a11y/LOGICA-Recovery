@@ -3,6 +3,7 @@ using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Forms;
 using Microsoft.VisualBasic.ApplicationServices;
@@ -60,6 +61,18 @@ internal class MyApplication : WindowsFormsApplicationBase
 	[DebuggerHidden]
 	internal static void Main(string[] Args)
 	{
+		// The portable database is owned by the launcher, including when the EXE is opened directly.
+		string launcher = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Launch-LOGICA.ps1");
+		if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("LOGICA_DB_CONNECTION_STRING")) && File.Exists(launcher))
+		{
+			Process.Start(new ProcessStartInfo {
+				FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe"),
+				Arguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File \"" + launcher + "\"",
+				WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory,
+				UseShellExecute = false
+			});
+			return;
+		}
 		try
 		{
 			Application.SetCompatibleTextRenderingDefault(WindowsFormsApplicationBase.UseCompatibleTextRendering);
@@ -87,3 +100,4 @@ internal class MyApplication : WindowsFormsApplicationBase
 		base.MainForm = (Form)(object)MyProject.Forms.Form_0_TEMPLATE;
 	}
 }
+

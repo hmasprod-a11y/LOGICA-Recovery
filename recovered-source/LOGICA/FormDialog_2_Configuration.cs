@@ -2260,6 +2260,7 @@ public class FormDialog_2_Configuration : Form
 		//IL_00f9: Expected Obj, but got Unknown
 		//IL_0165: Unknown result type (might be due to invalid IL or missing references)
 		//IL_016b: Expected Obj, but got Unknown
+		DataGridView_MODELE_TICKET.Rows.Clear();
 		DataGridView_MODELE_TICKET.Columns[0].DefaultCellStyle.WrapMode = (DataGridViewTriState)1;
 		DataGridView_MODELE_TICKET.Rows.Add(new object[1] { "FR_3C" });
 		DataGridView_MODELE_TICKET.Rows.Add(new object[1] { "FR_4C" });
@@ -2278,7 +2279,7 @@ public class FormDialog_2_Configuration : Form
 			{
 				Module1.cn_SQL.Open();
 			}
-			val2.CommandText = "select    *     from     TABLE_PARAMETRES     where     ID   BETWEEN   1  AND  20    ";
+			val2.CommandText = "select    *     from     TABLE_PARAMETRES         ";
 			val2.Connection = Module1.cn_SQL;
 			val2.ExecuteNonQuery();
 			ListView1.Items.Clear();
@@ -2701,3 +2702,4 @@ public class FormDialog_2_Configuration : Form
 	{
 	}
 }
+
