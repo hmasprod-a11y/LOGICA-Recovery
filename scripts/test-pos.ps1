@@ -17,8 +17,16 @@ foreach($case in $cases) {
   if(-not $p.WaitForExit(60000)) { $p.Kill(); $status='TIMEOUT' } else { $status=if($p.ExitCode -eq 0){'PASS'}else{'FAIL'} }
   $results+= [pscustomobject]@{test=$case;status=$status;exitCode=$p.ExitCode}
   Write-Host "$case $status"
-  Get-Content $log | Select-Object -First 14 | ForEach-Object{Write-Host $_}
+  Get-Content $log | Select-Object -First 30 | ForEach-Object{Write-Host $_}
 }
+# Launch the real Windows entry point as well as exercising forms through the harness.
+$app=Start-Process (Join-Path $dist 'LOGICA.exe') -WorkingDirectory $dist -PassThru
+Start-Sleep -Seconds 8
+$app.Refresh()
+$status=if(-not $app.HasExited -and $app.MainWindowHandle -ne 0 -and $app.Responding){'PASS'}else{'FAIL'}
+$results+=[pscustomobject]@{test='LOGICA.exe startup';status=$status;exitCode=$null}
+Write-Host "Real LOGICA.exe startup $status; process running=$(-not $app.HasExited); window=$($app.MainWindowHandle); responding=$($app.Responding)"
+if(-not $app.HasExited){$app.Kill()}
 $results | ConvertTo-Json | Set-Content results/pos-tests.json
 # Preserve the application package independently of test harness files.
 Remove-Item dist/PosSmoke.exe,dist/PosSmoke.exe.config -Force

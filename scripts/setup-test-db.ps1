@@ -10,9 +10,10 @@ if($hash -ne $expected[0]) { throw 'MariaDB package checksum mismatch' }
 Expand-Archive "$base/server.zip" "$base/server"
 $bin=(Get-ChildItem "$base/server" -Recurse -Filter mariadb-install-db.exe | Select-Object -First 1).Directory.FullName
 $data="$base/data"
-& "$bin/mariadb-install-db.exe" "--datadir=$data" --password=logica-ci-only --port=3307
+& "$bin/mariadb-install-db.exe" "--datadir=$data" --password=logica-ci-only --port=3307 --service=LOGICACI
 if($LASTEXITCODE -ne 0) { throw 'Isolated database initialization failed' }
-$p=Start-Process "$bin/mariadbd.exe" -ArgumentList @("--defaults-file=$data/my.ini",'--bind-address=127.0.0.1','--port=3307','--console') -PassThru -RedirectStandardOutput "$base/server.log" -RedirectStandardError "$base/server.stderr.log"
+Add-Content "$data/my.ini" "`n[mysqld]`nbind-address=127.0.0.1"
+Start-Service LOGICACI
 $ready=$false
 for($i=0;$i -lt 30;$i++) {
  & "$bin/mariadb-admin.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only ping 2>$null

@@ -56,6 +56,10 @@ jobs:
       - name: Exercise original POS on Windows
         shell: pwsh
         run: ./scripts/test-pos.ps1
+      - name: Finalize portable runtime package
+        if: always()
+        shell: pwsh
+        run: ./scripts/package-runtime.ps1
       - name: Inspect original dependency types
         if: always()
         shell: powershell
