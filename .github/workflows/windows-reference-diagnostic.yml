@@ -323,6 +323,32 @@ jobs:
               Write-Host "Corrected protected access in $($repair[0])"
             } else { Write-Host "Pattern not present in $($repair[0]); skipped." }
           }
+      - name: Identify actual nested enum owners in original dependencies
+        shell: pwsh
+        run: |
+          $deps = Join-Path $env:RUNNER_TEMP 'logica-dependencies'
+          $names = @('BorderStyles','TextAlign','Types','CheckBoxStyles','CheckStates','BindingControlPositions','BorderThickness','BorderEdges','ObjectCollection','Directions','ENCODE_MODE','ERROR_CORRECTION','ButtonStates','CapStyles','FillStyles','State')
+          $found = 0
+          foreach ($dll in @(Get-ChildItem $deps -Recurse -Filter '*.dll' -File)) {
+            try {
+              $asm = [Reflection.Assembly]::LoadFrom($dll.FullName)
+              foreach ($type in @($asm.GetTypes())) {
+                $leaf = $type.Name
+                if ($names -contains $leaf) {
+                  Write-Host ('TYPE_OWNER ' + $leaf + ' => ' + $type.FullName + ' [' + $dll.Name + ']')
+                  $found++
+                }
+              }
+            } catch [Reflection.ReflectionTypeLoadException] {
+              foreach ($type in @($_.Exception.Types | Where-Object { $null -ne $_ })) {
+                if ($names -contains $type.Name) {
+                  Write-Host ('TYPE_OWNER ' + $type.Name + ' => ' + $type.FullName + ' [' + $dll.Name + ']')
+                  $found++
+                }
+              }
+            } catch { Write-Host ('REFLECTION_SKIPPED ' + $dll.Name) }
+          }
+          Write-Host "Matched nested type names: $found"
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
