@@ -14044,7 +14044,7 @@ public class Form_2_ARTICLES : Form
 					{
 						break;
 					}
-					System.Windows.Forms.CheckedListBox.ObjectCollection items = Combo_TAILLES.Items;
+					System.Windows.Forms.ComboBox.ObjectCollection items = Combo_TAILLES.Items;
 					KeyValuePair<string, string> keyValuePair = new KeyValuePair<string, string>(dataTable.Rows[num12]["CODE_TAILLE"].ToString(), dataTable.Rows[num12]["TAILLE"].ToString());
 					items.Add((object)keyValuePair);
 					DataGridView_TAILLES.Rows.Add(new object[2]
@@ -14071,7 +14071,7 @@ public class Form_2_ARTICLES : Form
 					{
 						break;
 					}
-					System.Windows.Forms.CheckedListBox.ObjectCollection items2 = Combo_COULEURS.Items;
+					System.Windows.Forms.ComboBox.ObjectCollection items2 = Combo_COULEURS.Items;
 					KeyValuePair<string, string> keyValuePair = new KeyValuePair<string, string>(dataTable.Rows[num15]["CODE_COULEUR"].ToString(), dataTable.Rows[num15]["COULEUR"].ToString());
 					items2.Add((object)keyValuePair);
 					DataGridView_COULEURS.Rows.Add(new object[2]
@@ -16426,7 +16426,7 @@ public class Form_2_ARTICLES : Form
 				{
 					break;
 				}
-				System.Windows.Forms.CheckedListBox.ObjectCollection items = Combo_TAILLES.Items;
+				System.Windows.Forms.ComboBox.ObjectCollection items = Combo_TAILLES.Items;
 				KeyValuePair<string, string> keyValuePair = new KeyValuePair<string, string>(dataTable.Rows[num2]["CODE_TAILLE"].ToString(), dataTable.Rows[num2]["TAILLE"].ToString());
 				items.Add((object)keyValuePair);
 				DataGridView_TAILLES.Rows.Add(new object[2]
@@ -16470,7 +16470,7 @@ public class Form_2_ARTICLES : Form
 				{
 					break;
 				}
-				System.Windows.Forms.CheckedListBox.ObjectCollection items = Combo_COULEURS.Items;
+				System.Windows.Forms.ComboBox.ObjectCollection items = Combo_COULEURS.Items;
 				KeyValuePair<string, string> keyValuePair = new KeyValuePair<string, string>(dataTable.Rows[num2]["CODE_COULEUR"].ToString(), dataTable.Rows[num2]["COULEUR"].ToString());
 				items.Add((object)keyValuePair);
 				DataGridView_COULEURS.Rows.Add(new object[2]
@@ -17635,7 +17635,7 @@ public class Form_2_ARTICLES : Form
 				{
 					break;
 				}
-				System.Windows.Forms.CheckedListBox.ObjectCollection items = Combo_TAILLES.Items;
+				System.Windows.Forms.ComboBox.ObjectCollection items = Combo_TAILLES.Items;
 				KeyValuePair<string, string> keyValuePair = new KeyValuePair<string, string>(dataTable.Rows[num2]["CODE_TAILLE"].ToString(), dataTable.Rows[num2]["TAILLE"].ToString());
 				items.Add((object)keyValuePair);
 				DataGridView_TAILLES.Rows.Add(new object[2]
@@ -17677,7 +17677,7 @@ public class Form_2_ARTICLES : Form
 				{
 					break;
 				}
-				System.Windows.Forms.CheckedListBox.ObjectCollection items = Combo_COULEURS.Items;
+				System.Windows.Forms.ComboBox.ObjectCollection items = Combo_COULEURS.Items;
 				KeyValuePair<string, string> keyValuePair = new KeyValuePair<string, string>(dataTable.Rows[num2]["CODE_COULEUR"].ToString(), dataTable.Rows[num2]["COULEUR"].ToString());
 				items.Add((object)keyValuePair);
 				DataGridView_COULEURS.Rows.Add(new object[2]

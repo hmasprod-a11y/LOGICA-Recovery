@@ -15245,7 +15245,7 @@ public class Form_3_VENTE : Form
 		{
 			val.FormatFlags = (StringFormatFlags)1;
 		}
-		if ((e.State & (DrawItemState)1) == 1)
+		if ((e.State & DrawItemState.Selected) == DrawItemState.Selected)
 		{
 			e.Graphics.FillRectangle(Brushes.Brown, e.Bounds);
 			Graphics graphics = e.Graphics;

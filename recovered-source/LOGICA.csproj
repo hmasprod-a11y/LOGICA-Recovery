@@ -72,6 +72,8 @@
     <PackageReference Include="System.Resources.Extensions" Version="10.0.13" />
   </ItemGroup>
   <ItemGroup>
+    </ItemGroup>
+  <ItemGroup>
     <Reference Include="Microsoft.VisualBasic" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data" />

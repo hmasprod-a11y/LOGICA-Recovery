@@ -2184,8 +2184,8 @@ public class FormDialog_DUPLICATA : Form
 		BunifuDatePicker2.BackColor = Color.Transparent;
 		BunifuDatePicker2.BorderRadius = 2;
 		BunifuDatePicker2.Color = Color.FromArgb(22, 106, 238);
-		BunifuDatePicker2.DateBorderThickness = (Bunifu.UI.WinForms.BunifuDropdown.BorderThickness)1;
-		BunifuDatePicker2.DateTextAlign = (Bunifu.UI.WinForms.BunifuDropdown.TextAlign)0;
+		BunifuDatePicker2.DateBorderThickness = (Bunifu.UI.WinForms.BunifuDatePicker.BorderThickness)1;
+		BunifuDatePicker2.DateTextAlign = (Bunifu.UI.WinForms.BunifuDatePicker.TextAlign)0;
 		BunifuDatePicker2.DisabledColor = Color.Gray;
 		BunifuDatePicker2.DisplayWeekNumbers = false;
 		BunifuDatePicker2.DPHeight = 0;
@@ -2196,7 +2196,7 @@ public class FormDialog_DUPLICATA : Form
 		((DateTimePicker)BunifuDatePicker2).Format = (DateTimePickerFormat)2;
 		BunifuDatePicker2.Icon = (Image)componentResourceManager.GetObject("BunifuDatePicker2.Icon");
 		BunifuDatePicker2.IconColor = Color.Gray;
-		BunifuDatePicker2.IconLocation = (Bunifu.UI.WinForms.BunifuDropdown.Indicator)1;
+		BunifuDatePicker2.IconLocation = (Bunifu.UI.WinForms.BunifuDatePicker.Indicator)1;
 		BunifuDatePicker2.LeftTextMargin = 5;
 		BunifuDatePicker bunifuDatePicker = BunifuDatePicker2;
 		location = new Point(212, 44);
@@ -2226,8 +2226,8 @@ public class FormDialog_DUPLICATA : Form
 		BunifuDatePicker1.BackColor = Color.Transparent;
 		BunifuDatePicker1.BorderRadius = 2;
 		BunifuDatePicker1.Color = Color.FromArgb(22, 106, 238);
-		BunifuDatePicker1.DateBorderThickness = (Bunifu.UI.WinForms.BunifuDropdown.BorderThickness)1;
-		BunifuDatePicker1.DateTextAlign = (Bunifu.UI.WinForms.BunifuDropdown.TextAlign)0;
+		BunifuDatePicker1.DateBorderThickness = (Bunifu.UI.WinForms.BunifuDatePicker.BorderThickness)1;
+		BunifuDatePicker1.DateTextAlign = (Bunifu.UI.WinForms.BunifuDatePicker.TextAlign)0;
 		BunifuDatePicker1.DisabledColor = Color.Gray;
 		BunifuDatePicker1.DisplayWeekNumbers = false;
 		BunifuDatePicker1.DPHeight = 0;
@@ -2238,7 +2238,7 @@ public class FormDialog_DUPLICATA : Form
 		((DateTimePicker)BunifuDatePicker1).Format = (DateTimePickerFormat)2;
 		BunifuDatePicker1.Icon = (Image)componentResourceManager.GetObject("BunifuDatePicker1.Icon");
 		BunifuDatePicker1.IconColor = Color.Gray;
-		BunifuDatePicker1.IconLocation = (Bunifu.UI.WinForms.BunifuDropdown.Indicator)1;
+		BunifuDatePicker1.IconLocation = (Bunifu.UI.WinForms.BunifuDatePicker.Indicator)1;
 		BunifuDatePicker1.LeftTextMargin = 5;
 		BunifuDatePicker bunifuDatePicker4 = BunifuDatePicker1;
 		location = new Point(9, 44);
