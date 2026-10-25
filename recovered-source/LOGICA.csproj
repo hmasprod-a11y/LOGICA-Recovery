@@ -1,0 +1,87 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>LOGICA</AssemblyName>
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>True</UseWindowsForms>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x86</PlatformTarget>
+    <GenerateResourceUsePreserializedResources>true</GenerateResourceUsePreserializedResources>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>14.0</LangVersion>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RootNamespace />
+  </PropertyGroup>
+  <ItemGroup>
+    <None Remove="LOGICA.exe.licenses" />
+    <None Remove="LOGICA.Report_PEREMPTIONS.rdlc" />
+    <None Remove="LOGICA.Report_2_BS.rdlc" />
+    <None Remove="LOGICA.Report_0_TICKET_A5_ARABE.rdlc" />
+    <None Remove="LOGICA.Report_RAPPORT_IMPRESSION.rdlc" />
+    <None Remove="LOGICA.Report_ETAT_STOCK.rdlc" />
+    <None Remove="LOGICA.Report_1_BC.rdlc" />
+    <None Remove="LOGICA.Report_1_BR.rdlc" />
+    <None Remove="LOGICA.Report_CLIENTS_ETAT_HISTORIQUE.rdlc" />
+    <None Remove="LOGICA.Report_0_TICKET_A5.rdlc" />
+    <None Remove="LOGICA.Report_0_TICKET_A4.rdlc" />
+    <None Remove="LOGICA.Report_NOMENCLATURE.rdlc" />
+    <None Remove="LOGICA.Report_CLIENTS_ETAT_CREDITS.rdlc" />
+    <None Remove="LOGICA.Report_FOURNISSEURS_ETAT_HISTORIQUE.rdlc" />
+    <None Remove="LOGICA.Report_6_FACTURE.rdlc" />
+    <None Remove="LOGICA.Report_FOURNISSEURS_ETAT_CREDITS.rdlc" />
+    <None Remove="LOGICA.Report_FOURNISSEURS_ETAT_HISTORIQUE_DETAILS.rdlc" />
+    <None Remove="LOGICA.Report_3_INV.rdlc" />
+    <None Remove="LOGICA.Report_5_BL.rdlc" />
+    <None Remove="LOGICA.Report_CLIENTS_ETAT_HISTORIQUE_DETAILS.rdlc" />
+    <None Remove="LOGICA.Report_0_TICKET_80_ARABE.rdlc" />
+    <None Remove="LOGICA.Report_4_DEVIS.rdlc" />
+    <EmbeddedResource Include="LOGICA.exe.licenses" LogicalName="LOGICA.exe.licenses" />
+    <EmbeddedResource Include="LOGICA.Report_PEREMPTIONS.rdlc" LogicalName="LOGICA.Report_PEREMPTIONS.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_2_BS.rdlc" LogicalName="LOGICA.Report_2_BS.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_0_TICKET_A5_ARABE.rdlc" LogicalName="LOGICA.Report_0_TICKET_A5_ARABE.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_RAPPORT_IMPRESSION.rdlc" LogicalName="LOGICA.Report_RAPPORT_IMPRESSION.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_ETAT_STOCK.rdlc" LogicalName="LOGICA.Report_ETAT_STOCK.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_1_BC.rdlc" LogicalName="LOGICA.Report_1_BC.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_1_BR.rdlc" LogicalName="LOGICA.Report_1_BR.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_CLIENTS_ETAT_HISTORIQUE.rdlc" LogicalName="LOGICA.Report_CLIENTS_ETAT_HISTORIQUE.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_0_TICKET_A5.rdlc" LogicalName="LOGICA.Report_0_TICKET_A5.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_0_TICKET_A4.rdlc" LogicalName="LOGICA.Report_0_TICKET_A4.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_NOMENCLATURE.rdlc" LogicalName="LOGICA.Report_NOMENCLATURE.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_CLIENTS_ETAT_CREDITS.rdlc" LogicalName="LOGICA.Report_CLIENTS_ETAT_CREDITS.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_FOURNISSEURS_ETAT_HISTORIQUE.rdlc" LogicalName="LOGICA.Report_FOURNISSEURS_ETAT_HISTORIQUE.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_6_FACTURE.rdlc" LogicalName="LOGICA.Report_6_FACTURE.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_FOURNISSEURS_ETAT_CREDITS.rdlc" LogicalName="LOGICA.Report_FOURNISSEURS_ETAT_CREDITS.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_FOURNISSEURS_ETAT_HISTORIQUE_DETAILS.rdlc" LogicalName="LOGICA.Report_FOURNISSEURS_ETAT_HISTORIQUE_DETAILS.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_3_INV.rdlc" LogicalName="LOGICA.Report_3_INV.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_5_BL.rdlc" LogicalName="LOGICA.Report_5_BL.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_CLIENTS_ETAT_HISTORIQUE_DETAILS.rdlc" LogicalName="LOGICA.Report_CLIENTS_ETAT_HISTORIQUE_DETAILS.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_0_TICKET_80_ARABE.rdlc" LogicalName="LOGICA.Report_0_TICKET_80_ARABE.rdlc" />
+    <EmbeddedResource Include="LOGICA.Report_4_DEVIS.rdlc" LogicalName="LOGICA.Report_4_DEVIS.rdlc" />
+  </ItemGroup>
+  <ItemGroup>
+    </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Resources.Extensions" Version="10.0.13" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.VisualBasic" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Windows.Forms.DataVisualization" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Management" />
+    <Reference Include="$(MSBuildThisFileDirectory)..\dependencies\**\*.dll">
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+</Project>
