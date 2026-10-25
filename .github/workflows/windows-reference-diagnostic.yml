@@ -171,6 +171,22 @@ jobs:
           if ($changed -ne 4) { throw "Expected 4 substitutions, got $changed" }
           [IO.File]::WriteAllLines($file, $lines)
           Write-Host "Qualified four declarations in disposable source copy; remaining errors will be recorded."
+      - name: Repair confirmed CSharp decompiler errors
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic'
+          $targets = @(
+            @('LOGICA/ToastForm.cs','((Form)this).Dispose(disposing);','base.Dispose(disposing);'),
+            @('LOGICA.My/MyApplication.cs','((WindowsFormsApplicationBase)this).','this.'),
+            @('LOGICA/Form_3_VENTE.cs','(e.State & 1) == 1','(e.State & (DrawItemState)1) == (DrawItemState)1')
+          )
+          foreach ($entry in $targets) {
+            $file = Join-Path $root $entry[0]
+            $old = [IO.File]::ReadAllText($file)
+            if (-not $old.Contains($entry[1])) { throw "Missing expected CSharp pattern in $($entry[0])" }
+            [IO.File]::WriteAllText($file, $old.Replace($entry[1],$entry[2]))
+            Write-Host "Applied targeted fix: $($entry[0])"
+          }
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
