@@ -62,6 +62,23 @@ jobs:
           if ($projects.Count -eq 0) { throw 'No C# project exported.' }
           Write-Host "Project export succeeded; projects: $($projects.Count)."
           Write-Host 'Sources were intentionally NOT uploaded to repository, Actions artifacts, or logs.'
+      - name: Attempt restore and compilation privately
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = Join-Path $env:RUNNER_TEMP 'logica-source'
+          $projects = @(Get-ChildItem $source -Recurse -Filter '*.csproj' -File)
+          $ok = 0
+          $failed = 0
+          foreach ($project in $projects) {
+            $log = Join-Path $env:RUNNER_TEMP ('build-' + $failed + '-' + $ok + '.txt')
+            & dotnet build $project.FullName --nologo -v quiet *> $log
+            if ($LASTEXITCODE -eq 0) { $ok++ } else { $failed++ }
+            Remove-Item $log -Force -ErrorAction SilentlyContinue
+          }
+          Write-Host "Private build attempts: $($projects.Count); succeeded: $ok; failed: $failed."
+          Write-Host 'Detailed compiler logs intentionally suppressed to avoid leaking source paths or strings.'
+          if ($failed -gt 0) { throw 'One or more recovered projects failed to compile. No source uploaded.' }
       - name: Remove temporary extraction files
         if: always()
         shell: pwsh
