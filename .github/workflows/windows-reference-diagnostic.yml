@@ -131,31 +131,6 @@ jobs:
             if ($updated -ne $body) { [IO.File]::WriteAllText($file.FullName, $updated) }
           }
           Write-Host "Trial Timer edits in $timerFiles files; FormAnimator declarations: $animatorFiles."
-      - name: Compare safe BunifuGradientPanel aliases
-        shell: pwsh
-        run: |
-          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA'
-          $project = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA.csproj'
-          $files = @(Get-ChildItem $root -Recurse -Filter '*.cs' -File | Where-Object { [IO.File]::ReadAllText($_.FullName).Contains('BunifuGradientPanel') })
-          $baseline = @{}
-          foreach ($file in $files) { $baseline[$file.FullName] = [IO.File]::ReadAllText($file.FullName) }
-          Write-Host "Candidate source files: $($files.Count)"
-          foreach ($candidate in @('Bunifu.Framework.UI.BunifuGradientPanel','Bunifu.UI.WinForms.BunifuGradientPanel')) {
-            foreach ($file in $files) {
-              $before = $baseline[$file.FullName]
-              $alias = 'using BunifuGradientPanel = ' + $candidate + ';' + [Environment]::NewLine
-              [IO.File]::WriteAllText($file.FullName, $alias + $before)
-            }
-            $log = Join-Path $env:RUNNER_TEMP ('alias-' + ($candidate -replace '[.]','-') + '.log')
-            & dotnet build $project --nologo -v:q -p:GenerateResourceUsePreserializedResources=true *> $log
-            $result = $LASTEXITCODE
-            $errors = @(Get-Content $log | Select-String 'error (CS|MSB|NETSDK|NU)[0-9]+')
-            Write-Host "$candidate -- exit: $result, compiler error lines: $($errors.Count)"
-            $codes = @($errors | ForEach-Object { [regex]::Match($_.Line, 'error ((?:CS|MSB|NETSDK|NU)[0-9]+)').Groups[1].Value } | Where-Object { $_ } | Group-Object | Sort-Object Count -Descending | Select-Object -First 8)
-            foreach ($code in $codes) { Write-Host "$candidate / $($code.Name): $($code.Count)" }
-            foreach ($file in $files) { [IO.File]::WriteAllText($file.FullName, $baseline[$file.FullName]) }
-            Remove-Item $log -Force -ErrorAction SilentlyContinue
-          }
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
@@ -169,6 +144,12 @@ jobs:
           } | Where-Object { $_ } | Group-Object | Sort-Object Count -Descending)
           Write-Host "Build exit: $exit"
           foreach ($g in $groups) { Write-Host "$($g.Name): $($g.Count)" }
+          # Compiler locations for the remaining 8 CS0104 errors only.
+          foreach ($line in @($lines | Select-String 'error CS0104:')) {
+            $value = $line.Line
+            $value = $value -replace [regex]::Escape($env:RUNNER_TEMP), '[temp]'
+            Write-Host ('CS0104 location: ' + $value.Substring(0,[Math]::Min(350,$value.Length)))
+          }
           # Emit only a compact diagnostic category summary; no source code is printed.
           foreach ($code in @('CS0621','CS0104','CS0246','CS0549')) {
             $samples = @($lines | Select-String -Pattern ("error " + $code + ":") | Select-Object -First 2)
