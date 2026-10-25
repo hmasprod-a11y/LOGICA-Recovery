@@ -35,7 +35,7 @@ jobs:
         run: |
           $project = Join-Path $env:RUNNER_TEMP 'logica-build-source/LOGICA.csproj'
           $log = Join-Path $env:RUNNER_TEMP 'logica-build-private.log'
-          & dotnet build $project --nologo -v:minimal *> $log
+          & dotnet build $project --nologo -v:minimal -p:GenerateResourceUsePreserializedResources=true *> $log
           $result = $LASTEXITCODE
           $lines = @(Get-Content -LiteralPath $log)
           $errors = @($lines | Select-String -Pattern 'error (CS|MSB|NETSDK|NU)[0-9]+')
