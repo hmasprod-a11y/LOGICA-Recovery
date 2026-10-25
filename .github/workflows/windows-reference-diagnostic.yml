@@ -151,6 +151,10 @@ jobs:
             $result = $LASTEXITCODE
             $errors = @(Get-Content $log | Select-String 'error (CS|MSB|NETSDK|NU)[0-9]+')
             Write-Host "$candidate -- exit: $result, compiler error lines: $($errors.Count)"
+            $codes = @($errors | ForEach-Object {
+              [regex]::Match($_.Line, 'error ((?:CS|MSB|NETSDK|NU)[0-9]+)').Groups[1].Value
+            } | Where-Object { $_ } | Group-Object | Sort-Object Count -Descending | Select-Object -First 8)
+            foreach ($code in $codes) { Write-Host "$candidate / $($code.Name): $($code.Count)" }
             foreach ($file in $files) { [IO.File]::WriteAllText($file.FullName, $baseline[$file.FullName]) }
             Remove-Item $log -Force -ErrorAction SilentlyContinue
           }
