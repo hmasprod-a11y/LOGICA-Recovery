@@ -85,6 +85,8 @@ class RecoveredCheck {
   Application.DoEvents();var articles=(Form)Get(forms,"Form_2_ARTICLES");
   foreach(Form opened in Application.OpenForms)if(opened.GetType().Name=="FormDialog_PATIENTER" && opened.Visible)throw new Exception("Loading dialog remained open after stock navigation");
   var products=(DataGridView)Get(articles,"DataGridView1");
+  lock(errors){if(errors.Count>0)throw new Exception("Products load errors: "+string.Join(" | ",errors.ToArray()));}
+  Console.WriteLine("Products loaded rows="+products.Rows.Count+" families="+((ComboBox)Get(articles,"Combo_FAMILLE")).Items.Count);
   if(products.Rows.Count!=30 || ((ComboBox)Get(articles,"Combo_FAMILLE")).Items.Count!=15)throw new Exception("Products or families failed to load");
   if(((Control)Get(articles,"TextBox_NBR_CODE_ARTICLE")).Text!="4")throw new Exception("Product barcode settings did not load");
   lock(errors){if(errors.Count>0)throw new Exception("Product page errors: "+string.Join(" | ",errors.ToArray()));}
