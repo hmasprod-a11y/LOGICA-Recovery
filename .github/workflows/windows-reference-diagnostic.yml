@@ -131,6 +131,29 @@ jobs:
             if ($updated -ne $body) { [IO.File]::WriteAllText($file.FullName, $updated) }
           }
           Write-Host "Trial Timer edits in $timerFiles files; FormAnimator declarations: $animatorFiles."
+      - name: Compare both BunifuGradientPanel identities
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA'
+          $project = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA.csproj'
+          $files = @(Get-ChildItem $root -Recurse -Filter '*.cs' -File | Where-Object { [IO.File]::ReadAllText($_.FullName).Contains('BunifuGradientPanel') })
+          $baseline = @{}
+          foreach ($file in $files) { $baseline[$file.FullName] = [IO.File]::ReadAllText($file.FullName) }
+          Write-Host "Candidate source files: $($files.Count)"
+          foreach ($candidate in @('Bunifu.Framework.UI.BunifuGradientPanel','Bunifu.UI.WinForms.BunifuGradientPanel')) {
+            foreach ($file in $files) {
+              $before = $baseline[$file.FullName]
+              $after = [regex]::Replace($before, '(?<![.A-Za-z0-9_])BunifuGradientPanel\b', $candidate)
+              [IO.File]::WriteAllText($file.FullName, $after)
+            }
+            $log = Join-Path $env:RUNNER_TEMP ('gradient-' + ($candidate -replace '[.]','-') + '.log')
+            & dotnet build $project --nologo -v:q -p:GenerateResourceUsePreserializedResources=true *> $log
+            $result = $LASTEXITCODE
+            $errors = @(Get-Content $log | Select-String 'error (CS|MSB|NETSDK|NU)[0-9]+')
+            Write-Host "$candidate -- exit: $result, compiler error lines: $($errors.Count)"
+            foreach ($file in $files) { [IO.File]::WriteAllText($file.FullName, $baseline[$file.FullName]) }
+            Remove-Item $log -Force -ErrorAction SilentlyContinue
+          }
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
