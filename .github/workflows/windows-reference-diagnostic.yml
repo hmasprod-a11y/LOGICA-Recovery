@@ -187,6 +187,23 @@ jobs:
             [IO.File]::WriteAllText($file, $old.Replace($entry[1],$entry[2]))
             Write-Host "Applied targeted fix: $($entry[0])"
           }
+      - name: Repair decompiled Form Dispose calls in temporary sources
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA'
+          $changed = 0
+          $total = 0
+          foreach ($file in @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.cs' -File)) {
+            $before = [IO.File]::ReadAllText($file.FullName)
+            $pattern = '\(\(Form\)this\)\.Dispose\(disposing\);'
+            $matches = [regex]::Matches($before,$pattern)
+            if ($matches.Count -eq 0) { continue }
+            $after = [regex]::Replace($before,$pattern,'base.Dispose(disposing);')
+            [IO.File]::WriteAllText($file.FullName,$after)
+            $total += $matches.Count
+            $changed++
+          }
+          Write-Host "Repaired Form.Dispose(bool) calls: $total across $changed source files."
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
