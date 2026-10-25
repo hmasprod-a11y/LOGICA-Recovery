@@ -207,6 +207,13 @@ jobs:
             }
           }
           if ($exit -ne 0) { throw 'Build did not succeed; original sources unchanged.' }
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logica-build-log
+          path: ${{ runner.temp }}/logica-diagnostic-build.log
+          if-no-files-found: warn
       - name: Clean temporary sources
         if: always()
         shell: pwsh
