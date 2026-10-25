@@ -1,14 +1,14 @@
 $ErrorActionPreference='Stop'
 $dist=(Resolve-Path dist).Path
 # Supply required local startup files for isolated Windows tests.
-@{'CHEMIN_DB.sni'='127.0.0.1';'CHEMIN_FOLDER.sni'=$dist;'poste.sni'='CI_TEST';'mode_windows.sni'='NORMAL';'log_erreur.sni'=''}.GetEnumerator() | ForEach-Object {
+@{'CHEMIN_DB.sni'='127.0.0.1';'CHEMIN_FOLDER.sni'='Application.StartupPath';'poste.sni'='CI_TEST';'mode_windows.sni'='NORMAL';'log_erreur.sni'=''}.GetEnumerator() | ForEach-Object {
   [IO.File]::WriteAllText((Join-Path $dist $_.Key),$_.Value)
 }
 $csc=Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
 & $csc /nologo /platform:x86 /target:exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Data.dll "/out:$dist\PosSmoke.exe" (Join-Path $PSScriptRoot 'test-pos.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Test harness compilation failed' }
 Copy-Item dist/LOGICA.exe.config dist/PosSmoke.exe.config -Force
-$cases=@('basket','rounding','Form_0_TEMPLATE','Form_1_LOGIN','Form_3_VENTE','Form_2_ARTICLES','Form_6_MOUVEMENTS_STOCK','FormDialog_MODE_P','Report_TICKET_A4')
+$cases=@('basket','checkout','rounding','Form_0_TEMPLATE','Form_1_LOGIN','Form_3_VENTE','Form_2_ARTICLES','Form_6_MOUVEMENTS_STOCK','FormDialog_MODE_P','Report_TICKET_A4')
 $results=@()
 foreach($case in $cases) {
   $log=Join-Path (Resolve-Path results).Path ($case+'.log')
