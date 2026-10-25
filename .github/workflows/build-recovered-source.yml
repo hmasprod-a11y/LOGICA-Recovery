@@ -1,0 +1,48 @@
+name: Build recovered LOGICA on Windows
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Locate recovered source archive
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:GITHUB_WORKSPACE 'input/LOGICA-source-complete.tar.gz'
+          if (-not (Test-Path $archive)) {
+            throw 'Input missing: input/LOGICA-source-complete.tar.gz'
+          }
+      - name: Extract into ephemeral private directory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = Join-Path $env:RUNNER_TEMP 'logica-build-source'
+          New-Item -ItemType Directory -Force -Path $source | Out-Null
+          tar -xzf (Join-Path $env:GITHUB_WORKSPACE 'input/LOGICA-source-complete.tar.gz') -C $source
+          if ($LASTEXITCODE -ne 0) { throw 'Archive extraction failed' }
+          if (-not (Test-Path (Join-Path $source 'LOGICA.csproj'))) { throw 'Project file missing' }
+      - name: Build .NET Framework 4.8 project using Windows tooling
+        shell: pwsh
+        run: |
+          $project = Join-Path $env:RUNNER_TEMP 'logica-build-source/LOGICA.csproj'
+          $log = Join-Path $env:RUNNER_TEMP 'logica-build-private.log'
+          & dotnet build $project --nologo -v:minimal *> $log
+          $result = $LASTEXITCODE
+          $lines = @(Get-Content -LiteralPath $log)
+          $errors = @($lines | Select-String -Pattern 'error (CS|MSB|NETSDK|NU)[0-9]+')
+          $codes = @($errors | ForEach-Object { [regex]::Match($_.Line, 'error ([A-Z]+[0-9]+)').Groups[1].Value } | Where-Object { $_ } | Group-Object | Sort-Object Count -Descending | Select-Object -First 15)
+          Write-Host "Build exit code: $result. Error lines: $($errors.Count)"
+          foreach ($code in $codes) { Write-Host "$($code.Name): $($code.Count)" }
+          if ($result -ne 0) { throw 'Build failed; detailed logs deliberately kept off GitHub.' }
+      - name: Remove private build files
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP 'logica-build-source')
+          Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP 'logica-build-private.log')
