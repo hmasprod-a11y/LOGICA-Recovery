@@ -1,240 +1,73 @@
-name: LOGICA Windows reference diagnostic
+name: LOGICA Windows build and POS verification
 on:
   workflow_dispatch:
   push:
     paths:
-      - 'input/LOGICA-dependencies.zip'
-      - 'input/LOGICA-source-complete.tar.gz'
+      - 'recovered-source/**'
+      - 'scripts/repair-source.py'
+      - 'scripts/test-pos*'
       - '.github/workflows/windows-reference-diagnostic.yml'
 jobs:
-  diagnose:
+  build-test:
     runs-on: windows-latest
+    timeout-minutes: 25
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Unpack recovered project
+      - name: Repair and persist original source
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          $src = Join-Path $env:RUNNER_TEMP 'logica-diagnostic'
-          New-Item -ItemType Directory -Force $src | Out-Null
-          tar -xzf input/LOGICA-source-complete.tar.gz -C $src
-          if ($LASTEXITCODE -ne 0) { throw 'Archive extraction failed' }
-          if (-not (Test-Path (Join-Path $src 'LOGICA.csproj'))) { throw 'Project missing' }
-      - name: Normalize only incorrect framework references
+          python scripts/repair-source.py
+          if ($LASTEXITCODE -ne 0) { throw 'Source repair failed' }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f recovered-source
+          git reset -- recovered-source/obj recovered-source/bin
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m 'Persist repaired original C# source and portable project'
+            git push
+            if ($LASTEXITCODE -ne 0) { throw 'Source persistence failed' }
+          }
+      - name: Restore original runtime dependencies
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          $project = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA.csproj'
-          [xml]$xml = Get-Content -LiteralPath $project -Raw
-          $removed = 0
-          foreach ($group in @($xml.Project.ItemGroup)) {
-            foreach ($ref in @($group.Reference)) {
-              if ($null -ne $ref -and $ref.HintPath -match 'Microsoft[.]NETCore[.]App[/\\]10[.]') {
-                $node = $ref.SelectSingleNode('HintPath')
-                if ($null -ne $node) { [void]$ref.RemoveChild($node) }
-                $removed++
-              }
-            }
-          }
-          $xml.Save($project)
-          Write-Host "Removed invalid Linux .NET 10 HintPaths: $removed"
-      - name: Load original LOGICA dependencies
+          Expand-Archive input/LOGICA-dependencies.zip dependencies -Force
+      - name: Build original project on Windows
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
-          $archive = Join-Path $env:GITHUB_WORKSPACE 'input/LOGICA-dependencies.zip'
-          if (-not (Test-Path -LiteralPath $archive)) {
-            throw 'Missing input/LOGICA-dependencies.zip. Upload only the dependency archive from Codespaces.'
-          }
-          $deps = Join-Path $env:RUNNER_TEMP 'logica-dependencies'
-          Expand-Archive -LiteralPath $archive -DestinationPath $deps
-          $dlls = @(Get-ChildItem -LiteralPath $deps -Filter '*.dll' -Recurse -File)
-          if ($dlls.Count -eq 0) { throw 'Dependency archive contains no DLL files.' }
-          [xml]$xml = Get-Content (Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA.csproj') -Raw
-          $group = $xml.CreateElement('ItemGroup')
-          [void]$xml.Project.AppendChild($group)
-          foreach ($dll in $dlls) {
-            $reference = $xml.CreateElement('Reference')
-            $reference.SetAttribute('Include', $dll.BaseName)
-            $hint = $xml.CreateElement('HintPath')
-            $hint.InnerText = $dll.FullName
-            [void]$reference.AppendChild($hint)
-            [void]$group.AppendChild($reference)
-          }
-          $xml.Save((Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA.csproj'))
-          Write-Host "Original DLL references added: $($dlls.Count)"
-      - name: Install resource compatibility package
-        shell: pwsh
-        run: |
-          $project = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA.csproj'
-          dotnet add $project package System.Resources.Extensions --version 4.7.1
-          if ($LASTEXITCODE -ne 0) { throw 'Package restore failed' }
-      - name: Trial fix for Bunifu checkbox event argument
-        shell: pwsh
-        run: |
-          $source = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA'
-          $count = 0
-          $occurrences = 0
-          foreach ($file in @(Get-ChildItem -LiteralPath $source -Filter '*.cs' -File)) {
-            $body = [IO.File]::ReadAllText($file.FullName)
-            # Cover callback parameter types as well as EventHandler<T>.
-            $updated = [regex]::Replace($body, '(?<![.A-Za-z0-9_])CheckedChangedEventArgs\b', 'Bunifu.UI.WinForms.BunifuCheckBox.CheckedChangedEventArgs')
-            if ($updated -ne $body) {
-              $occurrences += ([regex]::Matches($body, '(?<![.A-Za-z0-9_])CheckedChangedEventArgs\b')).Count
-              [IO.File]::WriteAllText($file.FullName, $updated)
-              $count++
-            }
-          }
-          Write-Host "Trial change applied to $count C# files and $occurrences references (temporary Windows runner only)."
-      - name: Trial accessibility fix for invalid private virtual members
-        shell: pwsh
-        run: |
-          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA'
-          $changed = 0
-          $replacements = 0
-          foreach ($file in @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.cs' -File)) {
-            $original = [IO.File]::ReadAllText($file.FullName)
-            $pattern = '\bprivate\s+(?:(?:new|unsafe)\s+)*?(?:virtual|abstract)\b'
-            $updated = [regex]::Replace($original, $pattern, {
-              param($match)
-              return [regex]::Replace($match.Value, '^private\b', 'protected')
-            })
-            if ($updated -ne $original) {
-              $replacements += [regex]::Matches($original, $pattern).Count
-              [IO.File]::WriteAllText($file.FullName, $updated)
-              $changed++
-            }
-          }
-          Write-Host "Trial modified $replacements declarations in $changed files. Original archive unchanged."
-      - name: Trial resolution of remaining Timer and FormAnimator compiler issues
-        shell: pwsh
-        run: |
-          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA'
-          $timerFiles = 0
-          $animatorFiles = 0
-          foreach ($file in @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.cs' -File)) {
-            $body = [IO.File]::ReadAllText($file.FullName)
-            $updated = $body
-            # Resolve bare Timer uses to the WinForms UI timer in UI files only.
-            if ($body -match 'System[.]Windows[.]Forms' -and $body -match '\bTimer\b') {
-              $updated = [regex]::Replace($updated, '(?<![.A-Za-z0-9_])Timer\b', 'System.Windows.Forms.Timer')
-              if ($updated -ne $body) { $timerFiles++ }
-            }
-            # Remove sealed from FormAnimator declaration, preserving virtual accessors.
-            if ($updated -match '\bsealed\s+class\s+FormAnimator\b') {
-              $updated = [regex]::Replace($updated, '\bsealed\s+(?=class\s+FormAnimator\b)', '')
-              $animatorFiles++
-            }
-            if ($updated -ne $body) { [IO.File]::WriteAllText($file.FullName, $updated) }
-          }
-          Write-Host "Trial Timer edits in $timerFiles files; FormAnimator declarations: $animatorFiles."
-      - name: Inspect ambiguous panel declarations without editing them
-        shell: pwsh
-        run: |
-          $file = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA/Form_9_PARAMETRE.cs'
-          if (-not (Test-Path $file)) { throw 'Form_9_PARAMETRE.cs not found' }
-          $lines = [IO.File]::ReadAllLines($file)
-          Write-Host 'EXACT source diagnostics for the four ambiguous declarations:'
-          foreach ($number in @(39,48,134,188)) {
-            $start = [Math]::Max(1, $number - 3)
-            $end = [Math]::Min($lines.Length, $number + 3)
-            Write-Host "SOURCE-WINDOW line=$number"
-            foreach ($i in $start..$end) {
-              $line = $lines[$i-1].Trim()
-              if ($line.Length -gt 250) { $line = $line.Substring(0,250) }
-              Write-Host ('L' + $i + ': ' + $line)
-            }
-          }
-          Write-Host 'Panel variable declarations and instantiations (redacted to syntax-only):'
-          $matches = @(Select-String -Path $file -Pattern 'BunifuGradientPanel' | Select-Object -First 35)
-          foreach ($match in $matches) {
-            $snippet = $match.Line.Trim()
-            if ($snippet.Length -gt 200) { $snippet = $snippet.Substring(0,200) }
-            Write-Host ('L' + $match.LineNumber + ': ' + $snippet)
-          }
-      - name: Scoped Bunifu panel qualification for deep diagnostics
-        shell: pwsh
-        run: |
-          $file = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA/Form_9_PARAMETRE.cs'
-          $lines = [IO.File]::ReadAllLines($file)
-          $changed = 0
-          foreach ($lineNumber in @(39,48,134,188)) {
-            $index = $lineNumber - 1
-            $before = $lines[$index]
-            $lines[$index] = [regex]::Replace($before, '(?<![.A-Za-z0-9_])BunifuGradientPanel\b', 'Bunifu.UI.WinForms.BunifuGradientPanel')
-            if ($before -ne $lines[$index]) { $changed++ }
-          }
-          if ($changed -ne 4) { throw "Expected 4 substitutions, got $changed" }
-          [IO.File]::WriteAllLines($file, $lines)
-          Write-Host "Qualified four declarations in disposable source copy; remaining errors will be recorded."
-      - name: Attempt Windows build and summarize error categories
-        shell: pwsh
-        run: |
-          $project = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA.csproj'
-          $log = Join-Path $env:RUNNER_TEMP 'logica-diagnostic-build.log'
-          & dotnet build $project --nologo -v:q -p:GenerateResourceUsePreserializedResources=true *> $log
-          $exit = $LASTEXITCODE
-          $lines = @(Get-Content -LiteralPath $log)
-          $groups = @($lines | Select-String 'error (CS|MSB|NETSDK|NU)[0-9]+' | ForEach-Object {
-            [regex]::Match($_.Line, 'error ((?:CS|MSB|NETSDK|NU)[0-9]+)').Groups[1].Value
-          } | Where-Object { $_ } | Group-Object | Sort-Object Count -Descending)
-          Write-Host "Build exit: $exit"
-          foreach ($g in $groups) { Write-Host "$($g.Name): $($g.Count)" }
-          # Compiler locations for the remaining 8 CS0104 errors only.
-          foreach ($line in @($lines | Select-String 'error CS0104:')) {
-            $value = $line.Line
-            $value = $value -replace [regex]::Escape($env:RUNNER_TEMP), '[temp]'
-            Write-Host ('CS0104 location: ' + $value.Substring(0,[Math]::Min(350,$value.Length)))
-          }
-          # Deep diagnostics: representative post-ambiguity compiler failures.
-          foreach ($g in @($groups | Select-Object -First 8)) {
-            foreach ($sample in @($lines | Select-String -Pattern ('error ' + $g.Name + ':') | Select-Object -First 3)) {
-              $msg = $sample.Line -replace [regex]::Escape($env:RUNNER_TEMP), '[temp]'
-              Write-Host ('DEEP ' + $g.Name + ': ' + $msg.Substring(0,[Math]::Min(350,$msg.Length)))
-            }
-          }
-          # Emit only a compact diagnostic category summary; no source code is printed.
-          foreach ($code in @('CS0621','CS0104','CS0246','CS0549')) {
-            $samples = @($lines | Select-String -Pattern ("error " + $code + ":") | Select-Object -First 2)
-            foreach ($sample in $samples) {
-              $msg = ($sample.Line -split ("error " + $code + ":"),2)[-1].Trim()
-              $msg = $msg -replace '[A-Za-z]:\\[^ ]+', '[path]'
-              Write-Host ($code + ' detail: ' + $msg.Substring(0,[Math]::Min(240,$msg.Length)))
-            }
-          }
-          if ($exit -ne 0) { throw 'Build did not succeed; original sources unchanged.' }
-      - name: Upload build log
+          New-Item -ItemType Directory -Force results | Out-Null
+          dotnet build recovered-source/LOGICA.csproj -c Release --nologo -v:q -o dist *> results/build.log
+          $result = $LASTEXITCODE
+          Get-Content results/build.log | Select-String ': error ' | Sort-Object -Unique | Select-Object -First 60 | ForEach-Object { Write-Host $_ }
+          if ($result -ne 0) { throw 'Windows build failed; see complete build.log' }
+          Get-ChildItem dependencies -Recurse -File | Copy-Item -Destination dist -Force
+          Get-ChildItem dist -File | Get-FileHash -Algorithm SHA256 | Select-Object Hash,Path | ConvertTo-Json | Set-Content results/runtime-manifest.json
+      - name: Inspect original dependency types
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: logica-build-log
-          path: ${{ runner.temp }}/logica-diagnostic-build.log
-          if-no-files-found: warn
-      - name: Upload repaired source snapshot
+        shell: powershell
+        run: |
+          $names = @('Directions','BorderThickness','TextAlign','Indicator','BindingControlPositions','CheckStates','CheckBoxStyles','BorderEdges','BorderStyles','ButtonStates','Types','CapStyles','FillStyles')
+          foreach ($dll in Get-ChildItem dependencies -Filter '*.dll' -Recurse) {
+            try {
+              $assembly = [Reflection.Assembly]::LoadFrom($dll.FullName)
+              foreach ($t in $assembly.GetTypes()) { if ($names -contains $t.Name) { Write-Host ('ORIGINAL-TYPE ' + $t.FullName) } }
+            } catch { }
+          }
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: logica-repaired-source
-          path: ${{ runner.temp }}/logica-diagnostic/
-          if-no-files-found: warn
-          retention-days: 7
-      - name: Upload Windows build output
+          name: LOGICA-build-diagnostics
+          path: results/
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
         if: success()
-        uses: actions/upload-artifact@v4
         with:
-          name: logica-windows-build
-          path: ${{ runner.temp }}/logica-diagnostic/**/bin/**
-          if-no-files-found: warn
-          retention-days: 14
-      - name: Clean temporary sources
-        if: always()
-        shell: pwsh
-        run: |
-          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP 'logica-diagnostic')
-          Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP 'logica-diagnostic-build.log')
-          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP 'logica-dependencies')
+          name: LOGICA-Windows-complete
+          path: dist/
+          if-no-files-found: error
+          retention-days: 90
