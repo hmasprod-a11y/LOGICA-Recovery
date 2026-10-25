@@ -102,6 +102,8 @@
   <ItemGroup>
     </ItemGroup>
   <ItemGroup>
+    </ItemGroup>
+  <ItemGroup>
     <Reference Include="Microsoft.VisualBasic" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data" />
