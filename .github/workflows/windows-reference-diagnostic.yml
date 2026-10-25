@@ -131,7 +131,7 @@ jobs:
             if ($updated -ne $body) { [IO.File]::WriteAllText($file.FullName, $updated) }
           }
           Write-Host "Trial Timer edits in $timerFiles files; FormAnimator declarations: $animatorFiles."
-      - name: Compare both BunifuGradientPanel identities
+      - name: Compare safe BunifuGradientPanel aliases
         shell: pwsh
         run: |
           $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA'
@@ -143,17 +143,15 @@ jobs:
           foreach ($candidate in @('Bunifu.Framework.UI.BunifuGradientPanel','Bunifu.UI.WinForms.BunifuGradientPanel')) {
             foreach ($file in $files) {
               $before = $baseline[$file.FullName]
-              $after = [regex]::Replace($before, '(?<![.A-Za-z0-9_])BunifuGradientPanel\b', $candidate)
-              [IO.File]::WriteAllText($file.FullName, $after)
+              $alias = 'using BunifuGradientPanel = ' + $candidate + ';' + [Environment]::NewLine
+              [IO.File]::WriteAllText($file.FullName, $alias + $before)
             }
-            $log = Join-Path $env:RUNNER_TEMP ('gradient-' + ($candidate -replace '[.]','-') + '.log')
+            $log = Join-Path $env:RUNNER_TEMP ('alias-' + ($candidate -replace '[.]','-') + '.log')
             & dotnet build $project --nologo -v:q -p:GenerateResourceUsePreserializedResources=true *> $log
             $result = $LASTEXITCODE
             $errors = @(Get-Content $log | Select-String 'error (CS|MSB|NETSDK|NU)[0-9]+')
             Write-Host "$candidate -- exit: $result, compiler error lines: $($errors.Count)"
-            $codes = @($errors | ForEach-Object {
-              [regex]::Match($_.Line, 'error ((?:CS|MSB|NETSDK|NU)[0-9]+)').Groups[1].Value
-            } | Where-Object { $_ } | Group-Object | Sort-Object Count -Descending | Select-Object -First 8)
+            $codes = @($errors | ForEach-Object { [regex]::Match($_.Line, 'error ((?:CS|MSB|NETSDK|NU)[0-9]+)').Groups[1].Value } | Where-Object { $_ } | Group-Object | Sort-Object Count -Descending | Select-Object -First 8)
             foreach ($code in $codes) { Write-Host "$candidate / $($code.Name): $($code.Count)" }
             foreach ($file in $files) { [IO.File]::WriteAllText($file.FullName, $baseline[$file.FullName]) }
             Remove-Item $log -Force -ErrorAction SilentlyContinue
