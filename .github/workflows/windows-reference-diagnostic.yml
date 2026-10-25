@@ -290,6 +290,23 @@ jobs:
             if ($after -ne $before) { [IO.File]::WriteAllText($file.FullName,$after); $n++ }
           }
           Write-Host "Updated $n source files for protected WinForms events."
+      - name: Correct remaining identified mouse override calls
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA'
+          $pairs = @(
+            @('((ButtonBase)this).OnMouseDown(', 'base.OnMouseDown('),
+            @('((Button)this).OnMouseUp(', 'base.OnMouseUp('),
+            @('((ButtonBase)this).OnMouseMove(', 'base.OnMouseMove(')
+          )
+          $total = 0
+          foreach ($file in @(Get-ChildItem $root -Recurse -Filter '*.cs' -File)) {
+            $body = [IO.File]::ReadAllText($file.FullName)
+            $updated = $body
+            foreach ($pair in $pairs) { $updated = $updated.Replace($pair[0],$pair[1]) }
+            if ($updated -ne $body) { [IO.File]::WriteAllText($file.FullName,$updated); $total++ }
+          }
+          Write-Host "Corrected mouse overrides in $total files."
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
