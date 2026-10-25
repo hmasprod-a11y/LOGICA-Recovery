@@ -156,6 +156,21 @@ jobs:
             if ($snippet.Length -gt 200) { $snippet = $snippet.Substring(0,200) }
             Write-Host ('L' + $match.LineNumber + ': ' + $snippet)
           }
+      - name: Scoped Bunifu panel qualification for deep diagnostics
+        shell: pwsh
+        run: |
+          $file = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA/Form_9_PARAMETRE.cs'
+          $lines = [IO.File]::ReadAllLines($file)
+          $changed = 0
+          foreach ($lineNumber in @(39,48,134,188)) {
+            $index = $lineNumber - 1
+            $before = $lines[$index]
+            $lines[$index] = [regex]::Replace($before, '(?<![.A-Za-z0-9_])BunifuGradientPanel\b', 'Bunifu.UI.WinForms.BunifuGradientPanel')
+            if ($before -ne $lines[$index]) { $changed++ }
+          }
+          if ($changed -ne 4) { throw "Expected 4 substitutions, got $changed" }
+          [IO.File]::WriteAllLines($file, $lines)
+          Write-Host "Qualified four declarations in disposable source copy; remaining errors will be recorded."
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
@@ -174,6 +189,13 @@ jobs:
             $value = $line.Line
             $value = $value -replace [regex]::Escape($env:RUNNER_TEMP), '[temp]'
             Write-Host ('CS0104 location: ' + $value.Substring(0,[Math]::Min(350,$value.Length)))
+          }
+          # Deep diagnostics: representative post-ambiguity compiler failures.
+          foreach ($g in @($groups | Select-Object -First 8)) {
+            foreach ($sample in @($lines | Select-String -Pattern ('error ' + $g.Name + ':') | Select-Object -First 3)) {
+              $msg = $sample.Line -replace [regex]::Escape($env:RUNNER_TEMP), '[temp]'
+              Write-Host ('DEEP ' + $g.Name + ': ' + $msg.Substring(0,[Math]::Min(350,$msg.Length)))
+            }
           }
           # Emit only a compact diagnostic category summary; no source code is printed.
           foreach ($code in @('CS0621','CS0104','CS0246','CS0549')) {
