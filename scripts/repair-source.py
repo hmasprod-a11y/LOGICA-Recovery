@@ -47,6 +47,17 @@ for p in root.rglob('*.cs'):
   body=re.sub(r'\(\(ControlCollection\)(\w+\.Controls)\)',r'\1',body)
  if p.name=='Form_3_VENTE.cs':
   body=re.sub(r'(\.State\s*&\s*)(\d+)',r'\1(DrawItemState)\2',body)
+ # Choose enum owner from the declared DatePicker instead of a same-named Dropdown enum.
+ date_vars=set(re.findall(r'\bBunifuDatePicker\s+(\w+)',body))
+ lines=body.splitlines(keepends=True)
+ for i,line in enumerate(lines):
+  if any(re.search(r'\b'+re.escape(v)+r'\.',line) for v in date_vars):
+   for enum in ('BorderThickness','TextAlign','Indicator'):
+    line=line.replace('Bunifu.UI.WinForms.BunifuDropdown.'+enum,'Bunifu.UI.WinForms.BunifuDatePicker.'+enum)
+   lines[i]=line
+ body=''.join(lines)
+ body=re.sub(r'System\.Windows\.Forms\.CheckedListBox\.ObjectCollection(\s+\w+\s*=\s*Combo_\w+\.Items)',r'System.Windows.Forms.ComboBox.ObjectCollection\1',body)
+ body=body.replace('(e.State & (DrawItemState)1) == 1','(e.State & DrawItemState.Selected) == DrawItemState.Selected')
  if body!=before: p.write_text(body,encoding='utf-8')
 # Keep project paths portable and preserve all shipped runtime DLLs.
 p=root/'LOGICA.csproj'; tree=ET.parse(p); project=tree.getroot()
