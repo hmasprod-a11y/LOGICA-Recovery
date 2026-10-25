@@ -264,6 +264,24 @@ jobs:
               Write-Host ('L' + $n + ': ' + $line)
             }
           }
+      - name: Retain patched source archive for inspection
+        if: always()
+        shell: pwsh
+        run: |
+          $folder = Join-Path $env:RUNNER_TEMP 'logica-diagnostic'
+          $dest = Join-Path $env:RUNNER_TEMP 'logica-patched-source.zip'
+          if (Test-Path (Join-Path $folder 'LOGICA.csproj')) {
+            Compress-Archive -Path (Join-Path $folder '*') -DestinationPath $dest -CompressionLevel Fastest -Force
+            Write-Host "Saved patched project for inspection: $dest"
+          }
+      - name: Upload patched source privately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logica-patched-source
+          path: ${{ runner.temp }}/logica-patched-source.zip
+          if-no-files-found: warn
+          retention-days: 7
       - name: Save full Windows compiler diagnostics
         if: always()
         uses: actions/upload-artifact@v4
