@@ -257,6 +257,22 @@ jobs:
             }
           }
           Write-Host "Corrected protected base event invocations in $changed files."
+      - name: Fix additional protected event overrides in extracted controls
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA'
+          $replacements = @(
+            @('((ButtonBase)this).OnPaint(', 'base.OnPaint('),
+            @('((Control)this).OnHandleCreated(', 'base.OnHandleCreated(')
+          )
+          $count = 0
+          foreach ($file in @(Get-ChildItem $root -Filter '*.cs' -Recurse -File)) {
+            $old = [IO.File]::ReadAllText($file.FullName)
+            $new = $old
+            foreach ($pair in $replacements) { $new = $new.Replace($pair[0],$pair[1]) }
+            if ($new -ne $old) { [IO.File]::WriteAllText($file.FullName,$new); $count++ }
+          }
+          Write-Host "Corrected protected OnPaint/OnHandleCreated invocations in $count files."
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
