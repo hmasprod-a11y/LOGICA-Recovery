@@ -349,6 +349,21 @@ jobs:
             } catch { Write-Host ('REFLECTION_SKIPPED ' + $dll.Name) }
           }
           Write-Host "Matched nested type names: $found"
+      - name: Restore QRCode nested enum references from original DLL
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic'
+          $count = 0
+          foreach ($file in @(Get-ChildItem $root -Recurse -Filter '*.cs' -File)) {
+            $body = [IO.File]::ReadAllText($file.FullName)
+            $next = [regex]::Replace($body, '(?<![.A-Za-z0-9_])ENCODE_MODE\b', 'ThoughtWorks.QRCode.Codec.QRCodeEncoder.ENCODE_MODE')
+            $next = [regex]::Replace($next, '(?<![.A-Za-z0-9_])ERROR_CORRECTION\b', 'ThoughtWorks.QRCode.Codec.QRCodeEncoder.ERROR_CORRECTION')
+            if ($body -ne $next) {
+              [IO.File]::WriteAllText($file.FullName, $next)
+              $count++
+            }
+          }
+          Write-Host "Qualified confirmed QRCode nested enum names in $count C# files."
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
