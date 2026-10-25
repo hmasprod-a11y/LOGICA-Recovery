@@ -5,9 +5,9 @@ if($LASTEXITCODE -ne 0){throw 'Recovery check database creation failed'}
 # Use mysql source so PowerShell never decodes or changes the UTF-8 SQL stream.
 $sql=(Resolve-Path input/recovered-original.sql).Path.Replace('\','/')
 $compat=(Resolve-Path input/mysql-compatibility.sql).Path.Replace('\','/')
-& "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --default-character-set=utf8mb4 logica_recovered_check -e "source $sql"
+& "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --default-character-set=utf8mb4 --abort-source-on-error logica_recovered_check -e "source $sql"
 if($LASTEXITCODE -ne 0){throw 'Original Access snapshot import failed'}
-& "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --default-character-set=utf8mb4 logica_recovered_check -e "source $compat"
+& "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --default-character-set=utf8mb4 --abort-source-on-error logica_recovered_check -e "source $compat"
 if($LASTEXITCODE -ne 0){throw 'Additive schema compatibility migration failed'}
 $dist=(Resolve-Path dist).Path
 New-Item -ItemType Directory -Force "$dist/bd","$dist/tchak" | Out-Null

@@ -60,7 +60,7 @@ try {
   if($LASTEXITCODE -ne 0){throw 'Creation de la base de recuperation impossible'}
   foreach($file in @('recovered-original.sql','mysql-compatibility.sql')){
    $sql=(Join-Path $root "recovery/$file").Replace('\','/')
-   & "$ServerBin/mariadb.exe" "--defaults-extra-file=$clientFile" $dbName -e "source $sql"
+   & "$ServerBin/mariadb.exe" "--defaults-extra-file=$clientFile" --abort-source-on-error $dbName -e "source $sql"
    if($LASTEXITCODE -ne 0){throw "Import interrompu dans $file. Les fichiers et donnees existants sont conserves."}
   }
   [IO.File]::WriteAllText($marker,"Original snapshot imported without replacing an existing database. "+[DateTime]::UtcNow.ToString('o'))
