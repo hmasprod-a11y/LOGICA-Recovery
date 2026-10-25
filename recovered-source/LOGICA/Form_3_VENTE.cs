@@ -12805,9 +12805,18 @@ public class Form_3_VENTE : Form
 							val4.CommandText = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject("UPDATE     TABLE_ARTICLES    SET STOCK = STOCK - ", DataGridView1.Rows[num6].Cells["Qté"].Value), "    WHERE    ID_ARTICLE = '"), DataGridView1.Rows[num6].Cells["ID_ARTICLE"].Value), "'                           "));
 							val4.Connection = Module1.cn_SQL;
 							val4.ExecuteNonQuery();
-							val4.CommandText = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat("INSERT  INTO   TABLE_MOUVEMENTS_STOCK               ( DATES , HEURE , LIBELLE,ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE)         values           ( '" + DateTime.Now.ToString("yyyy-MM-dd"), "' ,  '"), DateTime.Now.ToString("HH:mm:ss")), "'  , CONCAT ('TICKET | ','"), _N_TICKET_SOLDER), "')   ,'"), DataGridView1.Rows[num6].Cells["ID_ARTICLE"].Value), "'   ,'"), DataGridView1.Rows[num6].Cells["Code"].Value), "' ,'"), DataGridView1.Rows[num6].Cells["Article"].Value), "'  ,CONCAT('-', '"), DataGridView1.Rows[num6].Cells["Qté"].Value), "' )        )        "));
+							val4.CommandText = "INSERT INTO TABLE_MOUVEMENTS_STOCK (DATES, HEURE, LIBELLE, ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE) VALUES (@movementDate, @movementTime, @movementLabel, @movementId, @movementCode, @movementArticle, @movementQuantity)";
+							val4.Parameters.Clear();
+							val4.Parameters.AddWithValue("@movementDate", DateTime.Now.ToString("yyyy-MM-dd"));
+							val4.Parameters.AddWithValue("@movementTime", DateTime.Now.ToString("HH:mm:ss"));
+							val4.Parameters.AddWithValue("@movementLabel", "TICKET | " + _N_TICKET_SOLDER);
+							val4.Parameters.AddWithValue("@movementId", DataGridView1.Rows[num6].Cells["ID_ARTICLE"].Value);
+							val4.Parameters.AddWithValue("@movementCode", DataGridView1.Rows[num6].Cells["Code"].Value);
+							val4.Parameters.AddWithValue("@movementArticle", DataGridView1.Rows[num6].Cells["Article"].Value);
+							val4.Parameters.AddWithValue("@movementQuantity", -Conversions.ToDecimal(DataGridView1.Rows[num6].Cells["Qté"].Value));
 							val4.Connection = Module1.cn_SQL;
 							val4.ExecuteNonQuery();
+							val4.Parameters.Clear();
 							num6++;
 						}
 					}
