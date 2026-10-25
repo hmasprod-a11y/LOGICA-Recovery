@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Windows.Forms;
 using System.Drawing;
 using System.Data;
+using System.ComponentModel;
 class PosSmoke {
  const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
  static object Get(object o,string name){return o.GetType().GetProperty(name,Flags).GetValue(o,null);}
@@ -70,12 +71,12 @@ class PosSmoke {
   var forms=assembly.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",Flags).GetValue(null,null);
   var template=Get(forms,"Form_0_TEMPLATE");SetText(template,"Label_POSTE","CI_TEST");
   var list=(ListView)Get(template,"ListView1");list.Items.Add("BLOCAGE_STOCK_INSUFFISANT").SubItems.Add("False");
+  foreach(int quantity in new[]{2,-1}) {
   using(var sale=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
    var grid=(DataGridView)Get(sale,"DataGridView1");grid.AllowUserToAddRows=false;
    foreach(var n in new[]{"Check_CHOIX_VENDEUR","Check_CHOIX_CLIENT","Check_ACCES_MODEP","Check_ACCES_RFID"})Get(sale,n).GetType().GetProperty("Checked").SetValue(Get(sale,n),false,null);
    Get(sale,"Check_STOCK").GetType().GetProperty("Checked").SetValue(Get(sale,"Check_STOCK"),true,null);
    SetText(sale,"Combo_PORT","");SetText(sale,"Text_HEURE_RETARD","0");SetText(sale,"Text_PRINTER_SOLDER","0");SetText(sale,"Button_CAISSIER","CI cashier");
-   foreach(int quantity in new[]{2,-1}) {
     connection.Open();
     Sql(connection,"INSERT INTO TABLE_CI_TEST ("+columns+",PRINTER,PRINTER_DUPLICATA) VALUES ('1','CI001','CI product','Test','5','5','12.5','"+quantity+"','0','"+(quantity*12.5m).ToString(CultureInfo.InvariantCulture)+"','0','','0','0')");
     connection.Close();
@@ -123,11 +124,18 @@ class PosSmoke {
      // Handle creation exercises native controls, Bunifu initialization and .sni loading.
      var handle=form.Handle;
      Console.WriteLine("PASS native window handle "+name+" "+handle);
+     // Show layout without database-dependent Load callbacks; workflow tests invoke business methods separately.
+     var events=(EventHandlerList)typeof(Component).GetProperty("Events",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(form,null);
+     foreach(var keyName in new[]{"EVENT_LOAD","EVENT_SHOWN","EVENT_ACTIVATED"}) {
+      var field=typeof(Form).GetField(keyName,BindingFlags.Static|BindingFlags.NonPublic);
+      if(field!=null){var key=field.GetValue(null);events.RemoveHandler(key,events[key]);}
+     }
+     form.Show();Application.DoEvents();
      using(var bitmap=new Bitmap(Math.Max(1,form.Width),Math.Max(1,form.Height))) {
       form.DrawToBitmap(bitmap,new Rectangle(0,0,bitmap.Width,bitmap.Height));
       bitmap.Save(Path.Combine("..","results",name+".png"));
      }
-     Console.WriteLine("PASS render original form "+name);
+     Console.WriteLine("PASS visible original form layout (database Load callbacks detached) "+name);
     }
    }
    return 0;
