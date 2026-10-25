@@ -109,6 +109,28 @@ jobs:
             }
           }
           Write-Host "Trial modified $replacements declarations in $changed files. Original archive unchanged."
+      - name: Trial resolution of remaining Timer and FormAnimator compiler issues
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA'
+          $timerFiles = 0
+          $animatorFiles = 0
+          foreach ($file in @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.cs' -File)) {
+            $body = [IO.File]::ReadAllText($file.FullName)
+            $updated = $body
+            # Resolve bare Timer uses to the WinForms UI timer in UI files only.
+            if ($body -match 'System[.]Windows[.]Forms' -and $body -match '\bTimer\b') {
+              $updated = [regex]::Replace($updated, '(?<![.A-Za-z0-9_])Timer\b', 'System.Windows.Forms.Timer')
+              if ($updated -ne $body) { $timerFiles++ }
+            }
+            # Remove sealed from FormAnimator declaration, preserving virtual accessors.
+            if ($updated -match '\bsealed\s+class\s+FormAnimator\b') {
+              $updated = [regex]::Replace($updated, '\bsealed\s+(?=class\s+FormAnimator\b)', '')
+              $animatorFiles++
+            }
+            if ($updated -ne $body) { [IO.File]::WriteAllText($file.FullName, $updated) }
+          }
+          Write-Host "Trial Timer edits in $timerFiles files; FormAnimator declarations: $animatorFiles."
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
