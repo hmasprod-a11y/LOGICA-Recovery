@@ -6,6 +6,9 @@ on:
       - 'recovered-source/**'
       - 'scripts/repair-source.py'
       - 'scripts/test-pos*'
+      - 'scripts/test-recovered*'
+      - 'input/recovered-original.sql'
+      - 'input/mysql-compatibility.sql'
       - '.github/workflows/windows-reference-diagnostic.yml'
 jobs:
   build-test:
@@ -56,6 +59,9 @@ jobs:
       - name: Exercise original POS on Windows
         shell: pwsh
         run: ./scripts/test-pos.ps1
+      - name: Verify original recovered Access data on MySQL
+        shell: pwsh
+        run: ./scripts/test-recovered-db.ps1
       - name: Finalize portable runtime package
         if: always()
         shell: pwsh
