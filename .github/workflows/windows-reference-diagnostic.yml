@@ -273,6 +273,23 @@ jobs:
             if ($new -ne $old) { [IO.File]::WriteAllText($file.FullName,$new); $count++ }
           }
           Write-Host "Corrected protected OnPaint/OnHandleCreated invocations in $count files."
+      - name: Fix remaining identified protected WinForms event methods
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA'
+          $rules = @(
+            @('((Control)this).OnResize(', 'base.OnResize('),
+            @('((Button)this).OnMouseEnter(', 'base.OnMouseEnter('),
+            @('((Button)this).OnMouseLeave(', 'base.OnMouseLeave(')
+          )
+          $n = 0
+          foreach ($file in @(Get-ChildItem $root -Recurse -Filter '*.cs' -File)) {
+            $before = [IO.File]::ReadAllText($file.FullName)
+            $after = $before
+            foreach ($rule in $rules) { $after = $after.Replace($rule[0],$rule[1]) }
+            if ($after -ne $before) { [IO.File]::WriteAllText($file.FullName,$after); $n++ }
+          }
+          Write-Host "Updated $n source files for protected WinForms events."
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
