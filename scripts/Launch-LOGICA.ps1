@@ -47,8 +47,9 @@ try {
  $process=Start-Process "$ServerBin/mariadbd.exe" -ArgumentList @("--defaults-file=`"$data/my.ini`"",'--bind-address=127.0.0.1',"--port=$Port",'--console') -PassThru -NoNewWindow
  $ready=$false
  for($i=0;$i -lt 40;$i++){
-  & "$ServerBin/mariadb-admin.exe" "--defaults-extra-file=$clientFile" ping 2>$null | Out-Null
-  if($LASTEXITCODE -eq 0){$ready=$true;break}
+  $probe=New-Object Net.Sockets.TcpClient
+  try {$probe.Connect('127.0.0.1',$Port);$ready=$true} catch {} finally {$probe.Dispose()}
+  if($ready){break}
   if($process.HasExited){throw 'Le serveur local ne peut pas demarrer. Verifier le port et le journal mysql.'}
   Start-Sleep -Milliseconds 500
  }
