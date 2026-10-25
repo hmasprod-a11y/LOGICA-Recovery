@@ -219,6 +219,24 @@ jobs:
             }
           }
           Write-Host "Control.SetStyle protected-access fix applied in $changes temporary source files."
+      - name: Repair additional Dispose base calls only inside overrides
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic'
+          $fixedCount = 0
+          $filesChanged = 0
+          foreach ($file in @(Get-ChildItem -LiteralPath $root -Filter '*.cs' -File -Recurse)) {
+            $body = [IO.File]::ReadAllText($file.FullName)
+            if ($body -notmatch 'override\s+void\s+Dispose\s*\(\s*bool\s+disposing\s*\)') { continue }
+            $pattern = '\(\((?:Control|ContainerControl|UserControl|Form)\)this\)\.Dispose\(disposing\);'
+            $matches = [regex]::Matches($body,$pattern)
+            if ($matches.Count -eq 0) { continue }
+            $updated = [regex]::Replace($body,$pattern,'base.Dispose(disposing);')
+            [IO.File]::WriteAllText($file.FullName,$updated)
+            $fixedCount += $matches.Count
+            $filesChanged++
+          }
+          Write-Host "Additional Dispose overrides repaired: $fixedCount in $filesChanged files."
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
