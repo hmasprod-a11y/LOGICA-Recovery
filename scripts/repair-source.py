@@ -58,6 +58,11 @@ for p in root.rglob('*.cs'):
  body=''.join(lines)
  body=re.sub(r'System\.Windows\.Forms\.CheckedListBox\.ObjectCollection(\s+\w+\s*=\s*Combo_\w+\.Items)',r'System.Windows.Forms.ComboBox.ObjectCollection\1',body)
  body=body.replace('(e.State & (DrawItemState)1) == 1','(e.State & DrawItemState.Selected) == DrawItemState.Selected')
+ if p.name=='Module1.cs':
+  # MySQL uses a separate Port key. An environment override allows isolated testing.
+  old=next((line for line in body.splitlines() if 'cn_SQL = new MySqlConnection("Data Source="' in line),None)
+  if old:
+   body=body.replace(old,'\t\tcn_SQL = new MySqlConnection(Environment.GetEnvironmentVariable("LOGICA_DB_CONNECTION_STRING") ?? new MySqlConnectionStringBuilder { Server = _CHEMIN_DB, Port = uint.Parse(_PORT_DB), Database = _NAME_DB, UserID = _USER_ID, Password = _PASS_ID, CharacterSet = "utf8", ConnectionTimeout = 10 }.ConnectionString);')
  if body!=before: p.write_text(body,encoding='utf-8')
 # Keep project paths portable and preserve all shipped runtime DLLs.
 p=root/'LOGICA.csproj'; tree=ET.parse(p); project=tree.getroot()
