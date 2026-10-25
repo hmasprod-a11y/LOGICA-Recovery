@@ -89,6 +89,26 @@ jobs:
             }
           }
           Write-Host "Trial change applied to $count C# files and $occurrences references (temporary Windows runner only)."
+      - name: Trial accessibility fix for invalid private virtual members
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA'
+          $changed = 0
+          $replacements = 0
+          foreach ($file in @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.cs' -File)) {
+            $original = [IO.File]::ReadAllText($file.FullName)
+            $pattern = '\bprivate\s+(?:(?:new|unsafe)\s+)*?(?:virtual|abstract)\b'
+            $updated = [regex]::Replace($original, $pattern, {
+              param($match)
+              return [regex]::Replace($match.Value, '^private\b', 'protected')
+            })
+            if ($updated -ne $original) {
+              $replacements += [regex]::Matches($original, $pattern).Count
+              [IO.File]::WriteAllText($file.FullName, $updated)
+              $changed++
+            }
+          }
+          Write-Host "Trial modified $replacements declarations in $changed files. Original archive unchanged."
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
