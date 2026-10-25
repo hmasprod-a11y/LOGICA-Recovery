@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'input/LOGICA-dependencies.zip'
+      - '.github/workflows/windows-reference-diagnostic.yml'
 jobs:
   diagnose:
     runs-on: windows-latest
@@ -131,6 +132,30 @@ jobs:
             if ($updated -ne $body) { [IO.File]::WriteAllText($file.FullName, $updated) }
           }
           Write-Host "Trial Timer edits in $timerFiles files; FormAnimator declarations: $animatorFiles."
+      - name: Inspect ambiguous panel declarations without editing them
+        shell: pwsh
+        run: |
+          $file = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA/Form_9_PARAMETRE.cs'
+          if (-not (Test-Path $file)) { throw 'Form_9_PARAMETRE.cs not found' }
+          $lines = [IO.File]::ReadAllLines($file)
+          Write-Host 'EXACT source diagnostics for the four ambiguous declarations:'
+          foreach ($number in @(39,48,134,188)) {
+            $start = [Math]::Max(1, $number - 3)
+            $end = [Math]::Min($lines.Length, $number + 3)
+            Write-Host "SOURCE-WINDOW line=$number"
+            foreach ($i in $start..$end) {
+              $line = $lines[$i-1].Trim()
+              if ($line.Length -gt 250) { $line = $line.Substring(0,250) }
+              Write-Host ('L' + $i + ': ' + $line)
+            }
+          }
+          Write-Host 'Panel variable declarations and instantiations (redacted to syntax-only):'
+          $matches = @(Select-String -Path $file -Pattern 'BunifuGradientPanel' | Select-Object -First 35)
+          foreach ($match in $matches) {
+            $snippet = $match.Line.Trim()
+            if ($snippet.Length -gt 200) { $snippet = $snippet.Substring(0,200) }
+            Write-Host ('L' + $match.LineNumber + ': ' + $snippet)
+          }
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
