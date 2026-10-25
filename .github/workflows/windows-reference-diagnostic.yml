@@ -77,15 +77,18 @@ jobs:
         run: |
           $source = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA'
           $count = 0
+          $occurrences = 0
           foreach ($file in @(Get-ChildItem -LiteralPath $source -Filter '*.cs' -File)) {
             $body = [IO.File]::ReadAllText($file.FullName)
-            $updated = $body.Replace('EventHandler<CheckedChangedEventArgs>', 'EventHandler<Bunifu.UI.WinForms.BunifuCheckBox.CheckedChangedEventArgs>')
+            # Cover callback parameter types as well as EventHandler<T>.
+            $updated = [regex]::Replace($body, '(?<![.A-Za-z0-9_])CheckedChangedEventArgs\b', 'Bunifu.UI.WinForms.BunifuCheckBox.CheckedChangedEventArgs')
             if ($updated -ne $body) {
+              $occurrences += ([regex]::Matches($body, '(?<![.A-Za-z0-9_])CheckedChangedEventArgs\b')).Count
               [IO.File]::WriteAllText($file.FullName, $updated)
               $count++
             }
           }
-          Write-Host "Trial change applied to $count C# files (temporary Windows runner only)."
+          Write-Host "Trial change applied to $count C# files and $occurrences references (temporary Windows runner only)."
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
