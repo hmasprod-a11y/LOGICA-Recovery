@@ -214,6 +214,25 @@ jobs:
           name: logica-build-log
           path: ${{ runner.temp }}/logica-diagnostic-build.log
           if-no-files-found: warn
+      - name: Upload repaired source snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logica-repaired-source
+          path: ${{ runner.temp }}/logica-diagnostic/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload Windows build output
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logica-windows-build
+          path: |
+            ${{ runner.temp }}/logica-diagnostic/**/bin/**/*.exe
+            ${{ runner.temp }}/logica-diagnostic/**/bin/**/*.dll
+            ${{ runner.temp }}/logica-diagnostic/**/bin/**/*.config
+          if-no-files-found: warn
+          retention-days: 14
       - name: Clean temporary sources
         if: always()
         shell: pwsh
