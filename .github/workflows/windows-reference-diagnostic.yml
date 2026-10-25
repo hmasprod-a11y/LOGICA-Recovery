@@ -156,6 +156,17 @@ jobs:
             if ($snippet.Length -gt 200) { $snippet = $snippet.Substring(0,200) }
             Write-Host ('L' + $match.LineNumber + ': ' + $snippet)
           }
+      - name: Resolve Form_9_PARAMETRE panel type using existing WinForms namespace
+        shell: pwsh
+        run: |
+          $file = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA/Form_9_PARAMETRE.cs'
+          $source = [IO.File]::ReadAllText($file)
+          $needle = 'using Bunifu.Framework.UI;'
+          $replacement = 'using BunifuGradientPanel = Bunifu.UI.WinForms.BunifuGradientPanel;' + [Environment]::NewLine + $needle
+          if (-not $source.Contains($needle)) { throw 'Expected Framework UI using not found; no modification made' }
+          $modified = $source.Replace($needle, $replacement)
+          [IO.File]::WriteAllText($file, $modified)
+          Write-Host 'Added scoped alias beside the existing Bunifu using statement; changed only this temporary source file.'
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
