@@ -1,0 +1,37 @@
+name: Validate ILSpy recovery pipeline
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/validate-pipeline.yml'
+jobs:
+  smoke-test:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Create safe synthetic assembly
+        shell: pwsh
+        run: |
+          dotnet new classlib --framework net10.0 --name DemoAssembly --output "$env:RUNNER_TEMP\demo"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot create test assembly' }
+          Set-Content -LiteralPath "$env:RUNNER_TEMP\demo\Class1.cs" -Value 'namespace DemoAssembly { public class Calculator { public int Add(int a, int b) => a+b; } }'
+          dotnet build "$env:RUNNER_TEMP\demo\DemoAssembly.csproj" -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot build test assembly' }
+      - name: Install and run ILSpy
+        shell: pwsh
+        run: |
+          dotnet tool install --global ilspycmd
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot install ILSpy' }
+          $exe="$env:USERPROFILE\.dotnet\tools\ilspycmd.exe"
+          $dll="$env:RUNNER_TEMP\demo\bin\Release\net10.0\DemoAssembly.dll"
+          $out="$env:RUNNER_TEMP\recovered-demo"
+          & $exe -p -o $out $dll
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot decompile test assembly' }
+          $source=Get-ChildItem $out -Recurse -Filter '*.cs' -File | Select-String -Pattern 'class Calculator' -Quiet
+          if (-not $source) { throw 'Expected type not found after decompilation' }
+          Write-Host 'Synthetic ILSpy pipeline passed; LOGICA.exe was not used.'
