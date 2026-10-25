@@ -237,6 +237,26 @@ jobs:
             $filesChanged++
           }
           Write-Host "Additional Dispose overrides repaired: $fixedCount in $filesChanged files."
+      - name: Correct protected base event invocations in recovered controls
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA'
+          $patterns = @(
+            @('((Control)this).OnMouseClick(', 'base.OnMouseClick('),
+            @('((ScrollableControl)this).OnPaintBackground(', 'base.OnPaintBackground('),
+            @('((Control)this).OnCreateControl(', 'base.OnCreateControl(')
+          )
+          $changed = 0
+          foreach ($file in @(Get-ChildItem $root -Recurse -Filter '*.cs' -File)) {
+            $body = [IO.File]::ReadAllText($file.FullName)
+            $fixed = $body
+            foreach ($pattern in $patterns) { $fixed = $fixed.Replace($pattern[0],$pattern[1]) }
+            if ($fixed -ne $body) {
+              [IO.File]::WriteAllText($file.FullName,$fixed)
+              $changed++
+            }
+          }
+          Write-Host "Corrected protected base event invocations in $changed files."
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
