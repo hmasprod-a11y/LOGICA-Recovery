@@ -62,6 +62,18 @@ jobs:
       - name: Verify original recovered Access data on MySQL
         shell: pwsh
         run: ./scripts/test-recovered-db.ps1
+      - name: Verify portable launcher with original data
+        shell: pwsh
+        run: |
+          $bin=(Get-ChildItem (Join-Path $env:RUNNER_TEMP 'logica-mariadb/server') -Recurse -Filter mariadb.exe | Select-Object -First 1).Directory.FullName
+          Copy-Item scripts/Launch-LOGICA.ps1,scripts/Start-LOGICA.cmd dist
+          try {
+            & ./dist/Launch-LOGICA.ps1 -ServerBin $bin -VerifyOnly *> results/portable-launcher.log
+            if($LASTEXITCODE -ne 0){throw 'Portable launcher validation failed'}
+            Get-Content results/portable-launcher.log | Select-String 'PASS|Produits|ERREUR'
+          } finally {
+            Remove-Item dist/bd/mysql-data,dist/bd/mysql-credential.xml,dist/bd/mysql-import-complete.txt -Recurse -Force -ErrorAction SilentlyContinue
+          }
       - name: Finalize portable runtime package
         if: always()
         shell: pwsh
