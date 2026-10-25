@@ -1,0 +1,29 @@
+name: Recovery tooling check
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/recovery-tooling.yml'
+jobs:
+  verify-tools:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install ILSpy CLI
+        shell: pwsh
+        run: |
+          dotnet tool install --global ilspycmd
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Append
+      - name: Verify installation
+        shell: pwsh
+        run: |
+          dotnet --version
+          & "$env:USERPROFILE\.dotnet\tools\ilspycmd.exe" --version
+          Write-Host "Only tooling was checked. No LOGICA binary was uploaded, decompiled, or published."
