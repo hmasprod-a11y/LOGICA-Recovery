@@ -80,6 +80,9 @@ jobs:
             & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./dist/Launch-LOGICA.ps1 -ServerBin $bin -VerifyOnly *> results/portable-launcher.log
             if($LASTEXITCODE -ne 0){throw 'Portable launcher validation failed'}
             Get-Content results/portable-launcher.log | Select-String 'PASS|Produits|ERREUR'
+            ./scripts/test-recovered-bootstrap.ps1 *> results/bootstrap.log
+            Get-Content results/bootstrap.log
+            if($LASTEXITCODE -ne 0){throw 'Direct EXE startup validation failed'}
           } finally {
             Remove-Item dist/bd/mysql-data,dist/bd/mysql-credential.xml,dist/bd/mysql-import-complete.txt -Recurse -Force -ErrorAction SilentlyContinue
           }
@@ -111,3 +114,4 @@ jobs:
           path: dist/
           if-no-files-found: warn
           retention-days: 90
+

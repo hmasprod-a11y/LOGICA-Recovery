@@ -7,9 +7,9 @@ class RecoveredCheck {
  [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern int GetWindowText(IntPtr w,StringBuilder b,int n);
  [DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr w,out uint p);
  [DllImport("user32.dll")]static extern bool PostMessage(IntPtr w,uint m,IntPtr a,IntPtr b);
- static volatile bool stop=false;static List<string> errors=new List<string>();
+ static int saved=0;static volatile bool stop=false;static List<string> errors=new List<string>();
  static object Get(object o,string n){return o.GetType().GetProperty(n,BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public).GetValue(o,null);}
- static void Watch(){while(!stop){EnumWindows(delegate(IntPtr w,IntPtr x){uint pid;GetWindowThreadProcessId(w,out pid);if(pid!=Process.GetCurrentProcess().Id)return true;var b=new StringBuilder(100);GetClassName(w,b,100);if(b.ToString()!="#32770")return true;var all=new StringBuilder();EnumChildWindows(w,delegate(IntPtr c,IntPtr y){var text=new StringBuilder(600);GetWindowText(c,text,600);if(text.Length>0)all.Append(text+" ");return true;},IntPtr.Zero);lock(errors){errors.Add(all.ToString());}PostMessage(w,0x10,IntPtr.Zero,IntPtr.Zero);return true;},IntPtr.Zero);Thread.Sleep(100);}}
+ static void Watch(){while(!stop){EnumWindows(delegate(IntPtr w,IntPtr x){uint pid;GetWindowThreadProcessId(w,out pid);if(pid!=Process.GetCurrentProcess().Id)return true;var b=new StringBuilder(100);GetClassName(w,b,100);if(b.ToString()!="#32770")return true;var all=new StringBuilder();EnumChildWindows(w,delegate(IntPtr c,IntPtr y){var text=new StringBuilder(600);GetWindowText(c,text,600);if(text.Length>0)all.Append(text+" ");return true;},IntPtr.Zero);lock(errors){if(all.ToString().Contains("Modifié avec succès"))saved++;else errors.Add(all.ToString());}PostMessage(w,0x10,IntPtr.Zero,IntPtr.Zero);return true;},IntPtr.Zero);Thread.Sleep(100);}}
  [STAThread]static int Main(){var watcher=new Thread(Watch);watcher.IsBackground=true;watcher.Start();try{
  Application.EnableVisualStyles();var a=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
  var forms=a.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null,null);var form=(Form)Get(forms,"Form_0_TEMPLATE");var handle=form.Handle;
@@ -71,10 +71,16 @@ class RecoveredCheck {
    var options=(ListView)Get(config,"ListView1");
    foreach(string key in new[]{"GROUPES","BLOCAGE_STOCK_INSUFFISANT","MODELE_TICKET"})if(options.FindItemWithText(key,false,0)==null)throw new Exception("Configuration missing "+key);
    if(((DataGridView)Get(config,"DataGridView_MODELE_TICKET")).Rows.Count!=5)throw new Exception("Receipt templates did not load exactly once");
+   var stock=Get(config,"CheckBox_me_STOCK");
+   bool desired=repeat==0;
+   stock.GetType().GetProperty("Checked").SetValue(stock,desired,null);
+   config.GetType().GetMethod("Button_SAVE_Click",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(config,new object[]{new Button(){Name="CI_SAVE"},EventArgs.Empty});
+   connection.Open();using(var c=connection.CreateCommand()){c.CommandText="SELECT VALEUR FROM TABLE_PARAMETRES WHERE OBJET='GESTION_STOCK'";if(Convert.ToBoolean(c.ExecuteScalar())!=desired)throw new Exception("Stock setting was not saved");}connection.Close();
    config.Close();
   }
   lock(errors){if(errors.Count>0)throw new Exception("Configuration errors: "+string.Join(" | ",errors.ToArray()));}
-  Console.WriteLine("PASS configuration opens and reopens with stock/group options and receipt templates");
+  if(saved!=2)throw new Exception("Settings save did not confirm success");
+  Console.WriteLine("PASS configuration opens, saves stock option, restores it and reopens with receipt templates");
   var articles=(Form)Get(forms,"Form_2_ARTICLES");articles.Show();Application.DoEvents();
   var products=(DataGridView)Get(articles,"DataGridView1");
   if(products.Rows.Count!=30 || ((ComboBox)Get(articles,"Combo_FAMILLE")).Items.Count!=15)throw new Exception("Products or families failed to load");

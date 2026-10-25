@@ -2279,7 +2279,7 @@ public class FormDialog_2_Configuration : Form
 			{
 				Module1.cn_SQL.Open();
 			}
-			val2.CommandText = "select    *     from     TABLE_PARAMETRES         ";
+			val2.CommandText = "select * from TABLE_PARAMETRES WHERE (ID BETWEEN 1 AND 20 AND OBJET IS NOT NULL) OR OBJET IN ('GROUPES','BLOCAGE_STOCK_INSUFFISANT') ";
 			val2.Connection = Module1.cn_SQL;
 			val2.ExecuteNonQuery();
 			ListView1.Items.Clear();
@@ -2304,20 +2304,14 @@ public class FormDialog_2_Configuration : Form
 			CheckBox_me_CLOTURE_CAISSIER_OBLIGER.Checked = Conversions.ToBoolean(ListView1.Items[ListView1.FindItemWithText("CLOTURE_CAISSIER_OBLIGER", false, 0).Index].SubItems[1].Text);
 			CheckBox_me_GESTION_GROUPE_FAMILLE.Checked = Conversions.ToBoolean(ListView1.Items[ListView1.FindItemWithText("GROUPES", false, 0).Index].SubItems[1].Text);
 			Combo_BRANCHEMENT.Text = ListView1.Items[ListView1.FindItemWithText("BRANCHEMENT", false, 0).Index].SubItems[1].Text;
-			switch (ListView1.Items[ListView1.FindItemWithText("MODELE_TICKET", false, 0).Index].SubItems[1].Text)
+			string receiptModel = ListView1.Items[ListView1.FindItemWithText("MODELE_TICKET", false, 0).Index].SubItems[1].Text;
+			foreach (DataGridViewRow row in DataGridView_MODELE_TICKET.Rows)
 			{
-			case "FR_3C":
-				DataGridView_MODELE_TICKET.CurrentCell = DataGridView_MODELE_TICKET.Rows[0].Cells[0];
-				break;
-			case "AR":
-				DataGridView_MODELE_TICKET.CurrentCell = DataGridView_MODELE_TICKET.Rows[1].Cells[0];
-				break;
-			case "FR_4C":
-				DataGridView_MODELE_TICKET.CurrentCell = DataGridView_MODELE_TICKET.Rows[2].Cells[0];
-				break;
-			case "FR_2L":
-				DataGridView_MODELE_TICKET.CurrentCell = DataGridView_MODELE_TICKET.Rows[3].Cells[0];
-				break;
+				if (Convert.ToString(row.Cells[0].Value) == receiptModel)
+				{
+					DataGridView_MODELE_TICKET.CurrentCell = row.Cells[0];
+					break;
+				}
 			}
 			CheckBox_me_RFID.Checked = Conversions.ToBoolean(File.ReadAllText(Application.StartupPath + "/acces_rfid.sni"));
 			CheckBox_me_VENDEUR.Checked = Conversions.ToBoolean(File.ReadAllText(Application.StartupPath + "/choix_vendeur.sni"));
@@ -2364,8 +2358,7 @@ public class FormDialog_2_Configuration : Form
 			Combo_PRINTER_C2.Text = File.ReadAllText(Application.StartupPath + "/PRINTER_C2.sni");
 			Combo_PRINTER_C3.Text = File.ReadAllText(Application.StartupPath + "/PRINTER_C3.sni");
 			Combo_PRINTER_C4.Text = File.ReadAllText(Application.StartupPath + "/PRINTER_C4.sni");
-			CheckBox_me_STOCK.Checked = true;
-			((Control)CheckBox_me_STOCK).Enabled = false;
+
 		}
 	}
 
@@ -2606,7 +2599,10 @@ public class FormDialog_2_Configuration : Form
 					{
 						break;
 					}
-					val.CommandText = "UPDATE     TABLE_PARAMETRES    SET    VALEUR = N'" + ListView1.Items[num2].SubItems[1].Text + "'     where  OBJET = '" + ListView1.Items[num2].Text + "'      ";
+					val.CommandText = "UPDATE TABLE_PARAMETRES SET VALEUR=@value WHERE OBJET=@key";
+					val.Parameters.Clear();
+					val.Parameters.AddWithValue("@value", ListView1.Items[num2].SubItems[1].Text);
+					val.Parameters.AddWithValue("@key", ListView1.Items[num2].Text);
 					val.Connection = Module1.cn_SQL;
 					val.ExecuteNonQuery();
 					num2++;
