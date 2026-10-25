@@ -63,6 +63,33 @@ for p in root.rglob('*.cs'):
   old=next((line for line in body.splitlines() if 'cn_SQL = new MySqlConnection("Data Source="' in line),None)
   if old:
    body=body.replace(old,'\t\tcn_SQL = new MySqlConnection(Environment.GetEnvironmentVariable("LOGICA_DB_CONNECTION_STRING") ?? new MySqlConnectionStringBuilder { Server = _CHEMIN_DB, Port = uint.Parse(_PORT_DB), Database = _NAME_DB, UserID = _USER_ID, Password = _PASS_ID, CharacterSet = "utf8", ConnectionTimeout = 10 }.ConnectionString);')
+ if p.name=='Form_3_VENTE.cs':
+  # A return has a negative basket quantity; string-prefixing '-' produced '--1'.
+  # Store the arithmetic negation as a typed SQL parameter in the original transaction.
+  repaired=[]
+  movement=False
+  for line in body.splitlines(keepends=True):
+   if 'val4.CommandText = ' in line and 'INSERT  INTO   TABLE_MOUVEMENTS_STOCK' in line:
+    indent=line[:len(line)-len(line.lstrip())]
+    commands=[
+     'val4.CommandText = "INSERT INTO TABLE_MOUVEMENTS_STOCK (DATES, HEURE, LIBELLE, ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE) VALUES (@movementDate, @movementTime, @movementLabel, @movementId, @movementCode, @movementArticle, @movementQuantity)";',
+     'val4.Parameters.Clear();',
+     'val4.Parameters.AddWithValue("@movementDate", DateTime.Now.ToString("yyyy-MM-dd"));',
+     'val4.Parameters.AddWithValue("@movementTime", DateTime.Now.ToString("HH:mm:ss"));',
+     'val4.Parameters.AddWithValue("@movementLabel", "TICKET | " + _N_TICKET_SOLDER);',
+     'val4.Parameters.AddWithValue("@movementId", DataGridView1.Rows[num6].Cells["ID_ARTICLE"].Value);',
+     'val4.Parameters.AddWithValue("@movementCode", DataGridView1.Rows[num6].Cells["Code"].Value);',
+     'val4.Parameters.AddWithValue("@movementArticle", DataGridView1.Rows[num6].Cells["Article"].Value);',
+     'val4.Parameters.AddWithValue("@movementQuantity", -Conversions.ToDecimal(DataGridView1.Rows[num6].Cells["Qté"].Value));',
+    ]
+    repaired.extend(indent+c+'\n' for c in commands)
+    movement=True
+   else:
+    repaired.append(line)
+    if movement and 'val4.ExecuteNonQuery();' in line:
+     repaired.append(line[:len(line)-len(line.lstrip())]+'val4.Parameters.Clear();\n')
+     movement=False
+  body=''.join(repaired)
  if body!=before: p.write_text(body,encoding='utf-8')
 # Keep project paths portable and preserve all shipped runtime DLLs.
 p=root/'LOGICA.csproj'; tree=ET.parse(p); project=tree.getroot()
