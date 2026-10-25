@@ -207,6 +207,30 @@ jobs:
             }
           }
           if ($exit -ne 0) { throw 'Build did not succeed; original sources unchanged.' }
+      - name: Inspect representative decompiler failures
+        if: always()
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic'
+          $cases = @(
+            @{ File='LOGICA/Form_3_VENTE.cs'; Line=15248; Tag='DRAWITEMSTATE' },
+            @{ File='LOGICA.My/MyApplication.cs'; Line=78; Tag='APPLICATION_BASE' },
+            @{ File='LOGICA/ToastForm.cs'; Line=241; Tag='DISPOSE' },
+            @{ File='LOGICA/Form_6_MOUVEMENTS_STOCK.cs'; Line=1115; Tag='BUNIFU_NESTED_TYPE' }
+          )
+          foreach ($case in $cases) {
+            $file = Join-Path $root $case.File
+            if (-not (Test-Path $file)) { Write-Host "MISSING $($case.Tag)"; continue }
+            $lines = [IO.File]::ReadAllLines($file)
+            $start = [Math]::Max(1, $case.Line - 4)
+            $end = [Math]::Min($lines.Length, $case.Line + 4)
+            Write-Host "CASE $($case.Tag) -- $($case.File):$($case.Line)"
+            foreach ($n in $start..$end) {
+              $line = $lines[$n-1].Trim()
+              if ($line.Length -gt 220) { $line = $line.Substring(0,220) }
+              Write-Host ('L' + $n + ': ' + $line)
+            }
+          }
       - name: Save full Windows compiler diagnostics
         if: always()
         uses: actions/upload-artifact@v4
