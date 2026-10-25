@@ -1,0 +1,25 @@
+# Keep proprietary binaries, archives, databases, and runtime configuration local.
+*.exe
+*.dll
+*.pdb
+*.zip
+*.7z
+*.rar
+*.bak
+*.sql
+*.sqlite
+*.db
+*.mdb
+*.config
+*.settings
+.env
+.env.*
+*.user
+*.suo
+bin/
+obj/
+Debug/
+Release/
+original/
+extracted-private/
+secrets/
