@@ -1,0 +1,65 @@
+name: LOGICA Windows reference diagnostic
+on:
+  workflow_dispatch:
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Unpack recovered project
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:RUNNER_TEMP 'logica-diagnostic'
+          New-Item -ItemType Directory -Force $src | Out-Null
+          tar -xzf input/LOGICA-source-complete.tar.gz -C $src
+          if ($LASTEXITCODE -ne 0) { throw 'Archive extraction failed' }
+          if (-not (Test-Path (Join-Path $src 'LOGICA.csproj'))) { throw 'Project missing' }
+      - name: Normalize only incorrect framework references
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $project = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA.csproj'
+          [xml]$xml = Get-Content -LiteralPath $project -Raw
+          $removed = 0
+          foreach ($group in @($xml.Project.ItemGroup)) {
+            foreach ($ref in @($group.Reference)) {
+              if ($null -ne $ref -and $ref.HintPath -match 'Microsoft[.]NETCore[.]App[/\\]10[.]') {
+                $ref.RemoveChild($ref.HintPath) | Out-Null
+                $removed++
+              }
+            }
+          }
+          $xml.Save($project)
+          Write-Host "Removed invalid Linux .NET 10 HintPaths: $removed"
+      - name: Install resource compatibility package
+        shell: pwsh
+        run: |
+          $project = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA.csproj'
+          dotnet add $project package System.Resources.Extensions --version 4.7.1
+          if ($LASTEXITCODE -ne 0) { throw 'Package restore failed' }
+      - name: Attempt Windows build and summarize error categories
+        shell: pwsh
+        run: |
+          $project = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA.csproj'
+          $log = Join-Path $env:RUNNER_TEMP 'logica-diagnostic-build.log'
+          & dotnet build $project --nologo -v:q -p:GenerateResourceUsePreserializedResources=true *> $log
+          $exit = $LASTEXITCODE
+          $lines = @(Get-Content -LiteralPath $log)
+          $groups = @($lines | Select-String 'error (CS|MSB|NETSDK|NU)[0-9]+' | ForEach-Object {
+            [regex]::Match($_.Line, 'error ((?:CS|MSB|NETSDK|NU)[0-9]+)').Groups[1].Value
+          } | Where-Object { $_ } | Group-Object | Sort-Object Count -Descending)
+          Write-Host "Build exit: $exit"
+          foreach ($g in $groups) { Write-Host "$($g.Name): $($g.Count)" }
+          if ($exit -ne 0) { throw 'Build did not succeed; original sources unchanged.' }
+      - name: Clean temporary sources
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP 'logica-diagnostic')
+          Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP 'logica-diagnostic-build.log')
