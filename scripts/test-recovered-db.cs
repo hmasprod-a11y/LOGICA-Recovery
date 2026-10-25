@@ -103,7 +103,8 @@ class RecoveredCheck {
   connection.Open();using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Code='CI_RECOVERED_PRODUCT' AND Prix_A=7 AND PRIX_V_1=12";if(Convert.ToInt32(c.ExecuteScalar())!=1 || productSaved!=1)throw new Exception("Original product save failed");}connection.Close();
   Console.WriteLine("PASS original Add and Save product handlers persist a new product and prices in isolated database");
   articles.Close();
-  connection.Open();module.GetMethod("EnsureRecoveredSettings").Invoke(null,null);module.GetMethod("EnsureRecoveredSettings").Invoke(null,null);
+  connection.Open();using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM TABLE_ARTICLES WHERE CAST(DATES AS CHAR)='1900-01-00 00:00:00'";if(Convert.ToInt32(c.ExecuteScalar())!=1)throw new Exception("Original incomplete date was changed");}
+  module.GetMethod("EnsureRecoveredSettings").Invoke(null,null);module.GetMethod("EnsureRecoveredSettings").Invoke(null,null);
   using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM TABLE_PARAMETRES WHERE OBJET IN ('GROUPES','GROUPES_LISTE')";if(Convert.ToInt32(c.ExecuteScalar())!=2)throw new Exception("Compatibility settings duplicated");}
   connection.Close();
   Console.WriteLine("PASS products page loads 30 original products and 15 families; missing settings upgrade is idempotent");

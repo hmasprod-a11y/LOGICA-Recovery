@@ -358,6 +358,9 @@ internal sealed class Module1
 		MySqlConnectionStringBuilder connectionSettings = new MySqlConnectionStringBuilder(Environment.GetEnvironmentVariable("LOGICA_DB_CONNECTION_STRING") ?? new MySqlConnectionStringBuilder { Server = _CHEMIN_DB, Port = uint.Parse(_PORT_DB), Database = _NAME_DB, UserID = _USER_ID, Password = _PASS_ID, CharacterSet = "utf8", ConnectionTimeout = 10 }.ConnectionString);
 		// Apply UTF-8 to environment overrides too, preserving accented result column names.
 		connectionSettings.CharacterSet = "utf8mb4";
+		// Legacy Access exports contain an unknown day (1900-01-00). Keep the stored
+		// value intact while allowing the WinForms data table to read the remaining row.
+		connectionSettings.ConvertZeroDateTime = true;
 		cn_SQL = new MySqlConnection(connectionSettings.ConnectionString);
 		da1 = new MySqlDataAdapter();
 		dt1 = new DataTable();
