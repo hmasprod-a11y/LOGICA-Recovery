@@ -10,12 +10,12 @@ C# repairs restore protected base calls, omitted nested Bunifu/WinForms/QRCode t
 
 ## Windows verification
 
-See the [verified Windows run](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40216882055) for the exact status and retained artifacts. `LOGICA-Windows-complete` contains the EXE, config, DLLs, portable startup defaults, usage instructions and SHA-256 manifest. `LOGICA-build-diagnostics` contains the compiler log, individual test logs, JSON results and form renders.
+See the [verified Windows run](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40233164525) for the exact status and retained artifacts. `LOGICA-Windows-complete` contains the EXE, config, DLLs, portable startup defaults, usage instructions and SHA-256 manifest. `LOGICA-build-diagnostics` contains the compiler log, individual test logs, JSON results and form renders.
 
 The tests load the produced EXE and exercise its original methods against an isolated local MariaDB fixture database. They check basket totals, fractional/negative quantities, article field reset, monetary rounding, cash sale/refund persistence, stock and stock movements, ticket sequence, original form creation/layout and real EXE startup.
 
 ## Running with the original shop installation
 
-Read [RUNNING.md](docs/RUNNING.md). The original shop database, `bd` directory, settings and license were not included in the supplied source/dependency archives. CI fixtures are test data, not a recovered shop database. Physical peripherals and the original shop environment are not covered by the automated checks.
+Read [RUNNING.md](docs/RUNNING.md). The later supplied `Debug(1).zip` contains the original `bd` resources and an Access database disguised as `bd/config/configue.sni`. A separate SQL recovery export preserves all 125 application tables; all original row counts were verified on Windows, including 120 articles, 15 families and 11 sales tickets. The original MDB remains byte-for-byte unchanged. Its ZIP timestamp is January 2024, so it is a snapshot, not a guarantee of the latest shop data. Physical peripherals are not covered by these checks.
 
-Extract the entire runtime ZIP and keep all its files together. Retain the original installation's data/settings when integrating the recovered program.
+Use `Start-LOGICA.cmd` in the restored complete package. Its Windows PowerShell 5 launcher downloads and verifies the local server on first use, imports into a separate database without replacing existing data, then starts the EXE. The original machine activation mechanism is unchanged; the CI machine reaches its activation screen after the database connection succeeds. See `docs/RECOVERY.md`.
