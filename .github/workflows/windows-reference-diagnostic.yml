@@ -1,6 +1,9 @@
 name: LOGICA Windows reference diagnostic
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - 'input/LOGICA-dependencies.zip'
 jobs:
   diagnose:
     runs-on: windows-latest
@@ -38,6 +41,31 @@ jobs:
           }
           $xml.Save($project)
           Write-Host "Removed invalid Linux .NET 10 HintPaths: $removed"
+      - name: Load original LOGICA dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:GITHUB_WORKSPACE 'input/LOGICA-dependencies.zip'
+          if (-not (Test-Path -LiteralPath $archive)) {
+            throw 'Missing input/LOGICA-dependencies.zip. Upload only the dependency archive from Codespaces.'
+          }
+          $deps = Join-Path $env:RUNNER_TEMP 'logica-dependencies'
+          Expand-Archive -LiteralPath $archive -DestinationPath $deps
+          $dlls = @(Get-ChildItem -LiteralPath $deps -Filter '*.dll' -Recurse -File)
+          if ($dlls.Count -eq 0) { throw 'Dependency archive contains no DLL files.' }
+          [xml]$xml = Get-Content (Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA.csproj') -Raw
+          $group = $xml.CreateElement('ItemGroup')
+          [void]$xml.Project.AppendChild($group)
+          foreach ($dll in $dlls) {
+            $reference = $xml.CreateElement('Reference')
+            $reference.SetAttribute('Include', $dll.BaseName)
+            $hint = $xml.CreateElement('HintPath')
+            $hint.InnerText = $dll.FullName
+            [void]$reference.AppendChild($hint)
+            [void]$group.AppendChild($reference)
+          }
+          $xml.Save((Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA.csproj'))
+          Write-Host "Original DLL references added: $($dlls.Count)"
       - name: Install resource compatibility package
         shell: pwsh
         run: |
@@ -64,3 +92,4 @@ jobs:
         run: |
           Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP 'logica-diagnostic')
           Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP 'logica-diagnostic-build.log')
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP 'logica-dependencies')
