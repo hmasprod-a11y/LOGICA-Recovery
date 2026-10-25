@@ -2255,32 +2255,13 @@ public class Form_1_LOGIN : Form
 
 	private void Button_VENTE_Click(object sender, EventArgs e)
 	{
+		FormDialog_PATIENTER waiting = new FormDialog_PATIENTER();
 		checked
 		{
 			try
 			{
-				Thread thread = new Thread([SpecialName] () =>
-				{
-					//IL_0009: Unknown result type (might be due to invalid IL or missing references)
-					try
-					{
-						FormDialog_PATIENTER formDialog_PATIENTER = new FormDialog_PATIENTER();
-						((Form)formDialog_PATIENTER).ShowDialog();
-					}
-					catch (Exception ex3)
-					{
-						ProjectData.SetProjectError(ex3);
-						Exception e2 = ex3;
-						StackTrace stackTrace2 = new StackTrace(e2, fNeedFileInfo: true);
-						StackFrame frame2 = stackTrace2.GetFrame(stackTrace2.FrameCount - 1);
-						int fileLineNumber2 = frame2.GetFileLineNumber();
-						ProjectData.ClearProjectError();
-					}
-					Thread.Sleep(100);
-				});
-				thread.SetApartmentState(ApartmentState.STA);
-				thread.IsBackground = true;
-				thread.Start();
+				waiting.Show();
+				waiting.Refresh();
 				NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { false }, null, null);
 				if (Operators.CompareString(MyProject.Forms.Form_0_TEMPLATE.Text_ara_reg.Text, MyProject.Forms.Form_0_TEMPLATE.Text_ara_disk.Text, TextCompare: false) == 0)
 				{
@@ -2292,8 +2273,7 @@ public class Form_1_LOGIN : Form
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					string right = "ACCES | ";
 					File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
-					Module1._QUITTER_PATIENTER = true;
-				}
+					}
 			}
 			catch (Exception ex)
 			{
@@ -2302,41 +2282,27 @@ public class Form_1_LOGIN : Form
 				StackTrace stackTrace = new StackTrace(ex2, fNeedFileInfo: true);
 				StackFrame frame = stackTrace.GetFrame(stackTrace.FrameCount - 1);
 				int fileLineNumber = frame.GetFileLineNumber();
-				Module1._QUITTER_PATIENTER = true;
 				Interaction.MsgBox(ex2.ToString());
 				ProjectData.ClearProjectError();
+			}
+			finally
+			{
+				waiting.Close();
+				waiting.Dispose();
+				if (sender is Control control) control.Enabled = true;
 			}
 		}
 	}
 
 	private void Button_STOCK_Click(object sender, EventArgs e)
 	{
+		FormDialog_PATIENTER waiting = new FormDialog_PATIENTER();
 		checked
 		{
 			try
 			{
-				Thread thread = new Thread([SpecialName] () =>
-				{
-					//IL_0009: Unknown result type (might be due to invalid IL or missing references)
-					try
-					{
-						FormDialog_PATIENTER formDialog_PATIENTER = new FormDialog_PATIENTER();
-						((Form)formDialog_PATIENTER).ShowDialog();
-					}
-					catch (Exception ex3)
-					{
-						ProjectData.SetProjectError(ex3);
-						Exception e2 = ex3;
-						StackTrace stackTrace2 = new StackTrace(e2, fNeedFileInfo: true);
-						StackFrame frame2 = stackTrace2.GetFrame(stackTrace2.FrameCount - 1);
-						int fileLineNumber2 = frame2.GetFileLineNumber();
-						ProjectData.ClearProjectError();
-					}
-					Thread.Sleep(100);
-				});
-				thread.SetApartmentState(ApartmentState.STA);
-				thread.IsBackground = true;
-				thread.Start();
+				waiting.Show();
+				waiting.Refresh();
 				NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { false }, null, null);
 				((Form)MyProject.Forms.Form_2_ARTICLES).Close();
 				((Form)MyProject.Forms.Form_2_ARTICLES).TopLevel = false;
@@ -2346,7 +2312,6 @@ public class Form_1_LOGIN : Form
 				NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 				string right = "ACCES | ";
 				File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
-				Module1._QUITTER_PATIENTER = true;
 			}
 			catch (Exception ex)
 			{
@@ -2355,9 +2320,14 @@ public class Form_1_LOGIN : Form
 				StackTrace stackTrace = new StackTrace(ex2, fNeedFileInfo: true);
 				StackFrame frame = stackTrace.GetFrame(stackTrace.FrameCount - 1);
 				int fileLineNumber = frame.GetFileLineNumber();
-				Module1._QUITTER_PATIENTER = true;
 				Interaction.MsgBox(ex2.ToString());
 				ProjectData.ClearProjectError();
+			}
+			finally
+			{
+				waiting.Close();
+				waiting.Dispose();
+				if (sender is Control control) control.Enabled = true;
 			}
 		}
 	}
@@ -2390,32 +2360,13 @@ public class Form_1_LOGIN : Form
 
 	private void Button_PARAMETRES_Click(object sender, EventArgs e)
 	{
+		FormDialog_PATIENTER waiting = new FormDialog_PATIENTER();
 		checked
 		{
 			try
 			{
-				Thread thread = new Thread([SpecialName] () =>
-				{
-					//IL_0009: Unknown result type (might be due to invalid IL or missing references)
-					try
-					{
-						FormDialog_PATIENTER formDialog_PATIENTER = new FormDialog_PATIENTER();
-						((Form)formDialog_PATIENTER).ShowDialog();
-					}
-					catch (Exception ex3)
-					{
-						ProjectData.SetProjectError(ex3);
-						Exception e2 = ex3;
-						StackTrace stackTrace2 = new StackTrace(e2, fNeedFileInfo: true);
-						StackFrame frame2 = stackTrace2.GetFrame(stackTrace2.FrameCount - 1);
-						int fileLineNumber2 = frame2.GetFileLineNumber();
-						ProjectData.ClearProjectError();
-					}
-					Thread.Sleep(100);
-				});
-				thread.SetApartmentState(ApartmentState.STA);
-				thread.IsBackground = true;
-				thread.Start();
+				waiting.Show();
+				waiting.Refresh();
 				NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { false }, null, null);
 				((Form)MyProject.Forms.Form_9_PARAMETRE).Close();
 				((Form)MyProject.Forms.Form_9_PARAMETRE).TopLevel = false;
@@ -2425,7 +2376,6 @@ public class Form_1_LOGIN : Form
 				NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 				string right = "ACCES | ";
 				File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
-				Module1._QUITTER_PATIENTER = true;
 			}
 			catch (Exception ex)
 			{
@@ -2434,9 +2384,14 @@ public class Form_1_LOGIN : Form
 				StackTrace stackTrace = new StackTrace(ex2, fNeedFileInfo: true);
 				StackFrame frame = stackTrace.GetFrame(stackTrace.FrameCount - 1);
 				int fileLineNumber = frame.GetFileLineNumber();
-				Module1._QUITTER_PATIENTER = true;
 				Interaction.MsgBox(ex2.ToString());
 				ProjectData.ClearProjectError();
+			}
+			finally
+			{
+				waiting.Close();
+				waiting.Dispose();
+				if (sender is Control control) control.Enabled = true;
 			}
 		}
 	}
@@ -2473,3 +2428,4 @@ public class Form_1_LOGIN : Form
 		NewLateBinding.LateSet(sender, null, "ImageAlign", new object[1] { (object)(ContentAlignment)32 }, null, null);
 	}
 }
+

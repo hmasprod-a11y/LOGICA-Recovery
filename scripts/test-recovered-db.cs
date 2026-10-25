@@ -7,9 +7,9 @@ class RecoveredCheck {
  [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern int GetWindowText(IntPtr w,StringBuilder b,int n);
  [DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr w,out uint p);
  [DllImport("user32.dll")]static extern bool PostMessage(IntPtr w,uint m,IntPtr a,IntPtr b);
- static int saved=0;static volatile bool stop=false;static List<string> errors=new List<string>();
+ static int saved=0;static int productSaved=0;static volatile bool stop=false;static List<string> errors=new List<string>();
  static object Get(object o,string n){return o.GetType().GetProperty(n,BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public).GetValue(o,null);}
- static void Watch(){while(!stop){EnumWindows(delegate(IntPtr w,IntPtr x){uint pid;GetWindowThreadProcessId(w,out pid);if(pid!=Process.GetCurrentProcess().Id)return true;var b=new StringBuilder(100);GetClassName(w,b,100);if(b.ToString()!="#32770")return true;var all=new StringBuilder();EnumChildWindows(w,delegate(IntPtr c,IntPtr y){var text=new StringBuilder(600);GetWindowText(c,text,600);if(text.Length>0)all.Append(text+" ");return true;},IntPtr.Zero);lock(errors){if(all.ToString().Contains("Modifié avec succès"))saved++;else errors.Add(all.ToString());}PostMessage(w,0x10,IntPtr.Zero,IntPtr.Zero);return true;},IntPtr.Zero);Thread.Sleep(100);}}
+ static void Watch(){while(!stop){EnumWindows(delegate(IntPtr w,IntPtr x){uint pid;GetWindowThreadProcessId(w,out pid);if(pid!=Process.GetCurrentProcess().Id)return true;var b=new StringBuilder(100);GetClassName(w,b,100);if(b.ToString()!="#32770")return true;var all=new StringBuilder();EnumChildWindows(w,delegate(IntPtr c,IntPtr y){var text=new StringBuilder(600);GetWindowText(c,text,600);if(text.Length>0)all.Append(text+" ");return true;},IntPtr.Zero);lock(errors){if(all.ToString().Contains("Modifié avec succès"))saved++;else if(all.ToString().Contains("Enregistré avec succès"))productSaved++;else errors.Add(all.ToString());}PostMessage(w,0x10,IntPtr.Zero,IntPtr.Zero);return true;},IntPtr.Zero);Thread.Sleep(100);}}
  [STAThread]static int Main(){var watcher=new Thread(Watch);watcher.IsBackground=true;watcher.Start();try{
  Application.EnableVisualStyles();var a=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
  var forms=a.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null,null);var form=(Form)Get(forms,"Form_0_TEMPLATE");var handle=form.Handle;
@@ -81,11 +81,25 @@ class RecoveredCheck {
   lock(errors){if(errors.Count>0)throw new Exception("Configuration errors: "+string.Join(" | ",errors.ToArray()));}
   if(saved!=2)throw new Exception("Settings save did not confirm success");
   Console.WriteLine("PASS configuration opens, saves stock option, restores it and reopens with receipt templates");
-  var articles=(Form)Get(forms,"Form_2_ARTICLES");articles.Show();Application.DoEvents();
+  login.GetType().GetMethod("Button_STOCK_Click",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(login,new object[]{new Button(){Name="CI_STOCK"},EventArgs.Empty});
+  Application.DoEvents();var articles=(Form)Get(forms,"Form_2_ARTICLES");
+  foreach(Form opened in Application.OpenForms)if(opened.GetType().Name=="FormDialog_PATIENTER" && opened.Visible)throw new Exception("Loading dialog remained open after stock navigation");
   var products=(DataGridView)Get(articles,"DataGridView1");
   if(products.Rows.Count!=30 || ((ComboBox)Get(articles,"Combo_FAMILLE")).Items.Count!=15)throw new Exception("Products or families failed to load");
   if(((Control)Get(articles,"TextBox_NBR_CODE_ARTICLE")).Text!="4")throw new Exception("Product barcode settings did not load");
   lock(errors){if(errors.Count>0)throw new Exception("Product page errors: "+string.Join(" | ",errors.ToArray()));}
+  string imageDirectory=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"bd","images");Directory.CreateDirectory(imageDirectory);
+  if(!File.Exists(Path.Combine(imageDirectory,"0"))){using(var image=new System.Drawing.Bitmap(2,2))image.Save(Path.Combine(imageDirectory,"0"),System.Drawing.Imaging.ImageFormat.Png);}
+  articles.GetType().GetMethod("Button_ADD_Click",BindingFlags.Instance|BindingFlags.Public).Invoke(articles,new object[]{new Button(){Name="CI_ADD"},EventArgs.Empty});
+  ((Control)Get(articles,"Text_CODE")).Text="CI_RECOVERED_PRODUCT";
+  ((Control)Get(articles,"Text_ARTICLE")).Text="CI recovered editor test";
+  ((ComboBox)Get(articles,"Combo_FAMILLE")).SelectedIndex=0;
+  ((Control)Get(articles,"Text_PRIX_A")).Text="7";
+  ((Control)Get(articles,"Text_PRIX_V")).Text="12";
+  articles.GetType().GetMethod("Button_SAVE_Click",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(articles,new object[]{new Button(){Name="CI_SAVE_PRODUCT"},EventArgs.Empty});
+  lock(errors){if(errors.Count>0)throw new Exception("Add product errors: "+string.Join(" | ",errors.ToArray()));}
+  connection.Open();using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Code='CI_RECOVERED_PRODUCT' AND Prix_A=7 AND PRIX_V_1=12";if(Convert.ToInt32(c.ExecuteScalar())!=1 || productSaved!=1)throw new Exception("Original product save failed");}connection.Close();
+  Console.WriteLine("PASS original Add and Save product handlers persist a new product and prices in isolated database");
   articles.Close();
   connection.Open();module.GetMethod("EnsureRecoveredSettings").Invoke(null,null);module.GetMethod("EnsureRecoveredSettings").Invoke(null,null);
   using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM TABLE_PARAMETRES WHERE OBJET IN ('GROUPES','GROUPES_LISTE')";if(Convert.ToInt32(c.ExecuteScalar())!=2)throw new Exception("Compatibility settings duplicated");}

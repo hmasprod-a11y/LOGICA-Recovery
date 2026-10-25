@@ -303,6 +303,27 @@ internal sealed class Module1
 
 	public static void EnsureRecoveredSettings()
 	{
+		// Add columns required by the recovered editor without replacing old rows or values.
+		foreach (string[] item in new[] {
+			new[] { "TABLE_ARTICLES", "GROUPE", "varchar(255) DEFAULT ''" },
+			new[] { "TABLE_ARTICLES", "PRIX_QTE", "decimal(19,4) DEFAULT 0" },
+			new[] { "TABLE_ARTICLES", "PRIX_QTE_MIN", "double DEFAULT 0" },
+			new[] { "TABLE_ARTICLES", "Taille", "varchar(255) DEFAULT ''" },
+			new[] { "TABLE_ARTICLES", "Couleur", "varchar(255) DEFAULT ''" },
+			new[] { "TABLE_ARTICLES", "Emplacement", "varchar(255) DEFAULT ''" },
+			new[] { "TABLE_FAMILLES", "GROUPE", "varchar(255) DEFAULT ''" }
+		})
+		{
+			using (MySqlCommand check = new MySqlCommand("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=@table AND column_name=@column", cn_SQL))
+			{
+				check.Parameters.AddWithValue("@table", item[0]);
+				check.Parameters.AddWithValue("@column", item[1]);
+				if (Convert.ToInt32(check.ExecuteScalar()) == 0)
+				{
+					using (MySqlCommand alter = new MySqlCommand("ALTER TABLE `" + item[0] + "` ADD COLUMN `" + item[1] + "` " + item[2], cn_SQL)) alter.ExecuteNonQuery();
+				}
+			}
+		}
 		// Add only settings introduced after the recovered Access snapshot.
 		foreach (string[] item in new[] { new[] { "GROUPES", "False" }, new[] { "GROUPES_LISTE", "" } })
 		{
