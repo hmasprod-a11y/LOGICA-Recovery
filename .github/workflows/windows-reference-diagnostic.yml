@@ -334,6 +334,15 @@ jobs:
           $groups = @($lines | Select-String 'error (CS|MSB|NETSDK|NU)[0-9]+' | ForEach-Object {
             [regex]::Match($_.Line, 'error ((?:CS|MSB|NETSDK|NU)[0-9]+)').Groups[1].Value
           } | Where-Object { $_ } | Group-Object | Sort-Object Count -Descending)
+          # Identify missing source types by frequency, rather than guessing 534 individual changes.
+          $missing = @($lines | Select-String 'error CS0246:' | ForEach-Object {
+            $match = [regex]::Match($_.Line, "type or namespace name '([^']+)'")
+            if ($match.Success) { $match.Groups[1].Value }
+          } | Group-Object | Sort-Object Count -Descending)
+          Write-Host 'TOP MISSING TYPES:'
+          foreach ($group in @($missing | Select-Object -First 25)) {
+            Write-Host ("MISSING_TYPE " + $group.Name + " = " + $group.Count)
+          }
           Write-Host "Build exit: $exit"
           foreach ($g in $groups) { Write-Host "$($g.Name): $($g.Count)" }
           # Compiler locations for the remaining 8 CS0104 errors only.
