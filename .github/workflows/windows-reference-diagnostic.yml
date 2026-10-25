@@ -204,6 +204,21 @@ jobs:
             $changed++
           }
           Write-Host "Repaired Form.Dispose(bool) calls: $total across $changed source files."
+      - name: Repair protected Control style calls on current instance
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'logica-diagnostic'
+          $files = @(Get-ChildItem -LiteralPath $root -Filter '*.cs' -File -Recurse)
+          $changes = 0
+          foreach ($file in $files) {
+            $old = [IO.File]::ReadAllText($file.FullName)
+            $new = $old.Replace('((Control)this).SetStyle(', 'this.SetStyle(')
+            if ($new -ne $old) {
+              [IO.File]::WriteAllText($file.FullName, $new)
+              $changes++
+            }
+          }
+          Write-Host "Control.SetStyle protected-access fix applied in $changes temporary source files."
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
