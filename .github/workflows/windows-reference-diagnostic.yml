@@ -131,6 +131,34 @@ jobs:
             if ($updated -ne $body) { [IO.File]::WriteAllText($file.FullName, $updated) }
           }
           Write-Host "Trial Timer edits in $timerFiles files; FormAnimator declarations: $animatorFiles."
+      - name: Test exact Form_9_PARAMETRE type substitutions
+        shell: pwsh
+        run: |
+          $file = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA/Form_9_PARAMETRE.cs'
+          $project = Join-Path $env:RUNNER_TEMP 'logica-diagnostic/LOGICA.csproj'
+          $original = [IO.File]::ReadAllLines($file)
+          $positions = @(39, 48, 134, 188)
+          foreach ($choice in @('Bunifu.Framework.UI.BunifuGradientPanel','Bunifu.UI.WinForms.BunifuGradientPanel')) {
+            $copy = [string[]]$original.Clone()
+            $changes = 0
+            foreach ($number in $positions) {
+              $i = $number - 1
+              if ($i -ge $copy.Length) { throw "Missing source line $number" }
+              $before = $copy[$i]
+              $copy[$i] = [regex]::Replace($before, '(?<![.A-Za-z0-9_])BunifuGradientPanel\b', $choice)
+              if ($copy[$i] -ne $before) { $changes++ }
+            }
+            [IO.File]::WriteAllLines($file, $copy)
+            $log = Join-Path $env:RUNNER_TEMP ('gradient-limited-' + ($choice -replace '[.]','-') + '.log')
+            & dotnet build $project --nologo -v:q -p:GenerateResourceUsePreserializedResources=true *> $log
+            $result = $LASTEXITCODE
+            $errs = @(Get-Content $log | Select-String 'error (CS|MSB|NETSDK|NU)[0-9]+')
+            $groups = @($errs | ForEach-Object { [regex]::Match($_.Line,'error ((?:CS|MSB|NETSDK|NU)[0-9]+)').Groups[1].Value } | Where-Object { $_ } | Group-Object | Sort-Object Count -Descending | Select-Object -First 6)
+            Write-Host "$choice : altered-lines=$changes exit=$result errors=$($errs.Count)"
+            foreach ($g in $groups) { Write-Host "$($g.Name):$($g.Count)" }
+            [IO.File]::WriteAllLines($file, $original)
+            Remove-Item $log -Force -ErrorAction SilentlyContinue
+          }
       - name: Attempt Windows build and summarize error categories
         shell: pwsh
         run: |
