@@ -228,7 +228,7 @@ jobs:
           foreach ($file in @(Get-ChildItem -LiteralPath $root -Filter '*.cs' -File -Recurse)) {
             $body = [IO.File]::ReadAllText($file.FullName)
             if ($body -notmatch 'override\s+void\s+Dispose\s*\(\s*bool\s+disposing\s*\)') { continue }
-            $pattern = '\(\((?:Control|ContainerControl|UserControl|Form)\)this\)\.Dispose\(disposing\);'
+            $pattern = '\(\((?:Control|ContainerControl|UserControl|Form|Button)\)this\)\.Dispose\(disposing\);'
             $matches = [regex]::Matches($body,$pattern)
             if ($matches.Count -eq 0) { continue }
             $updated = [regex]::Replace($body,$pattern,'base.Dispose(disposing);')
