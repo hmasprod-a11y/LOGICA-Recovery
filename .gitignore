@@ -15,3 +15,7 @@ Release/
 extracted-private/
 original/
 secrets/
+
+# Explicitly permitted recovery input (PRIVATE repository only)
+!input/
+!input/LOGICA-GitHub-Input.zip
