@@ -5295,6 +5295,12 @@ public class Form_0_TEMPLATE : Form
 					SetLocaleInfo(1024u, 14u, ".");
 					SetLocaleInfo(1024u, 22u, ".");
 				}
+#if DEBUG
+				// Development builds enter the existing user-login flow without machine activation.
+				// No activation key or registry entry is generated or changed.
+				bool canOpenUserLogin = true;
+				((Form)this).Text = "LOGICA - Development";
+#else
 				Text_ara_disk.Text = GetVolumeSerial().ToString() + GetMotherbaordID().ToString().PadRight(10, '0').Replace(" ", "0")
 					.Substring(0, 10);
 				RichText_insc.Text = Module1.XOR_Encrypt(Text_ara_disk.Text, "siper");
@@ -5304,7 +5310,9 @@ public class Form_0_TEMPLATE : Form
 				{
 					Text_ara_reg.Text = "vide";
 				}
-				if (Operators.CompareString(Text_ara_reg.Text, Text_ara_disk.Text, TextCompare: false) == 0)
+				bool canOpenUserLogin = Operators.CompareString(Text_ara_reg.Text, Text_ara_disk.Text, TextCompare: false) == 0;
+#endif
+				if (canOpenUserLogin)
 				{
 					((Control)Panel_clé).Visible = false;
 					((Control)Panel_clé).SendToBack();

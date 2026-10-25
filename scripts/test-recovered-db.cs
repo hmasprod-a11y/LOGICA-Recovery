@@ -28,7 +28,17 @@ class RecoveredCheck {
  connection.Close();form.Show();Application.DoEvents();
  if(((Control)Get(form,"Panel_TENTATIVE_CONNEXION")).Visible)throw new Exception("Original startup connection failure: "+((Control)Get(form,"Label_ERREUR")).Text);
  lock(errors){if(errors.Count>0)throw new Exception("Original startup modal errors: "+string.Join(" | ",errors.ToArray()));}
- Console.WriteLine("PASS original startup connected to recovered database; connection error panel hidden");Console.WriteLine("Activation panel visible="+((Control)Get(form,"Panel_clé")).Visible+" (original activation mechanism preserved)");
+ Console.WriteLine("PASS original startup connected to recovered database; connection error panel hidden");bool activationVisible=((Control)Get(form,"Panel_clé")).Visible;
+ bool expectDevelopment=Environment.GetEnvironmentVariable("LOGICA_EXPECT_DEVELOPMENT")=="1";
+ if(expectDevelopment){
+  var login=(Control)Get(forms,"Form_1_LOGIN");
+  var home=(Control)Get(form,"Panel_HOME");
+  if(activationVisible || !home.Controls.Contains(login) || !login.Visible || !((Control)Get(login,"Panel_login")).Visible)throw new Exception("Development did not reach the original user login");
+  Console.WriteLine("PASS Debug reaches original user login; machine activation hidden; user authentication preserved");
+ }else{
+  if(!activationVisible)throw new Exception("Release activation behavior changed");
+  Console.WriteLine("PASS Release retains original machine activation");
+ }
  form.Dispose();return 0;
  }catch(Exception e){Console.WriteLine("FAIL "+e);return 1;}finally{stop=true;}}
 }

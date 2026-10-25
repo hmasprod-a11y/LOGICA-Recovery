@@ -19,3 +19,7 @@ secrets/
 # Explicitly permitted recovery input (PRIVATE repository only)
 !input/
 !input/LOGICA-GitHub-Input.zip
+
+# Local development runtime and private database
+.development/
+dependencies/

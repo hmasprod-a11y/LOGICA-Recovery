@@ -1,4 +1,4 @@
-name: LOGICA Windows build and POS verification
+name: LOGICA development build and login verification
 on:
   workflow_dispatch:
   push:
@@ -62,6 +62,15 @@ jobs:
       - name: Verify original recovered Access data on MySQL
         shell: pwsh
         run: ./scripts/test-recovered-db.ps1
+      - name: Verify Debug development entry
+        shell: pwsh
+        run: |
+          Copy-Item results/recovered-database.log results/release-recovered-database.log
+          dotnet build recovered-source/LOGICA.csproj -c Debug --nologo -v:q -o dist *> results/debug-build.log
+          if($LASTEXITCODE -ne 0){Get-Content results/debug-build.log | Select-String ': error ';throw 'Debug build failed'}
+          $env:LOGICA_EXPECT_DEVELOPMENT='1'
+          ./scripts/test-recovered-db.ps1
+          if($LASTEXITCODE -ne 0){throw 'Development login test failed'}
       - name: Verify portable launcher with original data
         shell: pwsh
         run: |
@@ -98,7 +107,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: LOGICA-Windows-complete
+          name: LOGICA-Development-Windows
           path: dist/
           if-no-files-found: warn
           retention-days: 90
