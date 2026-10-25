@@ -1,0 +1,71 @@
+name: Private LOGICA recovery
+on:
+  workflow_dispatch:
+jobs:
+  recover:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Validate private input configuration
+        shell: pwsh
+        env:
+          ARCHIVE_URL: ${{ secrets.LOGICA_ARCHIVE_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:ARCHIVE_URL)) {
+            throw 'Missing secret LOGICA_ARCHIVE_URL. No binary downloaded or processed.'
+          }
+          $uri = [Uri]$env:ARCHIVE_URL
+          if ($uri.Scheme -ne 'https') { throw 'Only HTTPS download URLs are accepted.' }
+          if ($uri.IsLoopback) { throw 'Loopback is not accepted.' }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value 'INPUT_CONFIGURED=true'
+      - name: Download archive to ephemeral runner
+        shell: pwsh
+        env:
+          ARCHIVE_URL: ${{ secrets.LOGICA_ARCHIVE_URL }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $destination = Join-Path $env:RUNNER_TEMP 'LOGICA-input.zip'
+          Invoke-WebRequest -Uri $env:ARCHIVE_URL -OutFile $destination -MaximumRedirection 3
+          if ((Get-Item $destination).Length -lt 1024) { throw 'Invalid archive size' }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead($destination)
+          try {
+            if (-not ($zip.Entries | Where-Object { $_.FullName -match '(^|/)LOGICA[.]exe$' })) {
+              throw 'LOGICA.exe not found in archive'
+            }
+          } finally { $zip.Dispose() }
+          Write-Host 'Archive received and validated on ephemeral runner (contents not published).'
+      - name: Install ILSpy CLI
+        shell: pwsh
+        run: |
+          dotnet tool install --global ilspycmd
+          if ($LASTEXITCODE -ne 0) { throw 'ILSpy installation failed.' }
+      - name: Decompile to temporary private folder
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'logica-work'
+          New-Item -ItemType Directory -Force $root | Out-Null
+          Expand-Archive (Join-Path $env:RUNNER_TEMP 'LOGICA-input.zip') -DestinationPath $root
+          $exe = Get-ChildItem $root -Recurse -Filter 'LOGICA.exe' -File | Select-Object -First 1
+          if (-not $exe) { throw 'LOGICA.exe not found after expansion' }
+          $source = Join-Path $env:RUNNER_TEMP 'logica-source'
+          New-Item -ItemType Directory -Force $source | Out-Null
+          & "$env:USERPROFILE\.dotnet\tools\ilspycmd.exe" -p -o $source $exe.FullName
+          if ($LASTEXITCODE -ne 0) { throw 'ILSpy failed.' }
+          $projects = @(Get-ChildItem $source -Recurse -Filter '*.csproj' -File)
+          if ($projects.Count -eq 0) { throw 'No C# project exported.' }
+          Write-Host "Project export succeeded; projects: $($projects.Count)."
+          Write-Host 'Sources were intentionally NOT uploaded to repository, Actions artifacts, or logs.'
+      - name: Remove temporary extraction files
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP 'logica-source')
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP 'logica-work')
+          Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP 'LOGICA-input.zip')
