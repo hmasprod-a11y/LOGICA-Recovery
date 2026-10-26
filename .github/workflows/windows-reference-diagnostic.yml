@@ -5,6 +5,11 @@ on:
     paths:
       - 'recovered-source/**'
       - 'scripts/repair-source.py'
+      - 'scripts/*backup*'
+      - 'scripts/test-dump-shim.cs'
+      - 'scripts/Launch-LOGICA.ps1'
+      - 'scripts/Backup-LOGICA.cmd'
+      - 'scripts/package-runtime.ps1'
       - 'scripts/test-pos*'
       - 'scripts/test-recovered*'
       - 'scripts/check-parity.py'
@@ -105,6 +110,16 @@ jobs:
           $env:LOGICA_EXPECT_DEVELOPMENT='1'
           ./scripts/test-recovered-db.ps1
           if($LASTEXITCODE -ne 0){throw 'Development login test failed'}
+      - name: Build standalone backup entry point
+        shell: pwsh
+        run: |
+          $csc=Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
+          & $csc /nologo /platform:x86 /target:exe /r:System.Windows.Forms.dll /r:System.Data.dll "/r:$env:GITHUB_WORKSPACE/dist/LOGICA.exe" "/r:$env:GITHUB_WORKSPACE/dist/MySql.Data.dll" /out:dist/LOGICA.Backup.exe scripts/backup-cli.cs
+          if($LASTEXITCODE -ne 0){throw 'Backup entry compilation failed'}
+          Copy-Item dist/LOGICA.exe.config dist/LOGICA.Backup.exe.config
+      - name: Verify backup restore and transactional reset on isolated databases
+        shell: pwsh
+        run: ./scripts/test-database-backup.ps1
       - name: Verify portable launcher with original data
         shell: pwsh
         run: |
@@ -114,11 +129,14 @@ jobs:
             & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./dist/Launch-LOGICA.ps1 -ServerBin $bin -VerifyOnly *> results/portable-launcher.log
             if($LASTEXITCODE -ne 0){throw 'Portable launcher validation failed'}
             Get-Content results/portable-launcher.log | Select-String 'PASS|Produits|ERREUR'
+            & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./dist/Launch-LOGICA.ps1 -ServerBin $bin -BackupOnly *> results/portable-backup.log
+            if($LASTEXITCODE -ne 0){throw 'Standalone portable backup failed'}
+            Get-Content results/portable-backup.log | Select-String 'PASS|ERREUR'
             ./scripts/test-recovered-bootstrap.ps1 *> results/bootstrap.log
             Get-Content results/bootstrap.log
             if($LASTEXITCODE -ne 0){throw 'Direct EXE startup validation failed'}
           } finally {
-            Remove-Item dist/bd/mysql-data,dist/bd/mysql-credential.xml,dist/bd/mysql-import-complete.txt -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item dist/bd/backup,dist/bd/mysql-data,dist/bd/mysql-credential.xml,dist/bd/mysql-import-complete.txt -Recurse -Force -ErrorAction SilentlyContinue
           }
       - name: Finalize portable runtime package
         shell: pwsh

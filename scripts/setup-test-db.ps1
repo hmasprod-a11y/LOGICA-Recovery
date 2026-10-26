@@ -9,6 +9,8 @@ $expected=(Get-Content "$base/sha256sums.txt" | Where-Object { $_ -match 'mariad
 if($hash -ne $expected[0]) { throw 'MariaDB package checksum mismatch' }
 Expand-Archive "$base/server.zip" "$base/server"
 $bin=(Get-ChildItem "$base/server" -Recurse -Filter mariadb-install-db.exe | Select-Object -First 1).Directory.FullName
+$env:LOGICA_MYSQL_BIN=$bin
+"LOGICA_MYSQL_BIN=$bin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 $data="$base/data"
 & "$bin/mariadb-install-db.exe" "--datadir=$data" --password=logica-ci-only --port=3307 --service=LOGICACI
 if($LASTEXITCODE -ne 0) { throw 'Isolated database initialization failed' }
@@ -25,3 +27,4 @@ if(-not $ready){throw 'Isolated database did not start'}
 if($LASTEXITCODE -ne 0){throw 'Test database creation failed'}
 'LOGICA_DB_CONNECTION_STRING=Server=127.0.0.1;Port=3307;Database=logica_ci;Uid=root;Pwd=logica-ci-only;SslMode=None;Connection Timeout=5;' | Out-File $env:GITHUB_ENV -Append
 Write-Host 'Isolated loopback database ready on port 3307'
+

@@ -1667,95 +1667,34 @@ public class FormDialog_8_BASE_DONNEE : Form
 		}
 	}
 
+	public string BackupAndClearSelectedTables()
+	{
+		var tables = new System.Collections.Generic.List<string>();
+		foreach (object item in CheckedListBox1.CheckedItems) tables.Add("TABLE_" + item.ToString());
+		if (tables.Count == 0) throw new InvalidOperationException("Selectionnez au moins une table.");
+		string root = Module1._CHEMIN_FOLDER;
+		if (string.IsNullOrWhiteSpace(root) || !Path.IsPathRooted(root)) root = Application.StartupPath;
+		return DatabaseBackup.CreateAndClear(Module1.DatabaseConnectionStringForMaintenance(),
+			Path.Combine(root, "bd", "backup"), tables.ToArray(), DatabaseBackup.FindServerBin(Application.StartupPath));
+	}
+
 	private void Button9_Click(object sender, EventArgs e)
 	{
-		//IL_000f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0015: Invalid comparison between Unknown and I4
-		//IL_02f5: Unknown result type (might be due to invalid IL or missing references)
-		//IL_010e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0114: Expected Obj, but got Unknown
-		//IL_01e0: Unknown result type (might be due to invalid IL or missing references)
-		//IL_01e7: Expected Obj, but got Unknown
-		if ((int)MessageBox.Show("Voulez-vous vraiment Exécuter Ces Actions ??", "Attention", (MessageBoxButtons)1, (MessageBoxIcon)48, (MessageBoxDefaultButton)0) != 1)
+		if (MessageBox.Show("Voulez-vous vraiment Exécuter Ces Actions ?? Une sauvegarde est obligatoire avant effacement.",
+			"Attention", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning) != DialogResult.OK) return;
+		Module1._QUITTER_PATIENTER = false;
+		try
 		{
-			return;
+			File.AppendAllText(Path.Combine(Application.StartupPath, "log.sni"),
+				DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " | " + Module1._USERNAME + " | EFFACER BASE DE DONNEES\r\n", Encoding.UTF8);
+			string backup = BackupAndClearSelectedTables();
+			MessageBox.Show("Exécutée avec succès. Sauvegarde : " + backup, "ok", MessageBoxButtons.OK, MessageBoxIcon.Information);
 		}
-		checked
+		catch (Exception error)
 		{
-			try
-			{
-				Thread thread = new Thread([SpecialName] () =>
-				{
-					//IL_0009: Unknown result type (might be due to invalid IL or missing references)
-					try
-					{
-						FormDialog_PATIENTER formDialog_PATIENTER = new FormDialog_PATIENTER();
-						((Form)formDialog_PATIENTER).ShowDialog();
-					}
-					catch (Exception ex5)
-					{
-						ProjectData.SetProjectError(ex5);
-						Exception e2 = ex5;
-						StackTrace stackTrace3 = new StackTrace(e2, fNeedFileInfo: true);
-						StackFrame frame3 = stackTrace3.GetFrame(stackTrace3.FrameCount - 1);
-						int fileLineNumber3 = frame3.GetFileLineNumber();
-						ProjectData.ClearProjectError();
-					}
-					Thread.Sleep(100);
-				});
-				thread.SetApartmentState(ApartmentState.STA);
-				thread.IsBackground = true;
-				thread.Start();
-				string right = "EFFACER BASE DE DONNEES | ";
-				File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
-				Module1.cn_SQL.Open();
-				MySqlCommand val = new MySqlCommand();
-				val.CommandType = CommandType.Text;
-				val.CommandText = "BACKUP DATABASE      " + Module1._NAME_DB + "      TO DISK='" + Module1._CHEMIN_FOLDER + "\\bd\\backup\\" + DateTime.Now.ToString("yyMMddHHmmssfff_SUPP") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "_configue.sni' ";
-				val.Connection = Module1.cn_SQL;
-				val.ExecuteNonQuery();
-				Module1.cn_SQL.Close();
-				try
-				{
-					foreach (object checkedItem in CheckedListBox1.CheckedItems)
-					{
-						object objectValue = RuntimeHelpers.GetObjectValue(checkedItem);
-						MySqlCommand val2 = new MySqlCommand();
-						val2.CommandText = "Delete   from TABLE_" + objectValue.ToString() + " ";
-						val2.Connection = Module1.cn_SQL;
-						val2.CommandType = CommandType.Text;
-						if (Module1.cn_SQL.State != ConnectionState.Open)
-						{
-							Module1.cn_SQL.Open();
-						}
-						val2.ExecuteNonQuery();
-						Module1.cn_SQL.Close();
-					}
-				}
-				catch (Exception ex)
-				{
-					ProjectData.SetProjectError(ex);
-					Exception ex2 = ex;
-					StackTrace stackTrace = new StackTrace(ex2, fNeedFileInfo: true);
-					StackFrame frame = stackTrace.GetFrame(stackTrace.FrameCount - 1);
-					int fileLineNumber = frame.GetFileLineNumber();
-					Interaction.MsgBox(ex2.Message + "\r\nLigne : " + Conversions.ToString(fileLineNumber) + "\r\n");
-					ProjectData.ClearProjectError();
-				}
-				Module1._QUITTER_PATIENTER = true;
-				MessageBox.Show("Exécutée avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
-			}
-			catch (Exception ex3)
-			{
-				ProjectData.SetProjectError(ex3);
-				Exception ex4 = ex3;
-				StackTrace stackTrace2 = new StackTrace(ex4, fNeedFileInfo: true);
-				StackFrame frame2 = stackTrace2.GetFrame(stackTrace2.FrameCount - 1);
-				int fileLineNumber2 = frame2.GetFileLineNumber();
-				Interaction.MsgBox(ex4.ToString());
-				ProjectData.ClearProjectError();
-			}
+			MessageBox.Show("Opération annulée : " + error.Message, "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
 		}
+		finally { Module1._QUITTER_PATIENTER = true; }
 	}
 
 	private void Text_SQL_TextChanged(object sender, EventArgs e)
@@ -2719,3 +2658,4 @@ public class FormDialog_8_BASE_DONNEE : Form
 		}
 	}
 }
+

@@ -14,7 +14,7 @@ $defaults['CHEMIN_FOLDER.sni']='Application.StartupPath'
 $defaults['log_erreur.sni']=''
 foreach($entry in $defaults.GetEnumerator()){[IO.File]::WriteAllText((Join-Path $dist $entry.Key),$entry.Value)}
 Copy-Item docs/RUNNING.md dist/RUNNING.md -Force
-Copy-Item scripts/Launch-LOGICA.ps1,scripts/Start-LOGICA.cmd dist -Force
+Copy-Item scripts/Launch-LOGICA.ps1,scripts/Start-LOGICA.cmd,scripts/Backup-LOGICA.cmd dist -Force
 Remove-Item dist/PosSmoke* -Force -ErrorAction SilentlyContinue
 $manifest=@(Get-ChildItem dist -File | ForEach-Object {
  $hash=(Get-FileHash $_.FullName -Algorithm SHA256).Hash
@@ -25,3 +25,4 @@ $manifest=@(Get-ChildItem dist -File | ForEach-Object {
 $manifest | ConvertTo-Json | Set-Content results/runtime-manifest.json
 @{sourceCommit=(git rev-parse HEAD);workflowRun=$env:GITHUB_RUN_ID;target='net48';architecture='x86';originalShopDatabaseIncluded=$false} | ConvertTo-Json | Set-Content results/build-metadata.json
 Copy-Item results/runtime-manifest.json,results/build-metadata.json dist -Force
+

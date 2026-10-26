@@ -1,5 +1,6 @@
-param([string]$ServerBin='', [int]$Port=3308, [switch]$VerifyOnly)
+param([string]$ServerBin='', [int]$Port=3308, [switch]$VerifyOnly, [switch]$BackupOnly)
 $ErrorActionPreference='Stop'
+if($VerifyOnly -and $BackupOnly){throw 'Choisir verification ou sauvegarde.'}
 [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
 $root=$PSScriptRoot
 $data=Join-Path $root 'bd/mysql-data'
@@ -44,6 +45,7 @@ try {
   $credential | Export-Clixml $credentialFile
  }
  $password=$credential.GetNetworkCredential().Password
+ $env:LOGICA_MYSQL_BIN=$ServerBin
  if(-not (Test-Path "$data/mysql")){
   & "$ServerBin/mariadb-install-db.exe" "--datadir=$data" "--password=$password" "--port=$Port"
   if($LASTEXITCODE -ne 0){throw 'Initialisation du serveur local impossible'}
@@ -76,6 +78,10 @@ try {
  $counts=& "$ServerBin/mariadb.exe" "--defaults-extra-file=$clientFile" -N -B $dbName -e 'SELECT COUNT(*) FROM TABLE_ARTICLES; SELECT COUNT(*) FROM TABLE_VENTES_ENTETE;'
  Write-Host ('Base locale prete. Produits et tickets : '+($counts -join ', '))
  if($VerifyOnly){if([int]$counts[0] -ne 120 -or [int]$counts[1] -ne 11){throw 'Les nombres de lignes importees ne correspondent pas au fichier original'};Write-Host 'PASS portable launcher imports original database and preserves row counts'}
+ elseif($BackupOnly){
+  $backup=Start-Process (Join-Path $root 'LOGICA.Backup.exe') -WorkingDirectory $root -Wait -PassThru -NoNewWindow
+  if($backup.ExitCode -ne 0){throw 'Sauvegarde non validee; donnees conservees.'}
+ }
  else {Write-Host 'Demarrage de LOGICA...';Start-Process (Join-Path $root 'LOGICA.exe') -WorkingDirectory $root -Wait}
 } catch {Write-Host ('ERREUR : '+$_.Exception.Message) -ForegroundColor Red;exit 1}
 finally {
@@ -87,4 +93,5 @@ finally {
  if($ownsLock){$lock.ReleaseMutex()}
  $lock.Dispose()
 }
+
 

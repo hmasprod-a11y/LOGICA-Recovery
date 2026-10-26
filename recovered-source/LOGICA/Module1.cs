@@ -32,6 +32,8 @@ internal sealed class Module1
 
 	public static MySqlConnection cn_SQL;
 
+	private static string _backupConnectionString;
+
 	public static MySqlDataAdapter da1;
 
 	public static DataTable dt1;
@@ -63,6 +65,19 @@ internal sealed class Module1
 	private static ArrayList bitsCode;
 
 	public static string Binaryz;
+
+	public static string DatabaseConnectionStringForMaintenance()
+	{
+		var active = new MySqlConnectionStringBuilder(cn_SQL.ConnectionString);
+		var original = new MySqlConnectionStringBuilder(_backupConnectionString);
+		// MySqlConnection hides the password after Open unless PersistSecurityInfo is set.
+		// Restore only the original credential for the same endpoint and account.
+		if (string.IsNullOrEmpty(active.Password) && active.Port == original.Port
+			&& string.Equals(active.Server, original.Server, StringComparison.OrdinalIgnoreCase)
+			&& string.Equals(active.UserID, original.UserID, StringComparison.Ordinal))
+			active.Password = original.Password;
+		return active.ConnectionString;
+	}
 
 	public static decimal FLOUSS(decimal num)
 	{
@@ -437,6 +452,7 @@ internal sealed class Module1
 		// Legacy Access exports contain an unknown day (1900-01-00). Keep the stored
 		// value intact while allowing the WinForms data table to read the remaining row.
 		connectionSettings.ConvertZeroDateTime = true;
+		_backupConnectionString = connectionSettings.ConnectionString;
 		cn_SQL = new MySqlConnection(connectionSettings.ConnectionString);
 		da1 = new MySqlDataAdapter();
 		dt1 = new DataTable();
@@ -1347,4 +1363,5 @@ internal sealed class Module1
 		}
 	}
 }
+
 
