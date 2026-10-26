@@ -1,0 +1,11 @@
+﻿operation,entry_point,windows_status,evidence,remaining
+database_snapshot,DatabaseBackup.Create,passed,"128 tables restored with counts, checksums and CREATE definitions",external photos and device configuration are not included
+atomic_selected_reset,FormDialog_8_BASE_DONNEE.BackupAndClearSelectedTables,passed,injected second-table DELETE failure rolls back first; successful reset preserves all unselected tables,live merchant reset not performed
+manual_export,FormDialog_QUITTER.CreateBackupAt,passed,chosen .sql filename and SHA256; refuses overwrite and SNI masquerading,native save-file dialog itself not automated
+backup_before_exit,FormDialog_QUITTER.BackupBeforeExit,passed,requested backup failure prevents substitute exit action; success permits it,no real application termination action in this test
+backup_before_shutdown,FormDialog_QUITTER.BackupBeforeShutdown,passed,failure prevents substitute shutdown; unchecked option preserves choice,no actual OS shutdown
+standalone_portable_backup,Launch-LOGICA.ps1 -BackupOnly / LOGICA.Backup.exe,passed,real portable database backup and SHA256 before launcher shutdown,scheduler not installed on merchant machine
+concurrent_writers,DatabaseBackup.CreateAndClear,passed,UPDATE and empty-table INSERT wait; later writes excluded from restored snapshot,concurrent DDL not tested
+credentials_and_corruption,DatabaseBackup.Export / Verify,passed,private temporary credential ACL and cleanup; special-character password; incomplete dump and changed hash rejected,SQL backup encryption not implemented
+legacy_Access_import,FormDialog_QUITTER.Button2_Click,unchanged_not_retested,original SNI/Access import path retained,not an SQL restore interface
+full_merchant_restore,production SQL restore UI,pending,isolated restore only,requires separate recovery workflow and validation

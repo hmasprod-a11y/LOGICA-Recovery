@@ -1,0 +1,410 @@
+{
+  "date": "2026-10-26",
+  "run": {
+    "id": 40399265064,
+    "source_commit": "47de4d44ef3171701039271cd34cbb5b95e81716",
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40399265064",
+    "created_at": "2026-10-26T20:50:54Z",
+    "updated_at": "2026-10-26T20:57:16Z"
+  },
+  "artifacts": [
+    {
+      "id": 12689400280,
+      "name": "LOGICA-build-diagnostics",
+      "size_in_bytes": 367064,
+      "url": "https://api.github.com/repos/hmasprod-a11y/LOGICA-Recovery/actions/artifacts/12689400280",
+      "archive_download_url": "https://api.github.com/repos/hmasprod-a11y/LOGICA-Recovery/actions/artifacts/12689400280/zip",
+      "expired": false,
+      "created_at": "2026-10-26T20:57:04Z",
+      "expires_at": "2026-11-25T20:57:04Z",
+      "updated_at": "2026-10-26T20:57:04Z",
+      "digest": "sha256:212ee0cd75a39005db72d5ec61dec9909c6bdc85c9e67782245b6ef78b632874",
+      "workflow_run": {
+        "id": 40399265064,
+        "repository_id": 1432776088,
+        "head_repository_id": 1432776088,
+        "head_branch": "development/business-parity-20261026",
+        "head_sha": "47de4d44ef3171701039271cd34cbb5b95e81716"
+      }
+    },
+    {
+      "id": 12689025720,
+      "name": "LOGICA-Development-Windows",
+      "size_in_bytes": 32011113,
+      "url": "https://api.github.com/repos/hmasprod-a11y/LOGICA-Recovery/actions/artifacts/12689025720",
+      "archive_download_url": "https://api.github.com/repos/hmasprod-a11y/LOGICA-Recovery/actions/artifacts/12689025720/zip",
+      "expired": false,
+      "created_at": "2026-10-26T20:57:08Z",
+      "expires_at": "2027-01-24T20:50:54Z",
+      "updated_at": "2026-10-26T20:57:08Z",
+      "digest": "sha256:3f11edf5aee24b79aa2b067b6e56d3d5edba6384934f97eb20885ddab4be9891",
+      "workflow_run": {
+        "id": 40399265064,
+        "repository_id": 1432776088,
+        "head_repository_id": 1432776088,
+        "head_branch": "development/business-parity-20261026",
+        "head_sha": "47de4d44ef3171701039271cd34cbb5b95e81716"
+      }
+    }
+  ],
+  "jobs": [
+    {
+      "id": 121840437547,
+      "name": "build-test",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Checkout pinned ToDo reference",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record exact source provenance",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Extract source and schema inventory",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Restore original runtime dependencies",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build original project on Windows",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build standalone backup entry point",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Start isolated test database",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify backup restore and transactional reset on isolated databases",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "ToDo Windows regression",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Exercise original POS on Windows",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compare original LOGICA and ToDo business ledgers",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Measure synthetic service performance and integrity",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify original recovered Access data on MySQL",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify Debug development entry",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify portable launcher with original data",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Finalize portable runtime package",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Inspect original dependency types",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/upload-artifact@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/upload-artifact@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Checkout pinned ToDo reference",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "database_roundtrip": {
+    "source_original_tables": 125,
+    "fixture_tables": 3,
+    "restored_tables": 128,
+    "comparison": [
+      "row counts",
+      "CHECKSUM TABLE EXTENDED",
+      "SHOW CREATE TABLE"
+    ],
+    "extra_objects": [
+      "view",
+      "routine",
+      "trigger",
+      "disabled event"
+    ],
+    "separate_server": true
+  },
+  "todo_regression": {
+    "commit": "42c82e31141c76d5a31461f7ea5df74f18d6c32e",
+    "tests": 314,
+    "platform": "Windows/Python 3.12",
+    "status": "passed"
+  },
+  "checks": [
+    "PASS legacy SQL Server backup syntax reproduced as MariaDB syntax error",
+    "PASS full backup leaves all original and fixture rows unchanged",
+    "PASS tampered dump rejected by SHA256",
+    "PASS restored rows/counts/checksums match all 128 tables including binary, Unicode, NULL, zero dates and fractional money",
+    "PASS restored VIEWS count matches",
+    "PASS restored ROUTINES count matches",
+    "PASS restored TRIGGERS count matches",
+    "PASS restored EVENTS count matches",
+    "PASS restored view resolves on isolated server",
+    "PASS missing dump tool rejects reset",
+    "PASS unknown table rejects reset",
+    "PASS preflight failures preserve every source table",
+    "PASS non-transactional engine rejected",
+    "PASS failure dump rejects deletion",
+    "PASS failure injector reached after credential ACL checks",
+    "PASS failure leaves no completed or partial backup",
+    "PASS failure cleans temporary credentials",
+    "PASS failure preserves all rows",
+    "PASS incomplete dump rejects deletion",
+    "PASS incomplete injector reached after credential ACL checks",
+    "PASS incomplete leaves no completed or partial backup",
+    "PASS incomplete cleans temporary credentials",
+    "PASS incomplete preserves all rows",
+    "PASS original reset path reports the injected second-table deletion failure",
+    "PASS second-table failure rolls back first deletion and preserves all source rows",
+    "PASS valid recovery backup retained after rollback",
+    "PASS original form reset clears exactly the selected tables",
+    "PASS successful reset preserves every unselected table",
+    "PASS backup authenticates with quotes, slash, comment marker and newline in password without modifying data",
+    "PASS original manual export respects chosen SQL filename and hash",
+    "PASS manual export refuses overwriting an existing backup",
+    "PASS SQL backup cannot masquerade as legacy Access SNI",
+    "PASS previous manually saved backup preserved",
+    "PASS failed requested backup rejects shutdown",
+    "PASS shutdown action never runs after backup failure",
+    "PASS failed requested backup rejects application exit",
+    "PASS application exit action never runs after backup failure",
+    "PASS requested backup succeeds before shutdown action",
+    "PASS requested backup succeeds before application exit action",
+    "PASS unchecked backup option preserves original shutdown choice",
+    "PASS manual and shutdown backups preserve every source row",
+    "PASS backup holds locks before exporter gate",
+    "PASS concurrent writers connected",
+    "PASS updates and inserts into empty-table gaps wait during backup",
+    "PASS writers resume only after reset completes",
+    "PASS post-backup write is retained",
+    "PASS concurrent backup excludes later insert",
+    "PASS concurrent backup excludes later update",
+    "PASS backup roundtrip, failure guards, original reset rollback and concurrent-write isolation",
+    "PASS original POS database basket total = 47.50",
+    "PASS original POS quantity total = 5",
+    "PASS original POS database basket total = 0.00",
+    "PASS original POS quantity total = 0",
+    "PASS original POS database basket total = -12.35",
+    "PASS original POS quantity total = -1",
+    "PASS original POS database basket total = 15.63",
+    "PASS original POS quantity total = 1.25",
+    "PASS original POS clears 14 article fields",
+    "PASS shared monetary rounding 0.145 = 15.00",
+    "PASS shared monetary rounding 0.005 = 1.00",
+    "PASS shared monetary rounding 0.025 = 3.00",
+    "PASS shared monetary rounding 1.005 = 101.00",
+    "PASS shared monetary rounding -1.005 = -101.00",
+    "PASS shared monetary rounding 9999.995 = 1000000.00",
+    "PASS original checkout stock after sale = 8.000",
+    "PASS original checkout ticket persisted = 1",
+    "PASS original checkout sales journal persisted = 1",
+    "PASS original checkout cash payment/refund persisted = 25",
+    "PASS original checkout clears basket in database = 0",
+    "PASS original checkout increments ticket sequence = 2",
+    "PASS original checkout stock movements persisted = -2",
+    "PASS shared contract stock_quantity = 8.000",
+    "PASS shared contract net_collected_cents = 2500",
+    "PASS shared contract stock_movement_quantity = -2",
+    "PASS shared contract document_count = 1",
+    "PASS original checkout stock after return = 9.000",
+    "PASS original checkout ticket persisted = 2",
+    "PASS original checkout sales journal persisted = 2",
+    "PASS original checkout cash payment/refund persisted = 12.5",
+    "PASS original checkout clears basket in database = 0",
+    "PASS original checkout increments ticket sequence = 3",
+    "PASS monetary rounding fr-MA 0 = 0,00",
+    "PASS monetary rounding fr-MA 1,005 = 1,01",
+    "PASS monetary rounding fr-MA 12,345 = 12,35",
+    "PASS monetary rounding fr-MA -1,005 = -1,01",
+    "PASS monetary rounding fr-MA 9999,995 = 10000,00",
+    "PASS monetary rounding fr-FR 0 = 0,00",
+    "PASS monetary rounding fr-FR 1,005 = 1,01",
+    "PASS monetary rounding fr-FR 12,345 = 12,35",
+    "PASS monetary rounding fr-FR -1,005 = -1,01",
+    "PASS monetary rounding fr-FR 9999,995 = 10000,00",
+    "PASS monetary rounding en-US 0 = 0.00",
+    "PASS monetary rounding en-US 1.005 = 1.01",
+    "PASS monetary rounding en-US 12.345 = 12.35",
+    "PASS monetary rounding en-US -1.005 = -1.01",
+    "PASS monetary rounding en-US 9999.995 = 10000.00",
+    "PASS original form constructor Form_0_TEMPLATE controls=2",
+    "PASS native window handle Form_0_TEMPLATE 655702",
+    "PASS visible original form layout (database Load callbacks detached) Form_0_TEMPLATE",
+    "PASS original form constructor Form_1_LOGIN controls=1",
+    "PASS native window handle Form_1_LOGIN 524400",
+    "PASS visible original form layout (database Load callbacks detached) Form_1_LOGIN",
+    "PASS original form constructor Form_3_VENTE controls=3",
+    "PASS native window handle Form_3_VENTE 720990",
+    "PASS visible original form layout (database Load callbacks detached) Form_3_VENTE",
+    "PASS original form constructor Form_2_ARTICLES controls=10",
+    "PASS native window handle Form_2_ARTICLES 327822",
+    "PASS visible original form layout (database Load callbacks detached) Form_2_ARTICLES",
+    "PASS original form constructor Form_6_MOUVEMENTS_STOCK controls=4",
+    "PASS native window handle Form_6_MOUVEMENTS_STOCK 197152",
+    "PASS visible original form layout (database Load callbacks detached) Form_6_MOUVEMENTS_STOCK",
+    "PASS original form constructor FormDialog_MODE_P controls=3",
+    "PASS native window handle FormDialog_MODE_P 262688",
+    "PASS visible original form layout (database Load callbacks detached) FormDialog_MODE_P",
+    "PASS original form constructor Report_TICKET_A4 controls=1",
+    "PASS native window handle Report_TICKET_A4 917598",
+    "PASS visible original form layout (database Load callbacks detached) Report_TICKET_A4",
+    "PASS recovered TABLE_ARTICLES rows=120",
+    "PASS recovered TABLE_FAMILLES rows=15",
+    "PASS recovered TABLE_VENTES_ENTETE rows=11",
+    "PASS recovered TABLE_VENTES_JOURNAL rows=54",
+    "PASS recovered TABLE_VENTES_REGLEMENTS rows=11",
+    "PASS all 125 original table row counts preserved (one documented compatibility setting added)",
+    "PASS accented role and quantity column names are decoded correctly",
+    "PASS original startup connected to recovered database; connection error panel hidden",
+    "PASS Release retains original machine activation",
+    "PASS recovered TABLE_ARTICLES rows=120",
+    "PASS recovered TABLE_FAMILLES rows=15",
+    "PASS recovered TABLE_VENTES_ENTETE rows=11",
+    "PASS recovered TABLE_VENTES_JOURNAL rows=54",
+    "PASS recovered TABLE_VENTES_REGLEMENTS rows=11",
+    "PASS all 125 original table row counts preserved (one documented compatibility setting added)",
+    "PASS accented role and quantity column names are decoded correctly",
+    "PASS original startup connected to recovered database; connection error panel hidden",
+    "PASS Debug reaches original user login; machine activation hidden; user authentication preserved",
+    "PASS wrong PIN and SQL-like input remain unauthenticated",
+    "PASS original administrator PIN reaches the menu with its role and permissions",
+    "PASS Backoffice preserves active portable database endpoint and credentials",
+    "PASS configuration opens, saves stock option, restores it and reopens with receipt templates",
+    "PASS original Add and Save product handlers persist a new product and prices in isolated database",
+    "PASS product editor saves the selected photo file and its database reference",
+    "PASS products page loads 30 original products and 15 families; missing settings upgrade is idempotent",
+    "PASS original login/menu -> sale Load -> default Liste Article -> select Liste Photos: 15 original FAMILLE/PAGE categories and visible cards",
+    "PASS new product photo saved by editor appears after original menu/sale startup and its picture card adds to basket",
+    "PASS reproduced original basket identity mismatch: local=1 server=100",
+    "PASS repeated product adds and separate lines across two baskets with continuing AUTO_INCREMENT IDs",
+    "PASS real concurrent basket changes remain protected",
+    "PASS picture categories and search include only valid photos; missing/corrupt photos excluded; article list retains no-photo products",
+    "PASS valid picture card clicked twice persists one line, quantity 2, total 24",
+    "PASS actual stock editor: duplicate barcode variant/independent, cancellation, atomic stock + audit, two products without barcode",
+    "PASS real reception/inventory/stock-exit/order/quote/delivery/invoice barcode handlers select chosen shared-barcode identity",
+    "PASS simplified shared-barcode popup: only photo/name/price, no confirmation button, one product click persists quantity 3 and 1.5, zero rejected and keypad correction works",
+    "PASS shared barcode choice displays and applies the active PRIX_2 tariff",
+    "PASS real scan popup selects exact product, repeats choice each scan, preserves variant price/quantity, cancel, return and no-barcode photo click",
+    "PASS actual shared-barcode checkout/refund: separate sibling stock, unsold independent untouched, no-barcode stock and exact variant journal",
+    "PASS portable launcher imports original database and preserves row counts",
+    "PASS sauvegarde MySQL et SHA256 :",
+    "PASS direct EXE starts portable database and reaches original development window",
+    "PASS duplicate launch keeps active database running",
+    "PASS launcher shuts down local database after application exits"
+  ],
+  "earlier_failures": [
+    {
+      "run": 40395994159,
+      "cause": "legacy compiler received a relative source path; fixed absolute Windows paths"
+    },
+    {
+      "run": 40397166758,
+      "cause": "MariaDB client SOURCE command incorrectly followed USE in one command; fixed database selection option"
+    },
+    {
+      "run": 40398566277,
+      "cause": "test event year 2099 exceeded native timestamp range; fixed relative disabled event"
+    }
+  ],
+  "limitations": [
+    "SQL database only; external photos/configuration require separate backup",
+    "No automatic restore over a merchant's live database",
+    "No actual OS shutdown during tests; action ordering tested with substitutes",
+    "Non-InnoDB engines rejected",
+    "Verified-TLS configurations require separate CLI setup",
+    "No concurrent schema-change coverage",
+    "SQL backups are not encrypted"
+  ]
+}
