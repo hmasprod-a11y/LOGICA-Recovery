@@ -4,6 +4,9 @@ using System.Data;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
 using System.Text;
 using LOGICA.My;
 using Microsoft.VisualBasic;
@@ -301,6 +304,51 @@ internal sealed class Module1
 		}
 	}
 
+
+
+	public static Bitmap LoadProductImage(string imageName, int width, int height)
+	{
+		width = Math.Max(1, width);
+		height = Math.Max(1, height);
+		string name = Path.GetFileName(imageName ?? "");
+		string[] candidates = {
+			imageName ?? "",
+			Path.Combine(_CHEMIN_FOLDER ?? Application.StartupPath, "bd", "images", name),
+			Path.Combine(Application.StartupPath, "bd", "images", name)
+		};
+		if (!Path.IsPathRooted(imageName ?? "") && (string.IsNullOrWhiteSpace(name) || name == "0" || string.Equals(name, "0.png", StringComparison.OrdinalIgnoreCase))) candidates = new string[0];
+		foreach (string path in candidates)
+		{
+			if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) continue;
+			try
+			{
+				using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+				using (Image original = Image.FromStream(stream))
+				{
+					Bitmap result = new Bitmap(width, height);
+					using (Graphics graphics = Graphics.FromImage(result))
+					{
+						graphics.Clear(Color.White);
+						graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+						float scale = Math.Min((float)width / original.Width, (float)height / original.Height);
+						int scaledWidth = Math.Max(1, (int)Math.Round(original.Width * scale));
+						int scaledHeight = Math.Max(1, (int)Math.Round(original.Height * scale));
+						graphics.DrawImage(original, (width - scaledWidth) / 2, (height - scaledHeight) / 2, scaledWidth, scaledHeight);
+					}
+					return result;
+				}
+			}
+			catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException || ex is ExternalException || ex is OutOfMemoryException) { }
+		}
+		Bitmap placeholder = new Bitmap(width, height);
+		using (Graphics graphics = Graphics.FromImage(placeholder))
+		{
+			graphics.Clear(Color.WhiteSmoke);
+			using (Pen pen = new Pen(Color.Silver)) graphics.DrawRectangle(pen, 1, 1, Math.Max(0, width - 3), Math.Max(0, height - 3));
+			TextRenderer.DrawText(graphics, "Sans image", SystemFonts.MessageBoxFont, new Rectangle(0, 0, width, height), Color.DimGray, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+		}
+		return placeholder;
+	}
 
 	public static void SaveBasketChanges()
 	{

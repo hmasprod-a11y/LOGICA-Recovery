@@ -13788,10 +13788,9 @@ public class Form_2_ARTICLES : Form
 				Combo_PRINTER.Text = DT.Rows[position2]["PRINTER"].ToString();
 				Combo_PRINTER_DUPLICATA.Text = DT.Rows[position2]["PRINTER_DUPLICATA"].ToString();
 				Text_LIEN_PICTURE.Text = DT.Rows[position2]["Images"].ToString();
-				Image val3 = Image.FromFile(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + Text_LIEN_PICTURE.Text);
-				Picture_IMAGE.Image = (Image)new Bitmap(val3);
+				Picture_IMAGE.Image?.Dispose();
+				Picture_IMAGE.Image = Module1.LoadProductImage(Text_LIEN_PICTURE.Text, Picture_IMAGE.Width, Picture_IMAGE.Height);
 				Text_LIEN_PICTURE_ANC.Text = DT.Rows[position2]["Images"].ToString();
-				val3.Dispose();
 				Combo_TAILLES.Text = DT.Rows[position2]["Taille"].ToString();
 				Combo_COULEURS.Text = DT.Rows[position2]["Couleur"].ToString();
 				Text_EMPLACEMENT.Text = DT.Rows[position2]["Emplacement"].ToString();
@@ -14191,9 +14190,8 @@ public class Form_2_ARTICLES : Form
 			Combo_GROUPES.Text = null;
 			Text_LIEN_PICTURE.Text = "0";
 			Text_LIEN_PICTURE_ANC.Text = "0";
-			Image val = Image.FromFile(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + Text_LIEN_PICTURE.Text);
-			Picture_IMAGE.Image = (Image)new Bitmap(val);
-			val.Dispose();
+			Picture_IMAGE.Image?.Dispose();
+				Picture_IMAGE.Image = Module1.LoadProductImage(Text_LIEN_PICTURE.Text, Picture_IMAGE.Width, Picture_IMAGE.Height);
 			Combo_TAILLES.Text = null;
 			Combo_COULEURS.Text = null;
 			Text_EMPLACEMENT.Text = "";
@@ -15643,12 +15641,8 @@ public class Form_2_ARTICLES : Form
 			((FileDialog)val).InitialDirectory = Module1._CHEMIN_FOLDER + "\\bd\\Galerie";
 			if ((int)((CommonDialog)val).ShowDialog() == 1)
 			{
-				Picture_IMAGE.Image = Image.FromFile(((FileDialog)val).FileName);
-				Bitmap val2 = new Bitmap(((Control)Picture_IMAGE).Size.Width, ((Control)Picture_IMAGE).Size.Height);
-				PictureBox picture_IMAGE = Picture_IMAGE;
-				Rectangle rectangle = new Rectangle(0, 0, ((Control)Picture_IMAGE).Width, ((Control)Picture_IMAGE).Height);
-				((Control)picture_IMAGE).DrawToBitmap(val2, rectangle);
-				Picture_IMAGE.Image = (Image)(object)val2;
+				Picture_IMAGE.Image?.Dispose();
+				Picture_IMAGE.Image = Module1.LoadProductImage(((FileDialog)val).FileName, Picture_IMAGE.Width, Picture_IMAGE.Height);
 				Text_LIEN_PICTURE.Text = DateTime.Now.ToString("dd-MM-yyy HH-mm-ss-fffffff") + ".png";
 			}
 		}

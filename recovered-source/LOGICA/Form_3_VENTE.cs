@@ -12419,99 +12419,73 @@ public class Form_3_VENTE : Form
 	{
 	}
 
-	public void FAM2_click(object sender, EventArgs e)
+
+	private void RenderProductTiles(DataTable products)
 	{
-		//IL_0008: Unknown result type (might be due to invalid IL or missing references)
-		//IL_000e: Expected Obj, but got Unknown
-		//IL_0048: Unknown result type (might be due to invalid IL or missing references)
-		//IL_004e: Expected Obj, but got Unknown
-		//IL_017f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0189: Expected Obj, but got Unknown
-		//IL_024e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0258: Expected Obj, but got Unknown
-		//IL_0210: Unknown result type (might be due to invalid IL or missing references)
-		//IL_021a: Expected Obj, but got Unknown
-		//IL_0271: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0277: Unknown result type (might be due to invalid IL or missing references)
-		checked
+		FlowLayout_ARTICLES.SuspendLayout();
+		try
 		{
-			try
+			while (FlowLayout_ARTICLES.Controls.Count > 0)
 			{
-				DataTable dataTable = new DataTable();
-				MySqlDataAdapter val = new MySqlDataAdapter();
-				dataTable.Clear();
-				val = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("select      *     from      TABLE_ARTICLES        WHERE      Famille =  '", NewLateBinding.LateGet(sender, null, "Text", new object[0], null, null, null)), "'            order by Article asc ")), Module1.cn_SQL);
-				((DbDataAdapter)(object)val).Fill(dataTable);
-				((Control)FlowLayout_ARTICLES).Controls.Clear();
-				int num = dataTable.Rows.Count - 1;
-				int num2 = 0;
-				while (true)
-				{
-					int num3 = num2;
-					int num4 = num;
-					if (num3 > num4)
-					{
-						break;
-					}
-					Button_RJ_ARTICLE button_RJ_ARTICLE = new Button_RJ_ARTICLE();
-					button_RJ_ARTICLE._COLOR_PRIX = ((TextBoxBase)Text_THEME).BackColor;
-					((Control)button_RJ_ARTICLE).Name = "Button_ARTICLE_" + Conversions.ToString(num2);
-					((ButtonBase)button_RJ_ARTICLE).Text = dataTable.Rows[num2]["Article"].ToString();
-					((Control)button_RJ_ARTICLE).Tag = dataTable.Rows[num2]["Code"].ToString();
-					button_RJ_ARTICLE._PRIX = Strings.FormatNumber(dataTable.Rows[num2]["PRIX_V_1"].ToString());
-					button_RJ_ARTICLE._BackgroundColor = Color.White;
-					button_RJ_ARTICLE._BorderColor = ((TextBoxBase)Text_THEME).BackColor;
-					button_RJ_ARTICLE._BorderRadius = 8;
-					button_RJ_ARTICLE._BorderSize = 2m;
-					button_RJ_ARTICLE._TextColor = Color.Black;
-					((Control)button_RJ_ARTICLE).Cursor = Cursors.Hand;
-					((ButtonBase)button_RJ_ARTICLE).FlatStyle = (FlatStyle)2;
-					((Control)button_RJ_ARTICLE).Font = new Font("Segoe UI", 9f, (FontStyle)1);
-					((Control)button_RJ_ARTICLE).ForeColor = Color.Black;
-					if (((ServerComputer)MyProject.Computer).FileSystem.FileExists(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + dataTable.Rows[num2]["Images"].ToString()))
-					{
-						FileStream fileStream = new FileStream(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + dataTable.Rows[num2]["Images"].ToString(), FileMode.Open, FileAccess.Read);
-						((ButtonBase)button_RJ_ARTICLE).Image = (Image)new Bitmap(Image.FromStream((Stream)fileStream));
-						((ButtonBase)button_RJ_ARTICLE).ImageAlign = (ContentAlignment)2;
-						fileStream.Close();
-					}
-					else
-					{
-						FileStream fileStream2 = new FileStream(Module1._CHEMIN_FOLDER + "\\bd\\images\\0X.png", FileMode.Open, FileAccess.Read);
-						((ButtonBase)button_RJ_ARTICLE).Image = (Image)new Bitmap(Image.FromStream((Stream)fileStream2));
-						((ButtonBase)button_RJ_ARTICLE).ImageAlign = (ContentAlignment)2;
-						fileStream2.Close();
-					}
-					Padding margin = new Padding(2, 2, 0, 0);
-					((Control)button_RJ_ARTICLE).Margin = margin;
-					((Control)button_RJ_ARTICLE).Width = 127;
-					((Control)button_RJ_ARTICLE).Height = 117;
-					((ButtonBase)button_RJ_ARTICLE).TextAlign = (ContentAlignment)512;
-					((ButtonBase)button_RJ_ARTICLE).TextImageRelation = (TextImageRelation)1;
-					((ButtonBase)button_RJ_ARTICLE).UseVisualStyleBackColor = false;
-					((Control)button_RJ_ARTICLE).Click += B_article2_click;
-					((Control)FlowLayout_ARTICLES).Controls.Add((Control)(object)button_RJ_ARTICLE);
-					num2++;
-				}
-				((Control)Text_CODE).Focus();
-				((ScrollBar)vScrollBar1).Minimum = 0;
-				((ScrollBar)vScrollBar1).Maximum = ((ScrollableControl)FlowLayout_ARTICLES).DisplayRectangle.Height;
-				((ScrollBar)vScrollBar1).LargeChange = (int)Math.Round((double)((ScrollBar)vScrollBar1).Maximum / (double)((Control)vScrollBar1).Height + (double)((Control)FlowLayout_ARTICLES).Height);
-				((ScrollBar)vScrollBar1).SmallChange = 15;
-				((ScrollBar)vScrollBar1).Value = Math.Abs(((ScrollableControl)FlowLayout_ARTICLES).AutoScrollPosition.Y);
+				Control old = FlowLayout_ARTICLES.Controls[0];
+				FlowLayout_ARTICLES.Controls.Remove(old);
+				if (old is ButtonBase oldButton) oldButton.Image?.Dispose();
+				old.Dispose();
 			}
-			catch (Exception ex)
+			foreach (DataRow product in products.Rows)
 			{
-				ProjectData.SetProjectError(ex);
-				Exception ex2 = ex;
-				StackTrace stackTrace = new StackTrace(ex2, fNeedFileInfo: true);
-				StackFrame frame = stackTrace.GetFrame(stackTrace.FrameCount - 1);
-				int fileLineNumber = frame.GetFileLineNumber();
-				Interaction.MsgBox(ex2.ToString());
-				ProjectData.ClearProjectError();
+				Button_RJ_ARTICLE tile = new Button_RJ_ARTICLE();
+				tile.Name = "Button_ARTICLE_" + FlowLayout_ARTICLES.Controls.Count;
+				tile.Text = Convert.ToString(product["Article"]);
+				tile.Tag = Convert.ToString(product["Code"]);
+				tile._PRIX = Strings.FormatNumber(product["PRIX_V_1"]);
+				tile._COLOR_PRIX = Text_THEME.BackColor;
+				tile._BackgroundColor = Color.White;
+				tile._BorderColor = Text_THEME.BackColor;
+				tile._BorderRadius = 8;
+				tile._BorderSize = 2m;
+				tile._TextColor = Color.Black;
+				tile.Cursor = Cursors.Hand;
+				tile.FlatStyle = FlatStyle.Flat;
+				tile.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+				tile.ForeColor = Color.Black;
+				tile.Image = Module1.LoadProductImage(Convert.ToString(product["Images"]), 96, 64);
+				tile.ImageAlign = ContentAlignment.TopCenter;
+				tile.Margin = new Padding(2, 2, 0, 0);
+				tile.Padding = new Padding(4, 17, 4, 3);
+				tile.Size = new Size(127, 117);
+				tile.TextAlign = ContentAlignment.BottomCenter;
+				tile.TextImageRelation = TextImageRelation.ImageAboveText;
+				tile.UseVisualStyleBackColor = false;
+				tile.Click += B_article2_click;
+				FlowLayout_ARTICLES.Controls.Add(tile);
 			}
 		}
+		finally { FlowLayout_ARTICLES.ResumeLayout(true); }
+		vScrollBar1.Minimum = 0;
+		vScrollBar1.Maximum = Math.Max(0, FlowLayout_ARTICLES.DisplayRectangle.Height);
+		vScrollBar1.LargeChange = Math.Max(1, FlowLayout_ARTICLES.Height);
+		vScrollBar1.SmallChange = 15;
+		vScrollBar1.Value = Math.Min(vScrollBar1.Maximum, Math.Abs(FlowLayout_ARTICLES.AutoScrollPosition.Y));
 	}
+
+	public void FAM2_click(object sender, EventArgs e)
+	{
+		try
+		{
+			using (MySqlCommand command = new MySqlCommand("SELECT * FROM TABLE_ARTICLES WHERE Famille=@family ORDER BY Article", Module1.cn_SQL))
+			using (MySqlDataAdapter adapter = new MySqlDataAdapter(command))
+			{
+				command.Parameters.AddWithValue("@family", ((Control)sender).Text);
+				DataTable products = new DataTable();
+				adapter.Fill(products);
+				RenderProductTiles(products);
+			}
+			Text_CODE.Focus();
+		}
+		catch (Exception ex) { MessageBox.Show(ex.Message, "LOGICA"); }
+	}
+
 
 	private void vScrollBar1_Scroll(object sender, ScrollEventArgs e)
 	{
@@ -15121,110 +15095,34 @@ public class Form_3_VENTE : Form
 		((TextBoxBase)Text_FIND).BackColor = Color.White;
 	}
 
+
 	private void Text_FIND_TextChanged(object sender, EventArgs e)
 	{
-		//IL_009b: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00a5: Expected Obj, but got Unknown
-		//IL_0111: Unknown result type (might be due to invalid IL or missing references)
-		//IL_011b: Expected Obj, but got Unknown
-		//IL_026a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0274: Expected Obj, but got Unknown
-		//IL_033e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0348: Expected Obj, but got Unknown
-		//IL_0303: Unknown result type (might be due to invalid IL or missing references)
-		//IL_030d: Expected Obj, but got Unknown
-		//IL_0360: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0366: Unknown result type (might be due to invalid IL or missing references)
-		checked
+		if (Text_FIND.Text.Length <= 2) return;
+		try
 		{
-			try
+			if (TabControl2.SelectedIndex != 0 && TabControl2.SelectedIndex != 1) return;
+			using (MySqlCommand command = new MySqlCommand("SELECT * FROM TABLE_ARTICLES WHERE Article LIKE @search OR Code LIKE @search ORDER BY Article", Module1.cn_SQL))
+			using (MySqlDataAdapter adapter = new MySqlDataAdapter(command))
 			{
-				if (Text_FIND.Text.Length <= 2)
-				{
-					return;
-				}
+				command.Parameters.AddWithValue("@search", "%" + Text_FIND.Text + "%");
 				if (TabControl2.SelectedIndex == 0)
 				{
 					dt_LA.Clear();
-					da_LA = new MySqlDataAdapter("select   *    from TABLE_ARTICLES   WHERE       Article like  '%" + Text_FIND.Text + "%'       or       Code like  '%" + Text_FIND.Text + "%'        order by Article asc ", Module1.cn_SQL);
-					((DbDataAdapter)(object)da_LA).Fill(dt_LA);
+					adapter.Fill(dt_LA);
 					DataGridView100.DataSource = dt_LA;
 				}
 				else
 				{
-					if (TabControl2.SelectedIndex != 1)
-					{
-						return;
-					}
 					dt_PIC.Clear();
-					da_PIC = new MySqlDataAdapter("select      *     from      TABLE_ARTICLES      WHERE    Article like  '%" + Text_FIND.Text + "%'     and   Images <> '0.png'         order by Article asc ", Module1.cn_SQL);
-					((DbDataAdapter)(object)da_PIC).Fill(dt_PIC);
-					((Control)FlowLayout_ARTICLES).Controls.Clear();
-					int num = dt_PIC.Rows.Count - 1;
-					int num2 = 0;
-					while (true)
-					{
-						int num3 = num2;
-						int num4 = num;
-						if (num3 <= num4)
-						{
-							Button_RJ_ARTICLE button_RJ_ARTICLE = new Button_RJ_ARTICLE();
-							button_RJ_ARTICLE._COLOR_PRIX = ((TextBoxBase)Text_THEME).BackColor;
-							((Control)button_RJ_ARTICLE).Name = "Button_ARTICLE_" + Conversions.ToString(num2);
-							((ButtonBase)button_RJ_ARTICLE).Text = dt_PIC.Rows[num2]["Article"].ToString();
-							((Control)button_RJ_ARTICLE).Tag = dt_PIC.Rows[num2]["Code"].ToString();
-							button_RJ_ARTICLE._PRIX = Strings.FormatNumber(dt_PIC.Rows[num2]["PRIX_V_1"].ToString());
-							button_RJ_ARTICLE._BackgroundColor = Color.White;
-							button_RJ_ARTICLE._BorderColor = ((TextBoxBase)Text_THEME).BackColor;
-							button_RJ_ARTICLE._BorderRadius = 8;
-							button_RJ_ARTICLE._BorderSize = 2m;
-							button_RJ_ARTICLE._TextColor = Color.Black;
-							((Control)button_RJ_ARTICLE).Cursor = Cursors.Hand;
-							((ButtonBase)button_RJ_ARTICLE).FlatStyle = (FlatStyle)2;
-							((Control)button_RJ_ARTICLE).Font = new Font("Segoe UI", 9f, (FontStyle)1);
-							((Control)button_RJ_ARTICLE).ForeColor = Color.Black;
-							if (((ServerComputer)MyProject.Computer).FileSystem.FileExists(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + dt_PIC.Rows[num2]["Images"].ToString()))
-							{
-								FileStream fileStream = new FileStream(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + dt_PIC.Rows[num2]["Images"].ToString(), FileMode.Open, FileAccess.Read);
-								((ButtonBase)button_RJ_ARTICLE).Image = (Image)new Bitmap(Image.FromStream((Stream)fileStream));
-								((ButtonBase)button_RJ_ARTICLE).ImageAlign = (ContentAlignment)2;
-								fileStream.Close();
-							}
-							else
-							{
-								FileStream fileStream2 = new FileStream(Module1._CHEMIN_FOLDER + "\\bd\\images\\0X.png", FileMode.Open, FileAccess.Read);
-								((ButtonBase)button_RJ_ARTICLE).Image = (Image)new Bitmap(Image.FromStream((Stream)fileStream2));
-								((ButtonBase)button_RJ_ARTICLE).ImageAlign = (ContentAlignment)2;
-								fileStream2.Close();
-							}
-							Padding margin = new Padding(2, 2, 0, 0);
-							((Control)button_RJ_ARTICLE).Margin = margin;
-							((Control)button_RJ_ARTICLE).Width = 127;
-							((Control)button_RJ_ARTICLE).Height = 117;
-							((ButtonBase)button_RJ_ARTICLE).TextAlign = (ContentAlignment)512;
-							((ButtonBase)button_RJ_ARTICLE).TextImageRelation = (TextImageRelation)1;
-							((ButtonBase)button_RJ_ARTICLE).UseVisualStyleBackColor = false;
-							((Control)button_RJ_ARTICLE).Click += B_article2_click;
-							((Control)FlowLayout_ARTICLES).Controls.Add((Control)(object)button_RJ_ARTICLE);
-							num2++;
-							continue;
-						}
-						break;
-					}
+					adapter.Fill(dt_PIC);
+					RenderProductTiles(dt_PIC);
 				}
 			}
-			catch (Exception ex)
-			{
-				ProjectData.SetProjectError(ex);
-				Exception ex2 = ex;
-				StackTrace stackTrace = new StackTrace(ex2, fNeedFileInfo: true);
-				StackFrame frame = stackTrace.GetFrame(stackTrace.FrameCount - 1);
-				int fileLineNumber = frame.GetFileLineNumber();
-				Interaction.MsgBox(ex2.ToString());
-				ProjectData.ClearProjectError();
-			}
 		}
+		catch (Exception ex) { MessageBox.Show(ex.Message, "LOGICA"); }
 	}
+
 
 	private void Label_QTE_LostFocus(object sender, EventArgs e)
 	{

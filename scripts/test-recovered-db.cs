@@ -66,6 +66,53 @@ class RecoveredCheck {
   } finally {((Control)Get(template,"Label_POSTE")).Text=originalPost;if(sql.State==ConnectionState.Open)sql.Close();}
  }
 
+
+ static void CheckPictureSales(Assembly assembly,Type module,object template,IDbConnection connection){
+  var sql=(MySqlConnection)connection;string root=AppDomain.CurrentDomain.BaseDirectory;
+  string directory=Path.Combine(root,"bd","images");Directory.CreateDirectory(directory);
+  string photo=Path.Combine(directory,"CI wide photo.png");
+  using(var bitmap=new System.Drawing.Bitmap(1000,200)){using(var g=System.Drawing.Graphics.FromImage(bitmap))g.Clear(System.Drawing.Color.Red);bitmap.Save(photo,System.Drawing.Imaging.ImageFormat.Png);}
+  File.WriteAllText(Path.Combine(directory,"CI corrupt photo.png"),"invalid-image-test");
+  sql.Open();using(var c=sql.CreateCommand()){
+   c.CommandText="CREATE TABLE TABLE_CI_PICTURES LIKE TABLE_01; UPDATE TABLE_ARTICLES SET Famille=@family,Images='CI wide photo.png' WHERE Code='CI_RECOVERED_PRODUCT'; INSERT INTO TABLE_ARTICLES (ID_ARTICLE,Code,Article,Famille,Images,PRIX_V_1,PRIX_V_2,PRIX_A,PRIX_MP,TAUX_TVA,PROMOTION,PRINTER,PRINTER_DUPLICATA,FENETRE_PESAGE,PRIX_QTE,PRIX_QTE_MIN) VALUES ('CI_IMG_MISSING','CI_IMG_MISSING','CI image placeholder',@family,'0.png',5,5,0,0,0,0,'0','0','',0,0),('CI_IMG_CORRUPT','CI_IMG_CORRUPT','CI image corrupt',@family,'CI corrupt photo.png',6,6,0,0,0,0,'0','0','',0,0)";
+   c.Parameters.AddWithValue("@family","CI pictures' category");c.ExecuteNonQuery();
+  }sql.Close();
+  string oldPost=((Control)Get(template,"Label_POSTE")).Text;string oldFolder=(string)module.GetField("_CHEMIN_FOLDER").GetValue(null);
+  ((Control)Get(template,"Label_POSTE")).Text="CI_PICTURES";module.GetField("_CHEMIN_FOLDER").SetValue(null,Path.Combine(root,"old-computer-location"));
+  try{
+   using(var sale=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true)))
+   using(var adapter=new MySqlDataAdapter("SELECT * FROM TABLE_CI_PICTURES",sql)){
+    var table=new DataTable();adapter.Fill(table);module.GetField("da1").SetValue(null,adapter);module.GetField("dt1").SetValue(null,table);
+    var grid=(DataGridView)Get(sale,"DataGridView1");grid.AutoGenerateColumns=false;grid.AllowUserToAddRows=false;grid.DataSource=table;
+    var events=(System.ComponentModel.EventHandlerList)typeof(System.ComponentModel.Component).GetProperty("Events",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(sale,null);
+    var loadKey=typeof(Form).GetField("EVENT_LOAD",BindingFlags.Static|BindingFlags.NonPublic).GetValue(null);events.RemoveHandler(loadKey,events[loadKey]);
+    ((TabControl)Get(sale,"TabControl2")).SelectedIndex=1;
+    ((Control)Get(sale,"Button_PRIX")).Text="PRIX_1";((Control)Get(sale,"Button_OPERATION")).Text="VENTE";((Control)Get(sale,"Combo_PORT")).Text="";
+    sale.Show();Application.DoEvents();
+    var familyMethod=sale.GetType().GetMethod("FAM2_click");var flow=(FlowLayoutPanel)Get(sale,"FlowLayout_ARTICLES");
+    using(var family=new Button(){Text="CI pictures' category"})familyMethod.Invoke(sale,new object[]{family,EventArgs.Empty});
+    if(flow.Controls.Count!=3)throw new Exception("Picture category did not render all photo/missing/corrupt products");
+    Button photoTile=null;foreach(Button tile in flow.Controls){if(tile.Image==null || tile.Image.Size!=new System.Drawing.Size(96,64))throw new Exception("Picture tile missing fitted image");if(Convert.ToString(tile.Tag)=="CI_RECOVERED_PRODUCT")photoTile=tile;}
+    if(photoTile==null)throw new Exception("Real photo tile missing");
+    var thumbnail=(System.Drawing.Bitmap)photoTile.Image;var center=thumbnail.GetPixel(48,32);var corner=thumbnail.GetPixel(1,1);
+    if(center.R<230 || center.G>30 || corner.ToArgb()!=System.Drawing.Color.White.ToArgb())throw new Exception("Wide photo was distorted or failed to load from portable path");
+    using(var unlocked=new FileStream(photo,FileMode.Open,FileAccess.ReadWrite,FileShare.None)){}
+    using(var preview=new System.Drawing.Bitmap(Math.Max(1,flow.Width),Math.Max(1,Math.Min(flow.Height,160)))){flow.DrawToBitmap(preview,new System.Drawing.Rectangle(0,0,preview.Width,preview.Height));preview.Save(Path.Combine(root,"..","results","picture-tiles.png"));}
+    for(int click=0;click<2;click++){((Control)Get(sale,"Label_QTE")).Text="1";photoTile.PerformClick();Application.DoEvents();}
+    var oldTile=flow.Controls[0];using(var family=new Button(){Text="CI pictures' category"})familyMethod.Invoke(sale,new object[]{family,EventArgs.Empty});if(!oldTile.IsDisposed)throw new Exception("Old image tiles were not disposed");
+    var search=(Control)Get(sale,"Text_FIND");search.Text="CI_IMG_MISSING";Application.DoEvents();
+    if(flow.Controls.Count!=1 || Convert.ToString(flow.Controls[0].Tag)!="CI_IMG_MISSING")throw new Exception("Picture search hides a product with 0.png");
+    ((Control)Get(sale,"Label_QTE")).Text="1";((Button)flow.Controls[0]).PerformClick();
+    search.Text="CI_IMG_CORRUPT";Application.DoEvents();if(flow.Controls.Count!=1)throw new Exception("Corrupt photo product disappeared");
+    ((Control)Get(sale,"Label_QTE")).Text="1";((Button)flow.Controls[0]).PerformClick();
+    lock(errors){if(errors.Count>0)throw new Exception("Picture sales errors: "+string.Join(" | ",errors.ToArray()));}
+    sql.Open();using(var c=sql.CreateCommand()){c.CommandText="SELECT COUNT(*),SUM(\x60Qté\x60),SUM(TOTAL_NET) FROM TABLE_CI_PICTURES";using(var reader=c.ExecuteReader()){reader.Read();if(Convert.ToInt32(reader.GetValue(0))!=3 || Convert.ToDecimal(reader.GetValue(1))!=4m || Convert.ToDecimal(reader.GetValue(2))!=35m)throw new Exception("Picture clicks did not save correct basket quantities and prices");}}sql.Close();
+    Console.WriteLine("PASS picture category/search render real, missing and corrupt photos; wide image keeps aspect ratio; source file stays unlocked");
+    Console.WriteLine("PASS clicking picture twice and placeholder/corrupt tiles persists 3 lines, 4 items, total 35");
+   }
+  }finally{((Control)Get(template,"Label_POSTE")).Text=oldPost;module.GetField("_CHEMIN_FOLDER").SetValue(null,oldFolder);if(sql.State==ConnectionState.Open)sql.Close();}
+ }
+
  [STAThread]static int Main(){var watcher=new Thread(Watch);watcher.IsBackground=true;watcher.Start();try{
  Application.EnableVisualStyles();var a=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
  var forms=a.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null,null);var form=(Form)Get(forms,"Form_0_TEMPLATE");var handle=form.Handle;
@@ -165,6 +212,7 @@ class RecoveredCheck {
   connection.Close();
   Console.WriteLine("PASS products page loads 30 original products and 15 families; missing settings upgrade is idempotent");
   CheckBasketIdentity(a,module,form,connection);
+  CheckPictureSales(a,module,form,connection);
 
 
  }else{
