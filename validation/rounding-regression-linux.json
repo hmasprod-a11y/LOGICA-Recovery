@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-26",
+  "todo_commit": "8187b5a845cac09fd4d669b3a447c296853b646b",
+  "reproductions_before_fix": {
+    "receipt_total_cents": 16,
+    "expected_receipt_total_cents": 19,
+    "order_total_cents": 17.5,
+    "expected_order_total_cents": 19,
+    "partial_refunds_cents": [
+      0,
+      1
+    ],
+    "expected_partial_refunds_cents": [
+      1,
+      0
+    ]
+  },
+  "after_fix": {
+    "tests": 312,
+    "failures": 0,
+    "errors": 0,
+    "seconds": 11.444
+  },
+  "scope": "new order/receipt totals and future supplier returns; no historical document rewrite"
+}

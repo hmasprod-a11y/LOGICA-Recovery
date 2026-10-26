@@ -1,7 +1,7 @@
 ﻿id,function_ar,priority,logica_source,todo_source,todo_test_candidate,parity_status,acceptance_ar
 SALE,البيع النقدي,P0,recovered-source/LOGICA/Form_3_VENTE.cs,todo/services/sales.py,tests/test_core.py,عقد مشترك جاهز,snapshot المبلغ والمخزون والحركات والمستندات متطابق بعد كل خطوة
 RETURN,مرتجع جزئي نقدي,P0,recovered-source/LOGICA/FormDialog_RETOUR.cs,todo/services/sales.py,tests/test_core.py,عقد مشترك جاهز,المرتجع يزيد المخزون ويخفض المقبوض مرة واحدة
-ROUND,التقريب والعملات,P0,recovered-source/LOGICA/Module1.cs,todo/services/money.py,tests/test_tax_engine.py,غير مقارن,نصف السنت والمبالغ السالبة والكميات الكسرية عبر fr-MA/fr-FR/en-US
+ROUND,التقريب والعملات,P0,recovered-source/LOGICA/Module1.cs,todo/services/money.py,tests/test_tax_engine.py,إصلاح مشتريات ToDo؛ عقد تقريب مشترك قيد Windows,نصف السنت والمبالغ السالبة والكميات الكسرية عبر fr-MA/fr-FR/en-US
 FRACTION,كميات كسرية,P0,recovered-source/LOGICA/FormDialog_QUANTITE.cs,todo/services/sales.py,tests/test_core.py,غير مقارن,بيع ومرتجع كسري دون فقد كمية أو سنت
 RETRY,إعادة محاولة الأداء,P0,recovered-source/LOGICA/Form_3_VENTE.cs,todo/services/sales.py,tests/test_checkout_retry.py,غير مقارن,انقطاع بعد الالتزام ثم إعادة المحاولة لا يكرر البيع
 ATOMIC,ذرية المعاملة,P0,recovered-source/LOGICA/Form_3_VENTE.cs,todo/services/sales.py,tests/test_checkout_stock_guard.py,غير مقارن,حقن فشل بعد كل كتابة: لا تذكرة أو مخزون أو قبض جزئي
@@ -10,7 +10,7 @@ CREDIT,بيع بالكريدي وتسديده,P0,recovered-source/LOGICA/Form_5_
 CLIENT-OPEN,الرصيد الأولي للزبون وتاريخه,P0,recovered-source/LOGICA/Form_5_CLIENTS_MODIFICATION_CREDIT_INITIAL.cs,todo/services/clients.py,tests/test_clients.py,فجوة ToDo مؤكدة بالفحص,واجهة وقيد مستقل وتاريخ تعديل الرصيد الأولي قبل الترحيل؛ اختبارات الزبناء الحالية لا تثبت هذه الوظيفة
 SUPPLIER-OPEN,الرصيد الأولي للمورد وتاريخه,P0,recovered-source/LOGICA/Form_6_FOURNISSEURS_MODIFICATION_CREDIT_INITIAL.cs,todo/services/supplier_payments.py,tests/test_suppliers.py,فجوة ToDo مؤكدة بالفحص,حفظ وتدقيق دين المورد السابق دون إنشاء شراء وهمي
 PURCHASE,استلام شراء وفاتورة المورد,P0,recovered-source/LOGICA/Form_6_RECEPTIONS.cs,todo/services/purchases.py,tests/test_core.py,غير مقارن,المخزون والتكلفة ودين المورد والقبض تصالح في معاملة واحدة
-PO,طلب شراء واستلام جزئي,P1,recovered-source/LOGICA/Form_6_COMMANDES.cs,todo/services/purchases.py,tests/test_purchase_order_atomic.py,غير مقارن,الطلب لا يحرك المخزون والاستلام لا يتجاوز الكمية المتبقية
+PO,طلب شراء واستلام جزئي,P1,recovered-source/LOGICA/Form_6_COMMANDES.cs,todo/services/purchases.py,tests/test_purchase_order_atomic.py,غير مقارن,الطلب لا يحرك المخزون والاستلام لا يتجاوز الكمية المتبقية؛ ToDo يرفض صراحة الاستلام الجزئي حالياً ولا يعده مدعوماً
 SUPPAY,تسديد المورد,P0,recovered-source/LOGICA/Form_6_FOURNISSEURS_REGLE.cs,todo/services/supplier_payments.py,tests/test_suppliers.py,غير مقارن,لا تسديد زائد مع ربط الصندوق والمورد والفاتورة
 SUPRETURN,مرتجع المورد,P0,recovered-source/LOGICA/Form_6_SORTIES.cs,todo/services/supplier_returns.py,tests/test_supplier_returns.py,غير مقارن,نقص المخزون وتسوية الدين دون افتراض أن كل خروج مخزون هو مرتجع مورد
 CASH,الصندوق والمصاريف والسحب,P0,recovered-source/LOGICA/Form_6_DEPENSES.cs,todo/services/cash.py,tests/test_shop_day_reconciliation.py,غير مقارن,رصيد الافتتاح + النقد الداخل - الخارج = المتوقع

@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: hmasprod-a11y/todo-pos
-          ref: aa52b57d9c81074c4064c0df309095cb1efc1b83
+          ref: 8187b5a845cac09fd4d669b3a447c296853b646b
           path: .comparison/todo
           persist-credentials: false
       - name: Record exact source provenance
