@@ -8945,8 +8945,8 @@ public class Form_6_INVENTAIRES : Form
 				DataTable dataTable = new DataTable();
 				MySqlDataAdapter val = new MySqlDataAdapter();
 				dataTable.Clear();
-				val = new MySqlDataAdapter("select      ID_ARTICLE,Code,Article,STOCK,Prix_A,UNITE         from TABLE_ARTICLES WHERE Code =  '" + Text_CODE_FIND.Text + "'    ", Module1.cn_SQL);
-				((DbDataAdapter)(object)val).Fill(dataTable);
+				dataTable = ProductBarcodeDialog.Resolve(this, Text_CODE_FIND.Text);
+                if (dataTable == null) return;
 				if (dataTable.Rows.Count != 0)
 				{
 					Text_ID_ARTICLE.Text = dataTable.Rows[0]["ID_ARTICLE"].ToString();
@@ -9533,7 +9533,7 @@ public class Form_6_INVENTAIRES : Form
 					{
 						break;
 					}
-					if (Operators.ConditionalCompareObjectEqual(DataGrid_BODY.Rows[num7].Cells["Code"].Value, Text_CODE.Text, TextCompare: false))
+					if (Operators.ConditionalCompareObjectEqual(DataGrid_BODY.Rows[num7].Cells["ID_ARTICLE"].Value, Text_ID_ARTICLE.Text, TextCompare: false))
 					{
 						DataGrid_BODY.Rows[num7].Cells["Stock_Physique"].Value = decimal.Add(Module1.FLOUSS(Conversions.ToDecimal(DataGrid_BODY.Rows[num7].Cells["Stock_Physique"].Value)), Module1.FLOUSS(Conversions.ToDecimal(Text_QTE.Text)));
 						DataGrid_BODY.Rows[num7].Cells["Ecart"].Value = Operators.SubtractObject(DataGrid_BODY.Rows[num7].Cells["Stock_Physique"].Value, DataGrid_BODY.Rows[num7].Cells["Stock_Logique"].Value);

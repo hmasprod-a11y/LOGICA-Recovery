@@ -12444,6 +12444,7 @@ public class Form_3_VENTE : Form
 				tile.Name = "Button_ARTICLE_" + FlowLayout_ARTICLES.Controls.Count;
 				tile.Text = Convert.ToString(product["Article"]);
 				tile.Tag = Convert.ToString(product["Code"]);
+				tile.AccessibleDescription = Convert.ToString(product["ID_ARTICLE"]);
 				tile._PRIX = Strings.FormatNumber(product["PRIX_V_1"]);
 				tile._COLOR_PRIX = Text_THEME.BackColor;
 				tile._BackgroundColor = Color.White;
@@ -12506,6 +12507,7 @@ public class Form_3_VENTE : Form
 		try
 		{
 			Text_CODE.Text = Conversions.ToString(NewLateBinding.LateGet(sender, null, "tag", new object[0], null, null, null));
+			_selectedProductId = ((Control)sender).AccessibleDescription;
 			Button_FIND_Click(RuntimeHelpers.GetObjectValue(sender), e);
 		}
 		catch (Exception ex)
@@ -12708,7 +12710,7 @@ public class Form_3_VENTE : Form
 						DataTable dataTable = new DataTable();
 						MySqlDataAdapter val3 = new MySqlDataAdapter();
 						dataTable.Clear();
-						val3 = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("select   Code,Article,STOCK   from   TABLE_ARTICLES     WHERE      Code =   '", Module1.dt1.Rows[num2]["Code"]), "'       ")), Module1.cn_SQL);
+						val3 = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("select   Code,Article,STOCK   from   TABLE_ARTICLES     WHERE      ID_ARTICLE =   '", Module1.dt1.Rows[num2]["ID_ARTICLE"]), "'       ")), Module1.cn_SQL);
 						((DbDataAdapter)(object)val3).Fill(dataTable);
 						if (dataTable.Rows.Count != 0 && Operators.ConditionalCompareObjectLess(dataTable.Rows[0]["STOCK"], Module1.dt1.Rows[num2]["Qté"], TextCompare: false))
 						{
@@ -14487,6 +14489,7 @@ public class Form_3_VENTE : Form
 		//IL_00d1: Expected Obj, but got Unknown
 		try
 		{
+			if ((int)e.KeyCode != 13) _selectedProductId = null;
 			if ((int)e.KeyCode == 13)
 			{
 				Button_FIND_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
@@ -14546,6 +14549,8 @@ public class Form_3_VENTE : Form
 		Text_PRIX_QTE_MIN.Text = "";
 	}
 
+	private string _selectedProductId;
+
 	private void Button_FIND_Click(object sender, EventArgs e)
 	{
 		//IL_052d: Unknown result type (might be due to invalid IL or missing references)
@@ -14557,14 +14562,31 @@ public class Form_3_VENTE : Form
 		//IL_0409: Unknown result type (might be due to invalid IL or missing references)
 		try
 		{
-			if (Operators.CompareString(Text_CODE.Text.Trim(), "", TextCompare: false) == 0)
-			{
-				((Control)Text_CODE).Focus();
-				return;
-			}
-			Module1.dt_find.Clear();
-			Module1.da_find = new MySqlDataAdapter("select * from TABLE_ARTICLES WHERE Code =  '" + Text_CODE.Text + "'    ", Module1.cn_SQL);
-			((DbDataAdapter)(object)Module1.da_find).Fill(Module1.dt_find);
+            string selectedId = _selectedProductId;
+            _selectedProductId = null;
+            string scannedCode = ProductBarcodeDialog.Normalize(Text_CODE.Text);
+            if (string.IsNullOrEmpty(selectedId) && scannedCode.Length == 0) { Text_CODE.Focus(); return; }
+            Module1.dt_find.Clear();
+            if (!string.IsNullOrEmpty(selectedId))
+            {
+                using (var command = new MySqlCommand("SELECT * FROM TABLE_ARTICLES WHERE ID_ARTICLE=@id", Module1.cn_SQL))
+                using (var adapter = new MySqlDataAdapter(command))
+                { command.Parameters.AddWithValue("@id", selectedId); adapter.Fill(Module1.dt_find); }
+            }
+            else
+            {
+                DataTable matches = ProductBarcodeDialog.Find(scannedCode);
+                if (matches.Rows.Count > 1)
+                {
+                    using (var choice = new ProductBarcodeDialog(matches,false,scannedCode))
+                    {
+                        if(choice.ShowDialog(this)!=DialogResult.OK) { Text_CODE.SelectAll(); Text_CODE.Focus(); return; }
+                        Module1.dt_find = matches.Clone();
+                        Module1.dt_find.ImportRow(choice.SelectedProduct);
+                    }
+                }
+                else Module1.dt_find.Merge(matches);
+            }
 			if (Module1.dt_find.Rows.Count != 0)
 			{
 				Text_ID_ARTICLE.Text = Module1.dt_find.Rows[0]["ID_ARTICLE"].ToString();
@@ -14675,12 +14697,6 @@ public class Form_3_VENTE : Form
 					((Control)Text_CODE).Focus();
 					return;
 				}
-				if (Operators.CompareString(Text_CODE.Text.Trim(), "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -CODE- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					((Control)Text_CODE).Focus();
-					return;
-				}
 				if (Conversion.Val(Label_QTE.Text) == 0.0)
 				{
 					MessageBox.Show("Veuillez remplir le champ -QUANTITE- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
@@ -14747,7 +14763,7 @@ public class Form_3_VENTE : Form
 					{
 						break;
 					}
-					if (Operators.ConditionalCompareObjectEqual(Module1.dt1.Rows[num2]["Code"], Text_CODE.Text, TextCompare: false))
+					if (Operators.ConditionalCompareObjectEqual(Module1.dt1.Rows[num2]["ID_ARTICLE"], Text_ID_ARTICLE.Text, TextCompare: false))
 					{
 						DataGridView1.CurrentCell = DataGridView1.Rows[num2].Cells[0];
 						DataGridView1.Rows[num2].Selected = true;
@@ -15371,9 +15387,10 @@ public class Form_3_VENTE : Form
 	}
 
 	private void DataGridView100_DoubleClick(object sender, EventArgs e)
-	{
-		Button_FIND.PerformClick();
-	}
+    {
+        DataGridView100_Click(sender,e);
+        Button_FIND_Click(sender,e);
+    }
 
 	private void DataGridView100_Click(object sender, EventArgs e)
 	{
@@ -15386,6 +15403,7 @@ public class Form_3_VENTE : Form
 			}
 			int position = ((ContainerControl)this).BindingContext[(object)dt_LA].Position;
 			Text_CODE.Text = dt_LA.Rows[position]["Code"].ToString();
+			_selectedProductId = dt_LA.Rows[position]["ID_ARTICLE"].ToString();
 			((Control)Text_CODE).Focus();
 		}
 		catch (Exception ex)
@@ -15502,6 +15520,7 @@ public class Form_3_VENTE : Form
 
 	private void Text_CODE_TextChanged(object sender, EventArgs e)
 	{
+		_selectedProductId = null;
 	}
 
 	private void DataGridView1_DataBindingComplete(object sender, DataGridViewBindingCompleteEventArgs e)

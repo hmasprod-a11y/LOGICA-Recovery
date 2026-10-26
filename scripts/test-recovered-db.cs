@@ -13,6 +13,88 @@ class RecoveredCheck {
  static object Get(object o,string n){return o.GetType().GetProperty(n,BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public).GetValue(o,null);}
  static void Watch(){while(!stop){EnumWindows(delegate(IntPtr w,IntPtr x){uint pid;GetWindowThreadProcessId(w,out pid);if(pid!=Process.GetCurrentProcess().Id)return true;var b=new StringBuilder(100);GetClassName(w,b,100);if(b.ToString()!="#32770")return true;var all=new StringBuilder();EnumChildWindows(w,delegate(IntPtr c,IntPtr y){var text=new StringBuilder(600);GetWindowText(c,text,600);if(text.Length>0)all.Append(text+" ");return true;},IntPtr.Zero);lock(errors){if(all.ToString().Contains("Modifié avec succès"))saved++;else if(all.ToString().Contains("Enregistré avec succès"))productSaved++;else errors.Add(all.ToString());}PostMessage(w,0x10,IntPtr.Zero,IntPtr.Zero);return true;},IntPtr.Zero);Thread.Sleep(100);}}
 
+ static void ChooseWhile(Action work,string formName,string action,string id,decimal quantity){
+  bool seen=false;Exception failure=null;int ticks=0;
+  using(var timer=new System.Windows.Forms.Timer()){timer.Interval=40;timer.Tick+=delegate{
+   if(++ticks>300){timer.Stop();failure=new Exception("Choice dialog timeout: "+formName);foreach(Form f in Application.OpenForms)if(f.Name==formName){f.Close();break;}return;}
+   Form choice=null;foreach(Form f in Application.OpenForms)if(f.Name==formName){choice=f;break;}if(choice==null)return;
+   timer.Stop();seen=true;
+   try{
+    var grid=(DataGridView)choice.Controls.Find("Products",true)[0];
+    if(id!=null){bool found=false;foreach(DataGridViewRow row in grid.Rows)if(Convert.ToString(row.Cells["Identity"].Value)==id){grid.CurrentCell=row.Cells["Article"];row.Selected=true;found=true;break;}if(!found)throw new Exception("Expected choice product missing: "+id);}
+    if(formName=="DuplicateBarcodeStock")((NumericUpDown)choice.Controls.Find("StockQuantity",true)[0]).Value=quantity;
+    ((Button)choice.Controls.Find(action,true)[0]).PerformClick();
+   }catch(Exception e){failure=e;choice.Close();}
+  };timer.Start();work();timer.Stop();}
+  if(failure!=null)throw failure;if(!seen)throw new Exception("Expected real choice dialog did not open: "+formName);
+ }
+ static string SaveEditorProduct(Form editor,MySqlConnection sql,string code,string name,string action,string parent){
+  editor.GetType().GetMethod("Button_ADD_Click").Invoke(editor,new object[]{new Button(){Name="CI_ADD_SHARED"},EventArgs.Empty});
+  ((Control)Get(editor,"Text_CODE")).Text=code;((Control)Get(editor,"Text_ARTICLE")).Text=name;
+  ((ComboBox)Get(editor,"Combo_FAMILLE")).SelectedIndex=0;
+  ((Control)Get(editor,"Text_PRIX_A")).Text="3";((Control)Get(editor,"Text_PRIX_V")).Text=name.Contains("large")?"20":"10";((Control)Get(editor,"Text_PRIX_V_2")).Text="10";
+  ((Control)Get(editor,"Text_STOCK")).Text="50";
+  Action save=()=>editor.GetType().GetMethod("Button_SAVE_Click",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(editor,new object[]{new Button(){Name="CI_SAVE_SHARED"},EventArgs.Empty});
+  if(action==null)save();else ChooseWhile(save,"DuplicateBarcodeStock",action,parent,7);
+  sql.Open();string id;using(var command=sql.CreateCommand()){command.CommandText="SELECT ID_ARTICLE FROM TABLE_ARTICLES WHERE Article=@name";command.Parameters.AddWithValue("@name",name);id=Convert.ToString(command.ExecuteScalar());}sql.Close();return id;
+ }
+ static void CheckSharedBarcodes(Assembly a,Type module,object forms,object template,object login,IDbConnection connection){
+  var sql=(MySqlConnection)connection;
+  login.GetType().GetMethod("Button_STOCK_Click",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(login,new object[]{new Button(){Name="CI_SHARED_STOCK"},EventArgs.Empty});Application.DoEvents();
+  var editor=(Form)Get(forms,"Form_2_ARTICLES");
+  string first=SaveEditorProduct(editor,sql,"0612345678901","CI shared small",null,null);
+  if(first.Length==0)throw new Exception("Initial barcode product not saved");
+  string variant=SaveEditorProduct(editor,sql,"0612345678901","CI shared large","CreateVariant",first);
+  string independent=SaveEditorProduct(editor,sql,"0612345678901","CI shared independent","CreateIndependent",null);
+  SaveEditorProduct(editor,sql,"0612345678901","CI MUST NOT EXIST cancel","CancelChoice",null);
+  SaveEditorProduct(editor,sql,"0612345678901","CI MUST NOT EXIST stock","AddStock",variant);
+  string noCode1=SaveEditorProduct(editor,sql,"","CI no barcode one",null,null);
+  string noCode2=SaveEditorProduct(editor,sql,"","CI no barcode two",null,null);
+  if(variant.Length==0||independent.Length==0||noCode1.Length==0||noCode2.Length==0)throw new Exception("Shared or empty barcode creation failed");
+  sql.Open();using(var c=sql.CreateCommand()){
+   c.CommandText="SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Article LIKE 'CI MUST NOT EXIST%'";if(Convert.ToInt32(c.ExecuteScalar())!=0)throw new Exception("Cancel or stock addition created another product");
+   c.CommandText="SELECT VARIANT_PARENT FROM TABLE_ARTICLES WHERE ID_ARTICLE=@id";c.Parameters.AddWithValue("@id",variant);if(Convert.ToString(c.ExecuteScalar())!=first)throw new Exception("Variant parent not persisted");
+   c.Parameters["@id"].Value=independent;if(Convert.ToString(c.ExecuteScalar())!="")throw new Exception("Independent product linked as a variant");
+   c.CommandText="SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=@id";c.Parameters["@id"].Value=variant;if(Convert.ToDecimal(c.ExecuteScalar())!=57)throw new Exception("Stock top-up not applied to selected variant");c.Parameters["@id"].Value=first;if(Convert.ToDecimal(c.ExecuteScalar())!=50)throw new Exception("Stock top-up changed another product");
+   c.CommandText="SELECT QUANTITE FROM TABLE_MOUVEMENTS_STOCK WHERE ID_ARTICLE=@id AND LIBELLE='Ajout de stock - code-barres partagé'";c.Parameters["@id"].Value=variant;if(Convert.ToDecimal(c.ExecuteScalar())!=7)throw new Exception("Stock top-up audit missing");
+   c.CommandText="CREATE TABLE TABLE_CI_SHARED LIKE TABLE_01";c.ExecuteNonQuery();
+  }sql.Close();editor.Close();
+  Console.WriteLine("PASS actual stock editor: duplicate barcode variant/independent, cancellation, atomic stock + audit, two products without barcode");
+  string oldPost=((Control)Get(template,"Label_POSTE")).Text;((Control)Get(template,"Label_POSTE")).Text="CI_SHARED";
+  try{
+   using(var sale=(Form)Activator.CreateInstance(a.GetType("LOGICA.Form_3_VENTE",true)))
+   using(var adapter=new MySqlDataAdapter("SELECT * FROM TABLE_CI_SHARED",sql)){
+    var table=new DataTable();adapter.Fill(table);module.GetField("da1").SetValue(null,adapter);module.GetField("dt1").SetValue(null,table);
+    var grid=(DataGridView)Get(sale,"DataGridView1");grid.AutoGenerateColumns=false;grid.AllowUserToAddRows=false;grid.DataSource=table;
+    var events=(System.ComponentModel.EventHandlerList)typeof(System.ComponentModel.Component).GetProperty("Events",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(sale,null);
+    var key=typeof(Form).GetField("EVENT_LOAD",BindingFlags.Static|BindingFlags.NonPublic).GetValue(null);events.RemoveHandler(key,events[key]);
+    ((Control)Get(sale,"Button_PRIX")).Text="PRIX_1";((Control)Get(sale,"Button_OPERATION")).Text="VENTE";((Control)Get(sale,"Combo_PORT")).Text="";
+    sale.Show();Application.DoEvents();
+    var code=(Control)Get(sale,"Text_CODE");var find=sale.GetType().GetMethod("Button_FIND_Click",BindingFlags.Instance|BindingFlags.NonPublic);
+    Action scan=()=>{code.Text="0612345678901";find.Invoke(sale,new object[]{code,EventArgs.Empty});};
+    ChooseWhile(scan,"DuplicateBarcodeSale","ChooseProduct",variant,1);
+    ChooseWhile(scan,"DuplicateBarcodeSale","ChooseProduct",first,1);
+    ChooseWhile(scan,"DuplicateBarcodeSale","ChooseProduct",variant,1);
+    ChooseWhile(scan,"DuplicateBarcodeSale","CancelChoice",null,1);
+    if(table.Rows.Count!=2)throw new Exception("Shared barcode variants merged or cancel added a row");
+    foreach(DataRow row in table.Rows){string id=Convert.ToString(row["ID_ARTICLE"]);decimal expected=id==variant?40:10;if(Convert.ToDecimal(row["TOTAL_NET"])!=expected)throw new Exception("Wrong selected variant price or quantity");}
+    // A specific no-barcode photo must bypass the ambiguous scanner lookup.
+    sql.Open();using(var c=sql.CreateCommand()){c.CommandText="UPDATE TABLE_ARTICLES SET Images='CI wide photo.png' WHERE ID_ARTICLE=@id";c.Parameters.AddWithValue("@id",noCode1);c.ExecuteNonQuery();}sql.Close();
+    var products=new DataTable();using(var c=new MySqlCommand("SELECT * FROM TABLE_ARTICLES WHERE ID_ARTICLE=@id",sql))using(var da=new MySqlDataAdapter(c)){c.Parameters.AddWithValue("@id",noCode1);da.Fill(products);}
+    sale.GetType().GetMethod("RenderProductTiles",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(sale,new object[]{products});
+    var flow=(FlowLayoutPanel)Get(sale,"FlowLayout_ARTICLES");if(flow.Controls.Count!=1)throw new Exception("No-barcode photo not rendered");
+    typeof(Control).GetMethod("OnClick",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(flow.Controls[0],new object[]{EventArgs.Empty});
+    if(table.Rows.Count!=3 || Convert.ToString(table.Rows[2]["ID_ARTICLE"])!=noCode1)throw new Exception("No-barcode photo resolved to wrong product");
+    // Returning one variant must not alter its sibling's basket line.
+    ((Control)Get(sale,"Button_OPERATION")).Text="RETOUR";ChooseWhile(scan,"DuplicateBarcodeSale","ChooseProduct",variant,1);
+    foreach(DataRow row in table.Rows)if(Convert.ToString(row["ID_ARTICLE"])==variant && Convert.ToDecimal(row["Qté"])!=1)throw new Exception("Return affected wrong barcode variant");
+    Console.WriteLine("PASS real scan popup selects exact product, repeats choice each scan, preserves variant price/quantity, cancel, return and no-barcode photo click");
+    sale.Close();
+   }
+  }finally{((Control)Get(template,"Label_POSTE")).Text=oldPost;if(sql.State==ConnectionState.Open)sql.Close();}
+  lock(errors){if(errors.Count>0)throw new Exception("Shared barcode errors: "+string.Join(" | ",errors.ToArray()));}
+ }
+
  static void CheckBasketIdentity(Assembly assembly,Type module,object template,IDbConnection connection) {
   var sql=(MySqlConnection)connection;
   string originalPost=((Control)Get(template,"Label_POSTE")).Text;
@@ -266,6 +348,7 @@ class RecoveredCheck {
   CheckOriginalSaleEntry(a,module,forms,form,login,connection);
   CheckBasketIdentity(a,module,form,connection);
   CheckPictureSales(a,module,form,connection);
+  CheckSharedBarcodes(a,module,forms,form,login,connection);
 
 
  }else{

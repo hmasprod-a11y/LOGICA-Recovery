@@ -381,6 +381,7 @@ internal sealed class Module1
 		using (MySqlCommand command = new MySqlCommand("CREATE TABLE IF NOT EXISTS TABLE_LISTE_TAILLES (ID INT AUTO_INCREMENT PRIMARY KEY, CODE_TAILLE varchar(255), TAILLE varchar(255)); CREATE TABLE IF NOT EXISTS TABLE_LISTE_COULEURS (ID INT AUTO_INCREMENT PRIMARY KEY, CODE_COULEUR varchar(255), COULEUR varchar(255));", cn_SQL)) command.ExecuteNonQuery();
 		// Add columns required by the recovered editor without replacing old rows or values.
 		foreach (string[] item in new[] {
+			new[] { "TABLE_ARTICLES", "VARIANT_PARENT", "varchar(255) DEFAULT ''" },
 			new[] { "TABLE_ARTICLES", "GROUPE", "varchar(255) DEFAULT ''" },
 			new[] { "TABLE_ARTICLES", "PRIX_QTE", "decimal(19,4) DEFAULT 0" },
 			new[] { "TABLE_ARTICLES", "PRIX_QTE_MIN", "double DEFAULT 0" },

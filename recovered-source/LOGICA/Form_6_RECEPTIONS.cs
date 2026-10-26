@@ -9692,8 +9692,8 @@ public class Form_6_RECEPTIONS : Form
 				DataTable dataTable = new DataTable();
 				MySqlDataAdapter val = new MySqlDataAdapter();
 				dataTable.Clear();
-				val = new MySqlDataAdapter("select       ID_ARTICLE,Code,Article,STOCK,Prix_A,Prix_V_1,UNITE         from TABLE_ARTICLES WHERE Code =  '" + Text_CODE_FIND.Text + "'    ", Module1.cn_SQL);
-				((DbDataAdapter)(object)val).Fill(dataTable);
+				dataTable = ProductBarcodeDialog.Resolve(this, Text_CODE_FIND.Text);
+                if (dataTable == null) return;
 				if (dataTable.Rows.Count != 0)
 				{
 					Text_ID_ARTICLE.Text = dataTable.Rows[0]["ID_ARTICLE"].ToString();

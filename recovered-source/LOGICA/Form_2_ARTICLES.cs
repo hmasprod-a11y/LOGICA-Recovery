@@ -14288,11 +14288,6 @@ public class Form_2_ARTICLES : Form
 		{
 			try
 			{
-				if (Operators.CompareString(Strings.Trim(Text_CODE.Text), "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -Code- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
 				if (Operators.CompareString(Strings.Trim(Text_ARTICLE.Text), "", TextCompare: false) == 0)
 				{
 					MessageBox.Show("Veuillez remplir le champ -Article- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
@@ -14384,6 +14379,32 @@ public class Form_2_ARTICLES : Form
 					int number = (int)Math.Round(Conversion.Val(TextBox_NBR_CODE_BALANCE.Text));
 					Text_CODE.Text = Conversion.Val(Text_CODE.Text).ToString(Strings.StrDup(number, "0"));
 				}
+                Text_CODE.Text = ProductBarcodeDialog.Normalize(Text_CODE.Text);
+                string variantParent = "";
+                if (Label_TOP.Text == "NOUVEAU")
+                {
+                    DataTable matches = ProductBarcodeDialog.Find(Text_CODE.Text);
+                    if (matches.Rows.Count > 0)
+                    {
+                        using (var choice = new ProductBarcodeDialog(matches, true, Text_CODE.Text))
+                        {
+                            if (choice.ShowDialog(this) != DialogResult.OK) return;
+                            if (choice.SelectedAction == "stock")
+                            {
+                                ProductBarcodeDialog.AddStock(choice.SelectedProduct, choice.StockQuantity);
+                                DT.Clear(); DA.Fill(DT);
+                                Panel_INFO.Hide(); Button_CALC_Click(sender,e);
+                                MessageBox.Show("Enregistré avec succès", "LOGICA");
+                                return;
+                            }
+                            if (choice.SelectedAction == "variant")
+                            {
+                                variantParent = Convert.ToString(choice.SelectedProduct["VARIANT_PARENT"]);
+                                if (variantParent.Length == 0) variantParent = Convert.ToString(choice.SelectedProduct["ID_ARTICLE"]);
+                            }
+                        }
+                    }
+                }
 				try
 				{
 					if (Operators.CompareString(Text_LIEN_PICTURE.Text, Text_LIEN_PICTURE_ANC.Text, TextCompare: false) != 0)
@@ -14402,16 +14423,6 @@ public class Form_2_ARTICLES : Form
 				}
 				if (Operators.CompareString(Label_TOP.Text, "NOUVEAU", TextCompare: false) == 0)
 				{
-					DataTable dataTable = new DataTable();
-					MySqlDataAdapter val2 = new MySqlDataAdapter();
-					dataTable.Clear();
-					val2 = new MySqlDataAdapter("select ID,Code,Article     from TABLE_ARTICLES WHERE   Code = '" + Text_CODE.Text + "'", Module1.cn_SQL);
-					((DbDataAdapter)(object)val2).Fill(dataTable);
-					if (dataTable.Rows.Count != 0)
-					{
-						MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Ce Code est déja utilisé pour ==> ", dataTable.Rows[0]["Article"])), "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
-						return;
-					}
 					MySqlCommand val3 = new MySqlCommand();
 					val3.CommandText = "SELECT MAX(ID) From TABLE_ARTICLES ";
 					val3.Connection = Module1.cn_SQL;
@@ -14436,6 +14447,7 @@ public class Form_2_ARTICLES : Form
 					DT.Rows[index]["ID"] = num;
 					DT.Rows[index]["ID_ARTICLE"] = text;
 					DT.Rows[index]["Code"] = Strings.Trim(Text_CODE.Text);
+					DT.Rows[index]["VARIANT_PARENT"] = variantParent;
 					DT.Rows[index]["Article"] = Strings.Trim(Text_ARTICLE.Text);
 					DT.Rows[index]["Famille"] = Combo_FAMILLE.Text;
 					DT.Rows[index]["Sous_Famille"] = Text_SOUS_FAMILLE.Text;
@@ -14495,13 +14507,6 @@ public class Form_2_ARTICLES : Form
 					DataTable dataTable2 = new DataTable();
 					MySqlDataAdapter val6 = new MySqlDataAdapter();
 					dataTable2.Clear();
-					val6 = new MySqlDataAdapter("select ID,Code,Article     from TABLE_ARTICLES WHERE   Code = '" + Text_CODE.Text + "'    AND    ID <> " + Text_ID.Text + "    ", Module1.cn_SQL);
-					((DbDataAdapter)(object)val6).Fill(dataTable2);
-					if (dataTable2.Rows.Count != 0)
-					{
-						MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Ce Code est déja utilisé pour ==> ", dataTable2.Rows[0]["Article"])), "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
-						return;
-					}
 					dataTable2.Clear();
 					val6 = new MySqlDataAdapter("select ID,ID_ARTICLE     from TABLE_ARTICLES WHERE   ID_ARTICLE = '" + Text_ID_ARTICLE.Text + "'    AND    ID <> " + Text_ID.Text + "    ", Module1.cn_SQL);
 					((DbDataAdapter)(object)val6).Fill(dataTable2);
