@@ -122,8 +122,8 @@ internal sealed class ProductBarcodeDialog : Form
         var panel=new Panel{Name="SaleQuantityPanel",Dock=DockStyle.Right,Width=230,Padding=new Padding(10),BackColor=Color.FromArgb(242,246,252)};
         var heading=new Label{Text="Quantité",Dock=DockStyle.Top,Height=32,Font=new Font("Segoe UI",12,FontStyle.Bold)};
         var input=new Panel{Dock=DockStyle.Top,Height=58};
-        var multiply=new Label{Text="×",Dock=DockStyle.Left,Width=35,TextAlign=ContentAlignment.MiddleCenter,Font=new Font("Segoe UI",22,FontStyle.Bold)};
-        saleQuantity=new TextBox{Name="SaleQuantity",Text=SaleQuantity.ToString("0.###",CultureInfo.InvariantCulture),Dock=DockStyle.Fill,Font=new Font("Segoe UI",24,FontStyle.Bold),TextAlign=HorizontalAlignment.Right,MaxLength=12,HideSelection=false};
+        var multiply=new Label{Text="×",Dock=DockStyle.Left,Width=35,Bunifu.UI.WinForms.BunifuDropdown.TextAlign=ContentAlignment.MiddleCenter,Font=new Font("Segoe UI",22,FontStyle.Bold)};
+        saleQuantity=new TextBox{Name="SaleQuantity",Text=SaleQuantity.ToString("0.###",CultureInfo.InvariantCulture),Dock=DockStyle.Fill,Font=new Font("Segoe UI",24,FontStyle.Bold),Bunifu.UI.WinForms.BunifuDropdown.TextAlign=HorizontalAlignment.Right,MaxLength=12,HideSelection=false};
         saleQuantity.KeyPress += (sender,e) => { if(!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar) && e.KeyChar!='.' && e.KeyChar!=',')e.Handled=true; };
         saleQuantity.KeyDown += (sender,e) => { if(e.KeyCode==Keys.Enter){e.Handled=true;e.SuppressKeyPress=true;products.Focus();} };
         saleQuantity.TextChanged += (sender,e) => { if(quantityError!=null)quantityError.Text=""; };
