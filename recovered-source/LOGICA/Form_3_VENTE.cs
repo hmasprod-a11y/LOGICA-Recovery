@@ -3832,11 +3832,13 @@ public class Form_3_VENTE : Form
 			if (_TabControl2 != null)
 			{
 				((Control)_TabControl2).Click -= eventHandler;
+				_TabControl2.SelectedIndexChanged -= eventHandler;
 			}
 			_TabControl2 = value;
 			if (_TabControl2 != null)
 			{
 				((Control)_TabControl2).Click += eventHandler;
+				_TabControl2.SelectedIndexChanged += eventHandler;
 			}
 		}
 	}
@@ -11618,7 +11620,7 @@ public class Form_3_VENTE : Form
 		{
 			try
 			{
-				string[] array = File.ReadAllLines(Application.StartupPath + "/raccourcies.sni");
+				string[] array = File.Exists(Application.StartupPath + "/raccourcies.sni") ? File.ReadAllLines(Application.StartupPath + "/raccourcies.sni") : new string[0];
 				if (array.Count() == 0)
 				{
 					((Control)Panel_RACCOURCIES).Height = 0;
@@ -12278,7 +12280,7 @@ public class Form_3_VENTE : Form
 					num12++;
 				}
 				dataTable2.Clear();
-				val2 = new MySqlDataAdapter("select  Famille   from TABLE_FAMILLES     Where     TYPE = 'IMAGE'          order by Ordre,Famille asc ", Module1.cn_SQL);
+				val2 = new MySqlDataAdapter("select Famille from TABLE_FAMILLES order by Ordre,Famille asc", Module1.cn_SQL);
 				((DbDataAdapter)(object)val2).Fill(dataTable2);
 				((Control)FlowLayoutPanel2).Controls.Clear();
 				int num14 = dataTable2.Rows.Count - 1;
@@ -12337,6 +12339,9 @@ public class Form_3_VENTE : Form
 					((Control)MyProject.Forms.FormDialog_AFFICHEUR_2).Width = 810;
 					((Form)MyProject.Forms.FormDialog_AFFICHEUR_2).WindowState = (FormWindowState)2;
 				}
+				TabControl2.BringToFront();
+				TabControl2.SelectedIndex = 1;
+				EnsurePictureCatalog();
 				((Control)Text_CODE).Focus();
 			}
 			catch (Exception ex3)
@@ -16773,9 +16778,18 @@ public class Form_3_VENTE : Form
 	{
 	}
 
+	private void EnsurePictureCatalog()
+	{
+		if (TabControl2.SelectedIndex == 1 && FlowLayout_ARTICLES.Controls.Count == 0 && FlowLayoutPanel2.Controls.Count > 0)
+		{
+			FAM2_click(FlowLayoutPanel2.Controls[0], EventArgs.Empty);
+		}
+	}
+
 	private void TabControl2_Click(object sender, EventArgs e)
 	{
-		((Control)Text_FIND).Focus();
+		EnsurePictureCatalog();
+		Text_FIND.Focus();
 	}
 
 	private void Button_qte1_Click(object sender, EventArgs e)

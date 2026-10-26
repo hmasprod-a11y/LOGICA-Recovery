@@ -116,6 +116,38 @@ class RecoveredCheck {
   }finally{((Control)Get(template,"Label_POSTE")).Text=oldPost;module.GetField("_CHEMIN_FOLDER").SetValue(null,oldFolder);if(sql.State==ConnectionState.Open)sql.Close();}
  }
 
+
+ static void CheckOriginalSaleEntry(Assembly assembly,Type module,object forms,Form template,Control login,IDbConnection connection){
+  var sql=(MySqlConnection)connection;
+  sql.Open();using(var c=sql.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM TABLE_FAMILLES WHERE TYPE='IMAGE'";if(Convert.ToInt32(c.ExecuteScalar())!=0)throw new Exception("Regression fixture must use original FAMILLE/PAGE categories");}
+  using(var c=sql.CreateCommand()){c.CommandText="CREATE TABLE TABLE_CI_START LIKE TABLE_01";c.ExecuteNonQuery();}sql.Close();
+  string oldPost=((Control)Get(template,"Label_POSTE")).Text;((Control)Get(template,"Label_POSTE")).Text="CI_START";
+  Form sale=null;
+  try{
+   using(var button=new Button(){Name="CI_REAL_SALE_ENTRY"})login.GetType().GetMethod("Button_VENTE_Click",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(login,new object[]{button,EventArgs.Empty});
+   Application.DoEvents();sale=(Form)Get(forms,"Form_3_VENTE");
+   lock(errors){if(errors.Count>0)throw new Exception("Original sale startup errors: "+string.Join(" | ",errors.ToArray()));}
+   var home=(Control)Get(template,"Panel_HOME");var tabs=(TabControl)Get(sale,"TabControl2");var families=(FlowLayoutPanel)Get(sale,"FlowLayoutPanel2");var tiles=(FlowLayoutPanel)Get(sale,"FlowLayout_ARTICLES");
+   if(!home.Controls.Contains(sale) || !sale.Visible || tabs.SelectedIndex!=1 || families.Controls.Count!=15 || tiles.Controls.Count==0 || !tiles.Visible)throw new Exception("Original sale entry did not show picture categories and product cards automatically");
+   Console.WriteLine("PASS original login/menu -> sale Load -> Liste Photos: 15 FAMILLE/PAGE categories; cards visible without manually invoking family loader");
+   using(var bitmap=new System.Drawing.Bitmap(Math.Max(1,template.Width),Math.Max(1,template.Height))){template.DrawToBitmap(bitmap,new System.Drawing.Rectangle(0,0,bitmap.Width,bitmap.Height));bitmap.Save(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"..","results","original-sale-entry.png"));}
+   // Use a generated category button from the real Load, then the real card's Click event.
+   ((Button)families.Controls[1]).PerformClick();Application.DoEvents();
+   if(tiles.Controls.Count==0)throw new Exception("Real picture category button did not load products");
+   Button selected=null;foreach(Button tile in tiles.Controls){decimal price;if(decimal.TryParse(Convert.ToString(tile.GetType().GetProperty("_PRIX").GetValue(tile,null)),out price)&&price>0){selected=tile;break;}}
+   if(selected==null)throw new Exception("No priced product in actual category");
+   ((Control)Get(sale,"Label_QTE")).Text="1";typeof(Control).GetMethod("OnClick",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(selected,new object[]{EventArgs.Empty});Application.DoEvents();
+   lock(errors){if(errors.Count>0)throw new Exception("Original sale card click errors: "+string.Join(" | ",errors.ToArray()));}
+   sql.Open();using(var c=sql.CreateCommand()){c.CommandText="SELECT COUNT(*),SUM(\x60Qté\x60) FROM TABLE_CI_START";using(var reader=c.ExecuteReader()){reader.Read();if(Convert.ToInt32(reader.GetValue(0))!=1||Convert.ToDecimal(reader.GetValue(1))!=1m)throw new Exception("Real sale entry/card did not persist basket");}}sql.Close();
+   tabs.SelectedIndex=0;tabs.SelectedIndex=1;Application.DoEvents();if(!tiles.Visible || tiles.Controls.Count==0)throw new Exception("Switching picture tab lost cards");
+   Console.WriteLine("PASS actual generated category button and picture card add a product to the basket after full original sale startup");
+  }finally{
+   if(sale!=null)sale.Close();((Control)Get(template,"Label_POSTE")).Text=oldPost;
+   var home=(Control)Get(template,"Panel_HOME");home.Controls.Clear();home.Controls.Add(login);login.Show();
+   if(sql.State==ConnectionState.Open)sql.Close();
+  }
+ }
+
  [STAThread]static int Main(){var watcher=new Thread(Watch);watcher.IsBackground=true;watcher.Start();try{
  Application.EnableVisualStyles();var a=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
  var forms=a.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null,null);var form=(Form)Get(forms,"Form_0_TEMPLATE");var handle=form.Handle;
@@ -166,6 +198,7 @@ class RecoveredCheck {
   lock(errors){if(errors.Count>0)throw new Exception("Login modal errors: "+string.Join(" | ",errors.ToArray()));}
   if((string)module.GetField("_USERCATEGORIE").GetValue(null)!="ADMIN" || (string)module.GetField("_USERNAME").GetValue(null)!=adminName || ((Control)Get(login,"Panel_login")).Visible || !((Control)Get(login,"Panel_menu")).Visible)throw new Exception("Real administrator login did not reach the menu");
   Console.WriteLine("PASS original administrator PIN reaches the menu with its role and permissions");
+  CheckOriginalSaleEntry(a,module,forms,form,login,connection);
   string beforeConnection=connection.ConnectionString;
   var backoffice=Get(forms,"Form_00_BACKOFFICE");
   ((Control)Get(backoffice,"Label_DB_1")).Text="obsolete-host.invalid";
