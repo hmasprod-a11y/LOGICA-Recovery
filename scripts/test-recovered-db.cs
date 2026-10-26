@@ -101,11 +101,11 @@ class RecoveredCheck {
     if(center.R<230 || center.G>30 || corner.ToArgb()!=System.Drawing.Color.White.ToArgb())throw new Exception("Wide photo was distorted or failed to load from portable path");
     using(var unlocked=new FileStream(photo,FileMode.Open,FileAccess.ReadWrite,FileShare.None)){}
     using(var preview=new System.Drawing.Bitmap(Math.Max(1,flow.Width),Math.Max(1,Math.Min(flow.Height,160)))){flow.DrawToBitmap(preview,new System.Drawing.Rectangle(0,0,preview.Width,preview.Height));preview.Save(Path.Combine(root,"..","results","picture-tiles.png"));}
-    for(int click=0;click<2;click++){((Control)Get(sale,"Label_QTE")).Text="1";SendMessage(photoTile.Handle,0xF5,IntPtr.Zero,IntPtr.Zero);Application.DoEvents();}
+    for(int click=0;click<2;click++){((Control)Get(sale,"Label_QTE")).Text="1";typeof(Control).GetMethod("OnClick",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(photoTile,new object[]{EventArgs.Empty});Application.DoEvents();}
     var oldTile=flow.Controls[0];using(var family=new Button(){Text="CI pictures' category"})familyMethod.Invoke(sale,new object[]{family,EventArgs.Empty});if(!oldTile.IsDisposed)throw new Exception("Old image tiles were not disposed");
     var search=(Control)Get(sale,"Text_FIND");search.Text="CI_IMG_MISSING";Application.DoEvents();
     if(flow.Controls.Count!=1 || Convert.ToString(flow.Controls[0].Tag)!="CI_IMG_MISSING")throw new Exception("Picture search hides a product with 0.png");
-    ((Control)Get(sale,"Label_QTE")).Text="1";SendMessage(flow.Controls[0].Handle,0xF5,IntPtr.Zero,IntPtr.Zero);Application.DoEvents();
+    ((Control)Get(sale,"Label_QTE")).Text="1";typeof(Control).GetMethod("OnClick",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(flow.Controls[0],new object[]{EventArgs.Empty});Application.DoEvents();
     search.Text="CI_IMG_CORRUPT";Application.DoEvents();if(flow.Controls.Count!=1)throw new Exception("Corrupt photo product disappeared");
     ((Control)Get(sale,"Label_QTE")).Text="1";((Button)flow.Controls[0]).PerformClick();
     lock(errors){if(errors.Count>0)throw new Exception("Picture sales errors: "+string.Join(" | ",errors.ToArray()));}
