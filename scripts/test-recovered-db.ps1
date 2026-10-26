@@ -17,7 +17,7 @@ foreach($p in $settings.PSObject.Properties){[IO.File]::WriteAllText((Join-Path 
 [IO.File]::WriteAllText("$dist/log_erreur.sni",'')
 $env:LOGICA_DB_CONNECTION_STRING="Server=127.0.0.1;Port=3307;Database=$dbName;Uid=root;Pwd=logica-ci-only;SslMode=None;Connection Timeout=5;"
 $csc=Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
-& $csc /nologo /platform:x86 /target:exe /r:System.Windows.Forms.dll /r:System.Data.dll /r:System.Drawing.dll "/out:$dist\RecoveredCheck.exe" (Join-Path $PSScriptRoot 'test-recovered-db.cs')
+& $csc /nologo /platform:x86 /target:exe /r:System.Windows.Forms.dll /r:System.Data.dll /r:System.Drawing.dll "/r:$dist\MySql.Data.dll" "/out:$dist\RecoveredCheck.exe" (Join-Path $PSScriptRoot 'test-recovered-db.cs')
 if($LASTEXITCODE -ne 0){throw 'Recovery checker compilation failed'}
 Copy-Item dist/LOGICA.exe.config dist/RecoveredCheck.exe.config
 $p=Start-Process "$dist/RecoveredCheck.exe" -WorkingDirectory $dist -RedirectStandardOutput results/recovered-database.log -RedirectStandardError results/recovered-database.stderr.log -PassThru

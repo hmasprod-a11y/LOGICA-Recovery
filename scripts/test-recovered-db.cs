@@ -1,3 +1,4 @@
+using MySql.Data.MySqlClient;
 using System;using System.IO;using System.Reflection;using System.Data;using System.Windows.Forms;using System.Threading;using System.Diagnostics;using System.Text;using System.Runtime.InteropServices;using System.Collections.Generic;
 class RecoveredCheck {
  delegate bool EnumProc(IntPtr w,IntPtr p);
@@ -10,6 +11,61 @@ class RecoveredCheck {
  static int saved=0;static int productSaved=0;static volatile bool stop=false;static List<string> errors=new List<string>();
  static object Get(object o,string n){return o.GetType().GetProperty(n,BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public).GetValue(o,null);}
  static void Watch(){while(!stop){EnumWindows(delegate(IntPtr w,IntPtr x){uint pid;GetWindowThreadProcessId(w,out pid);if(pid!=Process.GetCurrentProcess().Id)return true;var b=new StringBuilder(100);GetClassName(w,b,100);if(b.ToString()!="#32770")return true;var all=new StringBuilder();EnumChildWindows(w,delegate(IntPtr c,IntPtr y){var text=new StringBuilder(600);GetWindowText(c,text,600);if(text.Length>0)all.Append(text+" ");return true;},IntPtr.Zero);lock(errors){if(all.ToString().Contains("Modifié avec succès"))saved++;else if(all.ToString().Contains("Enregistré avec succès"))productSaved++;else errors.Add(all.ToString());}PostMessage(w,0x10,IntPtr.Zero,IntPtr.Zero);return true;},IntPtr.Zero);Thread.Sleep(100);}}
+
+ static void CheckBasketIdentity(Assembly assembly,Type module,object template,IDbConnection connection) {
+  var sql=(MySqlConnection)connection;
+  string originalPost=((Control)Get(template,"Label_POSTE")).Text;
+  if(!sql.Database.StartsWith("logica_recovered_check"))throw new Exception("Identity regression requires isolated database");
+  sql.Open();
+  using(var c=sql.CreateCommand()){c.CommandText="CREATE TABLE TABLE_CI_IDENTITY LIKE TABLE_01; ALTER TABLE TABLE_CI_IDENTITY AUTO_INCREMENT=100";c.ExecuteNonQuery();}
+  sql.Close();
+  // Reproduce the original identity mismatch with the same Connector/NET command builder.
+  using(var oldAdapter=new MySqlDataAdapter("SELECT * FROM TABLE_CI_IDENTITY",sql))
+  using(var oldBuilder=new MySqlCommandBuilder(oldAdapter)){
+   var oldTable=new DataTable();oldAdapter.Fill(oldTable);var row=oldTable.NewRow();row["ID"]=1;row["Code"]="BASELINE";row["Qté"]=1;row["TOTAL_NET"]=12.35;oldTable.Rows.Add(row);oldAdapter.Update(oldTable);
+   sql.Open();long stored;using(var c=sql.CreateCommand()){c.CommandText="SELECT ID FROM TABLE_CI_IDENTITY";stored=Convert.ToInt64(c.ExecuteScalar());}
+   if(stored==Convert.ToInt64(row["ID"]))throw new Exception("Legacy identity mismatch was not reproduced");
+   using(var c=sql.CreateCommand()){c.CommandText="DELETE FROM TABLE_CI_IDENTITY; ALTER TABLE TABLE_CI_IDENTITY AUTO_INCREMENT=200";c.ExecuteNonQuery();}sql.Close();
+   Console.WriteLine("PASS reproduced original basket identity mismatch: local=1 server="+stored);
+  }
+  ((Control)Get(template,"Label_POSTE")).Text="CI_IDENTITY";
+  try {
+   for(int cycle=0;cycle<2;cycle++){
+    var adapter=new MySqlDataAdapter("SELECT * FROM TABLE_CI_IDENTITY ORDER BY ID",sql);var table=new DataTable();adapter.Fill(table);
+    module.GetField("da1").SetValue(null,adapter);module.GetField("dt1").SetValue(null,table);
+    using(var sale=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))){
+     var grid=(DataGridView)Get(sale,"DataGridView1");grid.AutoGenerateColumns=false;grid.AllowUserToAddRows=false;grid.DataSource=table;
+     ((Control)Get(sale,"Combo_PORT")).Text="";((Control)Get(sale,"Button_OPERATION")).Text="VENTE";
+     var add=sale.GetType().GetMethod("Button_GO_Click",BindingFlags.Instance|BindingFlags.NonPublic);
+     for(int click=0;click<3;click++){
+      foreach(string name in new[]{"Text_ID_ARTICLE","Text_CODE","Text_ARTICLE","Text_FAMILLE","Text_GROUPE"})((Control)Get(sale,name)).Text=click<2?"CI_REPEAT":"CI_OTHER";
+      foreach(string name in new[]{"Text_PRIX_A","Text_PRIX_MP","Text_TAUX_TVA","Text_PROMOTION","Text_PRIX_QTE","Text_PRIX_QTE_MIN"})((Control)Get(sale,name)).Text="0";
+      ((Control)Get(sale,"Text_PRIXV")).Text="12.35";((Control)Get(sale,"Text_PRINTER")).Text="0";((Control)Get(sale,"Text_PRINTER_DUPLICATA")).Text="0";((Control)Get(sale,"Label_QTE")).Text="1";
+      using(var button=new Button(){Name="CI_ADD_BASKET"})add.Invoke(sale,new object[]{button,EventArgs.Empty});
+      lock(errors){if(errors.Count>0)throw new Exception("Basket update errors: "+string.Join(" | ",errors.ToArray()));}
+      sql.Open();using(var c=sql.CreateCommand()){c.CommandText="SELECT ID FROM TABLE_CI_IDENTITY WHERE Code='CI_REPEAT'";if(Convert.ToInt64(c.ExecuteScalar())!=Convert.ToInt64(table.Rows[0]["ID"]))throw new Exception("Inserted basket ID is not synchronized");}sql.Close();
+     }
+     sql.Open();using(var c=sql.CreateCommand()){c.CommandText="SELECT COUNT(*),SUM(\x60Qté\x60),SUM(TOTAL_NET) FROM TABLE_CI_IDENTITY";using(var reader=c.ExecuteReader()){reader.Read();if(reader.GetInt32(0)!=2 || Convert.ToDecimal(reader.GetValue(1))!=3m || Math.Abs(Convert.ToDecimal(reader.GetValue(2))-37.05m)>0.00001m)throw new Exception("Repeated product quantity/total incorrect");}}
+     using(var c=sql.CreateCommand()){c.CommandText="DELETE FROM TABLE_CI_IDENTITY";c.ExecuteNonQuery();}sql.Close();
+    }
+    adapter.Dispose();
+   }
+   Console.WriteLine("PASS repeated product adds and separate lines across two baskets with continuing AUTO_INCREMENT IDs");
+   // Actual stale writes must still be rejected, rather than silently overwriting another change.
+   using(var adapter=new MySqlDataAdapter("SELECT * FROM TABLE_CI_IDENTITY",sql))
+   using(var builder=new MySqlCommandBuilder(adapter)){
+    sql.Open();using(var c=sql.CreateCommand()){c.CommandText="INSERT INTO TABLE_CI_IDENTITY (Code,\x60Qté\x60,TOTAL_NET) VALUES ('STALE',1,12.35)";c.ExecuteNonQuery();}sql.Close();
+    var table=new DataTable();adapter.Fill(table);module.GetField("da1").SetValue(null,adapter);module.GetField("dt1").SetValue(null,table);
+    sql.Open();using(var c=sql.CreateCommand()){c.CommandText="UPDATE TABLE_CI_IDENTITY SET \x60Qté\x60=9 WHERE Code='STALE'";c.ExecuteNonQuery();}sql.Close();
+    table.Rows[0]["Qté"]=2;bool rejected=false;
+    try{module.GetMethod("SaveBasketChanges").Invoke(null,null);}catch(TargetInvocationException e){if(e.InnerException is DBConcurrencyException)rejected=true;else throw;}
+    if(!rejected)throw new Exception("Real stale basket update was accepted");
+    sql.Open();using(var c=sql.CreateCommand()){c.CommandText="SELECT \x60Qté\x60 FROM TABLE_CI_IDENTITY WHERE Code='STALE'";if(Convert.ToInt32(c.ExecuteScalar())!=9)throw new Exception("Concurrent quantity was overwritten");}sql.Close();
+   }
+   Console.WriteLine("PASS real concurrent basket changes remain protected");
+  } finally {((Control)Get(template,"Label_POSTE")).Text=originalPost;if(sql.State==ConnectionState.Open)sql.Close();}
+ }
+
  [STAThread]static int Main(){var watcher=new Thread(Watch);watcher.IsBackground=true;watcher.Start();try{
  Application.EnableVisualStyles();var a=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
  var forms=a.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null,null);var form=(Form)Get(forms,"Form_0_TEMPLATE");var handle=form.Handle;
@@ -108,6 +164,7 @@ class RecoveredCheck {
   using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM TABLE_PARAMETRES WHERE OBJET IN ('GROUPES','GROUPES_LISTE')";if(Convert.ToInt32(c.ExecuteScalar())!=2)throw new Exception("Compatibility settings duplicated");}
   connection.Close();
   Console.WriteLine("PASS products page loads 30 original products and 15 families; missing settings upgrade is idempotent");
+  CheckBasketIdentity(a,module,form,connection);
 
 
  }else{

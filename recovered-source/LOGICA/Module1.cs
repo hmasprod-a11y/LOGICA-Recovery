@@ -301,6 +301,24 @@ internal sealed class Module1
 		}
 	}
 
+
+	public static void SaveBasketChanges()
+	{
+		// The server generates AUTO_INCREMENT IDs even when the old UI assigns a local ID.
+		// Synchronize each inserted row before the adapter accepts its original values.
+		da1.RowUpdated += SyncBasketIdentity;
+		try { da1.Update(dt1); }
+		finally { da1.RowUpdated -= SyncBasketIdentity; }
+	}
+
+	private static void SyncBasketIdentity(object sender, MySqlRowUpdatedEventArgs e)
+	{
+		if (e.StatementType == StatementType.Insert && e.Errors == null && e.Command.LastInsertedId > 0 && e.Row.Table.Columns.Contains("ID"))
+		{
+			e.Row["ID"] = Convert.ChangeType(e.Command.LastInsertedId, e.Row.Table.Columns["ID"].DataType);
+		}
+	}
+
 	public static void EnsureRecoveredSettings()
 	{
 		using (MySqlCommand command = new MySqlCommand("CREATE TABLE IF NOT EXISTS TABLE_LISTE_TAILLES (ID INT AUTO_INCREMENT PRIMARY KEY, CODE_TAILLE varchar(255), TAILLE varchar(255)); CREATE TABLE IF NOT EXISTS TABLE_LISTE_COULEURS (ID INT AUTO_INCREMENT PRIMARY KEY, CODE_COULEUR varchar(255), COULEUR varchar(255));", cn_SQL)) command.ExecuteNonQuery();

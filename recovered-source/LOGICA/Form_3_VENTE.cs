@@ -14788,7 +14788,7 @@ public class Form_3_VENTE : Form
 							Module1.dt1.Rows[num2]["TOTAL_NET"] = Strings.FormatNumber(Operators.SubtractObject(Operators.MultiplyObject(Module1.dt1.Rows[num2]["PRIX_V"], Module1.dt1.Rows[num2]["Qté"]), Operators.DivideObject(Operators.MultiplyObject(Operators.MultiplyObject(Module1.dt1.Rows[num2]["PRIX_V"], Module1.dt1.Rows[num2]["Qté"]), Module1.dt1.Rows[num2]["REMISE"]), 100)));
 						}
 						MySqlCommandBuilder val = new MySqlCommandBuilder(Module1.da1);
-						((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+						Module1.SaveBasketChanges();
 						Module1.dt1.AcceptChanges();
 						int index = num2;
 						if (Conversion.Val(Text_PRIX_QTE.Text) > 0.0)
@@ -14821,7 +14821,7 @@ public class Form_3_VENTE : Form
 									Module1.dt1.Rows[index]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(Convert.ToDouble(decimal.Multiply(Conversions.ToDecimal(Text_PRIX_QTE.Text), num5)) - Conversions.ToDouble(Text_PRIX_QTE.Text) * Convert.ToDouble(num5) * Conversions.ToDouble(Text_PROMOTION.Text) / 100.0)) * -1.0;
 								}
 								MySqlCommandBuilder val2 = new MySqlCommandBuilder(Module1.da1);
-								((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+								Module1.SaveBasketChanges();
 								Module1.dt1.AcceptChanges();
 							}
 							else
@@ -14836,7 +14836,7 @@ public class Form_3_VENTE : Form
 									Module1.dt1.Rows[index]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(Convert.ToDouble(decimal.Multiply(Conversions.ToDecimal(Text_PRIXV.Text), num5)) - Conversions.ToDouble(Text_PRIXV.Text) * Convert.ToDouble(num5) * Conversions.ToDouble(Text_PROMOTION.Text) / 100.0)) * -1.0;
 								}
 								MySqlCommandBuilder val3 = new MySqlCommandBuilder(Module1.da1);
-								((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+								Module1.SaveBasketChanges();
 								Module1.dt1.AcceptChanges();
 							}
 						}
@@ -14892,7 +14892,7 @@ public class Form_3_VENTE : Form
 				Module1.dt1.Rows[index2]["PRINTER_DUPLICATA"] = Text_PRINTER_DUPLICATA.Text;
 				Module1.dt1.Rows[index2]["GROUPE"] = Text_GROUPE.Text;
 				MySqlCommandBuilder val4 = new MySqlCommandBuilder(Module1.da1);
-				((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+				Module1.SaveBasketChanges();
 				Module1.dt1.AcceptChanges();
 				if (Conversion.Val(Text_PRIX_QTE.Text) > 0.0)
 				{
@@ -14924,7 +14924,7 @@ public class Form_3_VENTE : Form
 							Module1.dt1.Rows[index2]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(Convert.ToDouble(decimal.Multiply(Conversions.ToDecimal(Text_PRIX_QTE.Text), num7)) - Conversions.ToDouble(Text_PRIX_QTE.Text) * Convert.ToDouble(num7) * Conversions.ToDouble(Text_PROMOTION.Text) / 100.0)) * -1.0;
 						}
 						MySqlCommandBuilder val5 = new MySqlCommandBuilder(Module1.da1);
-						((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+						Module1.SaveBasketChanges();
 						Module1.dt1.AcceptChanges();
 					}
 					else
@@ -14939,7 +14939,7 @@ public class Form_3_VENTE : Form
 							Module1.dt1.Rows[index2]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(Convert.ToDouble(decimal.Multiply(Conversions.ToDecimal(Text_PRIXV.Text), num7)) - Conversions.ToDouble(Text_PRIXV.Text) * Convert.ToDouble(num7) * Conversions.ToDouble(Text_PROMOTION.Text) / 100.0)) * -1.0;
 						}
 						MySqlCommandBuilder val6 = new MySqlCommandBuilder(Module1.da1);
-						((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+						Module1.SaveBasketChanges();
 						Module1.dt1.AcceptChanges();
 					}
 				}
@@ -15663,7 +15663,7 @@ public class Form_3_VENTE : Form
 			int position = ((ContainerControl)this).BindingContext[(object)Module1.dt1].Position;
 			Module1.dt1.Rows[position].Delete();
 			MySqlCommandBuilder val = new MySqlCommandBuilder(Module1.da1);
-			((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+			Module1.SaveBasketChanges();
 			Module1.dt1.AcceptChanges();
 			((ContainerControl)this).BindingContext[(object)Module1.dt1].Position = position;
 			Text_TOTAL_NET_Click(RuntimeHelpers.GetObjectValue(sender), e);
@@ -16058,7 +16058,7 @@ public class Form_3_VENTE : Form
 						Module1.dt1.Rows[position]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(decimal.Subtract(decimal.Multiply(num3, num), decimal.Divide(decimal.Multiply(decimal.Multiply(num3, num), d), 100m)))) * -1.0;
 					}
 					MySqlCommandBuilder val3 = new MySqlCommandBuilder(Module1.da1);
-					((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+					Module1.SaveBasketChanges();
 					Module1.dt1.AcceptChanges();
 				}
 				else
@@ -16073,7 +16073,7 @@ public class Form_3_VENTE : Form
 						Module1.dt1.Rows[position]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(decimal.Subtract(decimal.Multiply(num4, num), decimal.Divide(decimal.Multiply(decimal.Multiply(num4, num), d), 100m)))) * -1.0;
 					}
 					MySqlCommandBuilder val4 = new MySqlCommandBuilder(Module1.da1);
-					((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+					Module1.SaveBasketChanges();
 					Module1.dt1.AcceptChanges();
 				}
 			}
