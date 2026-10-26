@@ -69,7 +69,7 @@ internal sealed class ProductBarcodeDialog : Form
             products.Rows[index].Tag=row;
         }
         products.Columns["Photo"].DefaultCellStyle.NullValue=null;
-        var actions = new FlowLayoutPanel { Dock=DockStyle.Bottom, Height= stockMode ? 114 : 65, Padding=new Padding(6), AutoScroll=true };
+        var actions = new FlowLayoutPanel { Dock=DockStyle.Bottom, Height= stockMode ? 165 : 65, Padding=new Padding(6), AutoScroll=true };
         quantity = new NumericUpDown { Name="StockQuantity", Minimum=0.001m, Maximum=100000000, DecimalPlaces=3, Value=1, Width=100 };
         if(stockMode)
         {

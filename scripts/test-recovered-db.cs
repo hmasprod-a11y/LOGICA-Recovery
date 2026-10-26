@@ -89,6 +89,29 @@ class RecoveredCheck {
     ((Control)Get(sale,"Button_OPERATION")).Text="RETOUR";ChooseWhile(scan,"DuplicateBarcodeSale","ChooseProduct",variant,1);
     foreach(DataRow row in table.Rows)if(Convert.ToString(row["ID_ARTICLE"])==variant && Convert.ToDecimal(row["Qté"])!=1)throw new Exception("Return affected wrong barcode variant");
     Console.WriteLine("PASS real scan popup selects exact product, repeats choice each scan, preserves variant price/quantity, cancel, return and no-barcode photo click");
+
+    foreach(var n in new[]{"Check_CHOIX_VENDEUR","Check_CHOIX_CLIENT","Check_ACCES_MODEP","Check_ACCES_RFID"})Get(sale,n).GetType().GetProperty("Checked").SetValue(Get(sale,n),false,null);
+    Get(sale,"Check_STOCK").GetType().GetProperty("Checked").SetValue(Get(sale,"Check_STOCK"),true,null);
+    ((Control)Get(sale,"Text_HEURE_RETARD")).Text="0";((Control)Get(sale,"Text_PRINTER_SOLDER")).Text="0";((Control)Get(sale,"Button_CAISSIER")).Text="CI shared checkout";
+    ((Control)Get(sale,"Button_OPERATION")).Text="VENTE";
+    sale.GetType().GetMethod("Text_TOTAL_NET_Click").Invoke(sale,new object[]{sale,EventArgs.Empty});
+    using(var checkout=new Button(){Name="CI_SHARED_CHECKOUT"})sale.GetType().GetMethod("Button_Click",BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public).Invoke(sale,new object[]{checkout,EventArgs.Empty});
+    sql.Open();using(var c=sql.CreateCommand()){
+     c.CommandText="SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=@id";c.Parameters.AddWithValue("@id",first);if(Convert.ToDecimal(c.ExecuteScalar())!=49)throw new Exception("Checkout changed wrong small stock");
+     c.Parameters["@id"].Value=variant;if(Convert.ToDecimal(c.ExecuteScalar())!=56)throw new Exception("Checkout changed wrong large stock");
+     c.Parameters["@id"].Value=independent;if(Convert.ToDecimal(c.ExecuteScalar())!=50)throw new Exception("Checkout changed unsold independent stock");
+     c.Parameters["@id"].Value=noCode1;if(Convert.ToDecimal(c.ExecuteScalar())!=49)throw new Exception("No-barcode checkout stock incorrect");
+    }sql.Close();
+    ((Control)Get(sale,"Button_OPERATION")).Text="RETOUR";ChooseWhile(scan,"DuplicateBarcodeSale","ChooseProduct",variant,1);
+    sale.GetType().GetMethod("Text_TOTAL_NET_Click").Invoke(sale,new object[]{sale,EventArgs.Empty});
+    using(var checkout=new Button(){Name="CI_SHARED_REFUND"})sale.GetType().GetMethod("Button_Click",BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public).Invoke(sale,new object[]{checkout,EventArgs.Empty});
+    sql.Open();using(var c=sql.CreateCommand()){
+     c.CommandText="SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=@id";c.Parameters.AddWithValue("@id",variant);if(Convert.ToDecimal(c.ExecuteScalar())!=57)throw new Exception("Refund did not restore selected variant stock");
+     c.Parameters["@id"].Value=first;if(Convert.ToDecimal(c.ExecuteScalar())!=49)throw new Exception("Refund altered sibling stock");
+     c.CommandText="SELECT COUNT(*),SUM(`Qté`),SUM(TOTAL_NET) FROM TABLE_VENTES_JOURNAL WHERE ID_ARTICLE=@id";c.Parameters["@id"].Value=variant;using(var reader=c.ExecuteReader()){reader.Read();if(reader.GetInt32(0)!=2||Convert.ToDecimal(reader.GetValue(1))!=0||Convert.ToDecimal(reader.GetValue(2))!=0)throw new Exception("Shared variant sale/refund journal incorrect");}
+    }sql.Close();
+    Console.WriteLine("PASS actual shared-barcode checkout/refund: separate sibling stock, unsold independent untouched, no-barcode stock and exact variant journal");
+
     sale.Close();
    }
   }finally{((Control)Get(template,"Label_POSTE")).Text=oldPost;if(sql.State==ConnectionState.Open)sql.Close();}
@@ -358,4 +381,5 @@ class RecoveredCheck {
  form.Dispose();return 0;
  }catch(Exception e){Console.WriteLine("FAIL "+e);return 1;}finally{stop=true;}}
 }
+
 
