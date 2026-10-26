@@ -128,8 +128,10 @@ class RecoveredCheck {
    Application.DoEvents();sale=(Form)Get(forms,"Form_3_VENTE");
    lock(errors){if(errors.Count>0)throw new Exception("Original sale startup errors: "+string.Join(" | ",errors.ToArray()));}
    var home=(Control)Get(template,"Panel_HOME");var tabs=(TabControl)Get(sale,"TabControl2");var families=(FlowLayoutPanel)Get(sale,"FlowLayoutPanel2");var tiles=(FlowLayoutPanel)Get(sale,"FlowLayout_ARTICLES");
-   if(!home.Controls.Contains(sale) || !sale.Visible || tabs.SelectedIndex!=1 || families.Controls.Count!=15 || tiles.Controls.Count==0 || !tiles.Visible)throw new Exception("Original sale entry did not show picture categories and product cards automatically");
-   Console.WriteLine("PASS original login/menu -> sale Load -> Liste Photos: 15 FAMILLE/PAGE categories; cards visible without manually invoking family loader");
+   if(!home.Controls.Contains(sale) || !sale.Visible || tabs.SelectedIndex!=0 || families.Controls.Count!=15)throw new Exception("Original sale entry did not retain default article list or load picture category buttons");
+   tabs.SelectedIndex=1;Application.DoEvents();
+   if(tiles.Controls.Count==0 || !tiles.Visible)throw new Exception("Selecting Liste Photos did not show product cards through real tab event");
+   Console.WriteLine("PASS original login/menu -> sale Load -> default Liste Article -> select Liste Photos: 15 original FAMILLE/PAGE categories and visible cards");
 
    // Exercise the actual generated category buttons, then inspect the photo saved by the product editor.
    ((Button)families.Controls[1]).PerformClick();Application.DoEvents();if(tiles.Controls.Count==0)throw new Exception("Real picture category button did not load products");

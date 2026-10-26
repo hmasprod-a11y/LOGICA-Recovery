@@ -12340,8 +12340,7 @@ public class Form_3_VENTE : Form
 					((Form)MyProject.Forms.FormDialog_AFFICHEUR_2).WindowState = (FormWindowState)2;
 				}
 				TabControl2.BringToFront();
-				TabControl2.SelectedIndex = 1;
-				EnsurePictureCatalog();
+				TabControl2.SelectedIndex = 0;
 				((Control)Text_CODE).Focus();
 			}
 			catch (Exception ex3)
