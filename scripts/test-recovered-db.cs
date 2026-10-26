@@ -130,17 +130,20 @@ class RecoveredCheck {
    var home=(Control)Get(template,"Panel_HOME");var tabs=(TabControl)Get(sale,"TabControl2");var families=(FlowLayoutPanel)Get(sale,"FlowLayoutPanel2");var tiles=(FlowLayoutPanel)Get(sale,"FlowLayout_ARTICLES");
    if(!home.Controls.Contains(sale) || !sale.Visible || tabs.SelectedIndex!=1 || families.Controls.Count!=15 || tiles.Controls.Count==0 || !tiles.Visible)throw new Exception("Original sale entry did not show picture categories and product cards automatically");
    Console.WriteLine("PASS original login/menu -> sale Load -> Liste Photos: 15 FAMILLE/PAGE categories; cards visible without manually invoking family loader");
+
+   // Exercise the actual generated category buttons, then inspect the photo saved by the product editor.
+   ((Button)families.Controls[1]).PerformClick();Application.DoEvents();if(tiles.Controls.Count==0)throw new Exception("Real picture category button did not load products");
+   ((Button)families.Controls[0]).PerformClick();Application.DoEvents();
+   Button selected=null;foreach(Button tile in tiles.Controls)if(Convert.ToString(tile.Tag)=="CI_RECOVERED_PRODUCT"){selected=tile;break;}
+   if(selected==null || selected.Image==null)throw new Exception("New editor product did not appear in real sale category");
+   var photo=(System.Drawing.Bitmap)selected.Image;var pixel=photo.GetPixel(photo.Width/2,photo.Height/2);if(pixel.G<200||pixel.R>30||pixel.B>30)throw new Exception("Newly saved product photo is not displayed in full sale startup");
+   tiles.ScrollControlIntoView(selected);Application.DoEvents();
    using(var bitmap=new System.Drawing.Bitmap(Math.Max(1,template.Width),Math.Max(1,template.Height))){template.DrawToBitmap(bitmap,new System.Drawing.Rectangle(0,0,bitmap.Width,bitmap.Height));bitmap.Save(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"..","results","original-sale-entry.png"));}
-   // Use a generated category button from the real Load, then the real card's Click event.
-   ((Button)families.Controls[1]).PerformClick();Application.DoEvents();
-   if(tiles.Controls.Count==0)throw new Exception("Real picture category button did not load products");
-   Button selected=null;foreach(Button tile in tiles.Controls){decimal price;if(decimal.TryParse(Convert.ToString(tile.GetType().GetProperty("_PRIX").GetValue(tile,null)),out price)&&price>0){selected=tile;break;}}
-   if(selected==null)throw new Exception("No priced product in actual category");
    ((Control)Get(sale,"Label_QTE")).Text="1";typeof(Control).GetMethod("OnClick",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(selected,new object[]{EventArgs.Empty});Application.DoEvents();
    lock(errors){if(errors.Count>0)throw new Exception("Original sale card click errors: "+string.Join(" | ",errors.ToArray()));}
    sql.Open();using(var c=sql.CreateCommand()){c.CommandText="SELECT COUNT(*),SUM(\x60Qté\x60) FROM TABLE_CI_START";using(var reader=c.ExecuteReader()){reader.Read();if(Convert.ToInt32(reader.GetValue(0))!=1||Convert.ToDecimal(reader.GetValue(1))!=1m)throw new Exception("Real sale entry/card did not persist basket");}}sql.Close();
    tabs.SelectedIndex=0;tabs.SelectedIndex=1;Application.DoEvents();if(!tiles.Visible || tiles.Controls.Count==0)throw new Exception("Switching picture tab lost cards");
-   Console.WriteLine("PASS actual generated category button and picture card add a product to the basket after full original sale startup");
+   Console.WriteLine("PASS new product photo saved by editor appears after original menu/sale startup and its picture card adds to basket");
   }finally{
    if(sale!=null)sale.Close();((Control)Get(template,"Label_POSTE")).Text=oldPost;
    var home=(Control)Get(template,"Panel_HOME");home.Controls.Clear();home.Controls.Add(login);login.Show();
@@ -198,7 +201,6 @@ class RecoveredCheck {
   lock(errors){if(errors.Count>0)throw new Exception("Login modal errors: "+string.Join(" | ",errors.ToArray()));}
   if((string)module.GetField("_USERCATEGORIE").GetValue(null)!="ADMIN" || (string)module.GetField("_USERNAME").GetValue(null)!=adminName || ((Control)Get(login,"Panel_login")).Visible || !((Control)Get(login,"Panel_menu")).Visible)throw new Exception("Real administrator login did not reach the menu");
   Console.WriteLine("PASS original administrator PIN reaches the menu with its role and permissions");
-  CheckOriginalSaleEntry(a,module,forms,form,login,connection);
   string beforeConnection=connection.ConnectionString;
   var backoffice=Get(forms,"Form_00_BACKOFFICE");
   ((Control)Get(backoffice,"Label_DB_1")).Text="obsolete-host.invalid";
@@ -237,16 +239,25 @@ class RecoveredCheck {
   ((ComboBox)Get(articles,"Combo_FAMILLE")).SelectedIndex=0;
   ((Control)Get(articles,"Text_PRIX_A")).Text="7";
   ((Control)Get(articles,"Text_PRIX_V")).Text="12";
+  string importedPhoto=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"CI imported editor photo.png");
+  using(var picture=new System.Drawing.Bitmap(300,150)){using(var graphics=System.Drawing.Graphics.FromImage(picture))graphics.Clear(System.Drawing.Color.Lime);picture.Save(importedPhoto,System.Drawing.Imaging.ImageFormat.Png);}
+  var preview=(PictureBox)Get(articles,"Picture_IMAGE");preview.Image.Dispose();preview.Image=(System.Drawing.Image)module.GetMethod("LoadProductImage").Invoke(null,new object[]{importedPhoto,preview.Width,preview.Height});
+  ((Control)Get(articles,"Text_LIEN_PICTURE")).Text="CI saved from editor.png";
+
   articles.GetType().GetMethod("Button_SAVE_Click",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(articles,new object[]{new Button(){Name="CI_SAVE_PRODUCT"},EventArgs.Empty});
   lock(errors){if(errors.Count>0)throw new Exception("Add product errors: "+string.Join(" | ",errors.ToArray()));}
   connection.Open();using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Code='CI_RECOVERED_PRODUCT' AND Prix_A=7 AND PRIX_V_1=12";if(Convert.ToInt32(c.ExecuteScalar())!=1 || productSaved!=1)throw new Exception("Original product save failed");}connection.Close();
   Console.WriteLine("PASS original Add and Save product handlers persist a new product and prices in isolated database");
+  string savedPhoto=Path.Combine(imageDirectory,"CI saved from editor.png");if(!File.Exists(savedPhoto))throw new Exception("Editor did not save chosen product photo");using(var savedImage=System.Drawing.Image.FromFile(savedPhoto)){if(savedImage.Width<2||savedImage.Height<2)throw new Exception("Saved editor photo is invalid");}
+  Console.WriteLine("PASS product editor saves the selected photo file and its database reference");
+
   articles.Close();
   connection.Open();using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM TABLE_ARTICLES WHERE CAST(DATES AS CHAR)='1900-01-00 00:00:00'";if(Convert.ToInt32(c.ExecuteScalar())!=1)throw new Exception("Original incomplete date was changed");}
   module.GetMethod("EnsureRecoveredSettings").Invoke(null,null);module.GetMethod("EnsureRecoveredSettings").Invoke(null,null);
   using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM TABLE_PARAMETRES WHERE OBJET IN ('GROUPES','GROUPES_LISTE')";if(Convert.ToInt32(c.ExecuteScalar())!=2)throw new Exception("Compatibility settings duplicated");}
   connection.Close();
   Console.WriteLine("PASS products page loads 30 original products and 15 families; missing settings upgrade is idempotent");
+  CheckOriginalSaleEntry(a,module,forms,form,login,connection);
   CheckBasketIdentity(a,module,form,connection);
   CheckPictureSales(a,module,form,connection);
 
