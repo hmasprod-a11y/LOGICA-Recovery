@@ -1,0 +1,716 @@
+{
+  "date": "2026-10-26",
+  "runs": [
+    {
+      "repo": "LOGICA-Recovery",
+      "id": 40392747257,
+      "source_commit": "3e2d0f56e573af32dc152e4ebc56a4f1c088dcb8",
+      "branch": "development/business-parity-20261026",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40392747257",
+      "created_at": "2026-10-26T20:06:58Z",
+      "updated_at": "2026-10-26T20:11:50Z"
+    },
+    {
+      "repo": "todo-pos",
+      "id": 40392649866,
+      "source_commit": "42c82e31141c76d5a31461f7ea5df74f18d6c32e",
+      "branch": "codex/business-rounding-20261026",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/hmasprod-a11y/todo-pos/actions/runs/40392649866",
+      "created_at": "2026-10-26T20:06:17Z",
+      "updated_at": "2026-10-26T20:11:57Z"
+    },
+    {
+      "repo": "todo-pos",
+      "id": 40392649963,
+      "source_commit": "42c82e31141c76d5a31461f7ea5df74f18d6c32e",
+      "branch": "codex/business-rounding-20261026",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/hmasprod-a11y/todo-pos/actions/runs/40392649963",
+      "created_at": "2026-10-26T20:06:17Z",
+      "updated_at": "2026-10-26T20:09:07Z"
+    }
+  ],
+  "artifacts": {
+    "logica": [
+      {
+        "id": 12685037919,
+        "name": "LOGICA-Development-Windows",
+        "size_in_bytes": 32003380,
+        "url": "https://api.github.com/repos/hmasprod-a11y/LOGICA-Recovery/actions/artifacts/12685037919",
+        "archive_download_url": "https://api.github.com/repos/hmasprod-a11y/LOGICA-Recovery/actions/artifacts/12685037919/zip",
+        "expired": false,
+        "created_at": "2026-10-26T20:11:43Z",
+        "expires_at": "2027-01-24T20:06:58Z",
+        "updated_at": "2026-10-26T20:11:43Z",
+        "digest": "sha256:d7b236a9d4f17ff3b5927ccaa912cace57bb91a028c4446e9bef279d5ee91564",
+        "workflow_run": {
+          "id": 40392747257,
+          "repository_id": 1432776088,
+          "head_repository_id": 1432776088,
+          "head_branch": "development/business-parity-20261026",
+          "head_sha": "3e2d0f56e573af32dc152e4ebc56a4f1c088dcb8"
+        }
+      },
+      {
+        "id": 12684893275,
+        "name": "LOGICA-build-diagnostics",
+        "size_in_bytes": 362079,
+        "url": "https://api.github.com/repos/hmasprod-a11y/LOGICA-Recovery/actions/artifacts/12684893275",
+        "archive_download_url": "https://api.github.com/repos/hmasprod-a11y/LOGICA-Recovery/actions/artifacts/12684893275/zip",
+        "expired": false,
+        "created_at": "2026-10-26T20:11:40Z",
+        "expires_at": "2026-11-25T20:11:39Z",
+        "updated_at": "2026-10-26T20:11:40Z",
+        "digest": "sha256:511dd5a9af1dc3b9640d64b08017709a4676ab14dca1557f51a1816635af6a11",
+        "workflow_run": {
+          "id": 40392747257,
+          "repository_id": 1432776088,
+          "head_repository_id": 1432776088,
+          "head_branch": "development/business-parity-20261026",
+          "head_sha": "3e2d0f56e573af32dc152e4ebc56a4f1c088dcb8"
+        }
+      }
+    ],
+    "todo": [
+      {
+        "id": 12685591262,
+        "name": "Windows-validation-evidence",
+        "size_in_bytes": 27741,
+        "url": "https://api.github.com/repos/hmasprod-a11y/todo-pos/actions/artifacts/12685591262",
+        "archive_download_url": "https://api.github.com/repos/hmasprod-a11y/todo-pos/actions/artifacts/12685591262/zip",
+        "expired": false,
+        "created_at": "2026-10-26T20:10:29Z",
+        "expires_at": "2027-01-24T20:06:17Z",
+        "updated_at": "2026-10-26T20:10:29Z",
+        "digest": "sha256:77e41b76963b5efdd9dc0d8253595f29f444891d4f1d22249b852f7ee1ca621b",
+        "workflow_run": {
+          "id": 40392649866,
+          "repository_id": 1376571481,
+          "head_repository_id": 1376571481,
+          "head_branch": "codex/business-rounding-20261026",
+          "head_sha": "42c82e31141c76d5a31461f7ea5df74f18d6c32e"
+        }
+      },
+      {
+        "id": 12684563439,
+        "name": "ToDo-POS-1.1.0-Windows",
+        "size_in_bytes": 113192751,
+        "url": "https://api.github.com/repos/hmasprod-a11y/todo-pos/actions/artifacts/12684563439",
+        "archive_download_url": "https://api.github.com/repos/hmasprod-a11y/todo-pos/actions/artifacts/12684563439/zip",
+        "expired": false,
+        "created_at": "2026-10-26T20:11:52Z",
+        "expires_at": "2027-01-24T20:06:17Z",
+        "updated_at": "2026-10-26T20:11:52Z",
+        "digest": "sha256:45becf1e58022440456c943c6b9119321c1d2e5e0544ba6cacfe4ed67246ea7c",
+        "workflow_run": {
+          "id": 40392649866,
+          "repository_id": 1376571481,
+          "head_repository_id": 1376571481,
+          "head_branch": "codex/business-rounding-20261026",
+          "head_sha": "42c82e31141c76d5a31461f7ea5df74f18d6c32e"
+        }
+      }
+    ]
+  },
+  "regression": {
+    "tests": 314,
+    "platforms": [
+      "ubuntu-latest / Python 3.10",
+      "ubuntu-latest / Python 3.12",
+      "windows-latest / Python 3.10",
+      "windows-latest / Python 3.12"
+    ],
+    "status": "passed",
+    "includes_static_source_checks": true,
+    "physical_peripherals_tested": false
+  },
+  "reports": [
+    {
+      "scenario": "cash-sale-partial-return",
+      "todo": "passed",
+      "logica": "passed",
+      "cross_program_parity": "passed",
+      "snapshots": [
+        {
+          "step": "sale",
+          "stock_quantity": 8,
+          "net_collected_cents": 2500,
+          "stock_movement_quantity": -2,
+          "document_count": 1
+        },
+        {
+          "step": "return",
+          "stock_quantity": 9,
+          "net_collected_cents": 1250,
+          "stock_movement_quantity": -1,
+          "document_count": 2
+        }
+      ],
+      "monetary_rounding": [
+        {
+          "value": "0.145",
+          "cents": 15
+        },
+        {
+          "value": "0.005",
+          "cents": 1
+        },
+        {
+          "value": "0.025",
+          "cents": 3
+        },
+        {
+          "value": "1.005",
+          "cents": 101
+        },
+        {
+          "value": "-1.005",
+          "cents": -101
+        },
+        {
+          "value": "9999.995",
+          "cents": 1000000
+        }
+      ],
+      "limitations": [
+        "cash sale and partial return only",
+        "synthetic isolated schemas",
+        "no physical peripherals",
+        "no full UI or performance parity"
+      ]
+    },
+    {
+      "schema_version": 1,
+      "engine": "todo",
+      "platform": "Windows-2025Server-10.0.26100-SP0",
+      "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+      "products": 20000,
+      "service_import_and_fresh_db_init_ms": 203.12,
+      "search_exact_reference": {
+        "samples": 50,
+        "median_ms": 2.938,
+        "p95_ms": 3.532,
+        "max_ms": 4.216,
+        "process_cpu_ms": 156.25
+      },
+      "checkout_single_line": {
+        "samples": 50,
+        "median_ms": 39.535,
+        "p95_ms": 49.186,
+        "max_ms": 65.893,
+        "process_cpu_ms": 250
+      },
+      "process_peak_working_set_bytes": 31834112,
+      "data_checks": "passed",
+      "limitations": [
+        "single process synthetic services",
+        "peak RAM includes seeding",
+        "not full executable startup",
+        "no physical print or scanner",
+        "no cross-machine absolute speed claim",
+        "no LOGICA performance comparison yet"
+      ]
+    }
+  ],
+  "jobs": [
+    {
+      "run_id": 40392747257,
+      "id": 121817714928,
+      "name": "build-test",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Checkout pinned ToDo reference",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Record exact source provenance",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Extract source and schema inventory",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "ToDo Windows regression",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Restore original runtime dependencies",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build original project on Windows",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Start isolated test database",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Exercise original POS on Windows",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compare original LOGICA and ToDo business ledgers",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Measure synthetic service performance and integrity",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify original recovered Access data on MySQL",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify Debug development entry",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify portable launcher with original data",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Finalize portable runtime package",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Inspect original dependency types",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/upload-artifact@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/upload-artifact@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Checkout pinned ToDo reference",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-dotnet@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "run_id": 40392649866,
+      "id": 121817363260,
+      "name": "test-and-build",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Install build dependencies",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Core regression tests",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Tk interface smoke test",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Purchase to printable receipt through Tk controls",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Integrated families and statistics through Tk controls",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Synthetic Windows performance measurements",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Save validation evidence",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Compile sources",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build portable Windows application",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build data import utility",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Create optional isolated demo",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Include documentation and importer",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build Windows installer",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Build previous-version installer fixture",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Smoke test installed Windows setup",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Smoke test in-place installer upgrade preserves data",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Create Windows ZIP package",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Generate SHA256 checksums",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Verify portable ZIP and release identity",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/upload-artifact@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "run_id": 40392649963,
+      "id": 121817363530,
+      "name": "core (ubuntu-latest, 3.10)",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run python -m pip install -r requirements.txt",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run python -B -m unittest discover -s tests -v",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run python -m compileall -q todo ToDo.pyw IMPORT_OLD_DATA.pyw",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "run_id": 40392649963,
+      "id": 121817363989,
+      "name": "core (windows-latest, 3.10)",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run python -m pip install -r requirements.txt",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run python -B -m unittest discover -s tests -v",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run python -m compileall -q todo ToDo.pyw IMPORT_OLD_DATA.pyw",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "run_id": 40392649963,
+      "id": 121817364009,
+      "name": "core (ubuntu-latest, 3.12)",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run python -m pip install -r requirements.txt",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run python -B -m unittest discover -s tests -v",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run python -m compileall -q todo ToDo.pyw IMPORT_OLD_DATA.pyw",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "run_id": 40392649963,
+      "id": 121817364234,
+      "name": "core (windows-latest, 3.12)",
+      "status": "completed",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run python -m pip install -r requirements.txt",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run python -B -m unittest discover -s tests -v",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run python -m compileall -q todo ToDo.pyw IMPORT_OLD_DATA.pyw",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/setup-python@v5",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Post Run actions/checkout@v4",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ]
+}
