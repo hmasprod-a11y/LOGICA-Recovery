@@ -70,13 +70,18 @@ def main():
     args = parser.parse_args()
     fixture = json.loads(args.fixture.read_text(encoding='utf-8-sig'))
     snapshots = run(args.todo_root.resolve(), fixture)
+    from services.money import to_cents
+    rounding = [dict(value=v['value'], cents=to_cents(v['value'])) for v in fixture['rounding_cases']]
+    compare(fixture['rounding_cases'], rounding, 'ToDo monetary rounding')
     logica = None
     if args.logica_log:
         logica = [json.loads(line.partition('CONTRACT ')[2]) for line in args.logica_log.read_text(encoding='utf-8-sig').splitlines() if line.startswith('CONTRACT ')]
+        logica_rounding = [json.loads(line.partition('ROUNDING_CONTRACT ')[2]) for line in args.logica_log.read_text(encoding='utf-8-sig').splitlines() if line.startswith('ROUNDING_CONTRACT ')]
+        compare(rounding, logica_rounding, 'cross-program monetary rounding')
         compare(fixture['snapshots'], logica, 'LOGICA contract')
         compare(logica, snapshots, 'cross-program ledger equivalence')
     report = dict(scenario=fixture['scenario'], todo='passed', logica='passed' if logica is not None else 'not_run',
-                  cross_program_parity='passed' if logica is not None else 'not_run', snapshots=snapshots,
+                  cross_program_parity='passed' if logica is not None else 'not_run', snapshots=snapshots, monetary_rounding=rounding,
                   limitations=['cash sale and partial return only', 'synthetic isolated schemas', 'no physical peripherals', 'no full UI or performance parity'])
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

@@ -52,8 +52,9 @@ class PosSmoke {
  public class ContractSnapshot {
   public string step; public decimal stock_quantity,net_collected_cents,stock_movement_quantity,document_count;
  }
+ public class RoundingCase { public string value; public decimal cents; }
  public class ContractFixture {
-  public decimal initial_stock,unit_price_cents; public int sold_quantity,returned_quantity; public ContractSnapshot[] snapshots;
+  public decimal initial_stock,unit_price_cents; public int sold_quantity,returned_quantity; public ContractSnapshot[] snapshots; public RoundingCase[] rounding_cases;
  }
  static void Checkout(Assembly assembly) {
   var json=new JavaScriptSerializer();
@@ -66,6 +67,11 @@ class PosSmoke {
   var module=assembly.GetType("LOGICA.Module1",true);
   var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
   if(!connection.ConnectionString.Contains("127.0.0.1") || !connection.ConnectionString.Contains("logica_ci"))throw new Exception("Checkout test requires isolated database");
+  foreach(var vector in fixture.rounding_cases) {
+   decimal result=(decimal)module.GetMethod("FLOUSS").Invoke(null,new object[]{decimal.Parse(vector.value,CultureInfo.InvariantCulture)});
+   Eq(result*100m,vector.cents,"shared monetary rounding "+vector.value);
+   Console.WriteLine("ROUNDING_CONTRACT "+json.Serialize(new Dictionary<string,object>{{"value",vector.value},{"cents",result*100m}}));
+  }
   connection.Open();
   string columns="ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté,Remise,TOTAL_NET,TAUX_TVA,GROUPE";
   string journal="ID_TICKET,Ticket,Dates,Heure,"+columns+",Caissier,Vendeur,ID_CLIENT,CODE_CLIENT,CLIENT,POSTE,OPERATION,NOTES,NOTES_TYPE_PRIX,NOTES_MODE_P";

@@ -52,12 +52,12 @@ def inventory(root):
                                        for literal in strings for m in SQL_TABLE.finditer(literal.group())
                                        if re.search(r'\b(?:SELECT|INSERT|UPDATE|DELETE|CREATE\s+TABLE)\b', literal.group(), re.I)]
             else:
-                entry['sql_tables'] = [dict(table=m.group(1), line=body.count('\n', 0, m.start()) + 1) for m in SQL_TABLE.finditer(body)]
+                entry['sql_tables'] = [dict(table=m.group(1), line=body.count('\n', 0, m.start()) + 1) for m in re.finditer(r'^\s*(?:CREATE\s+TABLE|INSERT\s+INTO|ALTER\s+TABLE)\s+[`\[]?([\w]+)', body, re.I | re.M)]
         files.append(entry)
     return dict(files=files, summary=dict(files=len(files), functions=sum(len(f['functions']) for f in files),
                 test_functions=sum(x['kind']=='test' for f in files for x in f['functions']),
                 ui_captions=sum(len(f['ui_captions']) for f in files),
-                schema_tables=sorted({m.group(1) for p in root.rglob('*.sql') for m in re.finditer(r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`\[]?([\w]+)', p.read_text(encoding='utf-8-sig'), re.I)}),
+                schema_tables=sorted({m.group(1) for p in list(root.rglob('*.sql')) + ([root / 'todo/database.py'] if (root / 'todo/database.py').exists() else []) for m in re.finditer(r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`\[]?([\w]+)', p.read_text(encoding='utf-8-sig'), re.I)}),
                 sql_table_candidates=sorted({x['table'] for f in files for x in f['sql_tables']})))
 
 
