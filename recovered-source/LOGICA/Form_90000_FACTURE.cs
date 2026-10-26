@@ -9631,11 +9631,6 @@ public class Form_90000_FACTURE : Form
 					MessageBox.Show("Veuillez remplir le champ -ID_ARTICLE- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Operators.CompareString(Text_CODE.Text, "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -Code- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
 				if (Operators.CompareString(Text_ARTICLE.Text, "", TextCompare: false) == 0)
 				{
 					MessageBox.Show("Veuillez remplir le champ -Article- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
@@ -9671,7 +9666,7 @@ public class Form_90000_FACTURE : Form
 					{
 						break;
 					}
-					if (Operators.CompareString(DataGrid_BODY.Rows[num2].Cells["Code"].Value.ToString(), Text_CODE.Text, TextCompare: false) == 0)
+					if (Operators.CompareString(DataGrid_BODY.Rows[num2].Cells["ID_ARTICLE"].Value.ToString(), Text_ID_ARTICLE.Text, TextCompare: false) == 0)
 					{
 						MessageBox.Show("Cette Article est déja utilisé", "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
 						return;
@@ -10620,7 +10615,7 @@ public class Form_90000_FACTURE : Form
 					{
 						break;
 					}
-					if (Operators.CompareString(DataGrid_BODY.Rows[num6].Cells["Code"].Value.ToString(), Text_CODE.Text, TextCompare: false) == 0)
+					if (Operators.CompareString(DataGrid_BODY.Rows[num6].Cells["ID_ARTICLE"].Value.ToString(), Text_ID_ARTICLE.Text, TextCompare: false) == 0)
 					{
 						MessageBox.Show("Cette Article est déja utilisé", "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
 						return;

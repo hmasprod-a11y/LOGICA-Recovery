@@ -60,6 +60,17 @@ class RecoveredCheck {
    c.CommandText="CREATE TABLE TABLE_CI_SHARED LIKE TABLE_01";c.ExecuteNonQuery();
   }sql.Close();editor.Close();
   Console.WriteLine("PASS actual stock editor: duplicate barcode variant/independent, cancellation, atomic stock + audit, two products without barcode");
+
+  foreach(string page in new[]{"Form_6_RECEPTIONS","Form_6_INVENTAIRES","Form_6_SORTIES","Form_6_COMMANDES","Form_900_DEVIS","Form_9000_BL","Form_90000_FACTURE"}){
+   using(var document=(Form)Activator.CreateInstance(a.GetType("LOGICA."+page,true))){
+    var input=(Control)Get(document,"Text_CODE_FIND");input.Text="0612345678901";
+    var findDocument=document.GetType().GetMethod("Button_FIND_Click",BindingFlags.Instance|BindingFlags.NonPublic);
+    ChooseWhile(()=>findDocument.Invoke(document,new object[]{input,EventArgs.Empty}),"DuplicateBarcodeSale","ChooseProduct",variant,1);
+    if(((Control)Get(document,"Text_ID_ARTICLE")).Text!=variant)throw new Exception(page+" selected the first barcode match instead of chosen product");
+   }
+  }
+  Console.WriteLine("PASS real reception/inventory/stock-exit/order/quote/delivery/invoice barcode handlers select chosen shared-barcode identity");
+
   string oldPost=((Control)Get(template,"Label_POSTE")).Text;((Control)Get(template,"Label_POSTE")).Text="CI_SHARED";
   try{
    using(var sale=(Form)Activator.CreateInstance(a.GetType("LOGICA.Form_3_VENTE",true)))
@@ -381,5 +392,4 @@ class RecoveredCheck {
  form.Dispose();return 0;
  }catch(Exception e){Console.WriteLine("FAIL "+e);return 1;}finally{stop=true;}}
 }
-
 
