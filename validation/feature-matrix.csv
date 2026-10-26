@@ -1,7 +1,7 @@
 ﻿id,function_ar,priority,logica_source,todo_source,todo_test_candidate,parity_status,acceptance_ar
 SALE,البيع النقدي,P0,recovered-source/LOGICA/Form_3_VENTE.cs,todo/services/sales.py,tests/test_core.py,عقد مشترك جاهز,snapshot المبلغ والمخزون والحركات والمستندات متطابق بعد كل خطوة
 RETURN,مرتجع جزئي نقدي,P0,recovered-source/LOGICA/FormDialog_RETOUR.cs,todo/services/sales.py,tests/test_core.py,عقد مشترك جاهز,المرتجع يزيد المخزون ويخفض المقبوض مرة واحدة
-ROUND,التقريب والعملات,P0,recovered-source/LOGICA/Module1.cs,todo/services/money.py,tests/test_tax_engine.py,إصلاح مشتريات ToDo؛ عقد تقريب مشترك قيد Windows,نصف السنت والمبالغ السالبة والكميات الكسرية عبر fr-MA/fr-FR/en-US
+ROUND,التقريب والعملات,P0,recovered-source/LOGICA/Module1.cs,todo/services/money.py,tests/test_purchase_money_rounding.py,عقد تقريب حسابي منفذ؛ عقد استلام شراء كامل ناقص,نصف السنت والمبالغ السالبة والكميات الكسرية عبر fr-MA/fr-FR/en-US
 FRACTION,كميات كسرية,P0,recovered-source/LOGICA/FormDialog_QUANTITE.cs,todo/services/sales.py,tests/test_core.py,غير مقارن,بيع ومرتجع كسري دون فقد كمية أو سنت
 RETRY,إعادة محاولة الأداء,P0,recovered-source/LOGICA/Form_3_VENTE.cs,todo/services/sales.py,tests/test_checkout_retry.py,غير مقارن,انقطاع بعد الالتزام ثم إعادة المحاولة لا يكرر البيع
 ATOMIC,ذرية المعاملة,P0,recovered-source/LOGICA/Form_3_VENTE.cs,todo/services/sales.py,tests/test_checkout_stock_guard.py,غير مقارن,حقن فشل بعد كل كتابة: لا تذكرة أو مخزون أو قبض جزئي

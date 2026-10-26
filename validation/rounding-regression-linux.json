@@ -1,6 +1,6 @@
 {
   "date": "2026-10-26",
-  "todo_commit": "8187b5a845cac09fd4d669b3a447c296853b646b",
+  "todo_commit": "42c82e31141c76d5a31461f7ea5df74f18d6c32e",
   "reproductions_before_fix": {
     "receipt_total_cents": 16,
     "expected_receipt_total_cents": 19,
@@ -13,13 +13,16 @@
     "expected_partial_refunds_cents": [
       1,
       0
-    ]
+    ],
+    "purchase_preview_cents": 16,
+    "printed_addition_cents": 16,
+    "expected_preview_and_addition_cents": 19
   },
   "after_fix": {
-    "tests": 312,
+    "tests": 314,
     "failures": 0,
     "errors": 0,
-    "seconds": 11.444
+    "seconds": 14.305
   },
   "scope": "new order/receipt totals and future supplier returns; no historical document rewrite"
 }
