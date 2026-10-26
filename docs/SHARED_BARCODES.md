@@ -1,6 +1,6 @@
 # Codes-barres partagés et produits sans code-barres
 
-Version de développement : 1.1.0.0.
+Version de développement : 1.1.1.0.
 
 ## Saisie du stock
 
@@ -17,7 +17,7 @@ Deux produits sans code-barres ne déclenchent pas de fenêtre de doublon.
 
 ## Vente
 
-Un scan avec un seul résultat conserve le fonctionnement direct. Avec plusieurs résultats, une fenêtre affiche les noms, tailles/couleurs, prix, stocks et références internes. Le caissier choisit la fiche exacte. Annuler ou fermer la fenêtre n'ajoute rien. Chaque nouveau scan redemande le choix.
+Un scan avec un seul résultat conserve le fonctionnement direct. Avec plusieurs résultats, la fenêtre affiche uniquement la photo, le nom (avec taille/couleur) et le prix du tarif actif. Le caissier peut conserver la quantité, ou la modifier dans le champ × à l'aide du pavé numérique (chiffres, décimale, effacement et C). Un simple clic sur la ligne du produit l'ajoute directement au panier avec cette quantité, sans bouton de confirmation. Une quantité vide, nulle ou invalide ne peut pas valider le produit. Annuler ou fermer la fenêtre n'ajoute rien et ne change pas la quantité de la vente. Chaque nouveau scan redemande le choix.
 
 Cliquer sur une photo identifie directement sa fiche, avec ou sans code-barres. La liste des photos continue à exclure les photos absentes ou invalides. La liste des articles reste l'onglet affiché au démarrage de la vente.
 
@@ -28,3 +28,4 @@ Les recherches exactes par code dans les réceptions, sorties, inventaires, comm
 ## Mise à jour
 
 Fermer l'application et sa console de lancement, puis remplacer les fichiers du ZIP dans le dossier Debug existant. Conserver le dossier bd et ses données. Démarrer Start-LOGICA.cmd. Le démarrage ajoute uniquement la colonne VARIANT_PARENT manquante ; il ne réimporte pas la base et ne modifie pas les codes ou les ventes historiques.
+
