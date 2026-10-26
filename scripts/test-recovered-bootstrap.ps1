@@ -9,7 +9,7 @@ try {
  Start-Process "$root/LOGICA.exe" -WorkingDirectory $root | Out-Null
  for($i=0;$i -lt 80;$i++){
   Start-Sleep -Milliseconds 500
-  $app=Get-Process LOGICA -ErrorAction SilentlyContinue | Where-Object {$_.Path -eq "$root/LOGICA.exe" -and $_.MainWindowTitle -like '*Development*'} | Select-Object -First 1
+  $app=Get-Process LOGICA -ErrorAction SilentlyContinue | Where-Object {$_.Path -eq (Join-Path $root 'LOGICA.exe') -and $_.MainWindowTitle -like '*Development*'} | Select-Object -First 1
   if($app){break}
  }
  if(-not $app){throw 'Opening EXE directly did not reach development login'}
@@ -30,6 +30,7 @@ try {
   if(-not $open){break}
   Start-Sleep -Milliseconds 500
  }
+ if(Test-Path "$root/bd/mysql-server"){Remove-Item "$root/bd/mysql-server" -Force}
  $env:LOGICA_DB_CONNECTION_STRING=$previous
 }
 if($open){throw 'Portable launcher left database running after application exit'}
