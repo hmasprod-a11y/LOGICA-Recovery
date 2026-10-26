@@ -4494,7 +4494,7 @@ public class Form_6_RECEPTIONS : Form
 		__ENCAddToList(this);
 		DA = new MySqlDataAdapter();
 		DT = new DataTable();
-		_HTTTC = MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("HT_TTC", false, 0).Index].SubItems[1].Text;
+		_HTTTC = MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("HT_TTC", false, 0)?.SubItems[1].Text ?? "TTC";
 		newpoint = default;
 		dt_ARTICLE_FIND = new DataTable();
 		da_ARTICLE_FIND = new MySqlDataAdapter();
