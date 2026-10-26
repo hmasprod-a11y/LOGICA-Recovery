@@ -7,6 +7,7 @@ class RecoveredCheck {
  [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern int GetClassName(IntPtr w,StringBuilder b,int n);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)]static extern int GetWindowText(IntPtr w,StringBuilder b,int n);
  [DllImport("user32.dll")]static extern uint GetWindowThreadProcessId(IntPtr w,out uint p);
+ [DllImport("user32.dll")]static extern IntPtr SendMessage(IntPtr window,uint message,IntPtr wParam,IntPtr lParam);
  [DllImport("user32.dll")]static extern bool PostMessage(IntPtr w,uint m,IntPtr a,IntPtr b);
  static int saved=0;static int productSaved=0;static volatile bool stop=false;static List<string> errors=new List<string>();
  static object Get(object o,string n){return o.GetType().GetProperty(n,BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public).GetValue(o,null);}
@@ -88,6 +89,8 @@ class RecoveredCheck {
     var loadKey=typeof(Form).GetField("EVENT_LOAD",BindingFlags.Static|BindingFlags.NonPublic).GetValue(null);events.RemoveHandler(loadKey,events[loadKey]);
     ((TabControl)Get(sale,"TabControl2")).SelectedIndex=1;
     ((Control)Get(sale,"Button_PRIX")).Text="PRIX_1";((Control)Get(sale,"Button_OPERATION")).Text="VENTE";((Control)Get(sale,"Combo_PORT")).Text="";
+    ((Control)Get(sale,"Text_THEME")).BackColor=System.Drawing.Color.FromArgb(22,106,238);
+    ((Control)Get(sale,"TabControl2")).BringToFront();
     sale.Show();Application.DoEvents();
     var familyMethod=sale.GetType().GetMethod("FAM2_click");var flow=(FlowLayoutPanel)Get(sale,"FlowLayout_ARTICLES");
     using(var family=new Button(){Text="CI pictures' category"})familyMethod.Invoke(sale,new object[]{family,EventArgs.Empty});
@@ -98,15 +101,15 @@ class RecoveredCheck {
     if(center.R<230 || center.G>30 || corner.ToArgb()!=System.Drawing.Color.White.ToArgb())throw new Exception("Wide photo was distorted or failed to load from portable path");
     using(var unlocked=new FileStream(photo,FileMode.Open,FileAccess.ReadWrite,FileShare.None)){}
     using(var preview=new System.Drawing.Bitmap(Math.Max(1,flow.Width),Math.Max(1,Math.Min(flow.Height,160)))){flow.DrawToBitmap(preview,new System.Drawing.Rectangle(0,0,preview.Width,preview.Height));preview.Save(Path.Combine(root,"..","results","picture-tiles.png"));}
-    for(int click=0;click<2;click++){((Control)Get(sale,"Label_QTE")).Text="1";photoTile.PerformClick();Application.DoEvents();}
+    for(int click=0;click<2;click++){((Control)Get(sale,"Label_QTE")).Text="1";SendMessage(photoTile.Handle,0xF5,IntPtr.Zero,IntPtr.Zero);Application.DoEvents();}
     var oldTile=flow.Controls[0];using(var family=new Button(){Text="CI pictures' category"})familyMethod.Invoke(sale,new object[]{family,EventArgs.Empty});if(!oldTile.IsDisposed)throw new Exception("Old image tiles were not disposed");
     var search=(Control)Get(sale,"Text_FIND");search.Text="CI_IMG_MISSING";Application.DoEvents();
     if(flow.Controls.Count!=1 || Convert.ToString(flow.Controls[0].Tag)!="CI_IMG_MISSING")throw new Exception("Picture search hides a product with 0.png");
-    ((Control)Get(sale,"Label_QTE")).Text="1";((Button)flow.Controls[0]).PerformClick();
+    ((Control)Get(sale,"Label_QTE")).Text="1";SendMessage(flow.Controls[0].Handle,0xF5,IntPtr.Zero,IntPtr.Zero);Application.DoEvents();
     search.Text="CI_IMG_CORRUPT";Application.DoEvents();if(flow.Controls.Count!=1)throw new Exception("Corrupt photo product disappeared");
     ((Control)Get(sale,"Label_QTE")).Text="1";((Button)flow.Controls[0]).PerformClick();
     lock(errors){if(errors.Count>0)throw new Exception("Picture sales errors: "+string.Join(" | ",errors.ToArray()));}
-    sql.Open();using(var c=sql.CreateCommand()){c.CommandText="SELECT COUNT(*),SUM(\x60Qté\x60),SUM(TOTAL_NET) FROM TABLE_CI_PICTURES";using(var reader=c.ExecuteReader()){reader.Read();if(Convert.ToInt32(reader.GetValue(0))!=3 || Convert.ToDecimal(reader.GetValue(1))!=4m || Convert.ToDecimal(reader.GetValue(2))!=35m)throw new Exception("Picture clicks did not save correct basket quantities and prices");}}sql.Close();
+    sql.Open();using(var c=sql.CreateCommand()){c.CommandText="SELECT COUNT(*),SUM(\x60Qté\x60),SUM(TOTAL_NET) FROM TABLE_CI_PICTURES";using(var reader=c.ExecuteReader()){reader.Read();Console.WriteLine("Picture sale saved lines="+reader.GetValue(0)+" quantity="+reader.GetValue(1)+" total="+reader.GetValue(2));if(Convert.ToInt32(reader.GetValue(0))!=3 || Convert.ToDecimal(reader.GetValue(1))!=4m || Convert.ToDecimal(reader.GetValue(2))!=35m)throw new Exception("Picture clicks did not save correct basket quantities and prices");}}sql.Close();
     Console.WriteLine("PASS picture category/search render real, missing and corrupt photos; wide image keeps aspect ratio; source file stays unlocked");
     Console.WriteLine("PASS clicking picture twice and placeholder/corrupt tiles persists 3 lines, 4 items, total 35");
    }
