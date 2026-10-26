@@ -14578,7 +14578,7 @@ public class Form_3_VENTE : Form
                 DataTable matches = ProductBarcodeDialog.Find(scannedCode);
                 if (matches.Rows.Count > 1)
                 {
-                    using (var choice = new ProductBarcodeDialog(matches,false,scannedCode))
+                    using (var choice = new ProductBarcodeDialog(matches,false,scannedCode,"Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5)))
                     {
                         if(choice.ShowDialog(this)!=DialogResult.OK) { Text_CODE.SelectAll(); Text_CODE.Focus(); return; }
                         Module1.dt_find = matches.Clone();

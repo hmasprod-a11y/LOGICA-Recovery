@@ -13,7 +13,7 @@ class RecoveredCheck {
  static object Get(object o,string n){return o.GetType().GetProperty(n,BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public).GetValue(o,null);}
  static void Watch(){while(!stop){EnumWindows(delegate(IntPtr w,IntPtr x){uint pid;GetWindowThreadProcessId(w,out pid);if(pid!=Process.GetCurrentProcess().Id)return true;var b=new StringBuilder(100);GetClassName(w,b,100);if(b.ToString()!="#32770")return true;var all=new StringBuilder();EnumChildWindows(w,delegate(IntPtr c,IntPtr y){var text=new StringBuilder(600);GetWindowText(c,text,600);if(text.Length>0)all.Append(text+" ");return true;},IntPtr.Zero);lock(errors){if(all.ToString().Contains("Modifié avec succès"))saved++;else if(all.ToString().Contains("Enregistré avec succès"))productSaved++;else errors.Add(all.ToString());}PostMessage(w,0x10,IntPtr.Zero,IntPtr.Zero);return true;},IntPtr.Zero);Thread.Sleep(100);}}
 
- static void ChooseWhile(Action work,string formName,string action,string id,decimal quantity){
+ static void ChooseWhile(Action work,string formName,string action,string id,decimal quantity,decimal expectedPrice=-1){
   bool seen=false;Exception failure=null;int ticks=0;
   using(var timer=new System.Windows.Forms.Timer()){timer.Interval=40;timer.Tick+=delegate{
    if(++ticks>300){timer.Stop();failure=new Exception("Choice dialog timeout: "+formName);foreach(Form f in Application.OpenForms)if(f.Name==formName){f.Close();break;}return;}
@@ -21,7 +21,7 @@ class RecoveredCheck {
    timer.Stop();seen=true;
    try{
     var grid=(DataGridView)choice.Controls.Find("Products",true)[0];
-    if(id!=null){bool found=false;foreach(DataGridViewRow row in grid.Rows)if(Convert.ToString(row.Cells["Identity"].Value)==id){grid.CurrentCell=row.Cells["Article"];row.Selected=true;found=true;break;}if(!found)throw new Exception("Expected choice product missing: "+id);}
+    if(id!=null){bool found=false;foreach(DataGridViewRow row in grid.Rows)if(Convert.ToString(row.Cells["Identity"].Value)==id){grid.CurrentCell=row.Cells["Article"];row.Selected=true;found=true;if(expectedPrice>=0 && decimal.Parse(Convert.ToString(row.Cells["Price"].Value))!=expectedPrice)throw new Exception("Popup displayed wrong active tariff");break;}if(!found)throw new Exception("Expected choice product missing: "+id);}
     if(formName=="DuplicateBarcodeStock")((NumericUpDown)choice.Controls.Find("StockQuantity",true)[0]).Value=quantity;
     ((Button)choice.Controls.Find(action,true)[0]).PerformClick();
    }catch(Exception e){failure=e;choice.Close();}
@@ -83,6 +83,14 @@ class RecoveredCheck {
     sale.Show();Application.DoEvents();
     var code=(Control)Get(sale,"Text_CODE");var find=sale.GetType().GetMethod("Button_FIND_Click",BindingFlags.Instance|BindingFlags.NonPublic);
     Action scan=()=>{code.Text="0612345678901";find.Invoke(sale,new object[]{code,EventArgs.Empty});};
+
+    ((Control)Get(sale,"Button_PRIX")).Text="PRIX_2";
+    ChooseWhile(scan,"DuplicateBarcodeSale","ChooseProduct",variant,1,10);
+    if(table.Rows.Count!=1 || Convert.ToDecimal(table.Rows[0]["PRIX_V"])!=10)throw new Exception("Shared variant active tariff not applied");
+    sql.Open();using(var clear=sql.CreateCommand()){clear.CommandText="DELETE FROM TABLE_CI_SHARED";clear.ExecuteNonQuery();}sql.Close();table.Clear();
+    ((Control)Get(sale,"Button_PRIX")).Text="PRIX_1";
+    Console.WriteLine("PASS shared barcode choice displays and applies the active PRIX_2 tariff");
+
     ChooseWhile(scan,"DuplicateBarcodeSale","ChooseProduct",variant,1);
     ChooseWhile(scan,"DuplicateBarcodeSale","ChooseProduct",first,1);
     ChooseWhile(scan,"DuplicateBarcodeSale","ChooseProduct",variant,1);

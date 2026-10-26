@@ -44,7 +44,7 @@ internal sealed class ProductBarcodeDialog : Form
         }
     }
 
-    public ProductBarcodeDialog(DataTable rows, bool stockMode, string barcode)
+    public ProductBarcodeDialog(DataTable rows, bool stockMode, string barcode, string priceColumn = "PRIX_V_1")
     {
         Name = stockMode ? "DuplicateBarcodeStock" : "DuplicateBarcodeSale";
         Text = stockMode ? "Code-barres déjà utilisé : " + barcode : "Choisir le produit : " + barcode;
@@ -65,7 +65,7 @@ internal sealed class ProductBarcodeDialog : Form
             string label=Convert.ToString(row["Article"]);
             foreach(string column in new[]{"Taille","Couleur"}) if(rows.Columns.Contains(column) && !string.IsNullOrWhiteSpace(Convert.ToString(row[column]))) label += " / " + Convert.ToString(row[column]);
             var image=Module1.LoadAvailableProductPhoto(Convert.ToString(row["Images"]),80,60);
-            int index=products.Rows.Add(image,label,Convert.ToDecimal(row["PRIX_V_1"]).ToString("0.00"),row["STOCK"],row["ID_ARTICLE"],rows.Columns.Contains("VARIANT_PARENT") ? Convert.ToString(row["VARIANT_PARENT"]) : "");
+            int index=products.Rows.Add(image,label,(row.IsNull(priceColumn) ? 0m : Convert.ToDecimal(row[priceColumn])).ToString("0.00"),row["STOCK"],row["ID_ARTICLE"],rows.Columns.Contains("VARIANT_PARENT") ? Convert.ToString(row["VARIANT_PARENT"]) : "");
             products.Rows[index].Tag=row;
         }
         products.Columns["Photo"].DefaultCellStyle.NullValue=null;
