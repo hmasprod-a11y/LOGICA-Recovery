@@ -82,6 +82,15 @@ jobs:
             if(-not (Test-Path $target)) { Copy-Item $_.FullName -Destination $target }
           }
           Get-ChildItem dist -File | Get-FileHash -Algorithm SHA256 | Select-Object Hash,Path | ConvertTo-Json | Set-Content results/runtime-manifest.json
+      - name: Build standalone backup entry point
+        shell: pwsh
+        run: |
+          $csc=Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
+          $dist=(Resolve-Path dist).Path
+          $source=(Resolve-Path scripts/backup-cli.cs).Path
+          & $csc /nologo /platform:x86 /target:exe /r:System.Windows.Forms.dll /r:System.Data.dll "/r:$dist\LOGICA.exe" "/r:$dist\MySql.Data.dll" "/out:$dist\LOGICA.Backup.exe" $source
+          if($LASTEXITCODE -ne 0){throw 'Backup entry compilation failed'}
+          Copy-Item dist/LOGICA.exe.config dist/LOGICA.Backup.exe.config
       - name: Start isolated test database
         shell: pwsh
         run: ./scripts/setup-test-db.ps1
@@ -110,13 +119,6 @@ jobs:
           $env:LOGICA_EXPECT_DEVELOPMENT='1'
           ./scripts/test-recovered-db.ps1
           if($LASTEXITCODE -ne 0){throw 'Development login test failed'}
-      - name: Build standalone backup entry point
-        shell: pwsh
-        run: |
-          $csc=Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
-          & $csc /nologo /platform:x86 /target:exe /r:System.Windows.Forms.dll /r:System.Data.dll "/r:$env:GITHUB_WORKSPACE/dist/LOGICA.exe" "/r:$env:GITHUB_WORKSPACE/dist/MySql.Data.dll" /out:dist/LOGICA.Backup.exe scripts/backup-cli.cs
-          if($LASTEXITCODE -ne 0){throw 'Backup entry compilation failed'}
-          Copy-Item dist/LOGICA.exe.config dist/LOGICA.Backup.exe.config
       - name: Verify backup restore and transactional reset on isolated databases
         shell: pwsh
         run: ./scripts/test-database-backup.ps1
