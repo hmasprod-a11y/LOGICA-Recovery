@@ -306,7 +306,7 @@ internal sealed class Module1
 
 
 
-	public static Bitmap LoadProductImage(string imageName, int width, int height)
+	public static Bitmap LoadAvailableProductPhoto(string imageName, int width, int height)
 	{
 		width = Math.Max(1, width);
 		height = Math.Max(1, height);
@@ -340,6 +340,15 @@ internal sealed class Module1
 			}
 			catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is ArgumentException || ex is ExternalException || ex is OutOfMemoryException) { }
 		}
+		return null;
+	}
+
+	public static Bitmap LoadProductImage(string imageName, int width, int height)
+	{
+		width = Math.Max(1, width);
+		height = Math.Max(1, height);
+		Bitmap photo = LoadAvailableProductPhoto(imageName, width, height);
+		if (photo != null) return photo;
 		Bitmap placeholder = new Bitmap(width, height);
 		using (Graphics graphics = Graphics.FromImage(placeholder))
 		{

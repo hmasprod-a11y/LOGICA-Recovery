@@ -94,7 +94,7 @@ class RecoveredCheck {
     sale.Show();Application.DoEvents();
     var familyMethod=sale.GetType().GetMethod("FAM2_click");var flow=(FlowLayoutPanel)Get(sale,"FlowLayout_ARTICLES");
     using(var family=new Button(){Text="CI pictures' category"})familyMethod.Invoke(sale,new object[]{family,EventArgs.Empty});
-    if(flow.Controls.Count!=3)throw new Exception("Picture category did not render all photo/missing/corrupt products");
+    if(flow.Controls.Count!=1)throw new Exception("Picture category must include only the product with a valid photo");
     Button photoTile=null;foreach(Button tile in flow.Controls){if(tile.Image==null || tile.Image.Size!=new System.Drawing.Size(96,64))throw new Exception("Picture tile missing fitted image");if(Convert.ToString(tile.Tag)=="CI_RECOVERED_PRODUCT")photoTile=tile;}
     if(photoTile==null)throw new Exception("Real photo tile missing");
     var thumbnail=(System.Drawing.Bitmap)photoTile.Image;var center=thumbnail.GetPixel(48,32);var corner=thumbnail.GetPixel(1,1);
@@ -104,14 +104,18 @@ class RecoveredCheck {
     for(int click=0;click<2;click++){((Control)Get(sale,"Label_QTE")).Text="1";typeof(Control).GetMethod("OnClick",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(photoTile,new object[]{EventArgs.Empty});Application.DoEvents();}
     var oldTile=flow.Controls[0];using(var family=new Button(){Text="CI pictures' category"})familyMethod.Invoke(sale,new object[]{family,EventArgs.Empty});if(!oldTile.IsDisposed)throw new Exception("Old image tiles were not disposed");
     var search=(Control)Get(sale,"Text_FIND");search.Text="CI_IMG_MISSING";Application.DoEvents();
-    if(flow.Controls.Count!=1 || Convert.ToString(flow.Controls[0].Tag)!="CI_IMG_MISSING")throw new Exception("Picture search hides a product with 0.png");
-    ((Control)Get(sale,"Label_QTE")).Text="1";typeof(Control).GetMethod("OnClick",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(flow.Controls[0],new object[]{EventArgs.Empty});Application.DoEvents();
-    search.Text="CI_IMG_CORRUPT";Application.DoEvents();if(flow.Controls.Count!=1)throw new Exception("Corrupt photo product disappeared");
-    ((Control)Get(sale,"Label_QTE")).Text="1";typeof(Control).GetMethod("OnClick",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(flow.Controls[0],new object[]{EventArgs.Empty});Application.DoEvents();
+    if(flow.Controls.Count!=0)throw new Exception("Product without assigned photo appeared in picture search");
+    search.Text="CI_IMG_CORRUPT";Application.DoEvents();
+    if(flow.Controls.Count!=0)throw new Exception("Product with invalid photo appeared in picture search");
+    search.Text="CI_RECOVERED_PRODUCT";Application.DoEvents();
+    if(flow.Controls.Count!=1 || Convert.ToString(flow.Controls[0].Tag)!="CI_RECOVERED_PRODUCT")throw new Exception("Product with valid photo disappeared from picture search");
+    ((TabControl)Get(sale,"TabControl2")).SelectedIndex=0;search.Text="";search.Text="CI_IMG_MISSING";Application.DoEvents();
+    var list=(DataTable)((DataGridView)Get(sale,"DataGridView100")).DataSource;
+    if(list.Rows.Count!=1 || Convert.ToString(list.Rows[0]["Code"])!="CI_IMG_MISSING")throw new Exception("Article list must retain products without photos");
     lock(errors){if(errors.Count>0)throw new Exception("Picture sales errors: "+string.Join(" | ",errors.ToArray()));}
-    sql.Open();using(var c=sql.CreateCommand()){c.CommandText="SELECT COUNT(*),SUM(\x60Qté\x60),SUM(TOTAL_NET) FROM TABLE_CI_PICTURES";using(var reader=c.ExecuteReader()){reader.Read();Console.WriteLine("Picture sale saved lines="+reader.GetValue(0)+" quantity="+reader.GetValue(1)+" total="+reader.GetValue(2));if(Convert.ToInt32(reader.GetValue(0))!=3 || Convert.ToDecimal(reader.GetValue(1))!=4m || Convert.ToDecimal(reader.GetValue(2))!=35m)throw new Exception("Picture clicks did not save correct basket quantities and prices");}}sql.Close();
-    Console.WriteLine("PASS picture category/search render real, missing and corrupt photos; wide image keeps aspect ratio; source file stays unlocked");
-    Console.WriteLine("PASS clicking picture twice and placeholder/corrupt tiles persists 3 lines, 4 items, total 35");
+    sql.Open();using(var c=sql.CreateCommand()){c.CommandText="SELECT COUNT(*),SUM(\x60Qté\x60),SUM(TOTAL_NET) FROM TABLE_CI_PICTURES";using(var reader=c.ExecuteReader()){reader.Read();Console.WriteLine("Picture sale saved lines="+reader.GetValue(0)+" quantity="+reader.GetValue(1)+" total="+reader.GetValue(2));if(Convert.ToInt32(reader.GetValue(0))!=1 || Convert.ToDecimal(reader.GetValue(1))!=2m || Convert.ToDecimal(reader.GetValue(2))!=24m)throw new Exception("Picture clicks did not save correct basket quantities and prices");}}sql.Close();
+    Console.WriteLine("PASS picture categories and search include only valid photos; missing/corrupt photos excluded; article list retains no-photo products");
+    Console.WriteLine("PASS valid picture card clicked twice persists one line, quantity 2, total 24");
    }
   }finally{((Control)Get(template,"Label_POSTE")).Text=oldPost;module.GetField("_CHEMIN_FOLDER").SetValue(null,oldFolder);if(sql.State==ConnectionState.Open)sql.Close();}
  }
@@ -134,7 +138,7 @@ class RecoveredCheck {
    Console.WriteLine("PASS original login/menu -> sale Load -> default Liste Article -> select Liste Photos: 15 original FAMILLE/PAGE categories and visible cards");
 
    // Exercise the actual generated category buttons, then inspect the photo saved by the product editor.
-   ((Button)families.Controls[1]).PerformClick();Application.DoEvents();if(tiles.Controls.Count==0)throw new Exception("Real picture category button did not load products");
+   ((Button)families.Controls[1]).PerformClick();Application.DoEvents();if(tiles.Controls.Count!=0)throw new Exception("Original category with missing photo files must not show fallback cards");
    ((Button)families.Controls[0]).PerformClick();Application.DoEvents();
    Button selected=null;foreach(Button tile in tiles.Controls)if(Convert.ToString(tile.Tag)=="CI_RECOVERED_PRODUCT"){selected=tile;break;}
    if(selected==null || selected.Image==null)throw new Exception("New editor product did not appear in real sale category");

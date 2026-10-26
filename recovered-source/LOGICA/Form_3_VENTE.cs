@@ -12438,6 +12438,8 @@ public class Form_3_VENTE : Form
 			}
 			foreach (DataRow product in products.Rows)
 			{
+				Bitmap photo = Module1.LoadAvailableProductPhoto(Convert.ToString(product["Images"]), 96, 64);
+				if (photo == null) continue;
 				Button_RJ_ARTICLE tile = new Button_RJ_ARTICLE();
 				tile.Name = "Button_ARTICLE_" + FlowLayout_ARTICLES.Controls.Count;
 				tile.Text = Convert.ToString(product["Article"]);
@@ -12453,7 +12455,7 @@ public class Form_3_VENTE : Form
 				tile.FlatStyle = FlatStyle.Flat;
 				tile.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
 				tile.ForeColor = Color.Black;
-				tile.Image = Module1.LoadProductImage(Convert.ToString(product["Images"]), 96, 64);
+				tile.Image = photo;
 				tile.ImageAlign = ContentAlignment.TopCenter;
 				tile.Margin = new Padding(2, 2, 0, 0);
 				tile.Padding = new Padding(4, 17, 4, 3);
