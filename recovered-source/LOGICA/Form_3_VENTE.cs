@@ -12455,7 +12455,7 @@ public class Form_3_VENTE : Form
 				tile.Padding = new Padding(4, 17, 4, 3);
 				tile.Size = new Size(127, 117);
 				tile.TextAlign = ContentAlignment.BottomCenter;
-				tile.TextImageRelation = TextImageRelation.ImageAboveText;
+				tile.TextImageRelation = TextImageRelation.Overlay;
 				tile.UseVisualStyleBackColor = false;
 				tile.Click += B_article2_click;
 				FlowLayout_ARTICLES.Controls.Add(tile);
