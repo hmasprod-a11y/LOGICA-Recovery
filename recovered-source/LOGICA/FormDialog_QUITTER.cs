@@ -572,135 +572,69 @@ public class FormDialog_QUITTER : Form
 		((Form)this).Close();
 	}
 
+	public string CreateBackupAt(string destination)
+	{
+		return DatabaseBackup.CreateToFile(Module1.DatabaseConnectionStringForMaintenance(), destination,
+			DatabaseBackup.FindServerBin(Application.StartupPath));
+	}
+
+	public void BackupBeforeShutdown(Action shutdown) { BackupBeforeExit(shutdown); }
+
+	public void BackupBeforeExit(Action shutdown)
+	{
+		if (shutdown == null) throw new ArgumentNullException("shutdown");
+		if (CheckBox1.Checked)
+		{
+			string root = Module1._CHEMIN_FOLDER;
+			if (string.IsNullOrWhiteSpace(root) || !Path.IsPathRooted(root)) root = Application.StartupPath;
+			DatabaseBackup.Create(Module1.DatabaseConnectionStringForMaintenance(), Path.Combine(root, "bd", "backup"),
+				DatabaseBackup.FindServerBin(Application.StartupPath));
+		}
+		shutdown();
+	}
+
 	private void Button3_Click(object sender, EventArgs e)
 	{
-		//IL_0002: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0008: Expected Obj, but got Unknown
-		//IL_0039: Unknown result type (might be due to invalid IL or missing references)
-		//IL_003f: Invalid comparison between Unknown and I4
-		//IL_0174: Unknown result type (might be due to invalid IL or missing references)
-		//IL_017b: Expected Obj, but got Unknown
-		//IL_0055: Unknown result type (might be due to invalid IL or missing references)
-		//IL_005b: Expected Obj, but got Unknown
-		//IL_00d8: Unknown result type (might be due to invalid IL or missing references)
 		try
 		{
-			SaveFileDialog val = new SaveFileDialog();
-			((FileDialog)val).Filter = "Text Files (*.sni)|*.sni";
-			((FileDialog)val).FileName = "Backup_" + DateTime.Now.ToString("dd-MM-yyy HH-mm-ss");
-			if ((int)((CommonDialog)val).ShowDialog() == 1)
+			using (var dialog = new SaveFileDialog())
 			{
-				Module1.cn_SQL.Open();
-				MySqlCommand val2 = new MySqlCommand();
-				val2.CommandType = CommandType.Text;
-				val2.CommandText = "BACKUP DATABASE      " + Module1._NAME_DB + "      TO DISK='" + ((FileDialog)val).FileName + "'     ";
-				val2.Connection = Module1.cn_SQL;
-				val2.ExecuteNonQuery();
-				Module1.cn_SQL.Close();
-				MessageBox.Show("exportation avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
+				dialog.Filter = "Sauvegarde MySQL (*.sql)|*.sql";
+				dialog.DefaultExt = "sql";
+				dialog.FileName = "Backup_" + DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss") + ".sql";
+				if (dialog.ShowDialog() != DialogResult.OK) return;
+				string file = CreateBackupAt(dialog.FileName);
+				MessageBox.Show("Sauvegarde MySQL vérifiée : " + file, "ok", MessageBoxButtons.OK, MessageBoxIcon.Information);
 			}
 		}
-		catch (Exception ex)
-		{
-			ProjectData.SetProjectError(ex);
-			Exception ex2 = ex;
-			StackTrace stackTrace = new StackTrace(ex2, fNeedFileInfo: true);
-			StackFrame frame = stackTrace.GetFrame(checked(stackTrace.FrameCount - 1));
-			int fileLineNumber = frame.GetFileLineNumber();
-			Interaction.MsgBox(ex2.Message + "\r\nLigne : " + Conversions.ToString(fileLineNumber) + "\r\n");
-			try
-			{
-				string text = Strings.Format(DateTime.Now, "yyMMddHHmmssfff");
-				Bitmap val3 = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
-				Graphics val4 = Graphics.FromImage((Image)(object)val3);
-				val4.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-				((Image)val3).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
-				val3 = null;
-				string right = "ERROR | ";
-				File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
-			}
-			catch (Exception ex3)
-			{
-				ProjectData.SetProjectError(ex3);
-				Exception ex4 = ex3;
-				ProjectData.ClearProjectError();
-			}
-			ProjectData.ClearProjectError();
-		}
+		catch (Exception error) { MessageBox.Show("Sauvegarde annulée : " + error.Message, "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error); }
 	}
 
 	private void Button5_Click(object sender, EventArgs e)
 	{
-		//IL_0202: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0209: Expected Obj, but got Unknown
-		//IL_0053: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0059: Expected Obj, but got Unknown
-		checked
+		var control = sender as Control;
+		try
 		{
-			try
-			{
-				NewLateBinding.LateSet(sender, null, "enabled", new object[1] { false }, null, null);
-				ProgressBar1.Style = (ProgressBarStyle)2;
-				try
-				{
-					if (CheckBox1.Checked)
-					{
-						Module1.cn_SQL.Open();
-						MySqlCommand val = new MySqlCommand();
-						val.CommandType = CommandType.Text;
-						val.CommandText = "BACKUP DATABASE      " + Module1._NAME_DB + "      TO DISK='" + Module1._CHEMIN_FOLDER + "\\bd\\backup\\" + DateTime.Now.ToString("yyMMddHHmmssfff_ARRE") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "_configue.sni' ";
-						val.Connection = Module1.cn_SQL;
-						val.ExecuteNonQuery();
-						Module1.cn_SQL.Close();
-					}
-				}
-				catch (Exception ex)
-				{
-					ProjectData.SetProjectError(ex);
-					Exception e2 = ex;
-					StackTrace stackTrace = new StackTrace(e2, fNeedFileInfo: true);
-					StackFrame frame = stackTrace.GetFrame(stackTrace.FrameCount - 1);
-					int fileLineNumber = frame.GetFileLineNumber();
-					ProjectData.ClearProjectError();
-				}
-				Interaction.Shell("shutdown -s -t 1");
-				NewLateBinding.LateSet(sender, null, "enabled", new object[1] { true }, null, null);
-			}
-			catch (Exception ex2)
-			{
-				ProjectData.SetProjectError(ex2);
-				Exception ex3 = ex2;
-				StackTrace stackTrace2 = new StackTrace(ex3, fNeedFileInfo: true);
-				StackFrame frame2 = stackTrace2.GetFrame(stackTrace2.FrameCount - 1);
-				int fileLineNumber2 = frame2.GetFileLineNumber();
-				Interaction.MsgBox(ex3.Message + "\r\nLigne : " + Conversions.ToString(fileLineNumber2) + "\r\n");
-				try
-				{
-					string text = Strings.Format(DateTime.Now, "yyMMddHHmmssfff");
-					Bitmap val2 = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
-					Graphics val3 = Graphics.FromImage((Image)(object)val2);
-					val3.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-					((Image)val2).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
-					val2 = null;
-					string right = "ERROR | ";
-					File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex3.ToString()), "\r\n"), "Ligne : "), fileLineNumber2), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
-				}
-				catch (Exception ex4)
-				{
-					ProjectData.SetProjectError(ex4);
-					Exception ex5 = ex4;
-					ProjectData.ClearProjectError();
-				}
-				ProjectData.ClearProjectError();
-			}
-			NewLateBinding.LateSet(sender, null, "enabled", new object[1] { true }, null, null);
+			if (control != null) control.Enabled = false;
+			ProgressBar1.Style = ProgressBarStyle.Marquee;
+			BackupBeforeShutdown(() => Interaction.Shell("shutdown -s -t 1"));
+		}
+		catch (Exception error)
+		{
+			MessageBox.Show("Arrêt annulé : " + error.Message, "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error);
+		}
+		finally
+		{
+			if (control != null) control.Enabled = true;
+			ProgressBar1.Style = ProgressBarStyle.Continuous;
 		}
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
 	private void Button4_Click(object sender, EventArgs e)
 	{
-		ProjectData.EndApp();
+		try { BackupBeforeExit(() => ProjectData.EndApp()); }
+		catch (Exception error) { MessageBox.Show("Fermeture annulée : " + error.Message, "Erreur", MessageBoxButtons.OK, MessageBoxIcon.Error); }
 	}
 
 	private void Button2_Click(object sender, EventArgs e)
@@ -755,3 +689,4 @@ public class FormDialog_QUITTER : Form
 		}
 	}
 }
+

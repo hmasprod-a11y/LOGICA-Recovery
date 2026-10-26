@@ -102,6 +102,74 @@ class BackupCheck
    var after=Snapshot(c);before.Remove("TABLE_CI_BACKUP_A");before.Remove("TABLE_CI_BACKUP_B");after.Remove("TABLE_CI_BACKUP_A");after.Remove("TABLE_CI_BACKUP_B");Same(before,after,"successful reset preserves every unselected table");
   }
  }
+ static object InvokeOriginal(Form form,string name,params object[] args)
+ {
+  try{return form.GetType().GetMethod(name).Invoke(form,args);}
+  catch(TargetInvocationException error){throw error.InnerException;}
+ }
+ static void QuotedCredentialBackup()
+ {
+  using(var c=Open(Source))
+  {
+   var before=Snapshot(c);
+   Sql(c,"DROP USER IF EXISTS 'ci_backup_options'@'127.0.0.1'");
+   string password="Ci#\"\\line\n"+Guid.NewGuid().ToString("N");
+   using(var command=c.CreateCommand())
+   {
+    command.CommandText="CREATE USER 'ci_backup_options'@'127.0.0.1' IDENTIFIED BY @password";
+    command.Parameters.AddWithValue("@password",password);command.ExecuteNonQuery();
+   }
+   try
+   {
+    Sql(c,"GRANT ALL ON logica_backup_test.* TO 'ci_backup_options'@'127.0.0.1'");
+    Sql(c,"GRANT SELECT ON mysql.proc TO 'ci_backup_options'@'127.0.0.1'");
+    var configured=new MySqlConnectionStringBuilder(Source);configured.UserID="ci_backup_options";configured.Password=password;
+    string file=DatabaseBackup.Create(configured.ConnectionString,Path.Combine(Work,"quoted credentials"),Bin);
+    DatabaseBackup.Verify(file);
+    Same(before,Snapshot(c),"backup authenticates with quotes, slash, comment marker and newline in password without modifying data");
+   }
+   finally{Sql(c,"DROP USER 'ci_backup_options'@'127.0.0.1'");}
+  }
+ }
+ static void ManualAndShutdown()
+ {
+  string actualBin=Bin;
+  using(var c=Open(Source))
+  using(var form=(Form)Activator.CreateInstance(typeof(DatabaseBackup).Assembly.GetType("LOGICA.FormDialog_QUITTER",true)))
+  {
+   var before=Snapshot(c);
+   string chosen=Path.Combine(Work,"manually selected backup.sql");
+   string file=(string)InvokeOriginal(form,"CreateBackupAt",chosen);DatabaseBackup.Verify(file);
+   Assert(file==chosen&&File.Exists(chosen),"original manual export respects chosen SQL filename and hash");
+   string hash=File.ReadAllText(chosen+".sha256");
+   MustFail(()=>InvokeOriginal(form,"CreateBackupAt",chosen),"manual export refuses overwriting an existing backup");
+   MustFail(()=>InvokeOriginal(form,"CreateBackupAt",Path.Combine(Work,"unsafe.sni")),"SQL backup cannot masquerade as legacy Access SNI");
+   Assert(File.ReadAllText(chosen+".sha256")==hash,"previous manually saved backup preserved");
+   var check=form.GetType().GetProperty("CheckBox1",BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic).GetValue(form,null);
+   check.GetType().GetProperty("Checked").SetValue(check,true,null);
+   int shutdowns=0;Action shutdown=()=>shutdowns++;
+   try
+   {
+    Environment.SetEnvironmentVariable("LOGICA_MYSQL_BIN",Path.Combine(Work,"missing-tools"));
+    MustFail(()=>InvokeOriginal(form,"BackupBeforeShutdown",shutdown),"failed requested backup rejects shutdown");
+    Assert(shutdowns==0,"shutdown action never runs after backup failure");
+    int exits=0;Action exit=()=>exits++;
+    MustFail(()=>InvokeOriginal(form,"BackupBeforeExit",exit),"failed requested backup rejects application exit");
+    Assert(exits==0,"application exit action never runs after backup failure");
+    Environment.SetEnvironmentVariable("LOGICA_MYSQL_BIN",actualBin);
+    InvokeOriginal(form,"BackupBeforeShutdown",shutdown);
+    Assert(shutdowns==1,"requested backup succeeds before shutdown action");
+    InvokeOriginal(form,"BackupBeforeExit",exit);
+    Assert(exits==1,"requested backup succeeds before application exit action");
+    check.GetType().GetProperty("Checked").SetValue(check,false,null);
+    Environment.SetEnvironmentVariable("LOGICA_MYSQL_BIN",Path.Combine(Work,"missing-tools"));
+    InvokeOriginal(form,"BackupBeforeShutdown",shutdown);
+    Assert(shutdowns==2,"unchecked backup option preserves original shutdown choice");
+   }
+   finally{Environment.SetEnvironmentVariable("LOGICA_MYSQL_BIN",actualBin);}
+   Same(before,Snapshot(c),"manual and shutdown backups preserve every source row");
+  }
+ }
  static void ConcurrentWriters()
  {
   using(var c=Open(Source)) {
@@ -137,6 +205,9 @@ class BackupCheck
  {
   try
   {
+   var safety=new MySqlConnectionStringBuilder(Source);
+   if(safety.Server!="127.0.0.1"||safety.Port!=3307||safety.Database!="logica_backup_test")
+    throw new Exception("Backup tests require the dedicated isolated loopback database");
    Application.EnableVisualStyles();Directory.CreateDirectory(Work);
    if(args[0]=="export")
    {
@@ -173,7 +244,7 @@ class BackupCheck
      File.WriteAllText(Path.Combine(Work,"roundtrip-result.json"),new JavaScriptSerializer().Serialize(new{status="passed",tables=original.Count,restored_on_separate_server=true}));
     }
    }
-   else if(args[0]=="reset") { FailuresAndReset(); ConcurrentWriters(); }
+   else if(args[0]=="reset") { FailuresAndReset(); QuotedCredentialBackup(); ManualAndShutdown(); ConcurrentWriters(); }
    else if(args[0]=="concurrent-restore")
    {
     var b=new MySqlConnectionStringBuilder(Source);b.Port=3309;

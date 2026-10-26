@@ -22,6 +22,41 @@ public static class DatabaseBackup
         return CreateAndClear(connectionString, directory, new string[0], serverBin);
     }
 
+    public static string CreateToFile(string connectionString, string destination, string serverBin)
+    {
+        destination = Path.GetFullPath(destination);
+        if (!string.Equals(Path.GetExtension(destination), ".sql", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Choisir un fichier .sql; les anciennes bases .sni ont un autre format.");
+        if (File.Exists(destination) || File.Exists(destination + ".sha256"))
+            throw new IOException("Ce fichier existe deja. Choisissez un nouveau nom pour conserver la sauvegarde precedente.");
+        string generated = Create(connectionString, Path.GetDirectoryName(destination), serverBin);
+        bool dataCreated = false, hashCreated = false;
+        try
+        {
+            using (var target = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                dataCreated = true;
+                using (var source = File.OpenRead(generated)) source.CopyTo(target);
+                target.Flush(true);
+            }
+            using (var target = new FileStream(destination + ".sha256", FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                hashCreated = true;
+                byte[] hash = Encoding.ASCII.GetBytes(File.ReadAllText(generated + ".sha256", Encoding.ASCII));
+                target.Write(hash, 0, hash.Length); target.Flush(true);
+            }
+            Verify(destination);
+        }
+        catch
+        {
+            if (dataCreated) File.Delete(destination);
+            if (hashCreated) File.Delete(destination + ".sha256");
+            throw;
+        }
+        File.Delete(generated); File.Delete(generated + ".sha256");
+        return destination;
+    }
+
     public static string FindServerBin(string root)
     {
         string configured = Environment.GetEnvironmentVariable("LOGICA_MYSQL_BIN");
