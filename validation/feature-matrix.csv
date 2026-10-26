@@ -1,0 +1,34 @@
+﻿id,function_ar,priority,logica_source,todo_source,todo_test_candidate,parity_status,acceptance_ar
+SALE,البيع النقدي,P0,recovered-source/LOGICA/Form_3_VENTE.cs,todo/services/sales.py,tests/test_core.py,عقد مشترك جاهز,snapshot المبلغ والمخزون والحركات والمستندات متطابق بعد كل خطوة
+RETURN,مرتجع جزئي نقدي,P0,recovered-source/LOGICA/FormDialog_RETOUR.cs,todo/services/sales.py,tests/test_core.py,عقد مشترك جاهز,المرتجع يزيد المخزون ويخفض المقبوض مرة واحدة
+ROUND,التقريب والعملات,P0,recovered-source/LOGICA/Module1.cs,todo/services/money.py,tests/test_tax_engine.py,غير مقارن,نصف السنت والمبالغ السالبة والكميات الكسرية عبر fr-MA/fr-FR/en-US
+FRACTION,كميات كسرية,P0,recovered-source/LOGICA/FormDialog_QUANTITE.cs,todo/services/sales.py,tests/test_core.py,غير مقارن,بيع ومرتجع كسري دون فقد كمية أو سنت
+RETRY,إعادة محاولة الأداء,P0,recovered-source/LOGICA/Form_3_VENTE.cs,todo/services/sales.py,tests/test_checkout_retry.py,غير مقارن,انقطاع بعد الالتزام ثم إعادة المحاولة لا يكرر البيع
+ATOMIC,ذرية المعاملة,P0,recovered-source/LOGICA/Form_3_VENTE.cs,todo/services/sales.py,tests/test_checkout_stock_guard.py,غير مقارن,حقن فشل بعد كل كتابة: لا تذكرة أو مخزون أو قبض جزئي
+STOCK,حركات المخزون,P0,recovered-source/LOGICA/Form_6_MOUVEMENTS_STOCK.cs,todo/services/inventory.py,tests/test_shared_stock_entry.py,غير مقارن,مخزون أول المدة + مجموع الحركات = مخزون آخر المدة
+CREDIT,بيع بالكريدي وتسديده,P0,recovered-source/LOGICA/Form_5_CLIENTS_REGLE.cs,todo/services/clients.py,tests/test_clients.py,غير مقارن,مبلغ الفواتير بعد المرتجعات ناقص الأداءات = الدين
+CLIENT-OPEN,الرصيد الأولي للزبون وتاريخه,P0,recovered-source/LOGICA/Form_5_CLIENTS_MODIFICATION_CREDIT_INITIAL.cs,todo/services/clients.py,tests/test_clients.py,فجوة ToDo مؤكدة بالفحص,واجهة وقيد مستقل وتاريخ تعديل الرصيد الأولي قبل الترحيل؛ اختبارات الزبناء الحالية لا تثبت هذه الوظيفة
+SUPPLIER-OPEN,الرصيد الأولي للمورد وتاريخه,P0,recovered-source/LOGICA/Form_6_FOURNISSEURS_MODIFICATION_CREDIT_INITIAL.cs,todo/services/supplier_payments.py,tests/test_suppliers.py,فجوة ToDo مؤكدة بالفحص,حفظ وتدقيق دين المورد السابق دون إنشاء شراء وهمي
+PURCHASE,استلام شراء وفاتورة المورد,P0,recovered-source/LOGICA/Form_6_RECEPTIONS.cs,todo/services/purchases.py,tests/test_core.py,غير مقارن,المخزون والتكلفة ودين المورد والقبض تصالح في معاملة واحدة
+PO,طلب شراء واستلام جزئي,P1,recovered-source/LOGICA/Form_6_COMMANDES.cs,todo/services/purchases.py,tests/test_purchase_order_atomic.py,غير مقارن,الطلب لا يحرك المخزون والاستلام لا يتجاوز الكمية المتبقية
+SUPPAY,تسديد المورد,P0,recovered-source/LOGICA/Form_6_FOURNISSEURS_REGLE.cs,todo/services/supplier_payments.py,tests/test_suppliers.py,غير مقارن,لا تسديد زائد مع ربط الصندوق والمورد والفاتورة
+SUPRETURN,مرتجع المورد,P0,recovered-source/LOGICA/Form_6_SORTIES.cs,todo/services/supplier_returns.py,tests/test_supplier_returns.py,غير مقارن,نقص المخزون وتسوية الدين دون افتراض أن كل خروج مخزون هو مرتجع مورد
+CASH,الصندوق والمصاريف والسحب,P0,recovered-source/LOGICA/Form_6_DEPENSES.cs,todo/services/cash.py,tests/test_shop_day_reconciliation.py,غير مقارن,رصيد الافتتاح + النقد الداخل - الخارج = المتوقع
+CLOSE,جرد وإغلاق الصندوق,P0,recovered-source/LOGICA/FormDialog_CLOTURE.cs,todo/services/cash.py,tests/test_cash_closure_traceability.py,غير مقارن,تثبيت المبلغ المعدود والمتوقع والفرق ومنع الأداء بعد الإغلاق
+INVENTORY,جرد المخزون,P0,recovered-source/LOGICA/Form_6_INVENTAIRES.cs,todo/services/inventory_sessions.py,tests/test_inventory_sessions.py,غير مقارن,تسجيل الفرق والتكلفة والفاعل مرة واحدة
+BARCODE,باركود مشترك واختيار المنتوج,P1,recovered-source/LOGICA/ProductBarcodeDialog.cs,todo/services/catalog.py,tests/test_catalog_scale.py,غير مقارن,الحفاظ على هوية الشقيق وثمنه وكميته وإلغاء الاختيار
+PHOTO,بيع بالصور وبدون باركود,P1,recovered-source/LOGICA/Form_3_VENTE.cs,todo/services/catalog.py,tests/test_photo_catalog.py,غير مقارن,صور مفقودة وفاسدة واختيار منتوج مطابق دون تغيير المخزون الخطأ
+PRICING,تعريفات متعددة وأسعار الكمية,P0,recovered-source/LOGICA/FormDialog_MODIFICATION_PRIX.cs,todo/services/pricing.py,tests/test_core.py,غير مقارن,حدود الكمية والثمن المعتمد والخصومات ومرتجعاتها
+PACK,حزم وكارتونات,P1,recovered-source/LOGICA/Form_2_ARTICLES.cs,todo/services/pricing.py,tests/test_core.py,غير مقارن,الكمية الأساس والتحويل والمرتجع؛ لا يفترض تكافؤ nomenclature مع pack
+EXPIRY,تنبيه الصلاحية,P1,recovered-source/LOGICA/FormDialog_ETAT_ALERTS_PEREMPTION.cs,todo/services/inventory.py,tests/test_inventory_sessions.py,فجوة محتملة,التحقق من نموذج تاريخ الصلاحية والتنبيه؛ اختبار الجرد لا يثبت الصلاحية
+HOLD,توقيف واسترجاع تذكرة,P1,recovered-source/LOGICA/FormDialog_ATTENTES.cs,todo/services/sales.py,tests/test_core.py,غير مقارن,استرجاع السلة بهوية الكاشير ودون قبض أو مخزون مبكر
+ORDER,طلبات الزبناء,P1,recovered-source/LOGICA/Form_6_COMMANDES.cs,todo/services/customer_orders.py,tests/test_customer_orders.py,دلالة LOGICA تحتاج تتبع,تمييز طلب الزبون عن طلب المورد قبل المقارنة
+QUOTE,عرض سعر,P1,recovered-source/LOGICA/Form_900_DEVIS.cs,todo/services/quotations.py,tests/test_quotations.py,غير مقارن,لا أثر على المخزون قبل التحويل مع تثبيت الثمن المتفق عليه
+DELIVERY,وصل تسليم مستقل,P1,recovered-source/LOGICA/Form_9000_BL.cs,todo/services/order_slips.py,tests/test_order_slips.py,تكافؤ غير مثبت,دورة مسودة واعتماد وترقيم وطباعة وربط الفاتورة؛ slip مطبوع وحده لا يكفي
+INVOICE,فاتورة مستقلة,P1,recovered-source/LOGICA/Form_90000_FACTURE.cs,todo/services/receipts.py,tests/test_purchase_to_print.py,تكافؤ غير مثبت,تتبع التحويلات والضرائب والترقيم دون ازدواج مبيعات أو مخزون
+REPORT,التقارير والربحية,P0,recovered-source/LOGICA/Form_9_STATISTIQUES.cs,todo/services/reports.py,tests/test_statistics.py,غير مقارن,صافي المبيعات والتكلفة والهامش والتسديدات تتصالح عبر الفترة
+PRINT,التذاكر والقوالب العربية,P1,recovered-source/LOGICA/Report_TICKET_80_ARABE.cs,todo/services/receipts.py,tests/test_printers.py,اختبار مادي متبق,تطابق المحتوى والضرائب والخصم واتجاه العربية على الطابعة الفعلية
+AUTH,المستخدمون والصلاحيات,P0,recovered-source/LOGICA/FormDialog_1_UTILISATEURS.cs,todo/services/security.py,tests/test_permissions.py,غير مقارن,رفض PIN خاطئ وتحقق الصلاحية في مسارات العمل نفسها
+BACKUP,النسخ الاحتياطي والاستعادة,P0,recovered-source/LOGICA/FormDialog_8_BASE_DONNEE.cs,todo/services/backup.py,tests/test_backup_validation.py,خلل LOGICA مثبت بالسورس,Button9_Click يستعمل BACKUP DATABASE مع MySqlCommand؛ إصلاحه يحتاج dump واستعادة تجريبية قبل السماح بالحذف
+DEVICES,ميزان وRFID وشاشة الزبون,P1,recovered-source/LOGICA/FormDialog_PESEE_BALANCE.cs,todo/services/scale.py,tests/test_scale.py,اختبار مادي متبق,الترميز والمنافذ والانقطاع وتكرار الرسائل على أجهزة التاجر
+PERF,السرعة والذاكرة والاستقرار,P1,recovered-source/LOGICA/Form_3_VENTE.cs,todo/services/catalog.py,tests/test_p0_endurance.py,قياس ToDo فقط,نفس الجهاز والبيانات وعمليات متماثلة قبل مقارنة البرنامجين

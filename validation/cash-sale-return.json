@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "scenario": "cash-sale-partial-return",
+  "initial_stock": 10,
+  "unit_price_cents": 1250,
+  "sold_quantity": 2,
+  "returned_quantity": 1,
+  "snapshots": [
+    {"step": "sale", "stock_quantity": 8, "net_collected_cents": 2500, "stock_movement_quantity": -2, "document_count": 1},
+    {"step": "return", "stock_quantity": 9, "net_collected_cents": 1250, "stock_movement_quantity": -1, "document_count": 2}
+  ]
+}

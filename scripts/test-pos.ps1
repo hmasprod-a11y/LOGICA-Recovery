@@ -5,8 +5,9 @@ $dist=(Resolve-Path dist).Path
   [IO.File]::WriteAllText((Join-Path $dist $_.Key),$_.Value)
 }
 $csc=Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
-& $csc /nologo /platform:x86 /target:exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Data.dll "/out:$dist\PosSmoke.exe" (Join-Path $PSScriptRoot 'test-pos.cs')
+& $csc /nologo /platform:x86 /target:exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Data.dll /r:System.Web.Extensions.dll "/out:$dist\PosSmoke.exe" (Join-Path $PSScriptRoot 'test-pos.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Test harness compilation failed' }
+Copy-Item validation/cash-sale-return.json dist/cash-sale-return.json -Force
 Copy-Item dist/LOGICA.exe.config dist/PosSmoke.exe.config -Force
 $cases=@('basket','checkout','rounding','Form_0_TEMPLATE','Form_1_LOGIN','Form_3_VENTE','Form_2_ARTICLES','Form_6_MOUVEMENTS_STOCK','FormDialog_MODE_P','Report_TICKET_A4')
 $results=@()
@@ -29,5 +30,6 @@ Write-Host "Real LOGICA.exe startup $status; process running=$(-not $app.HasExit
 if(-not $app.HasExited){$app.Kill()}
 $results | ConvertTo-Json | Set-Content results/pos-tests.json
 # Preserve the application package independently of test harness files.
-Remove-Item dist/PosSmoke.exe,dist/PosSmoke.exe.config -Force
+Remove-Item dist/PosSmoke.exe,dist/PosSmoke.exe.config,dist/cash-sale-return.json -Force
 if(@($results | Where-Object status -ne 'PASS').Count -gt 0){throw 'Some Windows POS checks failed; see per-test logs'}
+

@@ -7,6 +7,11 @@ on:
       - 'scripts/repair-source.py'
       - 'scripts/test-pos*'
       - 'scripts/test-recovered*'
+      - 'scripts/check-parity.py'
+      - 'scripts/inventory-business.py'
+      - 'scripts/benchmark-pos.py'
+      - 'scripts/test-validation-tooling.py'
+      - 'validation/**'
       - 'input/recovered-original.sql'
       - 'input/mysql-compatibility.sql'
       - '.github/workflows/windows-reference-diagnostic.yml'
@@ -15,27 +20,46 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 25
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Repair and persist original source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Checkout pinned ToDo reference
+        uses: actions/checkout@v4
+        with:
+          repository: hmasprod-a11y/todo-pos
+          ref: 7e854e63dd54ac7c8c9c16763623db8c18f4efc9
+          path: .comparison/todo
+          persist-credentials: false
+      - name: Record exact source provenance
         shell: pwsh
         run: |
-          python scripts/repair-source.py
-          if ($LASTEXITCODE -ne 0) { throw 'Source repair failed' }
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -f recovered-source
-          git reset -- recovered-source/obj recovered-source/bin
-          git diff --cached --quiet
-          if ($LASTEXITCODE -ne 0) {
-            git commit -m 'Persist repaired original C# source and portable project'
-            git push
-            if ($LASTEXITCODE -ne 0) { throw 'Source persistence failed' }
-          }
+          New-Item -ItemType Directory -Force results | Out-Null
+          $todo=(git -C .comparison/todo rev-parse HEAD).Trim()
+          @{logica=$env:GITHUB_SHA;todo=$todo;runner=$env:RUNNER_OS;run=$env:GITHUB_RUN_ID} | ConvertTo-Json | Set-Content results/source-provenance.json
+          python scripts/test-validation-tooling.py
+          if($LASTEXITCODE -ne 0){throw 'Validation tooling checks failed'}
+      - name: Extract source and schema inventory
+        shell: pwsh
+        run: |
+          python scripts/inventory-business.py --logica-root . --todo-root .comparison/todo --output results/business-inventory.json
+          if($LASTEXITCODE -ne 0){throw 'Inventory extraction failed'}
+      - name: ToDo Windows regression
+        shell: pwsh
+        run: |
+          python -m pip install -r .comparison/todo/requirements.txt
+          if($LASTEXITCODE -ne 0){throw 'ToDo dependency installation failed'}
+          Push-Location .comparison/todo
+          python -B -m unittest discover -s tests -v *> ../../results/todo-regression.log
+          $result=$LASTEXITCODE
+          Pop-Location
+          Get-Content results/todo-regression.log | Select-Object -Last 8
+          if($result -ne 0){throw 'ToDo Windows regression failed'}
       - name: Restore original runtime dependencies
         shell: pwsh
         run: |
@@ -59,6 +83,16 @@ jobs:
       - name: Exercise original POS on Windows
         shell: pwsh
         run: ./scripts/test-pos.ps1
+      - name: Compare original LOGICA and ToDo business ledgers
+        shell: pwsh
+        run: |
+          python scripts/check-parity.py --todo-root .comparison/todo --logica-log results/checkout.log --output results/parity.json
+          if($LASTEXITCODE -ne 0){throw 'Business ledger equivalence failed'}
+      - name: Measure synthetic service performance and integrity
+        shell: pwsh
+        run: |
+          python scripts/benchmark-pos.py --todo-root .comparison/todo --output results/performance-todo.json
+          if($LASTEXITCODE -ne 0){throw 'Performance or integrity probe failed'}
       - name: Verify original recovered Access data on MySQL
         shell: pwsh
         run: ./scripts/test-recovered-db.ps1
@@ -87,7 +121,6 @@ jobs:
             Remove-Item dist/bd/mysql-data,dist/bd/mysql-credential.xml,dist/bd/mysql-import-complete.txt -Recurse -Force -ErrorAction SilentlyContinue
           }
       - name: Finalize portable runtime package
-        if: always()
         shell: pwsh
         run: ./scripts/package-runtime.ps1
       - name: Inspect original dependency types
@@ -108,10 +141,10 @@ jobs:
           path: results/
           retention-days: 30
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: LOGICA-Development-Windows
           path: dist/
           if-no-files-found: warn
           retention-days: 90
+
 

@@ -6,6 +6,8 @@ using System.Windows.Forms;
 using System.Drawing;
 using System.Data;
 using System.ComponentModel;
+using System.Collections.Generic;
+using System.Web.Script.Serialization;
 class PosSmoke {
  const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
  static object Get(object o,string name){return o.GetType().GetProperty(name,Flags).GetValue(o,null);}
@@ -47,7 +49,19 @@ class PosSmoke {
  static void Sql(IDbConnection connection,string sql) {using(var c=connection.CreateCommand()){c.CommandText=sql;c.ExecuteNonQuery();}}
  static decimal Scalar(IDbConnection connection,string sql) {using(var c=connection.CreateCommand()){c.CommandText=sql;return Convert.ToDecimal(c.ExecuteScalar());}}
  static void SetText(object form,string name,string value){((Control)Get(form,name)).Text=value;}
+ public class ContractSnapshot {
+  public string step; public decimal stock_quantity,net_collected_cents,stock_movement_quantity,document_count;
+ }
+ public class ContractFixture {
+  public decimal initial_stock,unit_price_cents; public int sold_quantity,returned_quantity; public ContractSnapshot[] snapshots;
+ }
  static void Checkout(Assembly assembly) {
+  var json=new JavaScriptSerializer();
+  var fixture=json.Deserialize<ContractFixture>(File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"cash-sale-return.json")));
+  decimal initial=fixture.initial_stock,price=fixture.unit_price_cents/100m;
+  int sold=fixture.sold_quantity,returned=fixture.returned_quantity;
+  var expected=fixture.snapshots;
+  int step=0; decimal movement=0m,cash=0m;
   CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
   var module=assembly.GetType("LOGICA.Module1",true);
   var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
@@ -65,36 +79,48 @@ class PosSmoke {
    foreach(var col in schemas[i].Split(','))defs+=",`"+col+"` VARCHAR(255) DEFAULT ''";
    Sql(connection,"CREATE TABLE "+tables[i]+" ("+defs+") ENGINE=InnoDB");
   }
-  Sql(connection,"DROP TABLE IF EXISTS TABLE_ARTICLES; CREATE TABLE TABLE_ARTICLES (ID_ARTICLE INT, Code VARCHAR(30), Article VARCHAR(100), STOCK DECIMAL(14,3)) ENGINE=InnoDB; INSERT INTO TABLE_ARTICLES VALUES (1,'CI001','CI product',10)");
+  Sql(connection,"DROP TABLE IF EXISTS TABLE_ARTICLES; CREATE TABLE TABLE_ARTICLES (ID_ARTICLE INT, Code VARCHAR(30), Article VARCHAR(100), STOCK DECIMAL(14,3)) ENGINE=InnoDB; INSERT INTO TABLE_ARTICLES VALUES (1,'CI001','CI product',"+initial.ToString(CultureInfo.InvariantCulture)+")");
   Sql(connection,"DROP TABLE IF EXISTS TABLE_NUM; CREATE TABLE TABLE_NUM (ID INT, CL INT) ENGINE=InnoDB; INSERT INTO TABLE_NUM VALUES (0,1)");
   connection.Close();
   var forms=assembly.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",Flags).GetValue(null,null);
   var template=Get(forms,"Form_0_TEMPLATE");SetText(template,"Label_POSTE","CI_TEST");
   var list=(ListView)Get(template,"ListView1");list.Items.Add("BLOCAGE_STOCK_INSUFFISANT").SubItems.Add("False");
-  foreach(int quantity in new[]{2,-1}) {
+  foreach(int quantity in new[]{sold,-returned}) {
   using(var sale=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
    var grid=(DataGridView)Get(sale,"DataGridView1");grid.AllowUserToAddRows=false;
    foreach(var n in new[]{"Check_CHOIX_VENDEUR","Check_CHOIX_CLIENT","Check_ACCES_MODEP","Check_ACCES_RFID"})Get(sale,n).GetType().GetProperty("Checked").SetValue(Get(sale,n),false,null);
    Get(sale,"Check_STOCK").GetType().GetProperty("Checked").SetValue(Get(sale,"Check_STOCK"),true,null);
    SetText(sale,"Combo_PORT","");SetText(sale,"Text_HEURE_RETARD","0");SetText(sale,"Text_PRINTER_SOLDER","0");SetText(sale,"Button_CAISSIER","CI cashier");
     connection.Open();
-    Sql(connection,"INSERT INTO TABLE_CI_TEST ("+columns+",PRINTER,PRINTER_DUPLICATA) VALUES ('1','CI001','CI product','Test','5','5','12.5','"+quantity+"','0','"+(quantity*12.5m).ToString(CultureInfo.InvariantCulture)+"','0','','0','0')");
+    Sql(connection,"INSERT INTO TABLE_CI_TEST ("+columns+",PRINTER,PRINTER_DUPLICATA) VALUES ('1','CI001','CI product','Test','5','5','"+price.ToString(CultureInfo.InvariantCulture)+"','"+quantity+"','0','"+(quantity*price).ToString(CultureInfo.InvariantCulture)+"','0','','0','0')");
     connection.Close();
     grid.DataSource=null;grid.Rows.Clear();int row=grid.Rows.Add();
-    grid.Rows[row].Cells["Qté"].Value=quantity;grid.Rows[row].Cells["TOTAL_NET"].Value=quantity*12.5m;
+    grid.Rows[row].Cells["Qté"].Value=quantity;grid.Rows[row].Cells["TOTAL_NET"].Value=quantity*price;
     grid.Rows[row].Cells["ID_ARTICLE"].Value=1;grid.Rows[row].Cells["Code"].Value="CI001";grid.Rows[row].Cells["Article"].Value="CI product";
     grid.Rows[row].Cells["PRINTER"].Value="0";grid.Rows[row].Cells["PRINTER_DUPLICATA"].Value="0";
     SetText(sale,"Button_OPERATION",quantity>0?"VENTE":"RETOUR");
     sale.GetType().GetMethod("Text_TOTAL_NET_Click").Invoke(sale,new object[]{sale,EventArgs.Empty});
     using(var sender=new Button(){Name="CI_CASH_CHECKOUT"})sale.GetType().GetMethod("Button_Click",Flags).Invoke(sale,new object[]{sender,EventArgs.Empty});
     connection.Open();
-    Eq(Scalar(connection,"SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=1"),quantity>0?8m:9m,"original checkout stock after "+(quantity>0?"sale":"return"));
-    Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE"),quantity>0?1m:2m,"original checkout ticket persisted");
-    Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL"),quantity>0?1m:2m,"original checkout sales journal persisted");
-    Eq(Scalar(connection,"SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS"),quantity>0?25m:12.5m,"original checkout cash payment/refund persisted");
+    Eq(Scalar(connection,"SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=1"),initial-(movement+quantity),"original checkout stock after "+(quantity>0?"sale":"return"));
+    Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE"),step+1,"original checkout ticket persisted");
+    Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL"),step+1,"original checkout sales journal persisted");
+    Eq(Scalar(connection,"SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS"),cash+quantity*price,"original checkout cash payment/refund persisted");
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CI_TEST"),0m,"original checkout clears basket in database");
-    Eq(Scalar(connection,"SELECT CL FROM TABLE_NUM WHERE ID=0"),quantity>0?2m:3m,"original checkout increments ticket sequence");
-    Eq(Scalar(connection,"SELECT SUM(QUANTITE) FROM TABLE_MOUVEMENTS_STOCK"),quantity>0?-2m:-1m,"original checkout stock movements persisted");
+    Eq(Scalar(connection,"SELECT CL FROM TABLE_NUM WHERE ID=0"),step+2,"original checkout increments ticket sequence");
+    Eq(Scalar(connection,"SELECT SUM(QUANTITE) FROM TABLE_MOUVEMENTS_STOCK"),-(movement+quantity),"original checkout stock movements persisted");
+    var snapshot=new Dictionary<string,object> {
+     {"step",step==0?"sale":"return"},
+     {"stock_quantity",Scalar(connection,"SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=1")},
+     {"net_collected_cents",Scalar(connection,"SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS")*100m},
+     {"stock_movement_quantity",Scalar(connection,"SELECT SUM(QUANTITE) FROM TABLE_MOUVEMENTS_STOCK")},
+     {"document_count",Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE")}
+    };
+    var target=expected[step];
+    foreach(var key in new[]{"stock_quantity","net_collected_cents","stock_movement_quantity","document_count"})
+     Eq(Convert.ToDecimal(snapshot[key]),Convert.ToDecimal(typeof(ContractSnapshot).GetField(key).GetValue(target)),"shared contract "+key);
+    Console.WriteLine("CONTRACT "+json.Serialize(snapshot));
+    movement+=quantity;cash+=quantity*price;step++;
     connection.Close();
    }
   }
@@ -142,3 +168,4 @@ class PosSmoke {
   } catch(Exception e) {Console.WriteLine("FAIL "+e); return 1;}
  }
 }
+
