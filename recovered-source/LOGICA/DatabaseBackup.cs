@@ -99,8 +99,17 @@ public static class DatabaseBackup
                         tables.Add(reader.GetString(0));
                     }
             }
-            string[] selected = selectedTables.Distinct(StringComparer.Ordinal).ToArray();
-            if (selected.Any(t => !tables.Contains(t))) throw new InvalidOperationException("Table selectionnee inconnue.");
+            int lowerCaseNames;
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "SELECT @@lower_case_table_names";
+                lowerCaseNames = Convert.ToInt32(command.ExecuteScalar());
+            }
+            var comparer = lowerCaseNames == 0 ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
+            var canonical = tables.ToDictionary(t => t, t => t, comparer);
+            if (selectedTables.Any(t => t == null || !canonical.ContainsKey(t)))
+                throw new InvalidOperationException("Table selectionnee inconnue.");
+            string[] selected = selectedTables.Distinct(comparer).Select(t => canonical[t]).ToArray();
             using (var transaction = connection.BeginTransaction(IsolationLevel.RepeatableRead))
             {
                 try

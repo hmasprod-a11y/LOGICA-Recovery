@@ -54,17 +54,6 @@ jobs:
         run: |
           python scripts/inventory-business.py --logica-root . --todo-root .comparison/todo --output results/business-inventory.json
           if($LASTEXITCODE -ne 0){throw 'Inventory extraction failed'}
-      - name: ToDo Windows regression
-        shell: pwsh
-        run: |
-          python -m pip install -r .comparison/todo/requirements.txt
-          if($LASTEXITCODE -ne 0){throw 'ToDo dependency installation failed'}
-          Push-Location .comparison/todo
-          python -B -m unittest discover -s tests -v *> ../../results/todo-regression.log
-          $result=$LASTEXITCODE
-          Pop-Location
-          Get-Content results/todo-regression.log | Select-Object -Last 8
-          if($result -ne 0){throw 'ToDo Windows regression failed'}
       - name: Restore original runtime dependencies
         shell: pwsh
         run: |
@@ -94,6 +83,20 @@ jobs:
       - name: Start isolated test database
         shell: pwsh
         run: ./scripts/setup-test-db.ps1
+      - name: Verify backup restore and transactional reset on isolated databases
+        shell: pwsh
+        run: ./scripts/test-database-backup.ps1
+      - name: ToDo Windows regression
+        shell: pwsh
+        run: |
+          python -m pip install -r .comparison/todo/requirements.txt
+          if($LASTEXITCODE -ne 0){throw 'ToDo dependency installation failed'}
+          Push-Location .comparison/todo
+          python -B -m unittest discover -s tests -v *> ../../results/todo-regression.log
+          $result=$LASTEXITCODE
+          Pop-Location
+          Get-Content results/todo-regression.log | Select-Object -Last 8
+          if($result -ne 0){throw 'ToDo Windows regression failed'}
       - name: Exercise original POS on Windows
         shell: pwsh
         run: ./scripts/test-pos.ps1
@@ -119,9 +122,6 @@ jobs:
           $env:LOGICA_EXPECT_DEVELOPMENT='1'
           ./scripts/test-recovered-db.ps1
           if($LASTEXITCODE -ne 0){throw 'Development login test failed'}
-      - name: Verify backup restore and transactional reset on isolated databases
-        shell: pwsh
-        run: ./scripts/test-database-backup.ps1
       - name: Verify portable launcher with original data
         shell: pwsh
         run: |

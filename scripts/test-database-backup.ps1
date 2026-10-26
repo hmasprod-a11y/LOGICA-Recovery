@@ -19,17 +19,24 @@ function Invoke-Check([string]$Mode) {
  Get-Content $log | Select-String 'PASS|FAIL' | ForEach-Object {Write-Host $_}
  if($p.ExitCode -ne 0){throw "Backup $Mode failed; see diagnostic log"}
 }
-function Invoke-Client([int]$Port,[string]$Statement) {
- & "$bin/mariadb.exe" --host=127.0.0.1 "--port=$Port" --user=root --password=logica-ci-only --default-character-set=utf8mb4 --abort-source-on-error -e $Statement
+function Invoke-Client([int]$Port,[string]$Statement,[string]$Database='') {
+ $databaseOption=@()
+ if($Database){$databaseOption=@("--database=$Database")}
+ & "$bin/mariadb.exe" @databaseOption --host=127.0.0.1 "--port=$Port" --user=root --password=logica-ci-only --default-character-set=utf8mb4 --abort-source-on-error -e $Statement
  if($LASTEXITCODE -ne 0){throw "Isolated database operation failed on port $Port"}
 }
+# The dedicated harness may run before POS/recovery tests prepare runtime files.
+New-Item -ItemType Directory -Force "$dist/bd","$dist/tchak" | Out-Null
+$startup=Get-Content input/original-startup.json -Raw | ConvertFrom-Json
+foreach($entry in $startup.PSObject.Properties){[IO.File]::WriteAllText((Join-Path $dist $entry.Name),[string]$entry.Value)}
+[IO.File]::WriteAllText("$dist/log_erreur.sni",'')
 $secondary=$null
 try {
  Invoke-Client 3307 'CREATE DATABASE logica_backup_test CHARACTER SET utf8mb4;'
  $original=(Resolve-Path input/recovered-original.sql).Path.Replace('\','/')
  $compat=(Resolve-Path input/mysql-compatibility.sql).Path.Replace('\','/')
- Invoke-Client 3307 "USE logica_backup_test; source $original"
- Invoke-Client 3307 "USE logica_backup_test; source $compat"
+ Invoke-Client 3307 "source $original" logica_backup_test
+ Invoke-Client 3307 "source $compat" logica_backup_test
  Invoke-Check 'export'
  # Restore on another server using the SAME database name. Views and routines
  # may contain qualified references; a rename would hide or distort that test.
@@ -47,12 +54,12 @@ try {
  if(-not $ready){throw 'Isolated restore server did not start'}
  $dump=(Get-Content (Join-Path $work 'backup-path.txt') -Raw).Trim().Replace('\','/')
  Invoke-Client 3309 'CREATE DATABASE logica_backup_test CHARACTER SET utf8mb4;'
- Invoke-Client 3309 "USE logica_backup_test; source $dump"
+ Invoke-Client 3309 "source $dump" logica_backup_test
  Invoke-Check 'compare'
  Invoke-Check 'reset'
  $dump=(Get-Content (Join-Path $work 'concurrent-backup-path.txt') -Raw).Trim().Replace('\','/')
  Invoke-Client 3309 'DROP DATABASE logica_backup_test; CREATE DATABASE logica_backup_test CHARACTER SET utf8mb4;'
- Invoke-Client 3309 "USE logica_backup_test; source $dump"
+ Invoke-Client 3309 "source $dump" logica_backup_test
  Invoke-Check 'concurrent-restore'
  Copy-Item (Join-Path $work 'roundtrip-result.json') results/backup-roundtrip.json
  Write-Host 'PASS backup roundtrip, failure guards, original reset rollback and concurrent-write isolation'

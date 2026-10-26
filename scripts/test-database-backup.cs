@@ -26,7 +26,7 @@ class BackupCheck
  {
   var names=new List<string>();
   using(var cmd=c.CreateCommand()){cmd.CommandText="SHOW FULL TABLES";using(var r=cmd.ExecuteReader())while(r.Read())if(r.GetString(1)=="BASE TABLE")names.Add(r.GetString(0));}
-  var result=new Dictionary<string,string>();
+  var result=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
   foreach(var name in names){using(var cmd=c.CreateCommand()){cmd.CommandText="CHECKSUM TABLE "+Q(name)+" EXTENDED";using(var r=cmd.ExecuteReader()){r.Read();result[name]=Convert.ToString(r.GetValue(1));}}result[name]+="/"+Scalar(c,"SELECT COUNT(*) FROM "+Q(name));}
   return result;
  }
