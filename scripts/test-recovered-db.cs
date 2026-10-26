@@ -107,7 +107,7 @@ class RecoveredCheck {
     if(flow.Controls.Count!=1 || Convert.ToString(flow.Controls[0].Tag)!="CI_IMG_MISSING")throw new Exception("Picture search hides a product with 0.png");
     ((Control)Get(sale,"Label_QTE")).Text="1";typeof(Control).GetMethod("OnClick",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(flow.Controls[0],new object[]{EventArgs.Empty});Application.DoEvents();
     search.Text="CI_IMG_CORRUPT";Application.DoEvents();if(flow.Controls.Count!=1)throw new Exception("Corrupt photo product disappeared");
-    ((Control)Get(sale,"Label_QTE")).Text="1";((Button)flow.Controls[0]).PerformClick();
+    ((Control)Get(sale,"Label_QTE")).Text="1";typeof(Control).GetMethod("OnClick",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(flow.Controls[0],new object[]{EventArgs.Empty});Application.DoEvents();
     lock(errors){if(errors.Count>0)throw new Exception("Picture sales errors: "+string.Join(" | ",errors.ToArray()));}
     sql.Open();using(var c=sql.CreateCommand()){c.CommandText="SELECT COUNT(*),SUM(\x60Qté\x60),SUM(TOTAL_NET) FROM TABLE_CI_PICTURES";using(var reader=c.ExecuteReader()){reader.Read();Console.WriteLine("Picture sale saved lines="+reader.GetValue(0)+" quantity="+reader.GetValue(1)+" total="+reader.GetValue(2));if(Convert.ToInt32(reader.GetValue(0))!=3 || Convert.ToDecimal(reader.GetValue(1))!=4m || Convert.ToDecimal(reader.GetValue(2))!=35m)throw new Exception("Picture clicks did not save correct basket quantities and prices");}}sql.Close();
     Console.WriteLine("PASS picture category/search render real, missing and corrupt photos; wide image keeps aspect ratio; source file stays unlocked");
