@@ -14578,9 +14578,12 @@ public class Form_3_VENTE : Form
                 DataTable matches = ProductBarcodeDialog.Find(scannedCode);
                 if (matches.Rows.Count > 1)
                 {
-                    using (var choice = new ProductBarcodeDialog(matches,false,scannedCode,"Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5)))
+                    decimal initialQuantity;
+                    if(!decimal.TryParse(Label_QTE.Text,out initialQuantity) || initialQuantity<=0)initialQuantity=1;
+                    using (var choice = new ProductBarcodeDialog(matches,false,scannedCode,"Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5),true,initialQuantity))
                     {
                         if(choice.ShowDialog(this)!=DialogResult.OK) { Text_CODE.SelectAll(); Text_CODE.Focus(); return; }
+                        Label_QTE.Text=choice.SaleQuantity.ToString(System.Globalization.CultureInfo.CurrentCulture);
                         Module1.dt_find = matches.Clone();
                         Module1.dt_find.ImportRow(choice.SelectedProduct);
                     }

@@ -24,7 +24,32 @@ class RecoveredCheck {
     var grid=(DataGridView)choice.Controls.Find("Products",true)[0];
     if(id!=null){bool found=false;foreach(DataGridViewRow row in grid.Rows)if(Convert.ToString(row.Cells["Identity"].Value)==id){grid.CurrentCell=row.Cells["Article"];row.Selected=true;found=true;if(expectedPrice>=0 && decimal.Parse(Convert.ToString(row.Cells["Price"].Value))!=expectedPrice)throw new Exception("Popup displayed wrong active tariff");break;}if(!found)throw new Exception("Expected choice product missing: "+id);}
     if(formName=="DuplicateBarcodeStock")((NumericUpDown)choice.Controls.Find("StockQuantity",true)[0]).Value=quantity;
-    ((Button)choice.Controls.Find(action,true)[0]).PerformClick();
+    if(formName=="DuplicateBarcodeSale"){
+     int visible=0;foreach(DataGridViewColumn column in grid.Columns)if(column.Visible)visible++;
+     if(visible!=3 || choice.Controls.Find("ChooseProduct",true).Length!=0)throw new Exception("Quick product choice contains extra columns or confirmation button");
+    }
+    if(formName=="DuplicateBarcodeSale" && action=="ChooseProduct"){
+     var click=typeof(DataGridView).GetMethod("OnCellClick",BindingFlags.Instance|BindingFlags.NonPublic);
+     int selectedIndex=grid.CurrentRow.Index;
+     var inputs=choice.Controls.Find("SaleQuantity",true);
+     if(inputs.Length>0){
+      var input=(TextBox)inputs[0];
+      if(quantity!=1){
+       ((Button)choice.Controls.Find("QuantityClear",true)[0]).PerformClick();
+       ((Button)choice.Controls.Find("QuantityKey0",true)[0]).PerformClick();
+       click.Invoke(grid,new object[]{new DataGridViewCellEventArgs(grid.Columns["Article"].Index,selectedIndex)});
+       if(!choice.Visible || choice.DialogResult==DialogResult.OK)throw new Exception("Zero quantity accepted a product");
+       ((Button)choice.Controls.Find("QuantityClear",true)[0]).PerformClick();
+       ((Button)choice.Controls.Find("QuantityKey9",true)[0]).PerformClick();
+       ((Button)choice.Controls.Find("QuantityBackspace",true)[0]).PerformClick();
+       if(input.Text!="")throw new Exception("Quantity backspace did not edit the number");
+       foreach(char digit in quantity.ToString(System.Globalization.CultureInfo.InvariantCulture))((Button)choice.Controls.Find(digit=='.'?"QuantityDecimal":"QuantityKey"+digit,true)[0]).PerformClick();
+       if(decimal.Parse(input.Text,System.Globalization.CultureInfo.InvariantCulture)!=quantity)throw new Exception("Numeric keypad produced wrong quantity");
+      }else if(decimal.Parse(input.Text,System.Globalization.CultureInfo.InvariantCulture)!=1)throw new Exception("Default sale quantity must be 1");
+      using(var bitmap=new System.Drawing.Bitmap(choice.Width,choice.Height)){choice.DrawToBitmap(bitmap,new System.Drawing.Rectangle(0,0,bitmap.Width,bitmap.Height));bitmap.Save(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"..","results","shared-barcode-quick-choice.png"));}
+     }
+     click.Invoke(grid,new object[]{new DataGridViewCellEventArgs(grid.Columns["Article"].Index,selectedIndex)});
+    }else ((Button)choice.Controls.Find(action,true)[0]).PerformClick();
    }catch(Exception e){failure=e;choice.Close();}
   };timer.Start();work();timer.Stop();}
   if(failure!=null)throw failure;if(!seen)throw new Exception("Expected real choice dialog did not open: "+formName);
@@ -86,10 +111,14 @@ class RecoveredCheck {
     Action scan=()=>{code.Text="0612345678901";find.Invoke(sale,new object[]{code,EventArgs.Empty});};
 
     ((Control)Get(sale,"Button_PRIX")).Text="PRIX_2";
-    ChooseWhile(scan,"DuplicateBarcodeSale","ChooseProduct",variant,1,10);
-    if(table.Rows.Count!=1 || Convert.ToDecimal(table.Rows[0]["PRIX_V"])!=10)throw new Exception("Shared variant active tariff not applied");
+    ChooseWhile(scan,"DuplicateBarcodeSale","ChooseProduct",variant,3,10);
+    if(table.Rows.Count!=1 || Convert.ToDecimal(table.Rows[0]["PRIX_V"])!=10 || Convert.ToDecimal(table.Rows[0]["Qté"])!=3 || Convert.ToDecimal(table.Rows[0]["TOTAL_NET"])!=30)throw new Exception("One product click did not apply keypad quantity and active tariff");
+    sql.Open();using(var clear=sql.CreateCommand()){clear.CommandText="DELETE FROM TABLE_CI_SHARED";clear.ExecuteNonQuery();}sql.Close();table.Clear();
+    ChooseWhile(scan,"DuplicateBarcodeSale","ChooseProduct",variant,1.5m,10);
+    if(table.Rows.Count!=1 || Convert.ToDecimal(table.Rows[0]["Qté"])!=1.5m || Convert.ToDecimal(table.Rows[0]["TOTAL_NET"])!=15)throw new Exception("Decimal keypad quantity was not persisted");
     sql.Open();using(var clear=sql.CreateCommand()){clear.CommandText="DELETE FROM TABLE_CI_SHARED";clear.ExecuteNonQuery();}sql.Close();table.Clear();
     ((Control)Get(sale,"Button_PRIX")).Text="PRIX_1";
+    Console.WriteLine("PASS simplified shared-barcode popup: only photo/name/price, no confirmation button, one product click persists quantity 3 and 1.5, zero rejected and keypad correction works");
     Console.WriteLine("PASS shared barcode choice displays and applies the active PRIX_2 tariff");
 
     ChooseWhile(scan,"DuplicateBarcodeSale","ChooseProduct",variant,1);
