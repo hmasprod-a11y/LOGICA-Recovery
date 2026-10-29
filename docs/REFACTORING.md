@@ -109,3 +109,5 @@ Extracted the existing TABLE_VENTES_ENTETE INSERT into Infrastructure.Checkout.T
 Pre-existing sale/refund tests and the successful injected journal failure cover header persistence and rollback. Extended the fixture checks to verify exact ticket number, signed net amount, cashier, workstation and operation for both sale and refund. Harness compilation succeeded locally. Full branch Windows verification is required before claiming this extraction passes.
 
 Next boundary: journal INSERT ... SELECT or payment persistence, after enumerating the values read from the form. Keep the outer transaction in place; do not redesign printing or payment behavior incidentally.
+
+Ticket-header slice verified: full Windows run 40823805091 succeeded. New assertions confirmed sale total 25 and refund total -12.5 with exact ticket/cashier/workstation/operation fields; checkout-rollback and all existing checks passed. Domain CI succeeded. Revert a51a5bd18f0cc2419a2600cd14d0d00cc28bd7c0 to undo this extraction.
