@@ -108,3 +108,15 @@ Original generator Windows run [40890985609](https://github.com/hmasprod-a11y/LO
 Move deterministic arithmetic into Domain.CatalogueBarcodeChecksum: complete the twelve-digit payload array and calculate the eleven-digit payload suffix. Retain checked operations, VB/Convert digit conversion and slicing boundaries. The form retains random generation, requested-length branching, Module1.getBits call, append conversion and focus. Helpers are internal and called only after the original length conditions; no new validation or barcode policy is introduced.
 
 Before replacing handler blocks, standalone tests passed locally: 8,406 assertions across three cultures using known vectors, all-zero/all-nine inputs, seeded valid payloads and byte-for-byte preservation of the array passed to getBits. All prior independent tests passed. Full original-handler Windows verification is pending after extraction. Invalid helper inputs are outside the production call boundary and are not claimed as covered.
+
+## Verified barcode arithmetic
+
+Full Windows run [40892782439](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40892782439) succeeded for d0e687be1734e04885fa122a337e223dab4a1353 after extraction. Original generator, catalogue guards, numeric input, checkout, build and launcher checks passed. Independent runs 40892782379 and 40892793315 passed, including 8,406 checksum assertions. Revert d0e687be1734e04885fa122a337e223dab4a1353 to undo the arithmetic extraction.
+
+## Next boundary: individual product row mapping
+
+The save handler assigns 35 catalogue columns to a DataRow, then uses the existing MySqlDataAdapter/CommandBuilder to persist. Preserve creation/edit differences: creation PRIX_MP comes from purchase price, DATE_INVENTAIRE from creation date and STOCK_INITIAL from current stock; edit uses the separate average-price, inventory-date and opening-stock controls. Code/article use VB Trim; prices/promotion use VB FormatNumber; minimum quantity uses Conversion.Val; many other values remain raw control text. Do not eagerly convert or unify these mappings.
+
+Next work should establish isolated original-handler creation/edit persistence fixtures before moving row population. Prerequisites: bind a fixture DataTable and adapter to private DT/DA, supply the GROUPES setting in the template form, bypass image writing through matching current/previous image names, select the edit grid/binding position, and capture original warnings. Creation ordering is adapter update/AcceptChanges, stock movement, sequence increment, success warning, aggregate refresh. Edit ordering is duplicate-code and duplicate-ID checks, row update/AcceptChanges, success warning, audit log, aggregate refresh. Aggregate refresh queries require numeric catalogue columns; avoid a text-only fake schema that hides conversion behavior.
+
+This is a coverage plan, not a verified save fixture. Existing guard tests stop before persistence and barcode tests have no database dependency. Keep new coverage isolated from shop files and preserve the absence of an individual-save transaction; test partial failures separately rather than silently adding atomicity.
