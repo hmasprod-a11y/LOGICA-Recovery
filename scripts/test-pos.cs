@@ -311,11 +311,88 @@ class PosSmoke {
   }
  }
 
+ static void StockMovementSearch(Assembly assembly,bool failQuery=false) {
+  CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
+  var module=assembly.GetType("LOGICA.Module1",true);
+  var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
+  var fixture=new System.Data.Common.DbConnectionStringBuilder();fixture.ConnectionString=connection.ConnectionString;
+  if(connection.Database!="logica_ci" || !fixture.ContainsKey("server") || Convert.ToString(fixture["server"])!="127.0.0.1" ||
+     !fixture.ContainsKey("port") || Convert.ToInt32(fixture["port"])!=3307)
+   throw new Exception("Movement search fixture requires exactly 127.0.0.1:3307/logica_ci");
+  connection.Open();
+  Sql(connection,"DROP TABLE IF EXISTS TABLE_MOUVEMENTS_STOCK; CREATE TABLE TABLE_MOUVEMENTS_STOCK (ID INT PRIMARY KEY,DATES DATE,CODE_ARTICLE VARCHAR(50),ARTICLE VARCHAR(100)) ENGINE=InnoDB; INSERT INTO TABLE_MOUVEMENTS_STOCK VALUES (1,'2026-01-01','ABC','Alpha'),(2,'2026-01-02','ABCX','Alpha extra'),(3,'2026-01-03','XYZ','Beta'),(4,'2026-01-04','ABC','Alpha')");
+  connection.Close();
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_6_MOUVEMENTS_STOCK",true))) {
+   SetText(form,"Label_TABLE","MOUVEMENTS_STOCK");
+   ((DateTimePicker)Get(form,"DateTime1_FIND")).Value=new DateTime(2026,1,2);
+   ((DateTimePicker)Get(form,"DateTime2_FIND")).Value=new DateTime(2026,1,3);
+   var combo=(ComboBox)Get(form,"Combo_FIND");
+   combo.Items.Add("CODE_ARTICLE");combo.Items.Add("DATES");
+   var search=Get(form,"Text_FIND");var texts=search.GetType().GetProperty("Texts");
+   var dateFlag=Get(form,"Check_FIND_DATE");var exactFlag=Get(form,"Check_FIND_EXACTE");
+   Action<bool> setDate=delegate(bool value){dateFlag.GetType().GetProperty("Checked").SetValue(dateFlag,value,null);};
+   Action<bool> setExact=delegate(bool value){exactFlag.GetType().GetProperty("Checked").SetValue(exactFlag,value,null);};
+   Action<string> query=delegate(string text) {
+    texts.SetValue(search,text,null); // Original TextChanged also invokes the search handler.
+    using(var sender=new Button(){Name="CI_MOVEMENT_SEARCH"})
+     form.GetType().GetMethod("Picture_FIND_Click",Flags).Invoke(form,new object[]{sender,EventArgs.Empty});
+   };
+   Action<string> expect=delegate(string ids) {
+    var table=(DataTable)form.GetType().GetField("DT",Flags).GetValue(form);
+    string actual="";foreach(DataRow row in table.Rows){if(actual.Length>0)actual+=",";actual+=Convert.ToString(row["ID"]);}
+    if(actual!=ids)throw new Exception("Movement result order changed: expected "+ids+" actual "+actual);
+    if(!Object.ReferenceEquals(((DataGridView)Get(form,"DataGridView1")).DataSource,table))
+     throw new Exception("Movement grid no longer bound to original DT");
+    if(connection.State!=ConnectionState.Closed)throw new Exception("Movement read left connection open");
+    Console.WriteLine("PASS original movement result IDs "+ids);
+   };
+   combo.SelectedItem="CODE_ARTICLE";setDate(false);setExact(false);query("ABC");expect("4,2,1");
+   setExact(true);query("ABC");expect("4,1");
+   query("ABC%");expect("4,2,1"); // Exact mode still uses LIKE, preserving wildcard semantics.
+   setExact(false);setDate(true);query("ABC");expect("2");
+   query("");expect("2"); // Empty text keeps the previously loaded table.
+   combo.SelectedItem="DATES";query("");expect("3,2");
+   using(var sender=new Button(){Name="CI_MOVEMENT_REFRESH"})
+    form.GetType().GetMethod("Picture_REFRESH_Click",Flags).Invoke(form,new object[]{sender,EventArgs.Empty});
+   expect("4,3,2,1");
+   if(Convert.ToString(texts.GetValue(search,null))!="")throw new Exception("Movement refresh did not clear search");
+   if(failQuery) {
+    var beforeTable=(DataTable)form.GetType().GetField("DT",Flags).GetValue(form);
+    object beforeAdapter=form.GetType().GetField("DA",Flags).GetValue(form);
+    combo.Items.Add("CI_MISSING_COLUMN");combo.SelectedItem="CI_MISSING_COLUMN";setDate(true);setExact(false);
+    form.GetType().GetField("_sql",Flags).SetValue(form,"CI_BEFORE_FAILURE");
+    int warnings=0;uint threadId=GetCurrentThreadId();
+    using(var stop=new ManualResetEvent(false)) {
+     var watcher=new Thread(delegate() {
+      while(!stop.WaitOne(100))if(DismissInjectedFailure(threadId,"CI_MISSING_COLUMN"))Interlocked.Increment(ref warnings);
+     });watcher.IsBackground=true;watcher.Start();
+     try {query("ABC");}
+     finally {stop.Set();if(!watcher.Join(2000))throw new Exception("Movement failure watcher did not stop");}
+    }
+    if(warnings<1)throw new Exception("Expected movement query failure warning");
+    var afterTable=(DataTable)form.GetType().GetField("DT",Flags).GetValue(form);
+    object afterAdapter=form.GetType().GetField("DA",Flags).GetValue(form);
+    if(!Object.ReferenceEquals(beforeTable,afterTable) || afterTable.Rows.Count!=0)
+     throw new Exception("Movement failure did not retain cleared DT");
+    if(Object.ReferenceEquals(beforeAdapter,afterAdapter))throw new Exception("Movement failure did not keep newly assigned DA");
+    var adapter=(System.Data.Common.DbDataAdapter)afterAdapter;
+    if(!adapter.SelectCommand.CommandText.Contains("CI_MISSING_COLUMN") || !adapter.SelectCommand.CommandText.Contains("Dates   between"))
+     throw new Exception("Movement failure adapter lost attempted query");
+    string prefix=Convert.ToString(form.GetType().GetField("_sql",Flags).GetValue(form));
+    if(!prefix.Contains("Dates   between") || !prefix.Contains("AND"))throw new Exception("Movement failure filter-prefix side effect changed");
+    expect("");
+    Console.WriteLine("PASS original movement lookup failure: prior results cleared, DT/grid reference retained, new adapter/query/prefix kept, warning and closed connection");
+   }
+  }
+  connection.Open();Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK"),4m,"movement search preserves fixture row count");connection.Close();
+  Console.WriteLine("PASS original movement search: date boundaries, wildcard/exact LIKE, optional date, empty retention, refresh and descending order; isolated read-only fixture");
+ }
+
  [STAThread] static int Main(string[] args) {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
