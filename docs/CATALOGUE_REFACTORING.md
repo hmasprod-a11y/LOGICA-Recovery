@@ -3,7 +3,7 @@
 ## Current resume checkpoint
 
 - Verified implementation: 4758f51739271f88647eba58f2efddb4677e52a2, draft PR #10 stacked on #8; no merge/release.
-- Windows run [40917622281](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40917622281) passed; independent runs 40917622268 and 40917630572 passed. No implementation check is pending.
+- Windows run [40917622281](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40917622281) passed; independent runs 40917622268 and 40917630572 passed. Implementation is verified; the new scalar-edge fixtures below await Windows verification.
 - Separated: input/validation, barcode arithmetic, lazy 33-column mapping, duplicate lookup SQL, creation movement, sequence write and adapter Update/AcceptChanges. Preserve individual-save partial commits and failure states.
 - Next: characterize creation ID reads for an empty article table and NULL sequence before moving MAX(ID)/ARTICLE scalar queries. Existing populated fixture protects ID 42/ART000007. Preserve repeated ExecuteScalar calls and VB/DBNull behavior. Do not change generated identifier policy.
 
@@ -237,3 +237,11 @@ Pre-move success and both injected adapter failure fixtures protect this boundar
 Full Windows run 40917622281 succeeded after persistence extraction at 4758f51739271f88647eba58f2efddb4677e52a2. Both injected adapter failures retain Added/Modified rows and original database values/connection behavior; all 33 successful creation/edit values and previous catalogue/checkout/build/launcher checks passed. Independent rules passed. Revert that implementation commit to undo UpdateAndAccept extraction.
 
 Creation scalar audit: MAX(ID) query checks ExecuteScalar against DBNull then calls ExecuteScalar again for nonempty results, adds 1 using VB double conversion and checked rounded int conversion. ARTICLE query similarly reads twice when non-DBNull, formats ART plus six-digit VB number; DBNull produces string 0. Empty/missing sequence row can return null rather than DBNull, so treat missing-row behavior separately and do not infer it from NULL-column coverage. The original command is reused later for the sequence update.
+
+## Original creation scalar-edge fixtures
+
+Add isolated catalogue-create-empty, catalogue-create-null-sequence and catalogue-create-empty-null cases. Before invoking original creation, remove only the fixture article seed and/or set the existing ID=0 sequence column to SQL NULL. Generalize the complete 33-column verifier to accept the expected numeric/article identifiers.
+
+Require empty MAX(ID) to produce numeric ID 1, SQL NULL ARTICLE to produce string ID_ARTICLE 0, all 33 product values, matching movement identity, accepted row, closed connection and aggregate refresh. Preserve SQL NULL after the unchanged sequence increment (NULL+1 remains NULL). Existing populated fixture still requires ID 42/ART000007 and sequence 8. Missing sequence row is deliberately not conflated with a NULL column.
+
+Production scalar reads remain unchanged. Harness compilation passed locally; Windows runtime evidence for these edge expectations is pending before extraction.

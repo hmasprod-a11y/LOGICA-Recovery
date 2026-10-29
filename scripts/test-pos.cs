@@ -367,21 +367,21 @@ class PosSmoke {
   Console.WriteLine("PASS catalogue required code/article and promotion guards: 10 cases; promotion empty/over-100 rejected, -1/0/100 reach image guard before normalization/persistence");
  }
 
- static void VerifyCatalogueRow(IDbConnection connection,bool edited) {
+ static void VerifyCatalogueRow(IDbConnection connection,bool edited,int expectedId=42,string expectedArticleId="ART000007") {
   string[][] strings={
-   new[]{"ID_ARTICLE","ART000007"},new[]{"Code",edited?"CI_EDIT":"CI_NEW"},new[]{"Article",edited?"CI s edited":"CI s item"},
+   new[]{"ID_ARTICLE",expectedArticleId},new[]{"Code",edited?"CI_EDIT":"CI_NEW"},new[]{"Article",edited?"CI s edited":"CI s item"},
    new[]{"Famille","CI_FAMILY"},new[]{"Sous_Famille","CI_SUBFAMILY"},new[]{"GROUPE","CI_GROUP"},new[]{"Description","CI_DESCRIPTION"},
    new[]{"UNITE","CI_UNIT"},new[]{"REFERENCE","CI_REFERENCE"},new[]{"FOURNISSEUR","CI_SUPPLIER"},new[]{"MODE_STOCK","CI_STOCK_MODE"},
    new[]{"PRINTER","CI_PRINTER"},new[]{"PRINTER_DUPLICATA","CI_DUPLICATE"},new[]{"Images","CI_UNCHANGED.png"},
    new[]{"Taille","CI_SIZE"},new[]{"Couleur","CI_COLOR"},new[]{"Emplacement","CI_LOCATION"},new[]{"FENETRE_PESAGE","CI_WEIGHING"},new[]{"BALANCE","NON"}
   };
   using(var command=connection.CreateCommand()) {
-   command.CommandText="SELECT * FROM TABLE_ARTICLES WHERE ID=42";
+   command.CommandText="SELECT * FROM TABLE_ARTICLES WHERE ID="+expectedId.ToString(CultureInfo.InvariantCulture);
    using(var row=command.ExecuteReader()) {
     if(!row.Read())throw new Exception("Missing catalogue mapping row");
     foreach(var field in strings)if(Convert.ToString(row[field[0]])!=field[1])throw new Exception("Catalogue mapping changed: "+field[0]);
     string[] numeric={"ID","Prix_A","PRIX_MP","PRIX_V_1","PRIX_V_2","PRIX_QTE","PRIX_QTE_MIN","STOCK","Alert","STOCK_INITIAL","TAUX_TVA","PROMOTION"};
-    decimal[] expected={42m,10.25m,edited?88.5m:10.25m,20m,18m,16m,3m,7m,2m,edited?999m:7m,20m,5m};
+    decimal[] expected={expectedId,10.25m,edited?88.5m:10.25m,20m,18m,16m,3m,7m,2m,edited?999m:7m,20m,5m};
     for(int index=0;index<numeric.Length;index++)if(Convert.ToDecimal(row[numeric[index]])!=expected[index])throw new Exception("Catalogue numeric mapping changed: "+numeric[index]);
     if(Convert.ToDateTime(row["DATES"])!=new DateTime(2026,1,2) ||
        Convert.ToDateTime(row["DATE_INVENTAIRE"])!=(edited?new DateTime(2020,3,4):new DateTime(2026,1,2)))
@@ -392,7 +392,7 @@ class PosSmoke {
   Console.WriteLine("PASS catalogue "+(edited?"edit":"create")+" all 33 persisted column values");
  }
 
- static void CatalogueCreateProduct(Assembly assembly,bool edit=false,bool duplicates=false,bool failMovement=false,bool failSequence=false,bool failInsert=false,bool failUpdate=false) {
+ static void CatalogueCreateProduct(Assembly assembly,bool edit=false,bool duplicates=false,bool failMovement=false,bool failSequence=false,bool failInsert=false,bool failUpdate=false,bool emptyArticles=false,bool nullSequence=false) {
   CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
   var module=assembly.GetType("LOGICA.Module1",true);
   var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
@@ -407,6 +407,8 @@ class PosSmoke {
   if(failMovement)Sql(connection,"CREATE TRIGGER CI_CATALOGUE_FAIL_MOVEMENT BEFORE INSERT ON TABLE_MOUVEMENTS_STOCK FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='CI_CATALOGUE_MOVE_FAILURE'");
   if(failSequence)Sql(connection,"CREATE TRIGGER CI_CATALOGUE_FAIL_SEQUENCE BEFORE UPDATE ON TABLE_NUM FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='CI_CATALOGUE_SEQUENCE_FAILURE'");
   if(failInsert)Sql(connection,"CREATE TRIGGER CI_CATALOGUE_FAIL_INSERT BEFORE INSERT ON TABLE_ARTICLES FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='CI_CATALOGUE_INSERT_FAILURE'");
+  if(emptyArticles)Sql(connection,"DELETE FROM TABLE_ARTICLES");
+  if(nullSequence)Sql(connection,"UPDATE TABLE_NUM SET ARTICLE=NULL WHERE ID=0");
   connection.Close();
   var forms=assembly.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",Flags).GetValue(null,null);
   var template=Get(forms,"Form_0_TEMPLATE");
@@ -486,6 +488,26 @@ class PosSmoke {
      if(((Control)Get(form,"Label_ARTICLES")).Text=="2")throw new Exception("Failed catalogue save unexpectedly refreshed aggregates");
      Sql(connection,failMovement?"DROP TRIGGER CI_CATALOGUE_FAIL_MOVEMENT":"DROP TRIGGER CI_CATALOGUE_FAIL_SEQUENCE");connection.Close();
      Console.WriteLine("PASS original catalogue "+(failMovement?"movement":"sequence")+" failure: article remains committed and accepted; "+(failSequence?"movement remains committed; ":"")+"sequence/refresh skipped; legacy open connection verified then fixture cleaned");
+     return;
+    }
+    if(emptyArticles || nullSequence) {
+     int expectedId=emptyArticles?1:42,expectedCount=emptyArticles?1:2;
+     string articleId=nullSequence?"0":"ART000007";
+     if(observed!=1)throw new Exception("Expected catalogue scalar-edge success warning");
+     if(table.Rows.Count!=expectedCount || table.Rows[expectedCount-1].RowState!=DataRowState.Unchanged)
+      throw new Exception("Scalar-edge row identity/acceptance changed");
+     if(connection.State!=ConnectionState.Closed)throw new Exception("Scalar-edge save left connection open");
+     connection.Open();
+     VerifyCatalogueRow(connection,false,expectedId,articleId);
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_ARTICLES"),expectedCount,"catalogue scalar-edge article count");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_ARTICLES WHERE ID=41 AND Code='CI_KEEP' AND Article='CI sentinel'"),emptyArticles?0m:1m,"catalogue scalar-edge existing rows");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE ID_ARTICLE='"+articleId+"' AND CODE_ARTICLE=' CI_NEW ' AND ARTICLE=' CI s item ' AND QUANTITE=7"),1m,"catalogue scalar-edge movement identity");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK"),1m,"catalogue scalar-edge movement count");
+     if(nullSequence)Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_NUM WHERE ID=0 AND ARTICLE IS NULL"),1m,"catalogue null sequence remains null after increment");
+     else Eq(Scalar(connection,"SELECT ARTICLE FROM TABLE_NUM WHERE ID=0"),8m,"catalogue scalar-edge sequence increment");
+     connection.Close();
+     Eq(decimal.Parse(((Control)Get(form,"Label_ARTICLES")).Text),expectedCount,"catalogue scalar-edge aggregate refresh");
+     Console.WriteLine("PASS original catalogue scalar edges: emptyArticles="+emptyArticles+" nullSequence="+nullSequence+"; ID="+expectedId+" ID_ARTICLE="+articleId);
      return;
     }
     if(observed!=1)throw new Exception("Expected one catalogue creation success warning");
@@ -692,7 +714,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
