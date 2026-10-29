@@ -137,3 +137,7 @@ After mixed/change/credit characterization passed, moved all three TABLE_VENTES_
 Capture unchanged ticket/client/cashier/workstation/operation/remark context once inside the original payable-operation guard. The form retains operation classification, payment-dialog acceptance, row iteration, negative-remainder condition, transaction ownership, ordering and printing. The writer receives no controls or Module1 reference and does not change connection lifetime or catch errors.
 
 Existing cash/refund, mixed, change, credit and rollback tests cover this extraction. Full Windows CI is required before claiming runtime verification. This is a structural move; legacy SQL concatenation and its limitations are intentionally not changed here.
+
+Payment-writer verification: full Windows run 40826687096 succeeded, including cash sale/refund, mixed card/cash, tendered/change, credit-without-payment and injected journal-failure rollback; all existing build/data/launcher checks passed. Domain CI succeeded. Revert 20f20c8110abf87444af1fe0cd233546bf95ddc1 to undo the payment extraction.
+
+The main checkout writes now have explicit infrastructure boundaries for movements, headers, journal and payments. Remaining orchestration is still in the form. Next: characterize failure after payment writes, then isolate final basket/sequence completion and stock mutation without changing transaction ownership. A later application-service extraction should consume plain snapshots and keep hardware/UI callbacks explicit.
