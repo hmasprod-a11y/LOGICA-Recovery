@@ -47,6 +47,15 @@ namespace LOGICA.ApplicationLayer.Checkout
         public string Remark { get; set; }
     }
 
+    internal sealed class CheckoutStockLine
+    {
+        public string TicketNumber { get; set; }
+        public object ArticleId { get; set; }
+        public object ArticleCode { get; set; }
+        public object ArticleName { get; set; }
+        public object BasketQuantity { get; set; }
+    }
+
     internal enum TicketPaymentKind { Cash, Tendered, Change }
 
     internal sealed class TicketPaymentWrite
@@ -67,6 +76,7 @@ namespace LOGICA.ApplicationLayer.Checkout
     // Readers run at their original stages; payment rows are read lazily between writes.
     internal sealed class CheckoutPostingInput
     {
+        public Func<IEnumerable<CheckoutStockLine>> ReadStock { get; set; }
         public Func<TicketHeaderRecord> ReadHeader { get; set; }
         public Func<TicketJournalRecord> ReadJournal { get; set; }
         public Func<IEnumerable<TicketPaymentWrite>> ReadPayments { get; set; }

@@ -3,15 +3,21 @@ using MySql.Data.MySqlClient;
 
 namespace LOGICA.Infrastructure.Checkout
 {
-    internal sealed class MySqlCheckoutDocumentStore : ICheckoutDocumentStore
+    internal sealed class MySqlCheckoutPostingStore : ICheckoutPostingStore
     {
         private readonly MySqlCommand command;
         private readonly MySqlConnection connection;
 
-        public MySqlCheckoutDocumentStore(MySqlCommand command, MySqlConnection connection)
+        public MySqlCheckoutPostingStore(MySqlCommand command, MySqlConnection connection)
         {
             this.command = command;
             this.connection = connection;
+        }
+
+        public void ApplyStock(CheckoutStockLine line)
+        {
+            CheckoutStockWriter.Apply(command, connection, line.TicketNumber,
+                line.ArticleId, line.ArticleCode, line.ArticleName, line.BasketQuantity);
         }
 
         public void WriteHeader(TicketHeaderRecord header) { TicketHeaderWriter.Write(command, connection, header); }

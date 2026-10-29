@@ -191,3 +191,11 @@ Existing stock-enabled whole/fractional and rollback cases remain unchanged. Pro
 Stock-disabled baseline verified: full Windows run 40830668371 succeeded. Both sale and refund preserved stock=10 and created zero movements while normal documents/payments/completion still passed. All established checkout variants/rollback and existing checks passed; application/domain CI passed.
 
 For the next stock-iteration move, preserve timing explicitly: current code applies stock first, builds payment-mode notes next, captures the adjusted date next, then reads/writes header and journal. Deferred stock inputs and a header-stage reader can preserve that sequence. Do not pre-capture date/payment notes before stock writes as an incidental restructuring.
+
+## Progress: application flow includes stock iteration (2026-10-29)
+
+Extend CheckoutPostingService to apply deferred stock rows before document posting. Rename the persistence interface/adapter to ICheckoutPostingStore / MySqlCheckoutPostingStore to reflect their wider scope. CheckoutStockLine carries raw row values; the adapter forwards them to the already-verified stock writer on the same transaction.
+
+The form maps stock rows lazily in ReadCheckoutStock, retaining the original Check_STOCK guard and row-count/iteration behavior. Payment-mode notes and adjusted date are read inside the deferred header reader, after all stock writes, preserving original ordering. Header/journal/payment/print/completion readers remain in their established positions. Ticket-number acquisition, transaction ownership, rollback and error UI stay in the form.
+
+Extend standalone order/failure tests with stock reads/writes, document-preparation timing and stock-disabled flows (48 assertions). All local application/domain tests passed. Existing stock-disabled, whole/fractional, refund and both rollback integration cases cover this extraction; full Windows CI is required before claiming integration success.

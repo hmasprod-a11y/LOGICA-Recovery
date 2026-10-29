@@ -12602,6 +12602,70 @@ public class Form_3_VENTE : Form
 	}
 
 
+
+	private System.Collections.Generic.IEnumerable<LOGICA.ApplicationLayer.Checkout.CheckoutStockLine> ReadCheckoutStock()
+	{
+		checked
+		{
+			if (Check_STOCK.Checked)
+			{
+				int num5 = DataGridView1.Rows.Count - 1;
+				int num6 = 0;
+				while (true)
+				{
+					int num7 = num6;
+					int num4 = num5;
+					if (num7 > num4)
+					{
+						break;
+					}
+					yield return new LOGICA.ApplicationLayer.Checkout.CheckoutStockLine
+					{
+						TicketNumber = _N_TICKET_SOLDER,
+						ArticleId = DataGridView1.Rows[num6].Cells["ID_ARTICLE"].Value,
+						ArticleCode = DataGridView1.Rows[num6].Cells["Code"].Value,
+						ArticleName = DataGridView1.Rows[num6].Cells["Article"].Value,
+						BasketQuantity = DataGridView1.Rows[num6].Cells["Qté"].Value
+					};
+					num6++;
+				}
+			}
+		}
+	}
+
+
+	private string ReadCheckoutPaymentModes()
+	{
+		checked
+		{
+			string text2 = "";
+			if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 || Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR REMBOURSEMENT", TextCompare: false) == 0)
+			{
+				if (!Check_ACCES_MODEP.Checked)
+				{
+					text2 = "ESPECES;";
+				}
+				else if (Check_ACCES_MODEP.Checked)
+				{
+					int num8 = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows.Count - 1;
+					int num9 = 0;
+					while (true)
+					{
+						int num10 = num9;
+						int num4 = num8;
+						if (num10 > num4)
+						{
+							break;
+						}
+						text2 = Conversions.ToString(Operators.AddObject(text2, Operators.ConcatenateObject(MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num9].Cells["MODE_P"].Value, ";")));
+						num9++;
+					}
+				}
+			}
+			return text2;
+		}
+	}
+
 	private System.Collections.Generic.IEnumerable<LOGICA.ApplicationLayer.Checkout.TicketPaymentWrite> ReadCheckoutPayments(DateTime dateTime)
 	{
 		checked
@@ -12841,67 +12905,30 @@ public class Form_3_VENTE : Form
 				Text_ID_TICKET.Text = Strings.Format(DateTime.Now, "ddMMyyHHmmssfff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text;
 				try
 				{
-					if (Check_STOCK.Checked)
-					{
-						int num5 = DataGridView1.Rows.Count - 1;
-						int num6 = 0;
-						while (true)
-						{
-							int num7 = num6;
-							int num4 = num5;
-							if (num7 > num4)
-							{
-								break;
-							}
-							LOGICA.Infrastructure.Checkout.CheckoutStockWriter.Apply(val4, Module1.cn_SQL, _N_TICKET_SOLDER,
-								DataGridView1.Rows[num6].Cells["ID_ARTICLE"].Value,
-								DataGridView1.Rows[num6].Cells["Code"].Value,
-								DataGridView1.Rows[num6].Cells["Article"].Value,
-								DataGridView1.Rows[num6].Cells["Qté"].Value);
-							num6++;
-						}
-					}
 					string text2 = "";
-					if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 || Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR REMBOURSEMENT", TextCompare: false) == 0)
-					{
-						if (!Check_ACCES_MODEP.Checked)
-						{
-							text2 = "ESPECES;";
-						}
-						else if (Check_ACCES_MODEP.Checked)
-						{
-							int num8 = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows.Count - 1;
-							int num9 = 0;
-							while (true)
-							{
-								int num10 = num9;
-								int num4 = num8;
-								if (num10 > num4)
-								{
-									break;
-								}
-								text2 = Conversions.ToString(Operators.AddObject(text2, Operators.ConcatenateObject(MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num9].Cells["MODE_P"].Value, ";")));
-								num9++;
-							}
-						}
-					}
-					DateTime dateTime = Conversions.ToDate(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).AddHours(Conversions.ToDouble("-" + Text_HEURE_RETARD.Text));
+					DateTime dateTime = default(DateTime);
 					LOGICA.ApplicationLayer.Checkout.CheckoutPostingService.Post(
-						new LOGICA.Infrastructure.Checkout.MySqlCheckoutDocumentStore(val4, Module1.cn_SQL),
+						new LOGICA.Infrastructure.Checkout.MySqlCheckoutPostingStore(val4, Module1.cn_SQL),
 						new LOGICA.ApplicationLayer.Checkout.CheckoutPostingInput
 						{
-							ReadHeader = () => new LOGICA.ApplicationLayer.Checkout.TicketHeaderRecord
+							ReadStock = () => ReadCheckoutStock(),
+							ReadHeader = () =>
 							{
-								TicketId = Text_ID_TICKET.Text,
-								TicketNumber = _N_TICKET_SOLDER,
-								SaleDate = dateTime,
-								Cashier = ((ButtonBase)Button_CAISSIER).Text,
-								ClientId = Button_CLIENT._ID_Button,
-								ClientCode = Button_CLIENT._CODE_Button,
-								ClientName = ((ButtonBase)Button_CLIENT).Text,
-								Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
-								TotalText = Text_TOTAL_NET.Text,
-								Operation = ((ButtonBase)Button_OPERATION).Text
+								text2 = ReadCheckoutPaymentModes();
+								dateTime = Conversions.ToDate(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).AddHours(Conversions.ToDouble("-" + Text_HEURE_RETARD.Text));
+								return new LOGICA.ApplicationLayer.Checkout.TicketHeaderRecord
+								{
+									TicketId = Text_ID_TICKET.Text,
+									TicketNumber = _N_TICKET_SOLDER,
+									SaleDate = dateTime,
+									Cashier = ((ButtonBase)Button_CAISSIER).Text,
+									ClientId = Button_CLIENT._ID_Button,
+									ClientCode = Button_CLIENT._CODE_Button,
+									ClientName = ((ButtonBase)Button_CLIENT).Text,
+									Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
+									TotalText = Text_TOTAL_NET.Text,
+									Operation = ((ButtonBase)Button_OPERATION).Text
+								};
 							},
 							ReadJournal = () => new LOGICA.ApplicationLayer.Checkout.TicketJournalRecord
 							{
