@@ -1947,7 +1947,8 @@ public class FormDialog_8_BASE_DONNEE : Form
 		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0008: Expected Obj, but got Unknown
 		MySqlCommand val = new MySqlCommand();
-		val.CommandText = "select   sum(TOTAL_NET) as n ,  min(ticket) as m ,  min(Dates) as d ,  min(Client) as c       from      TABLE_VENTES_JOURNAL     WHERE     ID_TICKET = '" + Strings.Trim(Text_ID_TICKET.Text) + "'    ";
+		val.CommandText = "select sum(TOTAL_NET) as n, min(ticket) as m, min(Dates) as d, min(Client) as c from TABLE_VENTES_JOURNAL WHERE ID_TICKET = @ticketId";
+		val.Parameters.AddWithValue("@ticketId", Strings.Trim(Text_ID_TICKET.Text));
 		val.Connection = Module1.cn_SQL;
 		val.CommandType = CommandType.Text;
 		decimal num = 0m;
@@ -2005,7 +2006,8 @@ public class FormDialog_8_BASE_DONNEE : Form
 		//IL_0007: Expected Obj, but got Unknown
 		//IL_0127: Unknown result type (might be due to invalid IL or missing references)
 		MySqlCommand val = new MySqlCommand();
-		val.CommandText = "select   ID_CLIENT,CLIENT       from      TABLE_CLIENTS     WHERE     ID_CLIENT = '" + Strings.Trim(Text_ID_CLIENT_FIND.Text) + "'    ";
+		val.CommandText = "select ID_CLIENT, CLIENT from TABLE_CLIENTS WHERE ID_CLIENT = @clientId";
+		val.Parameters.AddWithValue("@clientId", Strings.Trim(Text_ID_CLIENT_FIND.Text));
 		val.Connection = Module1.cn_SQL;
 		val.CommandType = CommandType.Text;
 		string text = "";
@@ -2074,7 +2076,8 @@ public class FormDialog_8_BASE_DONNEE : Form
 		//IL_0007: Expected Obj, but got Unknown
 		//IL_00e0: Unknown result type (might be due to invalid IL or missing references)
 		MySqlCommand val = new MySqlCommand();
-		val.CommandText = "select  MODE_P       from      TABLE_MODE_P     WHERE     MODE_P like '%" + Strings.Trim(Text_MODE_P_FIND.Text) + "%'    ";
+		val.CommandText = "select MODE_P from TABLE_MODE_P WHERE MODE_P LIKE @paymentMode";
+		val.Parameters.AddWithValue("@paymentMode", "%" + Strings.Trim(Text_MODE_P_FIND.Text) + "%");
 		val.Connection = Module1.cn_SQL;
 		val.CommandType = CommandType.Text;
 		string text = "";
@@ -2128,7 +2131,8 @@ public class FormDialog_8_BASE_DONNEE : Form
 		if (Operators.CompareString(Combo_TYPE_DOC.Text, "COMMANDES", TextCompare: false) == 0)
 		{
 			MySqlCommand val = new MySqlCommand();
-			val.CommandText = "select   sum(TOTAL_TTC_DOC) as n ,  min(FOURNISSEUR) as f ,  min(Dates) as d ,  min(ETAT) as c       from      TABLE_COMMANDES_ENTETE     WHERE     ID_BC = '" + Strings.Trim(Text_ID_DOC.Text) + "'    ";
+			val.CommandText = "select sum(TOTAL_TTC_DOC) as n, min(FOURNISSEUR) as f, min(Dates) as d, min(ETAT) as c from TABLE_COMMANDES_ENTETE WHERE ID_BC = @orderId";
+			val.Parameters.AddWithValue("@orderId", Strings.Trim(Text_ID_DOC.Text));
 			val.Connection = Module1.cn_SQL;
 			val.CommandType = CommandType.Text;
 			decimal num = 0m;
@@ -2543,15 +2547,27 @@ public class FormDialog_8_BASE_DONNEE : Form
 				{
 					Module1.cn_SQL.Open();
 				}
-				val.CommandText = "DELETE    from TABLE_VENTES_ENTETE            WHERE     ID_TICKET = '" + Strings.Trim(Label_ID_TICKET.Text) + "'              ";
-				val.Connection = Module1.cn_SQL;
-				val.ExecuteNonQuery();
-				val.CommandText = "DELETE    from TABLE_VENTES_JOURNAL            WHERE     ID_TICKET = '" + Strings.Trim(Label_ID_TICKET.Text) + "'              ";
-				val.Connection = Module1.cn_SQL;
-				val.ExecuteNonQuery();
-				val.CommandText = "DELETE    from TABLE_VENTES_REGLEMENTS          WHERE     ID_TICKET = '" + Strings.Trim(Label_ID_TICKET.Text) + "'              ";
-				val.Connection = Module1.cn_SQL;
-				val.ExecuteNonQuery();
+				using (MySqlTransaction ticketTransaction = Module1.cn_SQL.BeginTransaction())
+				{
+					try
+					{
+						val.Connection = Module1.cn_SQL;
+						val.Transaction = ticketTransaction;
+						val.CommandText = "DELETE FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET = @ticketId";
+						val.Parameters.AddWithValue("@ticketId", Strings.Trim(Label_ID_TICKET.Text));
+						val.ExecuteNonQuery();
+						val.CommandText = "DELETE FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET = @ticketId";
+						val.ExecuteNonQuery();
+						val.CommandText = "DELETE FROM TABLE_VENTES_ENTETE WHERE ID_TICKET = @ticketId";
+						val.ExecuteNonQuery();
+						ticketTransaction.Commit();
+					}
+					catch
+					{
+						ticketTransaction.Rollback();
+						throw;
+					}
+				}
 				string right = "Radio_SUPPRIMER | " + Label_ID_TICKET.Text;
 				File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
 				Module1.cn_SQL.Close();
@@ -2564,15 +2580,29 @@ public class FormDialog_8_BASE_DONNEE : Form
 				{
 					Module1.cn_SQL.Open();
 				}
-				val2.CommandText = "update      TABLE_VENTES_ENTETE     set id_client = '" + Strings.Trim(Label_ID_CLIENT.Text) + "'  , client = '" + Strings.Trim(Label_CLIENT.Text) + "'        WHERE     ID_TICKET = '" + Strings.Trim(Label_ID_TICKET.Text) + "'              ";
-				val2.Connection = Module1.cn_SQL;
-				val2.ExecuteNonQuery();
-				val2.CommandText = "update      TABLE_VENTES_JOURNAL    set id_client = '" + Strings.Trim(Label_ID_CLIENT.Text) + "'  , client = '" + Strings.Trim(Label_CLIENT.Text) + "'        WHERE     ID_TICKET = '" + Strings.Trim(Label_ID_TICKET.Text) + "'              ";
-				val2.Connection = Module1.cn_SQL;
-				val2.ExecuteNonQuery();
-				val2.CommandText = "update      TABLE_VENTES_REGLEMENTS  set id_client = '" + Strings.Trim(Label_ID_CLIENT.Text) + "'  , client = '" + Strings.Trim(Label_CLIENT.Text) + "'        WHERE     ID_TICKET = '" + Strings.Trim(Label_ID_TICKET.Text) + "'              ";
-				val2.Connection = Module1.cn_SQL;
-				val2.ExecuteNonQuery();
+				using (MySqlTransaction ticketTransaction = Module1.cn_SQL.BeginTransaction())
+				{
+					try
+					{
+						val2.Connection = Module1.cn_SQL;
+						val2.Transaction = ticketTransaction;
+						val2.CommandText = "UPDATE TABLE_VENTES_ENTETE SET id_client = @clientId, client = @clientName WHERE ID_TICKET = @ticketId";
+						val2.Parameters.AddWithValue("@clientId", Strings.Trim(Label_ID_CLIENT.Text));
+						val2.Parameters.AddWithValue("@clientName", Strings.Trim(Label_CLIENT.Text));
+						val2.Parameters.AddWithValue("@ticketId", Strings.Trim(Label_ID_TICKET.Text));
+						val2.ExecuteNonQuery();
+						val2.CommandText = "UPDATE TABLE_VENTES_JOURNAL SET id_client = @clientId, client = @clientName WHERE ID_TICKET = @ticketId";
+						val2.ExecuteNonQuery();
+						val2.CommandText = "UPDATE TABLE_VENTES_REGLEMENTS SET id_client = @clientId, client = @clientName WHERE ID_TICKET = @ticketId";
+						val2.ExecuteNonQuery();
+						ticketTransaction.Commit();
+					}
+					catch
+					{
+						ticketTransaction.Rollback();
+						throw;
+					}
+				}
 				string right2 = "Radio_CHANG_CLIENT | " + Label_ID_TICKET.Text;
 				File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right2), "\r\n")), Encoding.UTF8);
 				Module1.cn_SQL.Close();
@@ -2585,7 +2615,9 @@ public class FormDialog_8_BASE_DONNEE : Form
 				{
 					Module1.cn_SQL.Open();
 				}
-				val3.CommandText = "update      TABLE_VENTES_REGLEMENTS    set MODE_P = '" + Strings.Trim(Label_MODE_P.Text) + "'      WHERE     ID_TICKET = '" + Strings.Trim(Text_ID_TICKET.Text) + "'              ";
+				val3.CommandText = "UPDATE TABLE_VENTES_REGLEMENTS SET MODE_P = @paymentMode WHERE ID_TICKET = @ticketId";
+				val3.Parameters.AddWithValue("@paymentMode", Strings.Trim(Label_MODE_P.Text));
+				val3.Parameters.AddWithValue("@ticketId", Strings.Trim(Text_ID_TICKET.Text));
 				val3.Connection = Module1.cn_SQL;
 				val3.ExecuteNonQuery();
 				string right3 = "Radio_CHANG_MODE_P | " + Label_ID_TICKET.Text;
