@@ -61,3 +61,9 @@ Move only family-filter SQL assembly and the ordered eleven-query UNION/adapter 
 ## Verified aggregate lookup milestone
 
 Windows run [40951282675](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40951282675) passed after aggregate SQL extraction at 01b0aa9494b56ec12b63533976dfce80c6432afe. Independent runs 40951282878/40951292006 passed. All eleven labels, filters/NULL sums/masks/_sql behavior and prior catalogue/checkout/build/launcher checks passed. No implementation verification remains pending. Revert that implementation commit to undo aggregate lookup extraction.
+
+## Aggregate display formatter extraction pending
+
+Before changing label branches, CatalogueAggregateFormatting tests passed 114 standalone assertions across three cultures for DBNull/null, raw numeric/string values, monetary midpoint rounding, 20-character #/DH mask, large values and equivalent exception types. All prior independent tests passed. Independent runner includes only the new UI-independent Presentation/Formatting folder, not the WinForms adapter folder.
+
+Replace the eleven repeated count/money DBNull branches with formatter calls. Retain original label assignment order, per-row DataTable value access, _sql side effect, lookup/error catch and rounding rules. The formatter uses verified MonetaryRounding (the existing FLOUSS compatibility target). No display redesign or value normalization. Full Windows original-handler aggregate regression is pending after extraction.

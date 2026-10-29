@@ -14783,94 +14783,17 @@ public class Form_2_ARTICLES : Form
 			if (Operators.CompareString(_FAMILLE_FILTRE, "", TextCompare: false) == 0)
                 _sql = "";
             DataTable dataTable = LOGICA.Infrastructure.Catalogue.CatalogueAggregateLookup.Read(_FAMILLE_FILTRE, Module1.cn_SQL);
-            if (dataTable.Rows[0]["N"] == DBNull.Value)
-			{
-				Label_ARTICLES.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_ARTICLES.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"])));
-			}
-			if (dataTable.Rows[1]["N"] == DBNull.Value)
-			{
-				Label_ALERTS_STOCK.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_ALERTS_STOCK.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[1]["N"])));
-			}
-			if (dataTable.Rows[2]["N"] == DBNull.Value)
-			{
-				Label_STOCK_NEGATIF.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_STOCK_NEGATIF.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[2]["N"])));
-			}
-			if (dataTable.Rows[3]["N"] == DBNull.Value)
-			{
-				Label_PROMOTIONS.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_PROMOTIONS.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[3]["N"])));
-			}
-			if (dataTable.Rows[4]["N"] == DBNull.Value)
-			{
-				Label_VALEURSTOCK_MP.Text = (Conversions.ToString(0) + " DH").PadLeft(20, '#');
-			}
-			else
-			{
-				Label_VALEURSTOCK_MP.Text = (Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(dataTable.Rows[4]["N"]))) + " DH").PadLeft(20, '#');
-			}
-			if (dataTable.Rows[5]["N"] == DBNull.Value)
-			{
-				Label_VALEURSTOCK_MP_NON.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_VALEURSTOCK_MP_NON.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[5]["N"])));
-			}
-			if (dataTable.Rows[6]["N"] == DBNull.Value)
-			{
-				Label_VALEURSTOCK_A.Text = (Conversions.ToString(0) + " DH").PadLeft(20, '#');
-			}
-			else
-			{
-				Label_VALEURSTOCK_A.Text = (Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(dataTable.Rows[6]["N"]))) + " DH").PadLeft(20, '#');
-			}
-			if (dataTable.Rows[7]["N"] == DBNull.Value)
-			{
-				Label_VALEURSTOCK_A_NON.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_VALEURSTOCK_A_NON.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[7]["N"])));
-			}
-			if (dataTable.Rows[8]["N"] == DBNull.Value)
-			{
-				Label_VALEURSTOCK_V.Text = (Conversions.ToString(0) + " DH").PadLeft(20, '#');
-			}
-			else
-			{
-				Label_VALEURSTOCK_V.Text = (Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(dataTable.Rows[8]["N"]))) + " DH").PadLeft(20, '#');
-			}
-			if (dataTable.Rows[9]["N"] == DBNull.Value)
-			{
-				Label_VALEURSTOCK_V_NON.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_VALEURSTOCK_V_NON.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[9]["N"])));
-			}
-			if (dataTable.Rows[10]["N"] == DBNull.Value)
-			{
-				Label_PRIX_QTE.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_PRIX_QTE.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[10]["N"])));
-			}
+            Label_ARTICLES.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[0]["N"]);
+			Label_ALERTS_STOCK.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[1]["N"]);
+			Label_STOCK_NEGATIF.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[2]["N"]);
+			Label_PROMOTIONS.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[3]["N"]);
+			Label_VALEURSTOCK_MP.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Money(dataTable.Rows[4]["N"]);
+			Label_VALEURSTOCK_MP_NON.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[5]["N"]);
+			Label_VALEURSTOCK_A.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Money(dataTable.Rows[6]["N"]);
+			Label_VALEURSTOCK_A_NON.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[7]["N"]);
+			Label_VALEURSTOCK_V.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Money(dataTable.Rows[8]["N"]);
+			Label_VALEURSTOCK_V_NON.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[9]["N"]);
+			Label_PRIX_QTE.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[10]["N"]);
 		}
 		catch (Exception ex)
 		{
