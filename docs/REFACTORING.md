@@ -73,3 +73,11 @@ Rollback: revert this slice's commit. Next: characterize the quantity-edit inter
 Full Windows run 40813225057 passed, including build, existing POS checks and launcher/package checks. Domain checks passed for the implementation commit. Manual modal quantity-dialog interaction remains unverified.
 
 Inspected Button_Click checkout sequence: transaction starts before ticket number read; stock and movement writes -> header -> journal -> payment rows -> CREATION_IMPRESSION -> clear basket -> increment number -> commit. Rollback is in the inner catch. This is a map of current source, not a change request. Before extracting persistence, add controlled-failure coverage for transaction behavior and inspect CREATION_IMPRESSION side effects. Do not move printing or alter financial behavior as an incidental cleanup.
+
+## Progress: controlled checkout failure coverage (2026-10-29)
+
+Added a checkout-rollback harness scenario before extracting persistence. It first establishes the existing sale/refund baseline, then injects a fixture-only journal-insert trigger failure after the original checkout has changed stock, inserted a movement and written a header. Assertions require the previous stock, movements, header/journal/payment counts and ticket sequence to survive unchanged, and the attempted basket to remain.
+
+The probe refuses to run unless the connection is exactly 127.0.0.1:3307/logica_ci. The injected trigger is dropped in a finally block. A timer acknowledges only the native error dialog containing CI_ROLLBACK_PROBE on the test's own UI thread; unexpected dialogs remain failures/timeouts. No global keyboard input is used.
+
+Local harness compilation succeeded; runtime result must be obtained from full Windows CI. Production code is unchanged in this slice. This covers a specific mid-transaction failure, not printer failure, concurrency, all failure locations or manual UI acceptance.

@@ -6,6 +6,8 @@ using System.Windows.Forms;
 using System.Drawing;
 using System.Data;
 using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
 class PosSmoke {
  const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
  static object Get(object o,string name){return o.GetType().GetProperty(name,Flags).GetValue(o,null);}
@@ -47,11 +49,42 @@ class PosSmoke {
  static void Sql(IDbConnection connection,string sql) {using(var c=connection.CreateCommand()){c.CommandText=sql;c.ExecuteNonQuery();}}
  static decimal Scalar(IDbConnection connection,string sql) {using(var c=connection.CreateCommand()){c.CommandText=sql;return Convert.ToDecimal(c.ExecuteScalar());}}
  static void SetText(object form,string name,string value){((Control)Get(form,name)).Text=value;}
- static void Checkout(Assembly assembly) {
+ delegate bool WindowVisitor(IntPtr window, IntPtr parameter);
+ [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+ [DllImport("user32.dll")] static extern bool EnumThreadWindows(uint threadId, WindowVisitor visitor, IntPtr parameter);
+ [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, WindowVisitor visitor, IntPtr parameter);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr window, StringBuilder text, int maximum);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr window, StringBuilder text, int maximum);
+ [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+ static bool DismissInjectedFailure(uint threadId) {
+  bool dismissed=false;
+  EnumThreadWindows(threadId,delegate(IntPtr window,IntPtr unused) {
+   var name=new StringBuilder(256);GetClassName(window,name,name.Capacity);
+   if(name.ToString()!="#32770")return true;
+   bool expected=false;
+   EnumChildWindows(window,delegate(IntPtr child,IntPtr parameter) {
+    var text=new StringBuilder(4096);GetWindowText(child,text,text.Capacity);
+    if(text.ToString().Contains("CI_ROLLBACK_PROBE"))expected=true;
+    return true;
+   },IntPtr.Zero);
+   // Acknowledge only our injected error on this test's UI thread, never global input.
+   if(expected) { dismissed=PostMessage(window,0x0111,new IntPtr(1),IntPtr.Zero); }
+   return true;
+  },IntPtr.Zero);
+  return dismissed;
+ }
+ static void Checkout(Assembly assembly,bool rollbackProbe=false) {
   CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
   var module=assembly.GetType("LOGICA.Module1",true);
   var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
   if(!connection.ConnectionString.Contains("127.0.0.1") || !connection.ConnectionString.Contains("logica_ci"))throw new Exception("Checkout test requires isolated database");
+  if(rollbackProbe) {
+   var fixture=new System.Data.Common.DbConnectionStringBuilder();
+   fixture.ConnectionString=connection.ConnectionString;
+   if(connection.Database!="logica_ci" || !fixture.ContainsKey("server") || Convert.ToString(fixture["server"])!="127.0.0.1" ||
+      !fixture.ContainsKey("port") || Convert.ToInt32(fixture["port"])!=3307)
+    throw new Exception("Rollback probe requires exactly 127.0.0.1:3307/logica_ci");
+  }
   connection.Open();
   string columns="ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté,Remise,TOTAL_NET,TAUX_TVA,GROUPE";
   string journal="ID_TICKET,Ticket,Dates,Heure,"+columns+",Caissier,Vendeur,ID_CLIENT,CODE_CLIENT,CLIENT,POSTE,OPERATION,NOTES,NOTES_TYPE_PRIX,NOTES_MODE_P";
@@ -71,7 +104,9 @@ class PosSmoke {
   var forms=assembly.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",Flags).GetValue(null,null);
   var template=Get(forms,"Form_0_TEMPLATE");SetText(template,"Label_POSTE","CI_TEST");
   var list=(ListView)Get(template,"ListView1");list.Items.Add("BLOCAGE_STOCK_INSUFFISANT").SubItems.Add("False");
-  foreach(int quantity in new[]{2,-1}) {
+  int scenario=0;
+  foreach(int quantity in rollbackProbe?new[]{2,-1,2}:new[]{2,-1}) {
+  bool injectFailure=rollbackProbe && scenario++==2;
   using(var sale=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
    var grid=(DataGridView)Get(sale,"DataGridView1");grid.AllowUserToAddRows=false;
    foreach(var n in new[]{"Check_CHOIX_VENDEUR","Check_CHOIX_CLIENT","Check_ACCES_MODEP","Check_ACCES_RFID"})Get(sale,n).GetType().GetProperty("Checked").SetValue(Get(sale,n),false,null);
@@ -86,8 +121,41 @@ class PosSmoke {
     grid.Rows[row].Cells["PRINTER"].Value="0";grid.Rows[row].Cells["PRINTER_DUPLICATA"].Value="0";
     SetText(sale,"Button_OPERATION",quantity>0?"VENTE":"RETOUR");
     sale.GetType().GetMethod("Text_TOTAL_NET_Click").Invoke(sale,new object[]{sale,EventArgs.Empty});
-    using(var sender=new Button(){Name="CI_CASH_CHECKOUT"})sale.GetType().GetMethod("Button_Click",Flags).Invoke(sale,new object[]{sender,EventArgs.Empty});
-    connection.Open();
+    int dismissedErrors=0;
+    using(var timer=new System.Windows.Forms.Timer()) {
+     uint threadId=GetCurrentThreadId();
+     timer.Interval=100;
+     timer.Tick+=delegate { if(DismissInjectedFailure(threadId))dismissedErrors++; };
+     if(injectFailure) {
+      connection.Open();
+      Sql(connection,"CREATE TRIGGER CI_ROLLBACK_PROBE BEFORE INSERT ON TABLE_VENTES_JOURNAL FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CI_ROLLBACK_PROBE'");
+      connection.Close();
+      timer.Start();
+     }
+     try {
+      using(var sender=new Button(){Name="CI_CASH_CHECKOUT"})sale.GetType().GetMethod("Button_Click",Flags).Invoke(sale,new object[]{sender,EventArgs.Empty});
+     } finally {
+      timer.Stop();
+      if(injectFailure) {
+       if(connection.State!=ConnectionState.Open)connection.Open();
+       Sql(connection,"DROP TRIGGER IF EXISTS CI_ROLLBACK_PROBE");
+      }
+     }
+    }
+    if(connection.State!=ConnectionState.Open)connection.Open();
+    if(injectFailure) {
+     if(dismissedErrors==0)throw new Exception("Injected checkout error was not observed");
+     Eq(Scalar(connection,"SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=1"),9m,"rollback preserves stock");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE"),2m,"rollback removes attempted header");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL"),2m,"rollback preserves prior journal");
+     Eq(Scalar(connection,"SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS"),12.5m,"rollback preserves payments");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CI_TEST"),1m,"rollback retains basket");
+     Eq(Scalar(connection,"SELECT CL FROM TABLE_NUM WHERE ID=0"),3m,"rollback preserves ticket sequence");
+     Eq(Scalar(connection,"SELECT SUM(QUANTITE) FROM TABLE_MOUVEMENTS_STOCK"),-1m,"rollback removes attempted stock movement");
+     connection.Close();
+     Console.WriteLine("PASS injected failure after stock/header writes rolls back checkout");
+     continue;
+    }
     Eq(Scalar(connection,"SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=1"),quantity>0?8m:9m,"original checkout stock after "+(quantity>0?"sale":"return"));
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE"),quantity>0?1m:2m,"original checkout ticket persisted");
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL"),quantity>0?1m:2m,"original checkout sales journal persisted");
@@ -104,7 +172,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
