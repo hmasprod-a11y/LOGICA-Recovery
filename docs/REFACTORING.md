@@ -311,3 +311,7 @@ Introduce ApplicationLayer.Checkout.StockValidationService and IStockAvailabilit
 The form retains the configured VENTE/setting gate and warning/early-return UI. ReadStockValidationRows preserves the dt1 row-count snapshot and deferred Code/quantity access. No database or WinForms dependency enters the service.
 
 Standalone tests passed locally: 39 assertions for empty/missing/sufficient rows, first-shortage ordering, deferred quantity/name reads and exact exception propagation, plus all prior application/domain checks. Full Windows integration must verify existing configured shortage/exact/missing-result and all checkout cases after this move.
+
+Stock-validation service verified: full Windows run 40851043358 passed all configured shortage/exact/missing-result and established checkout/chooser/payment/rollback checks, build and launcher checks. Application/domain CI passed, including 39 stock-validation service assertions. Revert b8d5a20af02f48ee7a5f18e97faff946e4c67b79 to undo this slice.
+
+Checkout milestone: reusable rules, stock-validation ordering and posting ordering now have UI/database-independent boundaries. Ticket acquisition, transaction/error UI and physical-device behavior remain deliberately unchanged. Next audit the catalogue/product handlers for the next bounded organizational change; keep expanded module work separately reviewable rather than adding unrelated behavior changes to this checkout milestone.
