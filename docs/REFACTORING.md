@@ -203,3 +203,9 @@ Extend standalone order/failure tests with stock reads/writes, document-preparat
 Stock-inclusive application flow verified: full Windows run 40831404766 passed. Stock-enabled/disabled sale/refund, fractional sale, payment variants and both rollback boundaries all passed, plus build and existing checks. Application/domain CI passed with 48 ordered/failure assertions. Revert 62f17e7b5956a91c195e8c35483c597c6d913369 to undo this slice.
 
 Next bounded candidate: inspect pre-checkout validation and characterize rejected operations before extracting guard rules. Ticket-number acquisition and transaction/rollback error UI remain unchanged; do not move or repair them incidentally.
+
+## Progress: rejected-checkout characterization (2026-10-29)
+
+Before extracting pre-checkout guard rules, add three real-handler cases: negative displayed total for VENTE, positive displayed total for RETOUR, and an empty visible basket. Require no header/journal/payment/movement writes, unchanged stock/sequence/database basket, and a re-enabled sender. The empty-grid case intentionally leaves a database basket row to prove the UI guard does not alter it.
+
+Only the expected native warning text is acknowledged for sign rejections on the test UI thread; empty basket must return without a dialog. This extends the harness only; production behavior remains unchanged. Existing accepted-operation/payment/failure cases remain enabled. Compile locally and obtain full Windows runtime evidence before extracting guards.

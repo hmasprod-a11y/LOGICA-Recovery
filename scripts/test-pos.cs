@@ -57,11 +57,20 @@ class PosSmoke {
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr window, StringBuilder text, int maximum);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr window, StringBuilder text, int maximum);
  [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
- static bool DismissInjectedFailure(uint threadId) {
+ static bool DismissInjectedFailure(uint threadId,string expectedText=null) {
   bool dismissed=false;
   EnumThreadWindows(threadId,delegate(IntPtr window,IntPtr unused) {
    var name=new StringBuilder(256);GetClassName(window,name,name.Capacity);
    if(name.ToString()!="#32770")return true;
+   if(expectedText!=null) {
+    bool matched=false;
+    EnumChildWindows(window,delegate(IntPtr child,IntPtr parameter) {
+     var text=new StringBuilder(4096);GetWindowText(child,text,text.Capacity);
+     if(text.ToString().Contains(expectedText))matched=true;
+     return true;
+    },IntPtr.Zero);
+    if(!matched)return true;
+   }
    // Scoped to the isolated test thread during the injected-failure call.
    // A nontransactional fixture marker separately proves that our trigger was reached.
    dismissed=PostMessage(window,0x0010,IntPtr.Zero,IntPtr.Zero) || dismissed;
@@ -149,6 +158,11 @@ class PosSmoke {
     grid.Rows[row].Cells["PRINTER"].Value="0";grid.Rows[row].Cells["PRINTER_DUPLICATA"].Value="0";
     SetText(sale,"Button_OPERATION",settlement=="credit"?"CREDIT":(quantity>0?"VENTE":"RETOUR"));
     sale.GetType().GetMethod("Text_TOTAL_NET_Click").Invoke(sale,new object[]{sale,EventArgs.Empty});
+    bool rejected=settlement.StartsWith("reject-");
+    if(settlement=="reject-sale")SetText(sale,"Text_TOTAL_NET","-25");
+    if(settlement=="reject-return") { SetText(sale,"Button_OPERATION","RETOUR");SetText(sale,"Text_TOTAL_NET","25"); }
+    if(settlement=="reject-empty")grid.Rows.Clear();
+    bool senderEnabled=false;
     Form acceptedPayment=paymentDialog?PreparePaymentFixture(forms,module,quantity*12.5m,settlement):null;
     int dismissedErrors=0;
     using(var stopWatcher=new ManualResetEvent(false)) {
@@ -159,16 +173,22 @@ class PosSmoke {
       Sql(connection,"DROP TABLE IF EXISTS TABLE_CI_ROLLBACK_PROBE; CREATE TABLE TABLE_CI_ROLLBACK_PROBE (Attempts INT, PaymentRows INT, BasketRows INT) ENGINE=MEMORY; INSERT INTO TABLE_CI_ROLLBACK_PROBE VALUES (0,0,0)");
       Sql(connection,"CREATE TRIGGER CI_ROLLBACK_PROBE BEFORE "+(lateFailure?"UPDATE ON TABLE_NUM":"INSERT ON TABLE_VENTES_JOURNAL")+" FOR EACH ROW BEGIN UPDATE TABLE_CI_ROLLBACK_PROBE SET Attempts=Attempts+1, PaymentRows=(SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS), BasketRows=(SELECT COUNT(*) FROM TABLE_CI_TEST); SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CI_ROLLBACK_PROBE'; END");
       connection.Close();
+     }
+     if(injectFailure || (rejected && settlement!="reject-empty")) {
+      string expectedDialog=rejected?(settlement=="reject-sale"?"Positif":"(RETOUR)"):null;
       watcher=new Thread(delegate() {
        while(!stopWatcher.WaitOne(100)) {
-        if(DismissInjectedFailure(threadId))Interlocked.Increment(ref dismissedErrors);
+        if(DismissInjectedFailure(threadId,expectedDialog))Interlocked.Increment(ref dismissedErrors);
        }
       });
       watcher.IsBackground=true;
       watcher.Start();
      }
      try {
-      using(var sender=new Button(){Name="CI_CASH_CHECKOUT"})sale.GetType().GetMethod("Button_Click",Flags).Invoke(sale,new object[]{sender,EventArgs.Empty});
+      using(var sender=new Button(){Name="CI_CASH_CHECKOUT"}) {
+       sale.GetType().GetMethod("Button_Click",Flags).Invoke(sale,new object[]{sender,EventArgs.Empty});
+       senderEnabled=sender.Enabled;
+      }
      } finally {
       if(acceptedPayment!=null)acceptedPayment.Dispose();
       stopWatcher.Set();
@@ -180,6 +200,20 @@ class PosSmoke {
      }
     }
     if(connection.State!=ConnectionState.Open)connection.Open();
+    if(rejected) {
+     if(!senderEnabled)throw new Exception("Rejected checkout did not re-enable sender");
+     if(settlement=="reject-empty"?dismissedErrors!=0:dismissedErrors==0)throw new Exception("Unexpected rejection dialog behavior");
+     Eq(Scalar(connection,"SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=1"),10m,"rejection preserves stock");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE"),0m,"rejection writes no header");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL"),0m,"rejection writes no journal");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS"),0m,"rejection writes no payment");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK"),0m,"rejection writes no movement");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CI_TEST"),1m,"rejection retains database basket");
+     Eq(Scalar(connection,"SELECT CL FROM TABLE_NUM WHERE ID=0"),1m,"rejection preserves ticket sequence");
+     connection.Close();
+     Console.WriteLine("PASS "+settlement+" leaves persistence unchanged and sender enabled");
+     continue;
+    }
     if(injectFailure) {
      if(dismissedErrors==0)throw new Exception("Injected checkout error was not observed");
      Eq(Scalar(connection,"SELECT Attempts FROM TABLE_CI_ROLLBACK_PROBE"),1m,"injected failure trigger reached");
@@ -237,7 +271,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
