@@ -12603,6 +12603,29 @@ public class Form_3_VENTE : Form
 
 
 
+
+	private System.Collections.Generic.IEnumerable<LOGICA.ApplicationLayer.Checkout.StockValidationRow> ReadStockValidationRows()
+	{
+		checked
+		{
+			int lastRow = Module1.dt1.Rows.Count - 1;
+			int rowIndex = 0;
+			while (true)
+			{
+				if (rowIndex > lastRow)
+				{
+					break;
+				}
+				yield return new LOGICA.ApplicationLayer.Checkout.StockValidationRow
+				{
+					ArticleCode = Module1.dt1.Rows[rowIndex]["Code"],
+					ReadQuantity = () => Module1.dt1.Rows[rowIndex]["Qté"]
+				};
+				rowIndex++;
+			}
+		}
+	}
+
 	private System.Collections.Generic.IEnumerable<LOGICA.ApplicationLayer.Checkout.CheckoutStockLine> ReadCheckoutStock()
 	{
 		checked
@@ -12830,24 +12853,13 @@ public class Form_3_VENTE : Form
 				}
 				if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 && Operators.CompareString(MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("BLOCAGE_STOCK_INSUFFISANT", false, 0).Index].SubItems[1].Text, "True", TextCompare: false) == 0)
 				{
-					int num = Module1.dt1.Rows.Count - 1;
-					int num2 = 0;
-					while (true)
+					var shortage = LOGICA.ApplicationLayer.Checkout.StockValidationService.FindFirstShortage(
+						new LOGICA.Infrastructure.Checkout.MySqlStockAvailabilityLookup(Module1.cn_SQL), ReadStockValidationRows());
+					if (shortage != null)
 					{
-						int num3 = num2;
-						int num4 = num;
-						if (num3 > num4)
-						{
-							break;
-						}
-						DataTable dataTable = LOGICA.Infrastructure.Checkout.StockAvailabilityLookup.FindByCode(Module1.cn_SQL, Module1.dt1.Rows[num2]["Code"]);
-						if (dataTable.Rows.Count != 0 && LOGICA.Domain.StockAvailability.IsBelowRequested(dataTable.Rows[0]["STOCK"], Module1.dt1.Rows[num2]["Qté"]))
-						{
-							MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("stock insuffisant de l'article -", dataTable.Rows[0]["Article"]), "-")), "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
-							NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
-							return;
-						}
-						num2++;
+						MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("stock insuffisant de l'article -", shortage.ArticleName), "-")), "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
+						NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
+						return;
 					}
 				}
 				if (Operators.ConditionalCompareObjectEqual(NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null), "Button_SOLDER_CREDIT", TextCompare: false))

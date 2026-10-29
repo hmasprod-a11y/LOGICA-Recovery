@@ -303,3 +303,11 @@ The form retains dt1 iteration, configured gate, missing-row short-circuit, comp
 Stock-lookup extraction verified: full Windows run 40849706145 passed missing-result acceptance, configured shortage rejection/exact-stock acceptance and every existing check. Application/domain CI passed. Revert 22b74f38a350eadcdd3b767dc949079462c1feda to undo lookup extraction.
 
 Next: evaluate a small application stock-validation service using a lookup interface and deferred dt1 row mapping, keeping the configured gate and warning UI in the form. Preserve missing-result skip, first-shortage early return, raw object comparison and lookup ordering; cover those with standalone service tests before moving the loop.
+
+## Progress: application stock-validation service (2026-10-29)
+
+Introduce ApplicationLayer.Checkout.StockValidationService and IStockAvailabilityLookup. The service walks deferred guard-model rows, skips missing lookup results without reading quantity, compares raw stock/quantity through the verified domain rule, and stops at the first shortage. Article name is read only for that shortage. MySqlStockAvailabilityLookup adapts the verified DataTable lookup without owning the connection.
+
+The form retains the configured VENTE/setting gate and warning/early-return UI. ReadStockValidationRows preserves the dt1 row-count snapshot and deferred Code/quantity access. No database or WinForms dependency enters the service.
+
+Standalone tests passed locally: 39 assertions for empty/missing/sufficient rows, first-shortage ordering, deferred quantity/name reads and exact exception propagation, plus all prior application/domain checks. Full Windows integration must verify existing configured shortage/exact/missing-result and all checkout cases after this move.
