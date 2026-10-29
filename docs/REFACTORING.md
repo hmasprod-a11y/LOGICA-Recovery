@@ -241,3 +241,9 @@ Local tests passed: 30 selection assertions across three cultures, preserving nu
 Selection-rule extraction verified: full Windows run 40843312672 passed seller-required, client-required and credit-client routing plus every existing accepted/rejected/payment/stock/failure case, build and launcher checks. Application/domain CI passed, including 30 selection assertions. Revert ca6e5a076782fba80aa9da6cf9089c52124f49b5 to undo the rule extraction.
 
 Next bounded candidate: inspect the basket-vs-database total consistency check and characterize its rejection path before separating it. Preserve legacy rounding/conversion, connection checks and UI messages; avoid introducing precision or validation changes as structural cleanup.
+
+## Progress: basket-total consistency characterization (2026-10-29)
+
+Before extracting the consistency rule, add checkout-reject-total: keep the fixture database total at 25 but set the visible line total to 27. The real checkout refreshes its database total, detects the rounded mismatch and must leave all persistence unchanged with sender re-enabled. A scoped watcher acknowledges only the expected "Le Total Net" warning.
+
+Add checkout-rounding-window: visible line total 25.4 versus database/header total 25 must remain accepted under the existing whole-unit comparison. This deliberately preserves the original policy rather than tightening precision during a structural change. Existing fractional checkout also remains covered. Production code is unchanged pending runtime characterization.

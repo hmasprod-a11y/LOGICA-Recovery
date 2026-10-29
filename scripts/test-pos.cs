@@ -191,6 +191,8 @@ class PosSmoke {
     if(settlement=="reject-sale")SetText(sale,"Text_TOTAL_NET","-25");
     if(settlement=="reject-return") { SetText(sale,"Button_OPERATION","RETOUR");SetText(sale,"Text_TOTAL_NET","25"); }
     if(settlement=="reject-empty")grid.Rows.Clear();
+    if(settlement=="reject-total")grid.Rows[0].Cells["TOTAL_NET"].Value=27m;
+    if(settlement=="rounding-window")grid.Rows[0].Cells["TOTAL_NET"].Value=25.4m;
     bool senderEnabled=false;
     Form acceptedPayment=paymentDialog?PreparePaymentFixture(forms,module,quantity*12.5m,settlement):null;
     int dismissedErrors=0;
@@ -204,7 +206,7 @@ class PosSmoke {
       connection.Close();
      }
      if(injectFailure || (rejected && settlement!="reject-empty")) {
-      string expectedDialog=rejected?(settlement=="reject-sale"?"Positif":"(RETOUR)"):null;
+      string expectedDialog=rejected?(settlement=="reject-sale"?"Positif":(settlement=="reject-total"?"Le Total Net":"(RETOUR)")):null;
       watcher=new Thread(delegate() {
        while(!stopWatcher.WaitOne(100)) {
         if(DismissInjectedFailure(threadId,expectedDialog))Interlocked.Increment(ref dismissedErrors);
@@ -302,7 +304,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
