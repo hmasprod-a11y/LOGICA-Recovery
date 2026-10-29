@@ -14438,15 +14438,8 @@ public class Form_2_ARTICLES : Form
                     MySqlCommandBuilder val4 = new MySqlCommandBuilder(DA);
 					((DbDataAdapter)(object)DA).Update(DT);
 					DT.AcceptChanges();
-					MySqlCommand val5 = new MySqlCommand();
-					if (Module1.cn_SQL.State != ConnectionState.Open)
-					{
-						Module1.cn_SQL.Open();
-					}
-					val5.CommandText = "INSERT  INTO   TABLE_MOUVEMENTS_STOCK               ( DATES , HEURE , LIBELLE, ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE)         values           ( '" + DateTime.Now.ToString("yyyy-MM-dd") + "' ,  '" + DateTime.Now.ToString("HH:mm:ss") + "'  ,'Création d''article'    ,'" + text + "' ,'" + Text_CODE.Text + "' ,'" + Text_ARTICLE.Text + "'  ,'" + Text_STOCK.Text + "'       )        ";
-					val5.Connection = Module1.cn_SQL;
-					val5.ExecuteNonQuery();
-					Module1.cn_SQL.Close();
+					LOGICA.Infrastructure.Catalogue.CatalogueCreationMovementWriter.Write(text,
+                        () => Text_CODE.Text, () => Text_ARTICLE.Text, () => Text_STOCK.Text, Module1.cn_SQL);
 					if (Module1.cn_SQL.State != ConnectionState.Open)
 					{
 						Module1.cn_SQL.Open();

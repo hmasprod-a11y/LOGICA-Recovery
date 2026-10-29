@@ -174,3 +174,11 @@ Full Windows run [40906139855](https://github.com/hmasprod-a11y/LOGICA-Recovery/
 Add catalogue-movement-failure in the strictly isolated creation fixture. An isolated BEFORE INSERT trigger rejects only the movement write after adapter persistence and AcceptChanges. Require the original error warning, all 33 article values still persisted/accepted, no movement or sequence increment, no aggregate refresh and the original open-connection state on this failure path; then explicitly remove the fixture trigger and close the connection. This characterizes the absence of an individual-save transaction without introducing one or changing failure cleanup. Production code is unchanged in this test commit.
 
 Harness compilation passed locally. Full Windows injected-failure evidence is pending. The original catch may attempt its normal diagnostic capture within CI's disposable application directory; no shop files or database are used. Sequence-write and adapter-write failures remain separate boundaries.
+
+## Verified partial failure; creation movement extraction
+
+Full Windows run [40907390787](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40907390787) succeeded for 4e76db749437897079398a2c048c4a45fc379481. The injected movement failure confirms article persistence/AcceptChanges precede the movement, sequence and refresh are skipped, and the connection remains open until fixture cleanup. Independent run 40907399118 passed; all prior catalogue/checkout/build checks passed.
+
+Extract only creation's movement command into Infrastructure.Catalogue.CatalogueCreationMovementWriter. Keep the exact SQL, two separate clock reads, raw code/article/stock reads after opening (deferred callbacks), execute-before-close ordering and existing open connection on failure. The original form still owns row persistence, sequence increment, warnings, error catch and refresh. No transaction or cleanup policy is added; this is preservation of observed behavior, not a partial-save fix.
+
+Pre-move success and injected-failure fixtures protect this boundary. Full Windows regression is pending after extraction. Next: characterize sequence-write failure separately before moving the sequence command or combining creation steps.
