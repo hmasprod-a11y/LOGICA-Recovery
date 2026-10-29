@@ -74,3 +74,11 @@ Next candidate audited: promotion guard uses short-circuit OR between raw-empty 
 Extend catalogue-save-guards from four to ten original-handler cases. Supply preceding required fields using the original controls/events (audited handlers are empty except primary sale-price copying to tier two). Empty, 101 and 1000 must stop at PROMOTION; -1, 0 and 100 must reach the intentionally empty IMAGE guard. Every case requires unchanged identifier text before apostrophe normalization, unchanged promotion text, closed connection and unchanged isolated article/movement/sequence sentinels.
 
 This accepted-promotion coverage deliberately stops at the next required-field warning; it does not claim successful product save or image handling. Harness compiles locally. Original promotion predicate remains unchanged until full Windows baseline passes. Fractional/culture conversion and malformed text need independent characterization before extraction.
+
+## Verified promotion baseline and extraction
+
+Full Windows run [40886209422](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40886209422) succeeded for baseline 67ad4efbc373a372c7ae19288c13085a756b0c50, with all ten original-handler guard cases and prior checks. Independent rules run 40886218283 also passed.
+
+Extract the unchanged promotion predicate into Domain.CataloguePromotionRules.IsRejected. Retain raw-empty short circuit, VB decimal conversion, only the existing >100 upper bound, and propagation to the original form catch for malformed input. Warning/return stays in the handler; later image/group and persistence stages are untouched.
+
+Before replacing the form predicate, 114 standalone assertions passed locally across three cultures for missing values, accepted negatives/zero/100, >100, decimal separators, whitespace, numeric boundaries and equivalent conversion exception types. All existing independent tests passed. Full Windows regression is pending for the extraction.

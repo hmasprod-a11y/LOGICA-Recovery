@@ -14360,7 +14360,7 @@ public class Form_2_ARTICLES : Form
 					MessageBox.Show("Veuillez remplir le champ -TAUX_TVA- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Operators.CompareString(Text_PROMOTION.Text, "", TextCompare: false) == 0 || decimal.Compare(Conversions.ToDecimal(Text_PROMOTION.Text), 100m) > 0)
+				if (LOGICA.Domain.CataloguePromotionRules.IsRejected(Text_PROMOTION.Text))
 				{
 					MessageBox.Show("Veuillez remplir le champ -PROMOTION- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
