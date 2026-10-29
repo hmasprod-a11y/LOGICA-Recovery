@@ -176,7 +176,7 @@ class PosSmoke {
       connection.Close();
      }
      if(injectFailure || (rejected && settlement!="reject-empty")) {
-      string expectedDialog=rejected?(settlement.StartsWith("reject-sale")?"Positif":"(RETOUR)"):null;
+      string expectedDialog=rejected?(settlement=="reject-invalid-total"?null:(settlement.StartsWith("reject-sale")?"Positif":"(RETOUR)")):null;
       watcher=new Thread(delegate() {
        while(!stopWatcher.WaitOne(100)) {
         if(DismissInjectedFailure(threadId,expectedDialog))Interlocked.Increment(ref dismissedErrors);
@@ -208,7 +208,7 @@ class PosSmoke {
     if(connection.State!=ConnectionState.Open)connection.Open();
     if(rejected) {
      if(settlement=="reject-invalid-total" ? senderEnabled : !senderEnabled)throw new Exception("Unexpected rejected-checkout sender state");
-     if((settlement=="reject-empty" || settlement=="reject-invalid-total")?dismissedErrors!=0:dismissedErrors==0)throw new Exception("Unexpected rejection dialog behavior");
+     if(settlement=="reject-empty"?dismissedErrors!=0:dismissedErrors==0)throw new Exception("Unexpected rejection dialog behavior");
      Eq(Scalar(connection,"SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=1"),10m,"rejection preserves stock");
      Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE"),0m,"rejection writes no header");
      Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL"),0m,"rejection writes no journal");
