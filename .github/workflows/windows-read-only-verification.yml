@@ -27,6 +27,27 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force results | Out-Null
           git rev-parse HEAD | Set-Content results/source-commit.txt
+      - name: Inventory original WinForms and source files
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem recovered-source -Recurse -Filter '*.cs' -File | Where-Object { $_.FullName -notmatch '[\\/](obj|bin)[\\/]' })
+          $inventory = foreach ($file in $files) {
+            $source = Get-Content $file.FullName -Raw
+            $classes = [regex]::Matches($source, '(?m)\\b(?:partial\\s+)?class\\s+([A-Za-z_][A-Za-z_0-9]*)') | ForEach-Object { $_.Groups[1].Value }
+            $formClasses = [regex]::Matches($source, '(?m)\\bclass\\s+([A-Za-z_][A-Za-z_0-9]*)\\s*:\\s*(?:System\\.Windows\\.Forms\\.)?Form\\b') | ForEach-Object { $_.Groups[1].Value }
+            [pscustomobject]@{
+              file = $file.FullName.Substring((Get-Location).Path.Length + 1)
+              classes = ($classes -join ';')
+              directFormClasses = ($formClasses -join ';')
+              lines = @($source -split "`n").Count
+            }
+          }
+          $inventory | Export-Csv results/source-inventory.csv -NoTypeInformation -Encoding UTF8
+          [pscustomobject]@{
+            sourceFiles = $files.Count
+            directFormDeclarations = @($inventory | Where-Object { $_.directFormClasses }).Count
+            note = 'Static source inventory only; inherited forms and designer files require further review'
+          } | ConvertTo-Json | Set-Content results/source-inventory-summary.json
       - name: Restore original dependencies
         shell: pwsh
         run: Expand-Archive input/LOGICA-dependencies.zip dependencies -Force
