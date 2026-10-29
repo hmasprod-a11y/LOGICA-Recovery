@@ -14440,14 +14440,7 @@ public class Form_2_ARTICLES : Form
 					DT.AcceptChanges();
 					LOGICA.Infrastructure.Catalogue.CatalogueCreationMovementWriter.Write(text,
                         () => Text_CODE.Text, () => Text_ARTICLE.Text, () => Text_STOCK.Text, Module1.cn_SQL);
-					if (Module1.cn_SQL.State != ConnectionState.Open)
-					{
-						Module1.cn_SQL.Open();
-					}
-					val3.CommandText = "UPDATE     TABLE_NUM    SET ARTICLE =  ARTICLE + 1   ";
-					val3.Connection = Module1.cn_SQL;
-					val3.ExecuteNonQuery();
-					Module1.cn_SQL.Close();
+					LOGICA.Infrastructure.Catalogue.CatalogueSequenceWriter.AdvanceArticle(val3, Module1.cn_SQL);
 					MessageBox.Show("Enregistré avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
 				}
 				else if (Operators.CompareString(Label_TOP.Text, "MODIFICATION", TextCompare: false) == 0)

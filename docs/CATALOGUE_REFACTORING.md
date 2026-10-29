@@ -190,3 +190,11 @@ Full Windows run [40909460145](https://github.com/hmasprod-a11y/LOGICA-Recovery/
 Add catalogue-sequence-failure using a strictly isolated BEFORE UPDATE trigger on TABLE_NUM. After the original article and movement writes, require the injected sequence warning, all 33 persisted article values and accepted row, exactly one committed movement with original raw values, unchanged sequence 7, skipped refresh and original open connection. Remove the trigger and close the fixture connection explicitly afterward. Existing movement-failure coverage is retained.
 
 Only fixture/test code changes here. Local harness compilation passed; full Windows runtime evidence for sequence failure is pending. Do not move the sequence update until this baseline passes, and do not add transactions or change the original failure cleanup policy incidentally.
+
+## Verified sequence failure and writer extraction
+
+Full Windows run [40910202833](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40910202833) succeeded for f38ba3dff062d8d51ec728847344ff8acf340521. The sequence failure path retains the committed/accepted article and movement, leaves sequence unchanged, skips refresh and preserves the open connection until fixture cleanup. Earlier success, movement-failure, catalogue and checkout/build checks also passed. Independent run 40910214727 passed.
+
+Extract only the article sequence update into Infrastructure.Catalogue.CatalogueSequenceWriter.AdvanceArticle. Reuse the original MySqlCommand, preserve open-before-command assignment, exact SQL including absence of WHERE, execute-before-close and open connection on failure. The form still calls it after movement completion and before success warning/refresh. No transaction, disposal or cleanup change.
+
+Success and injected sequence-failure fixtures passed before this move. Full Windows regression is pending after extraction. The current fixture contains one sequence row; do not claim multi-row coverage even though the unchanged legacy SQL updates every row. Adapter persistence failures and creation ID reads remain separate boundaries.
