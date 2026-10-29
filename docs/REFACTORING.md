@@ -319,3 +319,5 @@ Checkout milestone: reusable rules, stock-validation ordering and posting orderi
 ## Active follow-on work: catalogue (2026-10-29)
 
 Catalogue audit/characterization is on refactor/catalogue-input-rules, draft PR #10 (https://github.com/hmasprod-a11y/LOGICA-Recovery/pull/10), based on this checkout branch. Keep its code changes separate from PR #8. Continue catalogue work from its latest head and docs/CATALOGUE_REFACTORING.md after checking both branches for concurrent changes. The first catalogue slice characterizes 13 repeated numeric KeyPress handlers; runtime CI is pending at this checkpoint. No checkout production changes were made for this follow-on.
+
+Catalogue follow-on baseline verified: PR #10 on refactor/catalogue-input-rules passed full Windows run 40852190847, including 1,053 direct-handler assertions. Continue the shared numeric-character filter extraction from that branch and docs/CATALOGUE_REFACTORING.md; retain checkout PR #8 as the dependency. No catalogue production changes have been made yet.
