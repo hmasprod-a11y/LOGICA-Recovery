@@ -35,6 +35,20 @@ internal static class CheckoutSignGuardsTests
             Check("RETOUR", double.PositiveInfinity, false, true);
             Check("CREDIT", -25.0, false, false);
             Check("", 25.0, false, false);
+            // The legacy return predicate dereferences operation even when total is non-positive.
+            // Keep this exception boundary rather than replacing Contains with null-safe logic.
+            foreach (double total in new[] { -1.0, 0.0, 1.0 })
+            {
+                assertions++;
+                bool threw = false;
+                try { CheckoutSignGuards.RejectReturn(null, total); }
+                catch (NullReferenceException) { threw = true; }
+                if (!threw) throw new Exception("Expected legacy null-operation failure");
+            }
+            Check("PRE-RETOUR-POST", 1.0, false, true);
+            Check("PRE-RETOUR-POST", -1.0, false, false);
+            Check("VENTE", double.PositiveInfinity, false, false);
+            Check("RETOUR", double.NaN, false, false);
             Console.WriteLine("PASS checkout sign predicates: " + assertions + " assertions");
             return 0;
         }
