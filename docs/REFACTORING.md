@@ -42,3 +42,16 @@ Add standalone characterization checks covering explicit expected values, positi
 5. Repeat for stock/catalogue; evaluate selected TODO ideas only after the relevant LOGICA area is protected.
 
 Each slice must list original entry points, preserved behavior, tests actually run, limitations and a rollback commit. Changes stay on a review branch until accepted. A full requirement-by-requirement audit and effort estimates remain to be completed; file size alone is not an effort estimate.
+
+## Progress: second slice (2026-10-29)
+
+The owner reaffirmed that organizing code is the priority; the existing application is already working and tried in use. Database checks are regression protection only.
+
+Inspected Form_3_VENTE.Text_TOTAL_NET_Click: database total -> display formatting -> grid quantity aggregation -> optional serial display. These boundaries remain unchanged.
+Inspected Button_QTE_Click: access check -> quantity dialog -> article price lookup -> quantity-tier selection -> net amount -> basket update -> total refresh.
+
+Extracted the four identical net-amount expressions in Button_QTE_Click into SalesLinePricing.CalculateNetAmount. Kept quantity-tier decisions, promotion input, sale/return branches, VB formatting, return double conversion, database writes and existing exceptions in the form. The calculation intentionally remains unrounded and retains intermediate decimal overflow. No new discount validation was introduced.
+
+Local Windows checks: monetary rounding 60,039 assertions and sales line pricing 12,558 assertions passed. Cases include fractional/negative quantities, zero/100%/out-of-range discounts, unrounded fractions and overflow boundaries. Full branch CI must be checked after publication. Standalone rule tests do not exercise the modal quantity dialog or replace manual UI acceptance.
+
+Rollback for this slice: revert its commit; the previous rounding extraction is independent. Next useful step: characterize quantity-dialog/price-tier behavior before extracting more of Button_QTE_Click; map the checkout transaction before moving persistence.

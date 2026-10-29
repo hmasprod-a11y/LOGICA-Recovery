@@ -16051,11 +16051,11 @@ public class Form_3_VENTE : Form
 					Module1.dt1.Rows[position]["Prix_V"] = Strings.FormatNumber(num3);
 					if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0)
 					{
-						Module1.dt1.Rows[position]["TOTAL_NET"] = Strings.FormatNumber(decimal.Subtract(decimal.Multiply(num3, num), decimal.Divide(decimal.Multiply(decimal.Multiply(num3, num), d), 100m)));
+						Module1.dt1.Rows[position]["TOTAL_NET"] = Strings.FormatNumber(LOGICA.Domain.SalesLinePricing.CalculateNetAmount(num3, num, d));
 					}
 					else if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR", TextCompare: false) == 0)
 					{
-						Module1.dt1.Rows[position]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(decimal.Subtract(decimal.Multiply(num3, num), decimal.Divide(decimal.Multiply(decimal.Multiply(num3, num), d), 100m)))) * -1.0;
+						Module1.dt1.Rows[position]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(LOGICA.Domain.SalesLinePricing.CalculateNetAmount(num3, num, d))) * -1.0;
 					}
 					MySqlCommandBuilder val3 = new MySqlCommandBuilder(Module1.da1);
 					((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
@@ -16066,11 +16066,11 @@ public class Form_3_VENTE : Form
 					Module1.dt1.Rows[position]["Prix_V"] = Strings.FormatNumber(num4);
 					if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0)
 					{
-						Module1.dt1.Rows[position]["TOTAL_NET"] = Strings.FormatNumber(decimal.Subtract(decimal.Multiply(num4, num), decimal.Divide(decimal.Multiply(decimal.Multiply(num4, num), d), 100m)));
+						Module1.dt1.Rows[position]["TOTAL_NET"] = Strings.FormatNumber(LOGICA.Domain.SalesLinePricing.CalculateNetAmount(num4, num, d));
 					}
 					else if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR", TextCompare: false) == 0)
 					{
-						Module1.dt1.Rows[position]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(decimal.Subtract(decimal.Multiply(num4, num), decimal.Divide(decimal.Multiply(decimal.Multiply(num4, num), d), 100m)))) * -1.0;
+						Module1.dt1.Rows[position]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(LOGICA.Domain.SalesLinePricing.CalculateNetAmount(num4, num, d))) * -1.0;
 					}
 					MySqlCommandBuilder val4 = new MySqlCommandBuilder(Module1.da1);
 					((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
