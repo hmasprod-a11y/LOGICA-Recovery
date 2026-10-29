@@ -56,3 +56,9 @@ Add catalogue-save-guards for empty/space-only code and article. A strict isolat
 Windows run [40855066392](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40855066392) and independent rules run 40855075441 succeeded for 4db87c0935a638d12ae0e6fa41d71302ea96f49d. All four original-handler required-code/article cases passed: expected warning, text unchanged before normalization, connection closed, article/movement sentinels and sequence unchanged. Numeric handler characterization and existing checkout/build/launcher checks also passed. No production save logic has changed.
 
 Next bounded slice: characterize the exact VB Trim/empty predicate independently before extracting the two required-identifier checks. Preserve ordered warnings and returns, all later raw-empty checks, and normalization timing. Do not substitute .NET Trim semantics or broaden this fixture into successful save coverage without separate database mapping fixtures. Creation/modification mapping and batch transaction differences remain deferred as recorded above.
+
+## Required-identifier extraction
+
+Extract only the first two Button_SAVE_Click predicates into Domain.CatalogueRequiredFields.IsMissingIdentifier. Retain VB Strings.Trim and binary empty comparison verbatim; warning text, evaluation order, returns, normalization and all later checks stay in the form. No persistence mapping changes.
+
+The original-handler early rejection baseline passed before moving these predicates. Independent characterization passed locally: 393,243 assertions across fr-MA/fr-FR/en-US, with null/empty/spaces, literal identifiers, every UTF-16 code unit alone and space-padded against the legacy expression. Existing independent tests passed. Full Windows original-handler, checkout and build verification is pending for this extraction.
