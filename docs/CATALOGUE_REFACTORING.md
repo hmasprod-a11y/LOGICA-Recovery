@@ -2,10 +2,10 @@
 
 ## Current resume checkpoint
 
-- Verified implementation: 4758f51739271f88647eba58f2efddb4677e52a2, draft PR #10 stacked on #8; no merge/release.
-- Windows run [40917622281](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40917622281) passed; independent runs 40917622268 and 40917630572 passed. Implementation is verified; the new scalar-edge fixtures below await Windows verification.
-- Separated: input/validation, barcode arithmetic, lazy 33-column mapping, duplicate lookup SQL, creation movement, sequence write and adapter Update/AcceptChanges. Preserve individual-save partial commits and failure states.
-- Next: characterize creation ID reads for an empty article table and NULL sequence before moving MAX(ID)/ARTICLE scalar queries. Existing populated fixture protects ID 42/ART000007. Preserve repeated ExecuteScalar calls and VB/DBNull behavior. Do not change generated identifier policy.
+- Verified implementation: 12123406e2ec2340b9ea082d595109af2f5bc7b6, draft PR #10 stacked on #8; no merge/release.
+- Windows run [40922446590](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40922446590) and independent runs 40922446555/40922459014 passed. No implementation check remains pending.
+- Separated: catalogue rules/barcode, lazy 33-column mapping, duplicate lookup SQL, creation identity reads, movement/sequence writes and adapter persistence. Preserve conversion, read order and existing partial-save behavior.
+- Next: audit the post-duplicate-check creation orchestration boundary for an application service with a fake-store ordering/failure test before moving it. Keep image/normalization, duplicate warning, success warning, error catch and UI refresh in the form. Existing database fixtures must remain the end-to-end regression.
 
 ## Priority and baseline
 
@@ -253,3 +253,9 @@ Full Windows run [40920925847](https://github.com/hmasprod-a11y/LOGICA-Recovery/
 Move the two creation scalar queries into Infrastructure.Catalogue.CatalogueCreationIdentityReader, retaining the original caller-created command for both reads and the later sequence update. Preserve SQL/CommandType, repeated ExecuteScalar evaluations, DBNull comparisons, VB formatting/conversions, checked rounded int cast, separate open/close boundaries and original no-finally error behavior. Do not cache scalar results or alter identifier generation.
 
 Full Windows regression is pending after extraction. Missing sequence row, numeric overflow and scalar database errors remain unclaimed boundaries; exact legacy expressions are retained. No new standalone SQL/conversion mirror tests were added because original-handler database fixtures protect the moved paths.
+
+## Verified creation identity reads; next application boundary
+
+Full Windows run 40922446590 succeeded after identity extraction at 12123406e2ec2340b9ea082d595109af2f5bc7b6, including populated, empty MAX, SQL NULL sequence and combined cases, complete row mapping and all failure/regression checks. Independent rules passed. Revert that implementation commit to undo identity-reader extraction.
+
+Next audit candidate: after the duplicate-code guard, creation follows numeric identity read, article identity read, add/populate new row, adapter persistence/acceptance, movement write and sequence advance. A bounded application service may own that order using an injected store and the existing lazy input adapter; infrastructure must retain one reused command and existing connection/error semantics. Characterize lazy read timing, first-failure propagation, no later effects and unchanged partial writes with a fake store before moving orchestration. Keep UI warnings/refresh and image/normalization before this boundary. Do not extend the first service extraction into edit/delete/batch workflows.
