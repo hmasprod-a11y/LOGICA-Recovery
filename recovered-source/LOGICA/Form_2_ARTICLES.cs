@@ -17249,41 +17249,10 @@ public class Form_2_ARTICLES : Form
 				string text3 = Conversions.ToString(DataGridView_TAILLES.Rows[((DataGridViewBand)DataGridView_TAILLES.CurrentRow).Index].Cells["TAILLE"].Value);
 				string text4 = Conversions.ToString(DataGridView_COULEURS.Rows[((DataGridViewBand)DataGridView_COULEURS.CurrentRow).Index].Cells["COULEUR"].Value);
 				decimal num = Conversions.ToDecimal(Text_QTE_COLLECTION.Text);
-				int num2 = 0;
-				int num3 = 0;
-				byte[] array = new byte[13];
-				int num4 = 0;
-				int num5;
-				int num6;
-				do
-				{
-					array[num4] = (byte)Conversions.ToInteger(text.Substring(num4, 1));
-					if (unchecked(num4 % 2) == 1)
-					{
-						num3 += array[num4];
-					}
-					else
-					{
-						num2 += array[num4];
-					}
-					num4++;
-					num5 = num4;
-					num6 = 11;
-				}
-				while (num5 <= num6);
-				unchecked
-				{
-					num4 = checked(num2 + num3 * 3) % 10;
-				}
-				if (num4 == 0)
-				{
-					array[12] = 0;
-				}
-				else
-				{
-					array[12] = (byte)(10 - num4);
-				}
-				byte[] bits = Module1.getBits(array);
+				byte[] array = LOGICA.Domain.CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(text);
+                int num4;
+                int num6;
+                byte[] bits = Module1.getBits(array);
 				text += Conversions.ToString(array[12]);
 				int num7 = DataGrid_COLLECTION.Rows.Count - 1;
 				num4 = 0;

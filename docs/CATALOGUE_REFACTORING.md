@@ -358,3 +358,11 @@ Local harness compilation passed; full Windows original-handler baseline is pend
 Windows run 40941830978 failed only collection-variant-insert during fixture selection: CurrentCell cannot target an invisible cell. The failure occurred in the harness before Button_INSERER_Click; resource-defined first code columns were selected by index. Existing catalogue/checkout cases passed; independent run 40941838830 passed. No production defect or checksum regression is established by this setup failure.
 
 Select explicit visible TAILLE/COULEUR display columns for the fixture's current size/colour rows. Keep code values in their original named columns for the handler's reads. Production source remains unchanged; rerun the justified Windows baseline with this fixture correction before extraction.
+
+## Verified variant baseline and checksum reuse
+
+Full Windows run [40943309383](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40943309383) succeeded for d9124550679f74d6091e825d4eca79131ae3d76e after fixture cell selection repair. Original variant insertion, fractional/negative quantities, duplicate warning, totals/reset/selection and all prior checks passed. Independent run 40943318037 passed.
+
+Replace only Button_INSERER_Click's repeated twelve-digit checksum arithmetic with the verified CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(text). Keep payload construction, quantity conversion before checksum, getBits call, suffix append, duplicate scan, later IsNumeric check and grid/total/reset/selection order. Retain the loop locals still used by the duplicate scan. No barcode format, quantity validation or UI changes.
+
+Full Windows original-handler regression is pending after reuse. Existing independent checksum assertions cover the reused helper; no duplicate mirror tests or redundant local rerun was added for unchanged helper code.
