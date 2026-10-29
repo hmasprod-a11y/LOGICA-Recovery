@@ -12822,7 +12822,7 @@ public class Form_3_VENTE : Form
 					return;
 				}
 				Text_TOTAL_NET_Click(RuntimeHelpers.GetObjectValue(sender), e);
-				if (Conversion.Val(Math.Round(Conversions.ToDecimal(((IEnumerable)DataGridView1.Rows).Cast<DataGridViewRow>().Sum([SpecialName] (DataGridViewRow t) => Convert.ToDecimal(RuntimeHelpers.GetObjectValue(t.Cells["TOTAL_NET"].Value))).ToString()))) != Conversion.Val(Math.Round(Conversions.ToDecimal(Text_TOTAL_NET.Text))))
+				if (LOGICA.Domain.BasketTotalConsistency.AreDifferent(((IEnumerable)DataGridView1.Rows).Cast<DataGridViewRow>().Sum([SpecialName] (DataGridViewRow t) => Convert.ToDecimal(RuntimeHelpers.GetObjectValue(t.Cells["TOTAL_NET"].Value))), Text_TOTAL_NET.Text))
 				{
 					MessageBox.Show("il y a une erreur critique\r\nLe Total Net est différent avec le total des lignes de commande\r\nmerci d'Actualiser le panier ou redémarrer l'application", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);

@@ -251,3 +251,9 @@ Add checkout-rounding-window: visible line total 25.4 versus database/header tot
 Consistency baseline verified: full Windows run 40844030553 passed checkout-reject-total and checkout-rounding-window plus all existing checks. Domain/application CI passed. Revert 671c8b273c009c44b7cfecae73747d2390f6b7a1 to undo this test slice.
 
 Next extraction should retain the exact whole-unit Math.Round (default midpoint policy), VB decimal/string conversion and Conversion.Val comparison. Keep grid summation, warning and early return in place unless separately characterized. Do not replace the comparison with exact cents equality during refactoring.
+
+## Progress: basket-total consistency rule extraction (2026-10-29)
+
+Move the exact rounded-total predicate into Domain.BasketTotalConsistency.AreDifferent. Leave grid enumeration/summation, warning text, sender re-enabling, connection checks and early return in the form. Preserve default midpoint rounding to whole units, the basket decimal/string round-trip, current-culture VB parsing and Val comparison. Do not tighten the policy to cents equality.
+
+The prior mismatch and rounded-acceptance integration baseline passed in run 40844030553. Local tests passed: 60 consistency assertions across three cultures, including midpoint signs, fractional acceptance, large-number Val behavior and null/invalid input conversions, plus every previous application/domain test. Full Windows verification is required after extraction. Production behavior is intentionally unchanged.
