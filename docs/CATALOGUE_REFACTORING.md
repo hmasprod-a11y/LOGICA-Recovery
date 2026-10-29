@@ -182,3 +182,11 @@ Full Windows run [40907390787](https://github.com/hmasprod-a11y/LOGICA-Recovery/
 Extract only creation's movement command into Infrastructure.Catalogue.CatalogueCreationMovementWriter. Keep the exact SQL, two separate clock reads, raw code/article/stock reads after opening (deferred callbacks), execute-before-close ordering and existing open connection on failure. The original form still owns row persistence, sequence increment, warnings, error catch and refresh. No transaction or cleanup policy is added; this is preservation of observed behavior, not a partial-save fix.
 
 Pre-move success and injected-failure fixtures protect this boundary. Full Windows regression is pending after extraction. Next: characterize sequence-write failure separately before moving the sequence command or combining creation steps.
+
+## Verified movement writer; sequence failure characterization
+
+Full Windows run [40909460145](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40909460145) succeeded for f8f630d7cd65009d1356eb85a9c476643d71ed8e after movement extraction. Original success/rejection/partial-failure paths and prior catalogue/checkout/build checks passed. Independent runs 40909460003 and 40909471394 passed. Revert that implementation commit to undo the movement writer extraction.
+
+Add catalogue-sequence-failure using a strictly isolated BEFORE UPDATE trigger on TABLE_NUM. After the original article and movement writes, require the injected sequence warning, all 33 persisted article values and accepted row, exactly one committed movement with original raw values, unchanged sequence 7, skipped refresh and original open connection. Remove the trigger and close the fixture connection explicitly afterward. Existing movement-failure coverage is retained.
+
+Only fixture/test code changes here. Local harness compilation passed; full Windows runtime evidence for sequence failure is pending. Do not move the sequence update until this baseline passes, and do not add transactions or change the original failure cleanup policy incidentally.
