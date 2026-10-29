@@ -3105,7 +3105,7 @@ public class FormDialog_COMPTER_CAISSE : Form
 	private void TextBox_LostFocus(object sender, EventArgs e)
 	{
 		NewLateBinding.LateSet(sender, null, "BackColor", new object[1] { Color.White }, null, null);
-		if ((Operators.CompareString(Strings.Trim(Conversions.ToString(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null))), "", TextCompare: false) == 0) | !Versioned.IsNumeric(RuntimeHelpers.GetObjectValue(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null))))
+		if (LOGICA.Domain.CashCountInputRules.ShouldReset(() => NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null)))
 		{
 			NewLateBinding.LateSet(sender, null, "text", new object[1] { 0 }, null, null);
 		}

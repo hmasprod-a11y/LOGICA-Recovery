@@ -23,3 +23,9 @@ Windows run [40964702869](https://github.com/hmasprod-a11y/LOGICA-Recovery/actio
 Before rewiring the handler, CashDenominationTotal passed 759 standalone assertions across three cultures: known totals, seeded mixed arithmetic, exact denomination read order, every getter/conversion failure boundary, null/empty/numeric formatting and overflow. Retain the exact original decimal subtotal/double additions/decimal constructor expression.
 
 Move only arithmetic to Domain.CashDenominationTotal.Calculate with deferred denomination readers. The form retains late-bound sender normalization/background, input access order, VB FormatNumber and all matching cash-row updates. No eager snapshot, new validation, all-decimal arithmetic, Load or financial persistence. Full Windows regression is pending after extraction.
+
+## Verified arithmetic and input-rule extraction
+
+Windows run [40965972702](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40965972702) passed for 926a48741e98876b7ecc4897e3c1614d6e857d54 after arithmetic extraction. Independent runs 40965972680/40965979425 passed, including 759 arithmetic assertions. Original normalization/formatting/cash-row and prior checkout/build/launcher checks passed.
+
+Before changing the predicate, CashCountInputRules passed 117 standalone assertions across three cultures for null/blank/invalid/numeric values, VB object conversions, both eager text reads, changing second values and first/second getter exception identity. Extract only the reset decision with a deferred late-bound reader. Keep eager |, sender BackColor before the decision, late-bound reset to 0 afterward, arithmetic and cash-row update order. No new validation or input caching. Full Windows regression is pending after rule extraction.
