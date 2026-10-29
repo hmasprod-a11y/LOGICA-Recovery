@@ -3109,7 +3109,8 @@ public class FormDialog_COMPTER_CAISSE : Form
 		{
 			NewLateBinding.LateSet(sender, null, "text", new object[1] { 0 }, null, null);
 		}
-		decimal num = new decimal(Convert.ToDouble(decimal.Add(decimal.Add(decimal.Add(decimal.Add(decimal.Add(decimal.Add(decimal.Add(decimal.Add(0m, decimal.Multiply(Conversions.ToDecimal(Text_200.Text), 200m)), decimal.Multiply(Conversions.ToDecimal(Text_100.Text), 100m)), decimal.Multiply(Conversions.ToDecimal(Text_50.Text), 50m)), decimal.Multiply(Conversions.ToDecimal(Text_20.Text), 20m)), decimal.Multiply(Conversions.ToDecimal(Text_10.Text), 10m)), decimal.Multiply(Conversions.ToDecimal(Text_5.Text), 5m)), decimal.Multiply(Conversions.ToDecimal(Text_2.Text), 2m)), decimal.Multiply(Conversions.ToDecimal(Text_1.Text), 1m))) + Convert.ToDouble(Conversions.ToDecimal(Text_0_5.Text)) * 0.5 + Convert.ToDouble(Conversions.ToDecimal(Text_0_2.Text)) * 0.2 + Convert.ToDouble(Conversions.ToDecimal(Text_0_1.Text)) * 0.1);
+		Func<string>[] counts = new Func<string>[] { () => Text_200.Text, () => Text_100.Text, () => Text_50.Text, () => Text_20.Text, () => Text_10.Text, () => Text_5.Text, () => Text_2.Text, () => Text_1.Text, () => Text_0_5.Text, () => Text_0_2.Text, () => Text_0_1.Text };
+		decimal num = LOGICA.Domain.CashDenominationTotal.Calculate(index => counts[index]());
 		Text_TOTAL_ESPECES.Text = Strings.FormatNumber(num);
 		checked
 		{
