@@ -17591,29 +17591,26 @@ public class Form_2_ARTICLES : Form
 				Text_ARTICLE_COLLECTION.Text = Text_ARTICLE_COLLECTION.Text.ToString().Replace("'", " ");
 				if (Operators.CompareString(Label_TOP_COLLECTION.Text, "NOUVEAU", TextCompare: false) == 0)
 				{
-					int num = 0;
-					int num2 = DataGrid_COLLECTION.Rows.Count - 1;
-					int num3 = 0;
-					while (true)
-					{
-						int num4 = num3;
-						int num5 = num2;
-						if (num4 > num5)
-						{
-							break;
-						}
-						DataTable dataTable = new DataTable();
-						dataTable.Clear();
-						LOGICA.Infrastructure.Catalogue.CatalogueDuplicateLookup.FillCollectionCode(dataTable, DataGrid_COLLECTION.Rows[num3].Cells[0].Value, Module1.cn_SQL);
-						if (dataTable.Rows.Count != 0)
-						{
-							MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Ce Code est déja utilisé pour ==> ", dataTable.Rows[0]["Article"])), "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
-							return;
-						}
-						DataGrid_COLLECTION.CurrentCell = DataGrid_COLLECTION.Rows[DataGrid_COLLECTION.Rows.Count - 1].Cells[0];
-						DataGrid_COLLECTION.Rows[DataGrid_COLLECTION.Rows.Count - 1].Selected = true;
-						num3++;
-					}
+                    DataRow duplicate = LOGICA.ApplicationLayer.Catalogue.CollectionDuplicatePrecheck.FindFirst(
+                        DataGrid_COLLECTION.Rows.Count - 1,
+                        index => DataGrid_COLLECTION.Rows[index].Cells[0].Value,
+                        code =>
+                        {
+                            DataTable matches = new DataTable();
+                            matches.Clear();
+                            LOGICA.Infrastructure.Catalogue.CatalogueDuplicateLookup.FillCollectionCode(matches, code, Module1.cn_SQL);
+                            return matches;
+                        },
+                        () =>
+                        {
+                            DataGrid_COLLECTION.CurrentCell = DataGrid_COLLECTION.Rows[DataGrid_COLLECTION.Rows.Count - 1].Cells[0];
+                            DataGrid_COLLECTION.Rows[DataGrid_COLLECTION.Rows.Count - 1].Selected = true;
+                        });
+                    if (duplicate != null)
+                    {
+                        MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Ce Code est déja utilisé pour ==> ", duplicate["Article"])), "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
+                        return;
+                    }
 					MySqlCommand val2 = new MySqlCommand();
 					if (Module1.cn_SQL.State != ConnectionState.Open)
 					{

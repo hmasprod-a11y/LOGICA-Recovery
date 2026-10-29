@@ -327,3 +327,11 @@ Full Windows run [40935603894](https://github.com/hmasprod-a11y/LOGICA-Recovery/
 Add collection-duplicate-later with three grid rows: a nonmatching code, the competing sentinel code, then an intentionally malformed trailing code that must never be queried. Require the expected duplicate warning, unchanged database sentinels/sequence/connection and original last-row selection after the preceding no-match. This covers the no-match branch and early termination without entering transaction or SendKeys. Original product source is unchanged.
 
 Local harness compilation passed. Full Windows evidence is pending. After verification, a bounded precheck service may own row iteration only if grid-row reads, last-row selection timing, first-match stop and exception propagation remain explicit; transaction work is still deferred.
+
+## Verified later-row rejection; precheck application extraction
+
+Full Windows run [40937242346](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40937242346) succeeded for 5fdbb3c6ce086cfdbb99529547d12ebe28ce3278, including preceding no-match/later duplicate and unvisited malformed trailing code. Independent run 40937251045 and prior checks passed.
+
+Before moving the loop, standalone CollectionDuplicatePrecheck tests passed 45 assertions for raw code object identity, read/lookup/no-match selection ordering, first-match termination, empty range and read/lookup/selection failure identity without later work. All prior independent tests passed.
+
+Move only pre-transaction duplicate iteration into this ApplicationLayer service. The form supplies a snapshot last index, lazy grid-cell reads, the verified lookup, and an explicit callback retaining its two original last-row selection operations. The form retains exact warning/return and the entire transaction/UI tail. Service returns the original first matching DataRow for raw Article access; no input normalization or new policy. Full Windows regression is pending after wiring. Batch insertion/commit/rollback remains unverified and unchanged.
