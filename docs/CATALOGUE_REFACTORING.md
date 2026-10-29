@@ -2,10 +2,10 @@
 
 ## Current resume checkpoint
 
-- Verified implementation: 51350bf1f6ab3fb1e974e5a4f1bfdd383e14080e, draft PR #10 stacked on #8; no merge/release.
-- Windows run [40925725827](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40925725827) and independent runs 40925725714/40925735920 passed. Implementation is verified; new original balance-branch fixtures below await Windows verification.
-- Creation application flow is now separated after the original duplicate guard. Rules, barcode, lazy mapping and individual database operations also remain separated. Preserve original partial commits and UI timing.
-- Next bounded audit: optional balance-code normalization in individual save. Characterize original numeric rejection and accepted formatting through isolated save fixtures before moving its VB numeric/Val/rounding/format rules. Keep image/group prerequisites and warnings in the form. No hardware or batch changes.
+- Verified implementation: a659ab855a490190ce345fac8b4e1bc6fbe1f0cc, draft PR #10 stacked on #8; no merge/release.
+- Windows run [40933111877](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40933111877) passed; independent runs 40933111854/40933122516 passed.
+- Collection identifier predicates now reuse the verified rule. Batch SQL/transaction/UI tail remains unchanged.
+- Current test-only slice: collection duplicate-code rejection before transaction; Windows verification pending after publication. After it passes, consider extracting only this lookup, preserving raw object/VB concatenation behavior and no connection closing inside batch transactions.
 
 ## Priority and baseline
 
@@ -305,3 +305,9 @@ Full Windows run [40931935559](https://github.com/hmasprod-a11y/LOGICA-Recovery/
 Replace only the collection handler's first two VB Trim/empty predicates with the already-tested CatalogueRequiredFields.IsMissingIdentifier. Preserve warning text/order, return points, pre-normalization field text, all later raw-empty guards, transaction loop and UI tail. No batch SQL or transaction code moves. Existing standalone identifier tests already exercise this exact helper; no duplicate mirror tests were added. Full Windows regression is pending after reuse.
 
 Next bounded coverage: collection duplicate lookup rejection before transaction. Supply valid earlier fields and a single competing grid code, verify normalization and unchanged sentinels without reaching the SendKeys tail. Successful batch commit/rollback remains outside this slice.
+
+## Verified collection rule reuse; duplicate guard baseline
+
+Full Windows run 40933111877 succeeded after collection identifier rule reuse at a659ab855a490190ce345fac8b4e1bc6fbe1f0cc; independent tests and all prior regression checks passed.
+
+Add collection-duplicate-code through the original collection save handler. Supply valid required fields and one grid code matching the isolated article sentinel; require the competing-article warning, original apostrophe normalization, unchanged raw input code, closed connection and unchanged article/movement/sequence sentinels. The expected early return precedes transaction creation and SendKeys. Production source is unchanged. Local harness compilation passed; full Windows test-only baseline is pending.
