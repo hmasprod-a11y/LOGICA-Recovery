@@ -378,3 +378,11 @@ Next quantity-total audit: Button_CALC_DOC_Click snapshots the last grid index, 
 Add collection-quantity-totals invoking unchanged Button_CALC_DOC_Click for an empty grid, fractional/negative decimals, numeric strings, mixed integral types and a zero cell. Require both total/count labels to replace sentinels with expected values, and every raw cell value and row count to remain unchanged. No database writes or keyboard actions are involved.
 
 Harness compilation passed locally. Full Windows baseline is pending before moving the accumulation loop. DBNull/malformed cells and deferred read exceptions need independent characterization against the exact legacy expression; do not infer blanket decimal-cast behavior from these valid cases. FLOUSS and the later current-row-count read must stay at their original UI points.
+
+## Verified total baseline and accumulation extraction
+
+Full Windows run [40946117541](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40946117541) succeeded for ff84b4b992c925fb0c8fdc19f6095e3f48a47697, including original empty/decimal/string/integral/zero grid totals and unchanged raw cells. Independent run 40946122815 and all prior checks passed.
+
+Before wiring the handler, standalone CollectionQuantityTotals tests passed 111 assertions across three cultures against the legacy raw-object addition/conversion behavior, including null/DBNull, malformed strings, mixed numeric types, nonfinite/overflow values, empty range and first-failure read timing/exception identity. All prior independent tests passed.
+
+Move only accumulation to Domain.CollectionQuantityTotals.Accumulate using a snapshotted last index and lazy cell reader. Keep FLOUSS/display conversion, later current row-count read, labels and original catch in the form. Preserve AddObject then ToDecimal at each row, with no eager parsing, LINQ sum or normalization. Full Windows regression is pending after extraction.

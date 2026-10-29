@@ -17320,21 +17320,9 @@ public class Form_2_ARTICLES : Form
 		{
 			try
 			{
-				decimal num = 0m;
-				int num2 = DataGrid_COLLECTION.Rows.Count - 1;
-				int num3 = 0;
-				while (true)
-				{
-					int num4 = num3;
-					int num5 = num2;
-					if (num4 > num5)
-					{
-						break;
-					}
-					num = Conversions.ToDecimal(Operators.AddObject(num, DataGrid_COLLECTION.Rows[num3].Cells["Qté_LISTE"].Value));
-					num3++;
-				}
-				Label_TOTAL_QUANTITE_DOC.Text = Conversions.ToString(Module1.FLOUSS(num));
+				decimal num = LOGICA.Domain.CollectionQuantityTotals.Accumulate(
+                    DataGrid_COLLECTION.Rows.Count - 1, index => DataGrid_COLLECTION.Rows[index].Cells["Qté_LISTE"].Value);
+                Label_TOTAL_QUANTITE_DOC.Text = Conversions.ToString(Module1.FLOUSS(num));
 				Label_NBR_ARTICLES_DOC.Text = Conversions.ToString(DataGrid_COLLECTION.Rows.Count);
 			}
 			catch (Exception ex)
