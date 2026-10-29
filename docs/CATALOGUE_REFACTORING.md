@@ -7,8 +7,8 @@ LOGICA already works. Organize internals incrementally while preserving behavior
 ## Verified state
 
 - Branch: refactor/catalogue-input-rules, draft PR [#10](https://github.com/hmasprod-a11y/LOGICA-Recovery/pull/10), stacked on draft #8.
-- Latest implementation: b6200a8de2d41897ae8042182cce083176d2aabc.
-- [Windows run 40947592637](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40947592637) succeeded; independent runs 40947592767/40947603866 succeeded. Implementation is verified; new aggregate fixture verification is pending.
+- Latest implementation: 01b0aa9494b56ec12b63533976dfce80c6432afe.
+- [Windows run 40951282675](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40947592637) succeeded; independent runs 40951282878/40951292006 succeeded. Implementation is verified; new aggregate fixture verification is pending.
 - Current change separates raw-object collection quantity accumulation. 111 standalone assertions cover cultures, empty values, conversion/overflow and lazy failure behavior; original-handler empty/decimal/string/integral/zero fixtures passed.
 - Documentation-only checkpoint updates do not require another expensive Windows run.
 
@@ -38,7 +38,7 @@ Original Windows checkout/build/launcher checks and independent rules/services t
 
 ## Next bounded work
 
-Audit Button_CALC_Click catalogue aggregate refresh. Existing creation/edit fixtures prove that refresh executes and article count is correct, but not all eleven aggregate outputs/filter branches. Add isolated original-handler fixtures for every output and family filter before moving aggregate queries. Keep UI labels, formatting and original error behavior explicit. Do not broaden this into batch transaction or UI redesign.
+Aggregate SQL extraction is verified across all eleven outputs and null/empty/A/B/missing family filters. Next inspect the repeated count/money display conversions before extracting a UI-independent formatter. Preserve DBNull branches, VB Val/ToString, existing monetary rounding, 20-character # padding, DH suffix and partial label assignment order. Write independent culture/raw-value/exception tests before replacing any label branch; retain the original-handler aggregate fixture.
 
 ## Evidence and history
 
@@ -57,3 +57,7 @@ The fixture intentionally protects the original purchase-exclusion count that te
 Windows run [40949904984](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40949904984) passed for 76748dd461e1229bd057051505f81ec33157bb0b: all eleven outputs across null/empty/A/B/missing filters, NULL sums, money mask and _sql side effect. Independent run 40949910295 and prior regression checks passed.
 
 Move only family-filter SQL assembly and the ordered eleven-query UNION/adapter Fill into Infrastructure.Catalogue.CatalogueAggregateLookup.Read. Preserve query order/text, raw family concatenation, original purchase exclusion using PRIX_MP, adapter-owned connection behavior and DataTable result. The form retains _sql reset, DBNull checks, conversions/FLOUSS, every label assignment and original catch. No parameterization, query correction, cache, transaction or UI redesign. Full Windows regression is pending after extraction.
+
+## Verified aggregate lookup milestone
+
+Windows run [40951282675](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40951282675) passed after aggregate SQL extraction at 01b0aa9494b56ec12b63533976dfce80c6432afe. Independent runs 40951282878/40951292006 passed. All eleven labels, filters/NULL sums/masks/_sql behavior and prior catalogue/checkout/build/launcher checks passed. No implementation verification remains pending. Revert that implementation commit to undo aggregate lookup extraction.
