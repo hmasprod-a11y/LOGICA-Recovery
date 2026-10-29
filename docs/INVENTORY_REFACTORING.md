@@ -19,3 +19,7 @@ Harness compilation passed locally. Full Windows baseline is pending; production
 Windows run [40957237265](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40957237265) succeeded for cfe00845d13add61bf27f93b70e110c2b236e8bc with original search/refresh branches and existing checkout/build/launcher checks.
 
 Move only adapter construction/query assembly into Infrastructure.Inventory.StockMovementQuery, including the optional date prefix. Retain exact SQL/LIKE/wildcards, VB date/object concatenation, descending order and adapter settings. The form still clears DT before constructing each adapter, assigns DA before Fill (including on query execution failure), binds DT, retains results on empty search and owns UI events/catch. No parameterization, validation or connection cleanup changes. Full Windows regression is pending after extraction; no redundant SQL-string mirror tests were added.
+
+## Adapter factory signature repair
+
+Windows run 40958553076 caught a compile-time narrowing mistake in the new Contains/ExactLike factory signatures: the original form's _sql field is object, not string. Preserve that object boundary, matching its original VB ConcatenateObject usage; do not add a caller cast/string conversion. Change only the two datePrefix parameters to object. Production behavior was not exercised in that failed build; independent rules passed. Full Windows validation must run after the corrected signature before this extraction is accepted.

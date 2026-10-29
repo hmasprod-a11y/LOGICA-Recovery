@@ -12,12 +12,12 @@ namespace LOGICA.Infrastructure.Inventory
             return new MySqlDataAdapter("select * from     TABLE_" + table + "      Where       Dates   between   ' " + Strings.Format(from, "yyyy-MM-dd") + " '     And      ' " + Strings.Format(to, "yyyy-MM-dd") + " '               order by   ID    desc ", connection);
         }
 
-        public static MySqlDataAdapter Contains(string table, string datePrefix, object column, object term, MySqlConnection connection)
+        public static MySqlDataAdapter Contains(string table, object datePrefix, object column, object term, MySqlConnection connection)
         {
             return new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat("select * from     TABLE_" + table, "      Where            "), datePrefix), "            ("), column), "  like  '%"), term), "%'   )                                order by   ID    desc ")), connection);
         }
 
-        public static MySqlDataAdapter ExactLike(string table, string datePrefix, object column, object term, MySqlConnection connection)
+        public static MySqlDataAdapter ExactLike(string table, object datePrefix, object column, object term, MySqlConnection connection)
         {
             return new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat("select * from     TABLE_" + table, "      Where            "), datePrefix), "            ("), column), "  like  '"), term), "'     )                                order by   ID    desc ")), connection);
         }
