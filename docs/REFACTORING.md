@@ -91,3 +91,11 @@ Changed the branch Windows verification workflow to build the already-committed 
 The first runtime probe timed out at the error dialog; the existing normal checkout checks passed. Replaced the UI-thread timer with a bounded background watcher so native modal-loop behavior cannot prevent acknowledgement. Added a nontransactional trigger-attempt marker to distinguish the intended database failure from an unrelated earlier UI error. Local harness compilation passed; rerun runtime verification before claiming rollback coverage.
 
 Final verification: Windows run 40822250487 succeeded. checkout-rollback PASS: trigger Attempts=1, stock=9, previous headers=2, journal rows=2, payments=12.5, retained basket rows=1, ticket sequence=3 and movement sum=-1. All existing POS, build, data-regression and portable-launcher checks also passed. Production behavior remains unchanged; this new coverage now protects a mid-transaction failure before further persistence extraction.
+
+## Progress: stock-movement persistence boundary (2026-10-29)
+
+Reviewed CREATION_IMPRESSION: it reads form configuration and dispatches physical USB/serial ticket, return and credit printing, including operation-dependent copies. It remains unchanged and is not an appropriate pure-rule extraction.
+
+Selected a narrower persistence boundary: move the existing parameterized stock-movement INSERT from Button_Click into Infrastructure.Checkout.StockMovementWriter. The form still owns the transaction and stock update. The helper uses the exact caller command and connection, preserves parameter types/sign/date calls/ticket label, executes once, and clears parameters on the same successful path. It does not open/close connections, begin/commit/rollback, catch errors, or reference forms/Module1.
+
+Coverage before extraction: existing sale/refund movement sums and the successful injected journal-failure rollback test. Extend checkout assertions to verify article identity and exact ticket labels as well. Full Windows verification is required for this slice; physical printing is not exercised.
