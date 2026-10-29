@@ -2568,15 +2568,29 @@ public class FormDialog_8_BASE_DONNEE : Form
 				{
 					Module1.cn_SQL.Open();
 				}
-				val2.CommandText = "update      TABLE_VENTES_ENTETE     set id_client = '" + Strings.Trim(Label_ID_CLIENT.Text) + "'  , client = '" + Strings.Trim(Label_CLIENT.Text) + "'        WHERE     ID_TICKET = '" + Strings.Trim(Label_ID_TICKET.Text) + "'              ";
-				val2.Connection = Module1.cn_SQL;
-				val2.ExecuteNonQuery();
-				val2.CommandText = "update      TABLE_VENTES_JOURNAL    set id_client = '" + Strings.Trim(Label_ID_CLIENT.Text) + "'  , client = '" + Strings.Trim(Label_CLIENT.Text) + "'        WHERE     ID_TICKET = '" + Strings.Trim(Label_ID_TICKET.Text) + "'              ";
-				val2.Connection = Module1.cn_SQL;
-				val2.ExecuteNonQuery();
-				val2.CommandText = "update      TABLE_VENTES_REGLEMENTS  set id_client = '" + Strings.Trim(Label_ID_CLIENT.Text) + "'  , client = '" + Strings.Trim(Label_CLIENT.Text) + "'        WHERE     ID_TICKET = '" + Strings.Trim(Label_ID_TICKET.Text) + "'              ";
-				val2.Connection = Module1.cn_SQL;
-				val2.ExecuteNonQuery();
+				using (MySqlTransaction ticketTransaction = Module1.cn_SQL.BeginTransaction())
+				{
+					try
+					{
+						val2.Connection = Module1.cn_SQL;
+						val2.Transaction = ticketTransaction;
+						val2.CommandText = "UPDATE TABLE_VENTES_ENTETE SET id_client = @clientId, client = @clientName WHERE ID_TICKET = @ticketId";
+						val2.Parameters.AddWithValue("@clientId", Strings.Trim(Label_ID_CLIENT.Text));
+						val2.Parameters.AddWithValue("@clientName", Strings.Trim(Label_CLIENT.Text));
+						val2.Parameters.AddWithValue("@ticketId", Strings.Trim(Label_ID_TICKET.Text));
+						val2.ExecuteNonQuery();
+						val2.CommandText = "UPDATE TABLE_VENTES_JOURNAL SET id_client = @clientId, client = @clientName WHERE ID_TICKET = @ticketId";
+						val2.ExecuteNonQuery();
+						val2.CommandText = "UPDATE TABLE_VENTES_REGLEMENTS SET id_client = @clientId, client = @clientName WHERE ID_TICKET = @ticketId";
+						val2.ExecuteNonQuery();
+						ticketTransaction.Commit();
+					}
+					catch
+					{
+						ticketTransaction.Rollback();
+						throw;
+					}
+				}
 				string right2 = "Radio_CHANG_CLIENT | " + Label_ID_TICKET.Text;
 				File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right2), "\r\n")), Encoding.UTF8);
 				Module1.cn_SQL.Close();
