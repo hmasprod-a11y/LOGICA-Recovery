@@ -82,3 +82,15 @@ Full Windows run [40886209422](https://github.com/hmasprod-a11y/LOGICA-Recovery/
 Extract the unchanged promotion predicate into Domain.CataloguePromotionRules.IsRejected. Retain raw-empty short circuit, VB decimal conversion, only the existing >100 upper bound, and propagation to the original form catch for malformed input. Warning/return stays in the handler; later image/group and persistence stages are untouched.
 
 Before replacing the form predicate, 114 standalone assertions passed locally across three cultures for missing values, accepted negatives/zero/100, >100, decimal separators, whitespace, numeric boundaries and equivalent conversion exception types. All existing independent tests passed. Full Windows regression is pending for the extraction.
+
+## Verified catalogue rules milestone
+
+Full Windows run [40887800792](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40887800792) succeeded for 8564855d4adfba4a2467610a7d0fa3ca449943d5 after promotion extraction. Original-handler guard/numeric fixtures, checkout, build and launcher checks passed. Independent rules runs 40887800801 and 40887807809 succeeded. Revert 8564855d4adfba4a2467610a7d0fa3ca449943d5 to undo the promotion extraction.
+
+Catalogue milestone now separates numeric input filtering, required identifier and promotion predicates with preserved behavior. Persistence remains in the original form pending successful-save coverage.
+
+## Next bounded audit: generated barcode checksum
+
+Button_GENERER_Click mixes random prefix generation and deterministic final check digits. The requested length 12 branch appends a digit using alternating weights 1,3 across 12 digits; requested length 11 appends a digit using weights 3,1 across 11 digits. Both finish with (10 - sum % 10) % 10. Random generation, requested length handling, focus and the existing Module1.getBits call in the 12-digit branch must remain in place.
+
+Next: characterize the original generator for both requested lengths (result length, ASCII digits and independently computed checksum), then protect deterministic checksum cases before moving arithmetic. Do not redesign barcode formats, random generation or validation. Keep individual-save creation/modification mappings deferred; they differ in average price, inventory date and opening stock and require separate fixtures.
