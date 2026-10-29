@@ -17553,12 +17553,12 @@ public class Form_2_ARTICLES : Form
 		{
 			try
 			{
-				if (Operators.CompareString(Strings.Trim(Text_CODE_COLLECTION.Text), "", TextCompare: false) == 0)
+				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_CODE_COLLECTION.Text))
 				{
 					MessageBox.Show("Veuillez remplir le champ -Code- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Operators.CompareString(Strings.Trim(Text_ARTICLE_COLLECTION.Text), "", TextCompare: false) == 0)
+				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_ARTICLE_COLLECTION.Text))
 				{
 					MessageBox.Show("Veuillez remplir le champ -Article- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;

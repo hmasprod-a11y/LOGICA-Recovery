@@ -297,3 +297,11 @@ Button_SAVE_COLLECTION_Click is 186 lines. Ordered required fields precede artic
 Add collection-save-guards through the existing strictly isolated guard harness. Four original-handler cases (empty/spaces code/article) must warn with exact field order, retain control text before normalization, keep the connection closed and leave article/movement/sequence sentinels unchanged. Collection code TextChanged is empty; no transaction or SendKeys tail is reached. Production collection source remains unchanged.
 
 Local harness compilation passed. Full Windows baseline is pending. After it passes, reuse the existing exact CatalogueRequiredFields predicate only for the two matching collection identifier checks. Batch persistence/rollback coverage remains separate; do not broaden this guard slice into a transaction rewrite.
+
+## Verified collection guards and exact rule reuse
+
+Full Windows run [40931935559](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40931935559) succeeded for 43a0026c24ac7fca3616dd91af72beb5a449e395, including all four original collection identifier rejection cases; independent run 40931945535 and prior checks passed.
+
+Replace only the collection handler's first two VB Trim/empty predicates with the already-tested CatalogueRequiredFields.IsMissingIdentifier. Preserve warning text/order, return points, pre-normalization field text, all later raw-empty guards, transaction loop and UI tail. No batch SQL or transaction code moves. Existing standalone identifier tests already exercise this exact helper; no duplicate mirror tests were added. Full Windows regression is pending after reuse.
+
+Next bounded coverage: collection duplicate lookup rejection before transaction. Supply valid earlier fields and a single competing grid code, verify normalization and unchanged sentinels without reaching the SendKeys tail. Successful batch commit/rollback remains outside this slice.
