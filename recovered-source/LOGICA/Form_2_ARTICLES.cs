@@ -14689,7 +14689,7 @@ public class Form_2_ARTICLES : Form
 
 	private void TextBox8_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -14701,7 +14701,7 @@ public class Form_2_ARTICLES : Form
 
 	private void TextBox13_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -14709,7 +14709,7 @@ public class Form_2_ARTICLES : Form
 
 	private void TextBox16_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -14717,7 +14717,7 @@ public class Form_2_ARTICLES : Form
 
 	private void TextBox17_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -15394,7 +15394,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_PRIX_MP_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -15436,7 +15436,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_PRIX_V_2_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -16555,7 +16555,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_PROMOTION_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -17353,7 +17353,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_PRIX_A_COLLECTION_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -17365,7 +17365,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_PRIX_V_COLLECTION_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -17904,7 +17904,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_QTE_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -18058,7 +18058,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_CODE_COLLECTION_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -18311,7 +18311,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_PRIX_QTE_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -18323,7 +18323,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_PRIX_QTE_MIN_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
