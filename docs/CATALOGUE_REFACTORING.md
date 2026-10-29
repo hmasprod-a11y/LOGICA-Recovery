@@ -2,10 +2,10 @@
 
 ## Current resume checkpoint
 
-- Verified implementation: 12123406e2ec2340b9ea082d595109af2f5bc7b6, draft PR #10 stacked on #8; no merge/release.
-- Windows run [40922446590](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40922446590) and independent runs 40922446555/40922459014 passed. No implementation check remains pending.
-- Separated: catalogue rules/barcode, lazy 33-column mapping, duplicate lookup SQL, creation identity reads, movement/sequence writes and adapter persistence. Preserve conversion, read order and existing partial-save behavior.
-- Next: audit the post-duplicate-check creation orchestration boundary for an application service with a fake-store ordering/failure test before moving it. Keep image/normalization, duplicate warning, success warning, error catch and UI refresh in the form. Existing database fixtures must remain the end-to-end regression.
+- Verified implementation: 51350bf1f6ab3fb1e974e5a4f1bfdd383e14080e, draft PR #10 stacked on #8; no merge/release.
+- Windows run [40925725827](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40925725827) and independent runs 40925725714/40925735920 passed. No implementation check remains pending.
+- Creation application flow is now separated after the original duplicate guard. Rules, barcode, lazy mapping and individual database operations also remain separated. Preserve original partial commits and UI timing.
+- Next bounded audit: optional balance-code normalization in individual save. Characterize original numeric rejection and accepted formatting through isolated save fixtures before moving its VB numeric/Val/rounding/format rules. Keep image/group prerequisites and warnings in the form. No hardware or batch changes.
 
 ## Priority and baseline
 
@@ -267,3 +267,9 @@ Before rewiring the form, add CatalogueCreationService/ICatalogueCreationStore a
 Move only the post-duplicate-check creation block to this service. MySqlCatalogueCreationStore delegates to the verified identity/persistence/movement/sequence helpers, retains one command for both scalar reads and sequence update, and appends to the existing DataTable. Keep the existing lazy input adapter. The form retains normalization/image work, duplicate guard and warning, success warning, edit path, outer catch and refresh. No transaction, connection ownership or exception cleanup changes.
 
 Full Windows original-handler regression is pending after service wiring. Fake-store tests protect application order, not SQL/connection internals; existing isolated database fixtures cover those. Edit/delete/batch orchestration is outside this service.
+
+## Verified creation application milestone
+
+Full Windows run 40925725827 succeeded after service wiring at 51350bf1f6ab3fb1e974e5a4f1bfdd383e14080e. Original creation/edit, all 33 values, duplicate guards, empty/NULL identifiers, four injected database failure boundaries, catalogue input/barcodes and prior checkout/build/launcher checks passed. Independent tests passed, including 63 creation-order/failure assertions. Revert that implementation commit to undo this service wiring.
+
+The next remaining individual-save rule worth auditing is optional balance-code formatting: after article apostrophe normalization, Combo_BALANCE == OUI first uses Versioned.IsNumeric(Text_CODE.Text), then rounds Conversion.Val of requested width, then formats Conversion.Val(code) with a VB-generated zero mask. Numeric rejection warns before image write/database persistence. Existing fixtures use NON, so do not claim coverage or extract this branch without new original-handler evidence. Do not substitute decimal parsing, pad-left or a new barcode policy.
