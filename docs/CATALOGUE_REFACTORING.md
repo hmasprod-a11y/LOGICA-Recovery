@@ -319,3 +319,11 @@ Full Windows run [40933913412](https://github.com/hmasprod-a11y/LOGICA-Recovery/
 Move only the collection pre-transaction adapter Fill query into CatalogueDuplicateLookup.FillCollectionCode. Accept the raw grid-cell object and preserve nested VB ConcatenateObject/Conversions.ToString and exact SQL/trailing spaces. Retain table Clear, first matching Article warning, early return, per-row loop and grid selection in the form. The helper relies on adapter-managed connection behavior and adds no explicit close/transaction handling; do not reuse individual creation readers/writers inside the batch transaction.
 
 Full Windows regression is pending after extraction. Successful batch insertion/rollback and unusual raw object cells remain unclaimed boundaries. Next bounded fixture: reach the pre-transaction duplicate check at a later grid row, verifying first-match early termination and no persistence without executing the SendKeys tail.
+
+## Verified collection lookup; later-row early-stop fixture
+
+Full Windows run [40935603894](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40935603894) succeeded for 9c34d75b6bdb9cb4517d0d1f876c165a453ea4d1 after collection lookup extraction. Independent runs 40935603906/40935612213 and prior regression checks passed.
+
+Add collection-duplicate-later with three grid rows: a nonmatching code, the competing sentinel code, then an intentionally malformed trailing code that must never be queried. Require the expected duplicate warning, unchanged database sentinels/sequence/connection and original last-row selection after the preceding no-match. This covers the no-match branch and early termination without entering transaction or SendKeys. Original product source is unchanged.
+
+Local harness compilation passed. Full Windows evidence is pending. After verification, a bounded precheck service may own row iteration only if grid-row reads, last-row selection timing, first-match stop and exception propagation remain explicit; transaction work is still deferred.
