@@ -181,3 +181,9 @@ Add standalone service tests for exact read/write/print/completion order, empty 
 Posting-service integration verified: full Windows run 40829989863 succeeded, including every established checkout/payment/fractional scenario, both rollback boundaries, build and existing checks. Standalone application/domain CI passed; 32 application assertions exercise ordered deferred inputs and failure short-circuit. Revert 44ee84195ef689fe07d6cc2daeb08d85c12df1bc to undo this slice.
 
 Next: characterize stock-disabled checkout, then consider moving stock iteration into the application flow while keeping date capture after stock writes and preserving original ticket/transaction behavior. Do not move transaction error UI or physical printing ownership without their own coverage.
+
+## Progress: stock-disabled checkout characterization (2026-10-29)
+
+Add checkout-stock-off before moving stock iteration into the application layer. Run both sale and refund with the original Check_STOCK flag disabled. Require stock to remain 10 and movement count/sum/identity/ticket labels to remain zero, while headers, journal, payment/refund amounts, basket clearing and ticket sequence still behave normally.
+
+Existing stock-enabled whole/fractional and rollback cases remain unchanged. Production code is unchanged in this slice. Harness compilation and full Windows runtime verification are required before treating this branch as characterized.
