@@ -2589,7 +2589,9 @@ public class FormDialog_8_BASE_DONNEE : Form
 				{
 					Module1.cn_SQL.Open();
 				}
-				val3.CommandText = "update      TABLE_VENTES_REGLEMENTS    set MODE_P = '" + Strings.Trim(Label_MODE_P.Text) + "'      WHERE     ID_TICKET = '" + Strings.Trim(Text_ID_TICKET.Text) + "'              ";
+				val3.CommandText = "UPDATE TABLE_VENTES_REGLEMENTS SET MODE_P = @paymentMode WHERE ID_TICKET = @ticketId";
+				val3.Parameters.AddWithValue("@paymentMode", Strings.Trim(Label_MODE_P.Text));
+				val3.Parameters.AddWithValue("@ticketId", Strings.Trim(Text_ID_TICKET.Text));
 				val3.Connection = Module1.cn_SQL;
 				val3.ExecuteNonQuery();
 				string right3 = "Radio_CHANG_MODE_P | " + Label_ID_TICKET.Text;
