@@ -77,3 +77,11 @@ Windows run 40952781294 passed after formatting extraction at 95384219e225ec9766
 Add catalogue-aggregate-failure using only 127.0.0.1:3307/logica_ci. After seeding six fixture rows, rename the fixture PRIX_MP column so the unchanged aggregate query fails. Invoke the original handler with null and nonempty family filters, require its PRIX_MP error warning, all eleven labels still at their prior sentinels, original _sql reset/non-reset behavior, adapter-owned closed connection and unchanged row count. This avoids changing production query validation/escaping and exercises failure before any label assignment.
 
 Harness compilation passed locally. Full Windows failure-path verification is pending. Production source remains unchanged; normal aggregate fixtures retain their original schema and cases. The handler's existing diagnostics stay within disposable CI files.
+
+## Verified refresh failure and next P0 audit
+
+Windows run [40954978175](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40954978175) passed the original-handler lookup failure fixture at 1527ea5a04d15a7fcdf8527de87859471220f10f. Eleven prior labels remain unchanged, warning/filter side effect is retained and adapter connection closes. Independent run 40954987839 and all prior regressions passed. No implementation check is pending.
+
+Catalogue milestone is ready for review as a bounded refactor, not whole-catalogue acceptance. Next P0 function audit examined Form_6_MOUVEMENTS_STOCK.cs (about 68 KB): this screen is a movement read/search/export view. Picture_FIND_Click branches between date-only, wildcard LIKE, and an exact checkbox that still uses LIKE; optional date filtering updates _sql, empty text retains the previous DT, and rows are ordered descending ID. Refresh clears search text, then reloads all movement rows. Preserve these quirks; do not turn exact LIKE into equality or clear retained results incidentally.
+
+Next implementation should be on a separate review branch, with isolated original-handler fixtures for date boundaries, wildcard/exact modes, optional dates, empty search retaining rows and refresh ordering before extracting its query logic. Existing stock mutation tests do not establish movement-view filtering. Do not modify shop movement records or combine this with movement writes.
