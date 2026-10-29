@@ -1684,7 +1684,27 @@ public class Form_6_MOUVEMENTS_STOCK : Form
 		}
 	}
 
-	public void Picture_REFRESH_Click(object sender, EventArgs e)
+	private sealed class MovementRefreshContext : LOGICA.ApplicationLayer.Inventory.IStockMovementRefreshContext
+    {
+        private readonly Form_6_MOUVEMENTS_STOCK form;
+        private readonly object sender;
+        public MovementRefreshContext(Form_6_MOUVEMENTS_STOCK form, object sender) { this.form = form; this.sender = sender; }
+        public void FocusSender()
+        {
+            NewLateBinding.LateCall(sender, null, "Focus", new object[0], null, null, null, IgnoreReturn: true);
+        }
+        public void ClearSearch() { form.Text_FIND.Texts = ""; }
+        public void FocusSearch() { ((Control)form.Text_FIND).Focus(); }
+        public void ReloadAll()
+        {
+            form.DT.Clear();
+            form.DA = LOGICA.Infrastructure.Inventory.StockMovementQuery.Refresh(form.Label_TABLE.Text, Module1.cn_SQL);
+            ((DbDataAdapter)(object)form.DA).Fill(form.DT);
+        }
+        public void BindResults() { form.DataGridView1.DataSource = form.DT; }
+    }
+
+    public void Picture_REFRESH_Click(object sender, EventArgs e)
 	{
 		//IL_0062: Unknown result type (might be due to invalid IL or missing references)
 		//IL_006c: Expected Obj, but got Unknown
@@ -1692,13 +1712,7 @@ public class Form_6_MOUVEMENTS_STOCK : Form
 		//IL_0127: Expected Obj, but got Unknown
 		try
 		{
-			NewLateBinding.LateCall(sender, null, "Focus", new object[0], null, null, null, IgnoreReturn: true);
-			Text_FIND.Texts = "";
-			((Control)Text_FIND).Focus();
-			DT.Clear();
-			DA = LOGICA.Infrastructure.Inventory.StockMovementQuery.Refresh(Label_TABLE.Text, Module1.cn_SQL);
-			((DbDataAdapter)(object)DA).Fill(DT);
-			DataGridView1.DataSource = DT;
+			LOGICA.ApplicationLayer.Inventory.StockMovementRefreshService.Refresh(new MovementRefreshContext(this, sender));
 		}
 		catch (Exception ex)
 		{

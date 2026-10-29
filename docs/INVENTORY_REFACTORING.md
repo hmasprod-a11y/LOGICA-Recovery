@@ -67,3 +67,9 @@ Move only branch ordering into ApplicationLayer.Inventory with a narrow context.
 ## Verified search application milestone
 
 Windows run 40962003804 passed after service wiring at a7e9c976d74fa43e1dbf17d09500497dba81c8e3, including all original search/refresh/failure paths and existing checkout/build/launcher checks. Independent tests passed, including 89 branch/read-order/exception assertions. Revert that implementation commit to undo search-flow extraction. No stock mutation behavior was changed or claimed by this read-model slice.
+
+## Refresh application flow extraction pending
+
+Before rewiring refresh, StockMovementRefreshService passed 36 standalone assertions locally: sender focus, search clear, reentrant search callback, search focus, reload and binding order; first failure identity/no later actions; partial reload state preserved. The existing original-handler fixture already exercises refresh after date search and verifies final unfiltered descending results/search reset.
+
+Move only refresh ordering into Application.Inventory with a separate narrow refresh context. A nested form context retains original late-bound sender Focus, Texts assignment triggering existing TextChanged, Control.Focus, DT.Clear, DA assignment before Fill and grid binding. Search service, query factories, outer catch and connection ownership remain unchanged. Full Windows regression is pending after wiring; no redundant standalone rerun of unchanged rules was needed.
