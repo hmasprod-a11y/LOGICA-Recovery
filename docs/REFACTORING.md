@@ -273,3 +273,11 @@ Production code is unchanged pending characterization; do not change the setting
 Insufficient-stock baseline verified: full Windows run 40846566659 passed both configured rejection cases (including stock mutation disabled) and exact-stock acceptance, plus every existing check. Domain/application CI passed. Revert b2bc2767cfc2af3e4b801a037dd3b5e893786de2 to undo this test slice.
 
 Next extraction should preserve Operators.ConditionalCompareObjectLess on raw available/requested objects; do not normalize types or move the missing-row guard/configuration gate while extracting the comparison.
+
+## Progress: stock-availability rule extraction (2026-10-29)
+
+Move the exact available-versus-requested object comparison into Domain.StockAvailability.IsBelowRequested. Keep the configured operation gate, Module1.dt1 source, database lookup, missing-row short-circuit, warning and early return in the form.
+
+Preserve VB ConditionalCompareObjectLess semantics on raw objects, including numeric coercion, string-vs-string comparison and current-culture conversion. Do not normalize values to decimal during this structural slice.
+
+Local checks passed: 57 stock assertions across three cultures for shortage/equality/surplus, fractional/negative values, mixed numeric/string inputs, null, limits and conversion failure, plus all previous application/domain checks. The three configured-stock integration cases passed before extraction in run 40846566659. Full Windows CI remains required for the new rule call.

@@ -12845,7 +12845,7 @@ public class Form_3_VENTE : Form
 						dataTable.Clear();
 						val3 = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("select   Code,Article,STOCK   from   TABLE_ARTICLES     WHERE      Code =   '", Module1.dt1.Rows[num2]["Code"]), "'       ")), Module1.cn_SQL);
 						((DbDataAdapter)(object)val3).Fill(dataTable);
-						if (dataTable.Rows.Count != 0 && Operators.ConditionalCompareObjectLess(dataTable.Rows[0]["STOCK"], Module1.dt1.Rows[num2]["Qté"], TextCompare: false))
+						if (dataTable.Rows.Count != 0 && LOGICA.Domain.StockAvailability.IsBelowRequested(dataTable.Rows[0]["STOCK"], Module1.dt1.Rows[num2]["Qté"]))
 						{
 							MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("stock insuffisant de l'article -", dataTable.Rows[0]["Article"]), "-")), "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
 							NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
