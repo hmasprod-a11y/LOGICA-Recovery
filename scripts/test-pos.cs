@@ -367,6 +367,31 @@ class PosSmoke {
   Console.WriteLine("PASS catalogue required code/article and promotion guards: 10 cases; promotion empty/over-100 rejected, -1/0/100 reach image guard before normalization/persistence");
  }
 
+ static void VerifyCatalogueRow(IDbConnection connection,bool edited) {
+  string[][] strings={
+   new[]{"ID_ARTICLE","ART000007"},new[]{"Code",edited?"CI_EDIT":"CI_NEW"},new[]{"Article",edited?"CI s edited":"CI s item"},
+   new[]{"Famille","CI_FAMILY"},new[]{"Sous_Famille","CI_SUBFAMILY"},new[]{"GROUPE","CI_GROUP"},new[]{"Description","CI_DESCRIPTION"},
+   new[]{"UNITE","CI_UNIT"},new[]{"REFERENCE","CI_REFERENCE"},new[]{"FOURNISSEUR","CI_SUPPLIER"},new[]{"MODE_STOCK","CI_STOCK_MODE"},
+   new[]{"PRINTER","CI_PRINTER"},new[]{"PRINTER_DUPLICATA","CI_DUPLICATE"},new[]{"Images","CI_UNCHANGED.png"},
+   new[]{"Taille","CI_SIZE"},new[]{"Couleur","CI_COLOR"},new[]{"Emplacement","CI_LOCATION"},new[]{"FENETRE_PESAGE","CI_WEIGHING"},new[]{"BALANCE","NON"}
+  };
+  using(var command=connection.CreateCommand()) {
+   command.CommandText="SELECT * FROM TABLE_ARTICLES WHERE ID=42";
+   using(var row=command.ExecuteReader()) {
+    if(!row.Read())throw new Exception("Missing catalogue mapping row");
+    foreach(var field in strings)if(Convert.ToString(row[field[0]])!=field[1])throw new Exception("Catalogue mapping changed: "+field[0]);
+    string[] numeric={"ID","Prix_A","PRIX_MP","PRIX_V_1","PRIX_V_2","PRIX_QTE","PRIX_QTE_MIN","STOCK","Alert","STOCK_INITIAL","TAUX_TVA","PROMOTION"};
+    decimal[] expected={42m,10.25m,edited?88.5m:10.25m,20m,18m,16m,3m,7m,2m,edited?999m:7m,20m,5m};
+    for(int index=0;index<numeric.Length;index++)if(Convert.ToDecimal(row[numeric[index]])!=expected[index])throw new Exception("Catalogue numeric mapping changed: "+numeric[index]);
+    if(Convert.ToDateTime(row["DATES"])!=new DateTime(2026,1,2) ||
+       Convert.ToDateTime(row["DATE_INVENTAIRE"])!=(edited?new DateTime(2020,3,4):new DateTime(2026,1,2)))
+     throw new Exception("Catalogue date mapping changed");
+    if(row.Read())throw new Exception("Duplicate catalogue identity");
+   }
+  }
+  Console.WriteLine("PASS catalogue "+(edited?"edit":"create")+" all 33 persisted column values");
+ }
+
  static void CatalogueCreateProduct(Assembly assembly,bool edit=false) {
   CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
   var module=assembly.GetType("LOGICA.Module1",true);
@@ -402,6 +427,17 @@ class PosSmoke {
     SetText(form,"Text_DATE_CREATION","2026-01-02");SetText(form,"Text_DATE_INVENTAIRE","2020-03-04");
     SetText(form,"Text_PROMOTION","5");
     SetText(form,"Text_LIEN_PICTURE","CI_UNCHANGED.png");SetText(form,"Text_LIEN_PICTURE_ANC","CI_UNCHANGED.png");
+    string[][] textFields={
+     new[]{"Combo_FAMILLE","CI_FAMILY"},new[]{"Text_SOUS_FAMILLE","CI_SUBFAMILY"},new[]{"Combo_GROUPES","CI_GROUP"},
+     new[]{"Text_DESCRIPTION","CI_DESCRIPTION"},new[]{"Combo_UNITE","CI_UNIT"},new[]{"Text_REFERENCE","CI_REFERENCE"},
+     new[]{"Combo_FOURNISSEUR","CI_SUPPLIER"},new[]{"Combo_MODE_STOCK","CI_STOCK_MODE"},new[]{"Combo_PRINTER","CI_PRINTER"},
+     new[]{"Combo_PRINTER_DUPLICATA","CI_DUPLICATE"},new[]{"Combo_TAILLES","CI_SIZE"},new[]{"Combo_COULEURS","CI_COLOR"},
+     new[]{"Text_EMPLACEMENT","CI_LOCATION"},new[]{"Combo_FENETRE_PESEE","CI_WEIGHING"}
+    };
+    foreach(var field in textFields) {
+     var control=(Control)Get(form,field[0]);var combo=control as ComboBox;
+     if(combo!=null){combo.Items.Add(field[1]);combo.SelectedIndex=combo.Items.Count-1;}else control.Text=field[1];
+    }
     int observed=0;uint threadId=GetCurrentThreadId();
     using(var stop=new ManualResetEvent(false)) {
      var watcher=new Thread(delegate() {
@@ -428,6 +464,7 @@ class PosSmoke {
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE ID_ARTICLE='ART000007' AND CODE_ARTICLE=' CI_NEW ' AND ARTICLE=' CI s item ' AND QUANTITE=7"),1m,"catalogue create movement retains untrimmed controls");
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK"),1m,"catalogue create single movement");
     Eq(Scalar(connection,"SELECT ARTICLE FROM TABLE_NUM WHERE ID=0"),8m,"catalogue create advances sequence");
+    VerifyCatalogueRow(connection,false);
     connection.Close();
     Eq(decimal.Parse(((Control)Get(form,"Label_ARTICLES")).Text),2m,"catalogue create aggregate refresh");
     if(edit) {
@@ -463,6 +500,7 @@ class PosSmoke {
      Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_ARTICLES WHERE ID=42 AND DATES='2026-01-02' AND DATE_INVENTAIRE='2020-03-04'"),1m,"catalogue edit uses separate inventory date");
      Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK"),1m,"catalogue edit adds no opening movement");
      Eq(Scalar(connection,"SELECT ARTICLE FROM TABLE_NUM WHERE ID=0"),8m,"catalogue edit leaves sequence");
+     VerifyCatalogueRow(connection,true);
      connection.Close();
      Eq(decimal.Parse(((Control)Get(form,"Label_ARTICLES")).Text),2m,"catalogue edit aggregate refresh");
      string audit=File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"log.sni"));
