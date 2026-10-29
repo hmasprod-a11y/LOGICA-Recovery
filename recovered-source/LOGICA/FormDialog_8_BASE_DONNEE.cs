@@ -1947,7 +1947,8 @@ public class FormDialog_8_BASE_DONNEE : Form
 		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0008: Expected Obj, but got Unknown
 		MySqlCommand val = new MySqlCommand();
-		val.CommandText = "select   sum(TOTAL_NET) as n ,  min(ticket) as m ,  min(Dates) as d ,  min(Client) as c       from      TABLE_VENTES_JOURNAL     WHERE     ID_TICKET = '" + Strings.Trim(Text_ID_TICKET.Text) + "'    ";
+		val.CommandText = "select sum(TOTAL_NET) as n, min(ticket) as m, min(Dates) as d, min(Client) as c from TABLE_VENTES_JOURNAL WHERE ID_TICKET = @ticketId";
+		val.Parameters.AddWithValue("@ticketId", Strings.Trim(Text_ID_TICKET.Text));
 		val.Connection = Module1.cn_SQL;
 		val.CommandType = CommandType.Text;
 		decimal num = 0m;
@@ -2005,7 +2006,8 @@ public class FormDialog_8_BASE_DONNEE : Form
 		//IL_0007: Expected Obj, but got Unknown
 		//IL_0127: Unknown result type (might be due to invalid IL or missing references)
 		MySqlCommand val = new MySqlCommand();
-		val.CommandText = "select   ID_CLIENT,CLIENT       from      TABLE_CLIENTS     WHERE     ID_CLIENT = '" + Strings.Trim(Text_ID_CLIENT_FIND.Text) + "'    ";
+		val.CommandText = "select ID_CLIENT, CLIENT from TABLE_CLIENTS WHERE ID_CLIENT = @clientId";
+		val.Parameters.AddWithValue("@clientId", Strings.Trim(Text_ID_CLIENT_FIND.Text));
 		val.Connection = Module1.cn_SQL;
 		val.CommandType = CommandType.Text;
 		string text = "";
@@ -2074,7 +2076,8 @@ public class FormDialog_8_BASE_DONNEE : Form
 		//IL_0007: Expected Obj, but got Unknown
 		//IL_00e0: Unknown result type (might be due to invalid IL or missing references)
 		MySqlCommand val = new MySqlCommand();
-		val.CommandText = "select  MODE_P       from      TABLE_MODE_P     WHERE     MODE_P like '%" + Strings.Trim(Text_MODE_P_FIND.Text) + "%'    ";
+		val.CommandText = "select MODE_P from TABLE_MODE_P WHERE MODE_P LIKE @paymentMode";
+		val.Parameters.AddWithValue("@paymentMode", "%" + Strings.Trim(Text_MODE_P_FIND.Text) + "%");
 		val.Connection = Module1.cn_SQL;
 		val.CommandType = CommandType.Text;
 		string text = "";
