@@ -14610,70 +14610,13 @@ public class Form_2_ARTICLES : Form
 			}
 			if ((Text_CODE.Text.Length == 12) & (num == 12))
 			{
-				int num2 = 0;
-				int num3 = 0;
-				byte[] array = new byte[13];
-				int num4 = 0;
-				int num5;
-				int num6;
-				do
-				{
-					array[num4] = (byte)Conversions.ToInteger(Text_CODE.Text.Substring(num4, 1));
-					if (unchecked(num4 % 2) == 1)
-					{
-						num3 += array[num4];
-					}
-					else
-					{
-						num2 += array[num4];
-					}
-					num4++;
-					num5 = num4;
-					num6 = 11;
-				}
-				while (num5 <= num6);
-				unchecked
-				{
-					num4 = checked(num2 + num3 * 3) % 10;
-				}
-				if (num4 == 0)
-				{
-					array[12] = 0;
-				}
-				else
-				{
-					array[12] = (byte)(10 - num4);
-				}
+				byte[] array = LOGICA.Domain.CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(Text_CODE.Text);
 				byte[] bits = Module1.getBits(array);
 				Text_CODE.Text += Conversions.ToString(array[12]);
 			}
 			if ((Text_CODE.Text.Length == 11) & (num == 11))
 			{
-				string text3 = Text_CODE.Text.Substring(0, 1);
-				string text4 = Text_CODE.Text.Substring(1, 5);
-				string text5 = Text_CODE.Text.Substring(6, 5);
-				string text6 = text3 + text4 + text5;
-				int num7 = 0;
-				int num8 = 0;
-				int length = text6.Length;
-				int num9 = 1;
-				while (true)
-				{
-					int num10 = num9;
-					int num6 = length;
-					if (num10 > num6)
-					{
-						break;
-					}
-					num8 = Convert.ToInt32(text6.Substring(num9 - 1, 1));
-					num7 = ((unchecked(num9 % 2) != 0) ? (num7 + num8 * 3) : (num7 + num8 * 1));
-					num9++;
-				}
-				unchecked
-				{
-					string text7 = (checked(10 - unchecked(num7 % 10)) % 10).ToString();
-					Text_CODE.Text += text7;
-				}
+				Text_CODE.Text += LOGICA.Domain.CatalogueBarcodeChecksum.GetElevenDigitPayloadSuffix(Text_CODE.Text);
 			}
 			((Control)Text_CODE).Focus();
 		}

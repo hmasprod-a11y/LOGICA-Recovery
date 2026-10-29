@@ -100,3 +100,11 @@ Next: characterize the original generator for both requested lengths (result len
 Add catalogue-barcodes to the isolated Windows harness. Invoke the original Button_GENERER_Click 24 times for each requested payload length 11 and 12; check final length, legacy 11 prefix, ASCII digits and a separate right-to-left alternating-weight checksum oracle. Random uniqueness is deliberately not asserted; preserve the original random/time behavior and getBits call. No product source changes in this baseline.
 
 Harness compiles locally. Full original-handler Windows evidence is pending before arithmetic extraction. The check covers generated valid payloads only; malformed input behavior and other requested lengths remain outside this boundary.
+
+## Verified generator baseline and checksum extraction
+
+Original generator Windows run [40890985609](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40890985609) succeeded for 96b6473ae9dd326cae6ac8c6f73130e58169063b, including 48 original-handler samples and all prior checks. Independent run 40890995479 also passed.
+
+Move deterministic arithmetic into Domain.CatalogueBarcodeChecksum: complete the twelve-digit payload array and calculate the eleven-digit payload suffix. Retain checked operations, VB/Convert digit conversion and slicing boundaries. The form retains random generation, requested-length branching, Module1.getBits call, append conversion and focus. Helpers are internal and called only after the original length conditions; no new validation or barcode policy is introduced.
+
+Before replacing handler blocks, standalone tests passed locally: 8,406 assertions across three cultures using known vectors, all-zero/all-nine inputs, seeded valid payloads and byte-for-byte preservation of the array passed to getBits. All prior independent tests passed. Full original-handler Windows verification is pending after extraction. Invalid helper inputs are outside the production call boundary and are not claimed as covered.
