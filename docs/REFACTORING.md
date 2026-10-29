@@ -165,3 +165,5 @@ Move the remaining stock UPDATE and its immediately-following movement into Infr
 Extend existing checkout characterization with a 1.25-unit sale: expect stock 8.75, movement -1.25, raw journal total 15.625 and rounded header/payment 15.63. Existing whole-unit sale/refund plus both failure boundaries remain enabled. Harness compilation passed locally; full Windows runtime verification is required for this slice.
 
 The checkout writes now sit outside the form; orchestration and UI/hardware remain in it. Next evaluate a cohesive application service from these plain-context boundaries rather than moving unrelated features or changing financial rules.
+
+Checkout-stock extraction verified: full Windows run 40828578089 passed. Fractional checkout confirmed stock 8.75, movement -1.25, journal 15.625, rounded header/payment 15.63. Whole-unit sale/refund, all payment branches and both rollback boundaries passed; domain CI passed. Revert cf057349dd5619c91fb0e6f4ab3cdc4f29496dcb to undo this extraction. Remaining service work should preserve the established transaction and hardware ordering.
