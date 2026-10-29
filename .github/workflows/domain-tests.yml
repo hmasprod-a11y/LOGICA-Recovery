@@ -1,0 +1,26 @@
+name: Domain characterization tests
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'recovered-source/**'
+      - 'tests/**'
+      - 'scripts/test-domain.ps1'
+      - '.github/workflows/domain-tests.yml'
+  push:
+    paths:
+      - 'recovered-source/**'
+      - 'tests/**'
+      - 'scripts/test-domain.ps1'
+      - '.github/workflows/domain-tests.yml'
+permissions:
+  contents: read
+jobs:
+  domain:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test financial rules without UI or database
+        shell: powershell
+        run: ./scripts/test-domain.ps1
