@@ -158,3 +158,11 @@ Next bounded coverage: duplicate-code rejection on creation and editing, then du
 Add catalogue-duplicates as its own isolated process after known creation/edit setup. Seed the competing row with a distinct ID_ARTICLE. Invoke unchanged original guards for creation duplicate code, edit duplicate code and edit duplicate ID_ARTICLE with a noncompeting code. Require the expected competing-article/identity warning, pre-check apostrophe normalization, unchanged raw code, unchanged DataTable values/row states, all 33 persisted target values, unchanged competing row, no new movement/sequence and no audit append.
 
 Original SQL and product logic remain unchanged. Harness compiles locally; full Windows baseline is pending. These tests characterize duplicate rejection, not race-proof uniqueness or database failure cleanup. Keep raw SQL comparison and duplicate check order when extracting lookup code later.
+
+## Verified duplicate baseline and lookup extraction
+
+Full Windows run [40904525569](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40904525569) succeeded for dbf3ba4a446e61225c34113c003c5779fa67b87d, including all three original duplicate guards and existing catalogue/checkout/build checks. Independent run 40904541912 passed.
+
+Move only the three SQL adapter Fill operations to Infrastructure.Catalogue.CatalogueDuplicateLookup. Preserve SQL text and raw values verbatim, caller-supplied DataTables, original Clear calls, first-row Article access, warning/return order and adapter-managed connection opening/closing. The form retains the decisions and row mapping/persistence workflow. Remove the unused default adapter constructions; each actual query still constructs its own adapter as before. Do not add parameterization, disposal policy, transactions, validation or exception handling in this extraction.
+
+Pre-move isolated fixtures cover empty lookup results through creation/edit success and matching results through three rejection paths. Full Windows verification is pending after the move; no redundant standalone SQL-string mirror test was added. Database exceptions/partial failures remain a separate coverage boundary.

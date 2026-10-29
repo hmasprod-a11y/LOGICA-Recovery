@@ -14405,10 +14405,8 @@ public class Form_2_ARTICLES : Form
 				if (Operators.CompareString(Label_TOP.Text, "NOUVEAU", TextCompare: false) == 0)
 				{
 					DataTable dataTable = new DataTable();
-					MySqlDataAdapter val2 = new MySqlDataAdapter();
 					dataTable.Clear();
-					val2 = new MySqlDataAdapter("select ID,Code,Article     from TABLE_ARTICLES WHERE   Code = '" + Text_CODE.Text + "'", Module1.cn_SQL);
-					((DbDataAdapter)(object)val2).Fill(dataTable);
+					LOGICA.Infrastructure.Catalogue.CatalogueDuplicateLookup.FillNewCode(dataTable, Text_CODE.Text, Module1.cn_SQL);
 					if (dataTable.Rows.Count != 0)
 					{
 						MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Ce Code est déja utilisé pour ==> ", dataTable.Rows[0]["Article"])), "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
@@ -14464,18 +14462,15 @@ public class Form_2_ARTICLES : Form
 					DataGridView1.CurrentCell = DataGridView1.Rows[Conversions.ToInteger(Label_INDEX.Text)].Cells[0];
 					DataGridView1.Rows[Conversions.ToInteger(Label_INDEX.Text)].Selected = true;
 					DataTable dataTable2 = new DataTable();
-					MySqlDataAdapter val6 = new MySqlDataAdapter();
 					dataTable2.Clear();
-					val6 = new MySqlDataAdapter("select ID,Code,Article     from TABLE_ARTICLES WHERE   Code = '" + Text_CODE.Text + "'    AND    ID <> " + Text_ID.Text + "    ", Module1.cn_SQL);
-					((DbDataAdapter)(object)val6).Fill(dataTable2);
+					LOGICA.Infrastructure.Catalogue.CatalogueDuplicateLookup.FillEditedCode(dataTable2, Text_CODE.Text, Text_ID.Text, Module1.cn_SQL);
 					if (dataTable2.Rows.Count != 0)
 					{
 						MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Ce Code est déja utilisé pour ==> ", dataTable2.Rows[0]["Article"])), "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
 						return;
 					}
 					dataTable2.Clear();
-					val6 = new MySqlDataAdapter("select ID,ID_ARTICLE     from TABLE_ARTICLES WHERE   ID_ARTICLE = '" + Text_ID_ARTICLE.Text + "'    AND    ID <> " + Text_ID.Text + "    ", Module1.cn_SQL);
-					((DbDataAdapter)(object)val6).Fill(dataTable2);
+					LOGICA.Infrastructure.Catalogue.CatalogueDuplicateLookup.FillEditedArticleId(dataTable2, Text_ID_ARTICLE.Text, Text_ID.Text, Module1.cn_SQL);
 					if (dataTable2.Rows.Count != 0)
 					{
 						MessageBox.Show("Cet ID est déja utilisé", "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
