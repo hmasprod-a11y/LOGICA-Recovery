@@ -311,3 +311,11 @@ Next bounded coverage: collection duplicate lookup rejection before transaction.
 Full Windows run 40933111877 succeeded after collection identifier rule reuse at a659ab855a490190ce345fac8b4e1bc6fbe1f0cc; independent tests and all prior regression checks passed.
 
 Add collection-duplicate-code through the original collection save handler. Supply valid required fields and one grid code matching the isolated article sentinel; require the competing-article warning, original apostrophe normalization, unchanged raw input code, closed connection and unchanged article/movement/sequence sentinels. The expected early return precedes transaction creation and SendKeys. Production source is unchanged. Local harness compilation passed; full Windows test-only baseline is pending.
+
+## Verified collection duplicate baseline and lookup extraction
+
+Full Windows run [40933913412](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40933913412) succeeded for a909adad9f23b6d30e37bd6a536ad54073492b0b, including original collection duplicate rejection before transaction. Independent run 40933922292 and prior regression checks passed.
+
+Move only the collection pre-transaction adapter Fill query into CatalogueDuplicateLookup.FillCollectionCode. Accept the raw grid-cell object and preserve nested VB ConcatenateObject/Conversions.ToString and exact SQL/trailing spaces. Retain table Clear, first matching Article warning, early return, per-row loop and grid selection in the form. The helper relies on adapter-managed connection behavior and adds no explicit close/transaction handling; do not reuse individual creation readers/writers inside the batch transaction.
+
+Full Windows regression is pending after extraction. Successful batch insertion/rollback and unusual raw object cells remain unclaimed boundaries. Next bounded fixture: reach the pre-transaction duplicate check at a later grid row, verifying first-match early termination and no persistence without executing the SendKeys tail.

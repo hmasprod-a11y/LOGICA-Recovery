@@ -17603,10 +17603,8 @@ public class Form_2_ARTICLES : Form
 							break;
 						}
 						DataTable dataTable = new DataTable();
-						MySqlDataAdapter val = new MySqlDataAdapter();
 						dataTable.Clear();
-						val = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("select ID,Code,Article     from TABLE_ARTICLES WHERE   Code = '", DataGrid_COLLECTION.Rows[num3].Cells[0].Value), "'      ")), Module1.cn_SQL);
-						((DbDataAdapter)(object)val).Fill(dataTable);
+						LOGICA.Infrastructure.Catalogue.CatalogueDuplicateLookup.FillCollectionCode(dataTable, DataGrid_COLLECTION.Rows[num3].Cells[0].Value, Module1.cn_SQL);
 						if (dataTable.Rows.Count != 0)
 						{
 							MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Ce Code est déja utilisé pour ==> ", dataTable.Rows[0]["Article"])), "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);

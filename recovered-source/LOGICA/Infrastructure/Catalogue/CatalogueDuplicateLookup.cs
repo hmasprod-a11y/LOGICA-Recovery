@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using MySql.Data.MySqlClient;
+using Microsoft.VisualBasic.CompilerServices;
 
 namespace LOGICA.Infrastructure.Catalogue
 {
@@ -24,5 +25,12 @@ namespace LOGICA.Infrastructure.Catalogue
             var adapter = new MySqlDataAdapter("select ID,ID_ARTICLE     from TABLE_ARTICLES WHERE   ID_ARTICLE = '" + articleId + "'    AND    ID <> " + excludedId + "    ", connection);
             ((DbDataAdapter)adapter).Fill(table);
         }
+        public static void FillCollectionCode(DataTable table, object code, MySqlConnection connection)
+        {
+            var adapter = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(
+                Operators.ConcatenateObject("select ID,Code,Article     from TABLE_ARTICLES WHERE   Code = '", code), "'      ")), connection);
+            ((DbDataAdapter)adapter).Fill(table);
+        }
+
     }
 }
