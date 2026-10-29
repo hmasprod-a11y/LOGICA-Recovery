@@ -2131,7 +2131,8 @@ public class FormDialog_8_BASE_DONNEE : Form
 		if (Operators.CompareString(Combo_TYPE_DOC.Text, "COMMANDES", TextCompare: false) == 0)
 		{
 			MySqlCommand val = new MySqlCommand();
-			val.CommandText = "select   sum(TOTAL_TTC_DOC) as n ,  min(FOURNISSEUR) as f ,  min(Dates) as d ,  min(ETAT) as c       from      TABLE_COMMANDES_ENTETE     WHERE     ID_BC = '" + Strings.Trim(Text_ID_DOC.Text) + "'    ";
+			val.CommandText = "select sum(TOTAL_TTC_DOC) as n, min(FOURNISSEUR) as f, min(Dates) as d, min(ETAT) as c from TABLE_COMMANDES_ENTETE WHERE ID_BC = @orderId";
+			val.Parameters.AddWithValue("@orderId", Strings.Trim(Text_ID_DOC.Text));
 			val.Connection = Module1.cn_SQL;
 			val.CommandType = CommandType.Text;
 			decimal num = 0m;
