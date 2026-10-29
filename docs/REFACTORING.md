@@ -223,3 +223,9 @@ The owner reiterated the priority: incremental organization of existing working 
 Amount-guard extraction verified: full Windows run 40841724505 passed, including negative-sale, positive-return and empty-grid rejection with zero persistence writes, plus all accepted checkout/payment/fractional/stock-disabled and rollback cases. Application/domain CI passed (96 guard and 48 posting assertions plus existing rules). Revert 50b87ac7eca4c7c833455123df7f538b03357437 to undo this slice.
 
 Automation configuration was checked: ACTIVE, ten-minute interval, existing priority-preserving prompt. No schedule change was needed. Next: inspect seller/client-required validation as its own UI boundary; characterize those dialogs before moving any related guard behavior.
+
+## Progress: required seller/client routing characterization (2026-10-29)
+
+Add checkout-select-seller, checkout-select-client and checkout-credit-client. Supply an empty required display name, call the original checkout handler, and verify that the appropriate chooser opens once, customer chooser receives the originating form name, checkout returns with sender re-enabled, and persistence remains unchanged. The credit-client case keeps the general client-required checkbox disabled and uses the original credit sender name to exercise its separate guard.
+
+Chooser Load/Shown/Activated callbacks are detached for an isolated cancel fixture. This tests routing/early return only, not list loading, choosing a record, authorization or user interaction. Production code remains unchanged pending runtime characterization.
