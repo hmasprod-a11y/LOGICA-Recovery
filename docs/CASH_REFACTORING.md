@@ -1,3 +1,13 @@
+# Counted-cash refactoring: current checkpoint
+
+- Draft PR #12, branch refactor/cash-counting-rules, based on checkout PR #8; independent of catalogue #10 and movement #11.
+- Verified implementation: 532dbe84717eb88d2ed67b1966bec7930ebfc6e6.
+- [Windows run 40966560485](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40966560485) and independent runs 40966560437/40966568154 passed. No implementation check is pending.
+- Denomination arithmetic and input-reset decision are separated. Preserve mixed decimal/double math, eager repeated sender reads, culture and matching grid-row behavior.
+- Next bounded step: test then extract counted-cash orchestration (background, reset, lazy calculation, total display, payment-row scan/update). Keep the exact ESPECES comparison, snapshot last index, per-match FormatNumber and partial failures. No financial Load, closing or persistence.
+
+## Evidence and method history
+
 # Counted-cash refactoring
 
 ## Priority and scope
@@ -29,3 +39,7 @@ Move only arithmetic to Domain.CashDenominationTotal.Calculate with deferred den
 Windows run [40965972702](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40965972702) passed for 926a48741e98876b7ecc4897e3c1614d6e857d54 after arithmetic extraction. Independent runs 40965972680/40965979425 passed, including 759 arithmetic assertions. Original normalization/formatting/cash-row and prior checkout/build/launcher checks passed.
 
 Before changing the predicate, CashCountInputRules passed 117 standalone assertions across three cultures for null/blank/invalid/numeric values, VB object conversions, both eager text reads, changing second values and first/second getter exception identity. Extract only the reset decision with a deferred late-bound reader. Keep eager |, sender BackColor before the decision, late-bound reset to 0 afterward, arithmetic and cash-row update order. No new validation or input caching. Full Windows regression is pending after rule extraction.
+
+## Verified counted-cash rules milestone
+
+Windows run 40966560485 passed after input-rule extraction, with all original LostFocus scenarios and prior checkout/build/launcher checks. Independent tests passed, including 759 arithmetic and 117 input-rule assertions. No cash-session/financial mutation path is covered or changed. Revert 532dbe84717eb88d2ed67b1966bec7930ebfc6e6 to undo the latest rule extraction.
