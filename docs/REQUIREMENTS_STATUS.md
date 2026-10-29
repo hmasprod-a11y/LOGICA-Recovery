@@ -39,3 +39,5 @@ Status vocabulary: **partial evidence** = specified paths have passed, not the w
 No global completion percentage is calculated: requirements are not equally weighted, and existing functionality must be audited rather than counted as missing. Effort estimates remain unassigned for unaudited modules.
 
 Latest additional evidence: variant checksum reuse 4e52a89910db459e3be5582e462506c966445216 passed Windows run [40944010253](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40944010253), including raw attributes, fractional/negative quantities, totals/reset/selection and duplicate rejection. This is in-memory variant coverage, not batch database transaction acceptance.
+
+Collection quantity accumulation was subsequently separated at b6200a8de2d41897ae8042182cce083176d2aabc and passed [Windows run 40947592637](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40947592637) plus 111 independent raw-type/culture/failure assertions. This does not establish batch transaction acceptance. The catalogue resume checkpoint is concise; its detailed history is retained in docs/archive/CATALOGUE_REFACTORING_HISTORY.md.
