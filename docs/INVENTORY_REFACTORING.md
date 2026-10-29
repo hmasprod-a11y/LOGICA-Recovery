@@ -1,5 +1,27 @@
 # Stock movement search refactoring
 
+## Current checkpoint
+
+- Draft [PR #11](https://github.com/hmasprod-a11y/LOGICA-Recovery/pull/11), branch refactor/stock-movement-search, based on checkout PR #8 and independent of catalogue PR #10.
+- Verified implementation: aa707d0d15cafa00ed5c84d3a27ba149e60fd435.
+- [Windows run 40959202953](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40959202953) passed; independent runs 40959202967/40959211510 passed. No implementation check is pending.
+- Query/adapter construction and date-prefix assembly are separated from Form_6_MOUVEMENTS_STOCK. Original UI/catch, DT clearing/binding, DA assignment before Fill and connection ownership remain unchanged.
+- Next: characterize query failure after a prior successful result, preserving cleared DT, newly assigned DA, filter side effect and warning/connection state before further orchestration changes.
+
+## Priority and scope
+
+LOGICA is working. Preserve behavior while separating query logic. No stock writes, shop data, activation, new features, UI redesign or migration.
+
+## Protected behavior
+
+The original-handler fixture covers inclusive date boundaries, contains LIKE, exact-checkbox LIKE (wildcards remain active), optional date prefix, empty-text retention, descending ID order, refresh clearing search/reloading all rows, original DT binding and closed adapter-owned connection. Four isolated fixture rows remain unchanged in count.
+
+TextChanged invokes the original search handler; selecting DATES sets text and also searches. Preserve original event timing. _sql is object and must remain an object boundary in VB ConcatenateObject; do not narrow or normalize it.
+
+## Evidence and history
+
+# Stock movement search refactoring
+
 ## Priority and scope
 
 LOGICA is working. Preserve behavior while separating query logic from Form_6_MOUVEMENTS_STOCK. No movement writes, shop data, activation, new features, UI redesign or migration. This independent draft branch is based on verified checkout PR #8; catalogue PR #10 remains separate.
