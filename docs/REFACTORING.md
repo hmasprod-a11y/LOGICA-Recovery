@@ -155,3 +155,5 @@ Late-failure baseline verified: full Windows run 40827404424 succeeded, includin
 Move the exact final basket DELETE and ticket-sequence UPDATE into Infrastructure.Checkout.CheckoutCompletionWriter.Complete. Preserve statement order, SQL, legacy numeric ticket formatting and the caller's command/connection/transaction. The caller still prints before completion, commits immediately after it, and rolls back on failure. No transaction or connection lifetime is owned by the helper.
 
 Both journal-stage and late-stage rollback characterization passed before this extraction. Full Windows CI must verify this new structural move. Next: isolate the remaining stock mutation, then evaluate a cohesive application-service boundary; keep UI/payment/hardware behavior explicit.
+
+Completion-writer extraction verified: full Windows run 40827869841 passed, including journal-stage and late completion-stage rollback, all payment variants, sale/refund, build and existing checks. Domain CI passed. Revert 6d226a3077ba1679a65a39ac9e96ea473f0edef8 to undo this extraction. No production-data modification or merge performed.
