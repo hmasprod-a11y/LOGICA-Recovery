@@ -167,3 +167,13 @@ Extend existing checkout characterization with a 1.25-unit sale: expect stock 8.
 The checkout writes now sit outside the form; orchestration and UI/hardware remain in it. Next evaluate a cohesive application service from these plain-context boundaries rather than moving unrelated features or changing financial rules.
 
 Checkout-stock extraction verified: full Windows run 40828578089 passed. Fractional checkout confirmed stock 8.75, movement -1.25, journal 15.625, rounded header/payment 15.63. Whole-unit sale/refund, all payment branches and both rollback boundaries passed; domain CI passed. Revert cf057349dd5619c91fb0e6f4ab3cdc4f29496dcb to undo this extraction. Remaining service work should preserve the established transaction and hardware ordering.
+
+## Progress: application-layer document posting service (2026-10-29)
+
+Introduce Application/Checkout/CheckoutPostingService with ICheckoutDocumentStore. It owns the established header -> journal -> payment rows -> print callback -> completion ordering without WinForms, MySQL or Module1 dependencies. Move plain header/journal/payment records into the application layer. MySqlCheckoutDocumentStore adapts the interface to the already-verified infrastructure writers using the existing command/connection/transaction.
+
+Use the namespace LOGICA.ApplicationLayer.Checkout to avoid shadowing WinForms Application inside the legacy LOGICA namespace. Folder placement remains Application/Checkout.
+
+Readers are deferred deliberately: header and journal values are captured at their original stages; payment rows are yielded lazily between database writes; remainder/change is evaluated after tendered rows; completion values are read after printing. The form's new ReadCheckoutPayments iterator retains the existing operation classification and payment-dialog data mapping. The form still owns stock iteration, ticket-number acquisition, transaction lifetime, rollback/error UI and pre/post-checkout behavior.
+
+Add standalone service tests for exact read/write/print/completion order, empty credit payments, and exception identity/short-circuit at every stage, including lazy row reads and printing. Local Windows checks passed: 32 service assertions plus all prior domain checks. Full application/checkout CI is required before claiming integration verification. No physical printing or transaction ownership change is introduced.

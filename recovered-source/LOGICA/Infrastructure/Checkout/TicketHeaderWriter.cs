@@ -1,23 +1,10 @@
+using LOGICA.ApplicationLayer.Checkout;
 using System;
 using Microsoft.VisualBasic.CompilerServices;
 using MySql.Data.MySqlClient;
 
 namespace LOGICA.Infrastructure.Checkout
 {
-    internal sealed class TicketHeaderRecord
-    {
-        public string TicketId { get; set; }
-        public string TicketNumber { get; set; }
-        public DateTime SaleDate { get; set; }
-        public string Cashier { get; set; }
-        public object ClientId { get; set; }
-        public object ClientCode { get; set; }
-        public string ClientName { get; set; }
-        public string Workstation { get; set; }
-        public string TotalText { get; set; }
-        public string Operation { get; set; }
-    }
-
     internal static class TicketHeaderWriter
     {
         // Retains the original SQL and culture conversion; caller owns transaction/lifetime.

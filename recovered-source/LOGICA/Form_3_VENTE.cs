@@ -12601,6 +12601,57 @@ public class Form_3_VENTE : Form
 		}
 	}
 
+
+	private System.Collections.Generic.IEnumerable<LOGICA.ApplicationLayer.Checkout.TicketPaymentWrite> ReadCheckoutPayments(DateTime dateTime)
+	{
+		checked
+		{
+			if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 || Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR REMBOURSEMENT", TextCompare: false) == 0)
+			{
+				var paymentContext = new LOGICA.ApplicationLayer.Checkout.TicketPaymentContext
+				{
+					TicketId = Text_ID_TICKET.Text,
+					TicketNumber = _N_TICKET_SOLDER,
+					SaleDate = dateTime,
+					Cashier = ((ButtonBase)Button_CAISSIER).Text,
+					ClientId = Button_CLIENT._ID_Button,
+					ClientCode = Button_CLIENT._CODE_Button,
+					ClientName = ((ButtonBase)Button_CLIENT).Text,
+					Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
+					Operation = ((ButtonBase)Button_OPERATION).Text,
+					Remark = MyProject.Forms.FormDialog_calc.Text_REMARQUE.Text
+				};
+				if (!Check_ACCES_MODEP.Checked)
+				{
+					yield return new LOGICA.ApplicationLayer.Checkout.TicketPaymentWrite { Kind = LOGICA.ApplicationLayer.Checkout.TicketPaymentKind.Cash, Context = paymentContext, AmountText = Text_TOTAL_NET.Text };
+				}
+				else if (Check_ACCES_MODEP.Checked)
+				{
+					int num11 = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows.Count - 1;
+					int num12 = 0;
+					while (true)
+					{
+						int num13 = num12;
+						int num4 = num11;
+						if (num13 > num4)
+						{
+							break;
+						}
+						yield return new LOGICA.ApplicationLayer.Checkout.TicketPaymentWrite { Kind = LOGICA.ApplicationLayer.Checkout.TicketPaymentKind.Tendered, Context = paymentContext,
+							Amount = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num12].Cells["PAYER"].Value,
+							Mode = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num12].Cells["MODE_P"].Value };
+						num12++;
+					}
+					if (Conversion.Val(((ButtonBase)MyProject.Forms.FormDialog_calc.Button_RESTE).Text) < 0.0)
+					{
+						yield return new LOGICA.ApplicationLayer.Checkout.TicketPaymentWrite { Kind = LOGICA.ApplicationLayer.Checkout.TicketPaymentKind.Change, Context = paymentContext,
+							AmountText = ((ButtonBase)MyProject.Forms.FormDialog_calc.Button_RESTE).Text };
+					}
+				}
+			}
+		}
+	}
+
 	private void Button_Click(object sender, EventArgs e)
 	{
 		//IL_038a: Unknown result type (might be due to invalid IL or missing references)
@@ -12835,82 +12886,46 @@ public class Form_3_VENTE : Form
 						}
 					}
 					DateTime dateTime = Conversions.ToDate(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).AddHours(Conversions.ToDouble("-" + Text_HEURE_RETARD.Text));
-					LOGICA.Infrastructure.Checkout.TicketHeaderWriter.Write(val4, Module1.cn_SQL,
-						new LOGICA.Infrastructure.Checkout.TicketHeaderRecord
+					LOGICA.ApplicationLayer.Checkout.CheckoutPostingService.Post(
+						new LOGICA.Infrastructure.Checkout.MySqlCheckoutDocumentStore(val4, Module1.cn_SQL),
+						new LOGICA.ApplicationLayer.Checkout.CheckoutPostingInput
 						{
-							TicketId = Text_ID_TICKET.Text,
-							TicketNumber = _N_TICKET_SOLDER,
-							SaleDate = dateTime,
-							Cashier = ((ButtonBase)Button_CAISSIER).Text,
-							ClientId = Button_CLIENT._ID_Button,
-							ClientCode = Button_CLIENT._CODE_Button,
-							ClientName = ((ButtonBase)Button_CLIENT).Text,
-							Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
-							TotalText = Text_TOTAL_NET.Text,
-							Operation = ((ButtonBase)Button_OPERATION).Text
-						});
-					LOGICA.Infrastructure.Checkout.TicketJournalWriter.Write(val4, Module1.cn_SQL,
-						new LOGICA.Infrastructure.Checkout.TicketJournalRecord
-						{
-							TicketId = Text_ID_TICKET.Text,
-							TicketNumber = _N_TICKET_SOLDER,
-							SaleDate = dateTime,
-							Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
-							Cashier = ((ButtonBase)Button_CAISSIER).Text,
-							Seller = ((ButtonBase)Button_VENDEUR).Text,
-							ClientId = Button_CLIENT._ID_Button,
-							ClientCode = Button_CLIENT._CODE_Button,
-							ClientName = ((ButtonBase)Button_CLIENT).Text,
-							Operation = ((ButtonBase)Button_OPERATION).Text,
-							PriceType = ((ButtonBase)Button_PRIX).Text,
-							PaymentModes = text2
-						});
-					if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 || Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR REMBOURSEMENT", TextCompare: false) == 0)
-					{
-						var paymentContext = new LOGICA.Infrastructure.Checkout.TicketPaymentContext
-						{
-							TicketId = Text_ID_TICKET.Text,
-							TicketNumber = _N_TICKET_SOLDER,
-							SaleDate = dateTime,
-							Cashier = ((ButtonBase)Button_CAISSIER).Text,
-							ClientId = Button_CLIENT._ID_Button,
-							ClientCode = Button_CLIENT._CODE_Button,
-							ClientName = ((ButtonBase)Button_CLIENT).Text,
-							Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
-							Operation = ((ButtonBase)Button_OPERATION).Text,
-							Remark = MyProject.Forms.FormDialog_calc.Text_REMARQUE.Text
-						};
-						if (!Check_ACCES_MODEP.Checked)
-						{
-							LOGICA.Infrastructure.Checkout.TicketPaymentWriter.WriteCash(val4, Module1.cn_SQL, paymentContext, Text_TOTAL_NET.Text);
-						}
-						else if (Check_ACCES_MODEP.Checked)
-						{
-							int num11 = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows.Count - 1;
-							int num12 = 0;
-							while (true)
+							ReadHeader = () => new LOGICA.ApplicationLayer.Checkout.TicketHeaderRecord
 							{
-								int num13 = num12;
-								int num4 = num11;
-								if (num13 > num4)
-								{
-									break;
-								}
-								LOGICA.Infrastructure.Checkout.TicketPaymentWriter.WriteTendered(val4, Module1.cn_SQL, paymentContext,
-									MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num12].Cells["PAYER"].Value,
-									MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num12].Cells["MODE_P"].Value);
-								num12++;
-							}
-							if (Conversion.Val(((ButtonBase)MyProject.Forms.FormDialog_calc.Button_RESTE).Text) < 0.0)
+								TicketId = Text_ID_TICKET.Text,
+								TicketNumber = _N_TICKET_SOLDER,
+								SaleDate = dateTime,
+								Cashier = ((ButtonBase)Button_CAISSIER).Text,
+								ClientId = Button_CLIENT._ID_Button,
+								ClientCode = Button_CLIENT._CODE_Button,
+								ClientName = ((ButtonBase)Button_CLIENT).Text,
+								Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
+								TotalText = Text_TOTAL_NET.Text,
+								Operation = ((ButtonBase)Button_OPERATION).Text
+							},
+							ReadJournal = () => new LOGICA.ApplicationLayer.Checkout.TicketJournalRecord
 							{
-								LOGICA.Infrastructure.Checkout.TicketPaymentWriter.WriteChange(val4, Module1.cn_SQL, paymentContext,
-									((ButtonBase)MyProject.Forms.FormDialog_calc.Button_RESTE).Text);
+								TicketId = Text_ID_TICKET.Text,
+								TicketNumber = _N_TICKET_SOLDER,
+								SaleDate = dateTime,
+								Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
+								Cashier = ((ButtonBase)Button_CAISSIER).Text,
+								Seller = ((ButtonBase)Button_VENDEUR).Text,
+								ClientId = Button_CLIENT._ID_Button,
+								ClientCode = Button_CLIENT._CODE_Button,
+								ClientName = ((ButtonBase)Button_CLIENT).Text,
+								Operation = ((ButtonBase)Button_OPERATION).Text,
+								PriceType = ((ButtonBase)Button_PRIX).Text,
+								PaymentModes = text2
+							},
+							ReadPayments = () => ReadCheckoutPayments(dateTime),
+							Print = () => CREATION_IMPRESSION(RuntimeHelpers.GetObjectValue(sender)),
+							ReadCompletion = () => new LOGICA.ApplicationLayer.Checkout.CheckoutCompletionRecord
+							{
+								Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
+								TicketNumber = _N_TICKET_SOLDER
 							}
-						}
-					}
-					CREATION_IMPRESSION(RuntimeHelpers.GetObjectValue(sender));
-					LOGICA.Infrastructure.Checkout.CheckoutCompletionWriter.Complete(val4, Module1.cn_SQL,
-						MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, _N_TICKET_SOLDER);
+						});
 					val5.Commit();
 					Module1.cn_SQL.Close();
 				}
