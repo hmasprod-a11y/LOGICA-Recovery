@@ -2,6 +2,11 @@ name: LOGICA read-only Windows verification
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - ci/read-only-verification
+    paths:
+      - '.github/workflows/windows-read-only-verification.yml'
 
 permissions:
   contents: read
