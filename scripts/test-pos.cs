@@ -311,11 +311,49 @@ class PosSmoke {
   }
  }
 
+ static void CountedCash(Assembly assembly) {
+  CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.FormDialog_COMPTER_CAISSE",true))) {
+   string[] inputs={"Text_200","Text_100","Text_50","Text_20","Text_10","Text_5","Text_2","Text_1","Text_0_5","Text_0_2","Text_0_1"};
+   var grid=(DataGridView)Get(form,"DataGridView1");grid.AllowUserToAddRows=false;grid.Rows.Clear();
+   string[] modes={"ESPECES","CARTE","ESPECES","especes"};
+   foreach(string mode in modes) {int row=grid.Rows.Add();grid.Rows[row].Cells["MODE_P"].Value=mode;grid.Rows[row].Cells["CAISSE"].Value="CI_UNTOUCHED";}
+   string[][] cases={
+    new[]{"0","0","0","0","0","0","0","0","0","0","0"},
+    new[]{"1","1","1","1","1","1","1","1","1","1","1"},
+    new[]{"2","0","0","0","0","0","0","0","0","3","0"},
+    new[]{"-1","0","0","0","0","0","0","0","0","0","1"},
+    new[]{"0.5","0","0","0","0","0","0","0","0","0","0"},
+    new[]{"abc","0","0","0","0","0","0","0","0","0","0"},
+    new[]{"  ","0","0","0","0","0","0","0","0","0","0"}};
+   decimal[] expected={0m,388.8m,400.6m,-199.9m,100m,0m,0m};
+   var lostFocus=form.GetType().GetMethod("TextBox_LostFocus",Flags);
+   for(int scenario=0;scenario<cases.Length;scenario++) {
+    for(int index=0;index<inputs.Length;index++)SetText(form,inputs[index],cases[scenario][index]);
+    SetText(form,"Text_TOTAL_ESPECES","CI_BEFORE_COUNT");
+    foreach(DataGridViewRow row in grid.Rows)row.Cells["CAISSE"].Value="CI_UNTOUCHED";
+    var sender=(Control)Get(form,"Text_200");sender.BackColor=Color.Yellow;
+    lostFocus.Invoke(form,new object[]{sender,EventArgs.Empty});
+    string total=((Control)Get(form,"Text_TOTAL_ESPECES")).Text;
+    Eq(decimal.Parse(total),expected[scenario],"original counted cash scenario "+scenario);
+    if(sender.BackColor!=Color.White)throw new Exception("Lost-focus background changed");
+    if(sender.Text!=(scenario>=5?"0":cases[scenario][0]))throw new Exception("Count input normalization changed");
+    for(int row=0;row<modes.Length;row++) {
+     string actual=Convert.ToString(grid.Rows[row].Cells["CAISSE"].Value);
+     if(actual!=(modes[row]=="ESPECES"?total:"CI_UNTOUCHED"))throw new Exception("Cash mode row update changed");
+    }
+    for(int index=1;index<inputs.Length;index++)
+     if(((Control)Get(form,inputs[index])).Text!=cases[scenario][index])throw new Exception("Other denomination changed");
+   }
+   Console.WriteLine("PASS original counted cash: eleven denominations, mixed arithmetic, negative/fractional counts, invalid sender reset, exact cash rows and no Load/financial writes");
+  }
+ }
+
  [STAThread] static int Main(string[] args) {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
