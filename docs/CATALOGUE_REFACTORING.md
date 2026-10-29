@@ -8,7 +8,7 @@ LOGICA already works. Organize internals incrementally while preserving behavior
 
 - Branch: refactor/catalogue-input-rules, draft PR [#10](https://github.com/hmasprod-a11y/LOGICA-Recovery/pull/10), stacked on draft #8.
 - Latest implementation: b6200a8de2d41897ae8042182cce083176d2aabc.
-- [Windows run 40947592637](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40947592637) succeeded; independent runs 40947592767/40947603866 succeeded. No implementation verification remains pending.
+- [Windows run 40947592637](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40947592637) succeeded; independent runs 40947592767/40947603866 succeeded. Implementation is verified; new aggregate fixture verification is pending.
 - Current change separates raw-object collection quantity accumulation. 111 standalone assertions cover cultures, empty values, conversion/overflow and lazy failure behavior; original-handler empty/decimal/string/integral/zero fixtures passed.
 - Documentation-only checkpoint updates do not require another expensive Windows run.
 
@@ -45,3 +45,9 @@ Audit Button_CALC_Click catalogue aggregate refresh. Existing creation/edit fixt
 - [Requirements evidence map](REQUIREMENTS_STATUS.md): partial evidence versus remaining acceptance, no global completion percentage.
 - [Detailed method audit and per-commit history](archive/CATALOGUE_REFACTORING_HISTORY.md): original baselines, failures, fixture repairs, exact SQL/conversion boundaries and revert commits.
 - Checkout continuation: [REFACTORING.md](REFACTORING.md).
+
+## Aggregate refresh characterization pending
+
+Add catalogue-aggregate-refresh on the strict isolated database. Six article rows distinguish negative/zero/positive stock, alert boundary, promotion, quantity tiers and positive/zero purchase/average/sale prices across families A/B. Verify all eleven original output labels for null, empty, A, B and missing-family filters; missing-family sums exercise DBNull display. Preserve 20-character masked DH displays and the original _sql reset only for null/empty family.
+
+The fixture intentionally protects the original purchase-exclusion count that tests PRIX_MP rather than PRIX_A; do not correct it in this refactor. Require adapter-owned closed connection and unchanged row count. Production aggregate logic remains unchanged. Harness compilation passed locally; full Windows baseline is pending before query extraction.
