@@ -14780,35 +14780,10 @@ public class Form_2_ARTICLES : Form
 		//IL_022d: Expected Obj, but got Unknown
 		try
 		{
-			string text = default;
-			string text2 = default;
 			if (Operators.CompareString(_FAMILLE_FILTRE, "", TextCompare: false) == 0)
-			{
-				_sql = "";
-			}
-			else
-			{
-				text = "  WHERE  Famille =   '" + _FAMILLE_FILTRE + "'        ";
-				text2 = "  AND      Famille =   '" + _FAMILLE_FILTRE + "'        ";
-			}
-			string text3 = "select    count(ID)  as N  from  TABLE_ARTICLES     " + text + "  ";
-			string text4 = "select    count(ID)  as N   from  TABLE_ARTICLES    WHERE       STOCK    <=  Alert   and   STOCK <> 0  " + text2 + " ";
-			string text5 = "select    count(ID)  as N   from  TABLE_ARTICLES    WHERE       STOCK    < 0  " + text2 + " ";
-			string text6 = "select    count(ID)   as N    from  TABLE_ARTICLES    WHERE       PROMOTION <> 0     " + text2 + "  ";
-			string text7 = "select    sum(STOCK * PRIX_MP)   as N   from  TABLE_ARTICLES  where  STOCK > 0     and    PRIX_MP > 0       " + text2 + "  ";
-			string text8 = "select    count(ID)   as N   from  TABLE_ARTICLES  where  (STOCK < 0     OR    PRIX_MP <= 0)       " + text2 + "  ";
-			string text9 = "select    sum(STOCK * PRIX_A)   as N   from  TABLE_ARTICLES  where  STOCK > 0     and    PRIX_A > 0       " + text2 + " ";
-			string text10 = "select    count(ID)   as N   from  TABLE_ARTICLES  where  (STOCK < 0     OR    PRIX_MP <= 0)       " + text2 + "  ";
-			string text11 = "select    sum(STOCK * PRIX_V_1)   as N   from  TABLE_ARTICLES  where  STOCK > 0     AND    PRIX_V_1 > 0      " + text2 + "   ";
-			string text12 = "select    count(id)   as N   from  TABLE_ARTICLES  where  (STOCK < 0     OR    PRIX_V_1 <= 0)       " + text2 + "  ";
-			string text13 = "select    count(ID)   as N    from  TABLE_ARTICLES    WHERE        PRIX_QTE <> 0     " + text2 + "  ";
-			DataTable dataTable = new DataTable();
-			MySqlDataAdapter val = new MySqlDataAdapter();
-			dataTable.Clear();
-			dataTable = new DataTable();
-			val = new MySqlDataAdapter(" ( " + text3 + " )       UNION ALL         ( " + text4 + " )        UNION ALL     ( " + text5 + " )      UNION ALL     ( " + text6 + " )      UNION ALL      ( " + text7 + " )      UNION ALL     ( " + text8 + " )     UNION ALL     ( " + text9 + " )      UNION ALL     ( " + text10 + " )     UNION ALL      ( " + text11 + " )       UNION ALL      ( " + text12 + " )      UNION ALL      ( " + text13 + " )       ", Module1.cn_SQL);
-			((DbDataAdapter)(object)val).Fill(dataTable);
-			if (dataTable.Rows[0]["N"] == DBNull.Value)
+                _sql = "";
+            DataTable dataTable = LOGICA.Infrastructure.Catalogue.CatalogueAggregateLookup.Read(_FAMILLE_FILTRE, Module1.cn_SQL);
+            if (dataTable.Rows[0]["N"] == DBNull.Value)
 			{
 				Label_ARTICLES.Text = Conversions.ToString(0);
 			}

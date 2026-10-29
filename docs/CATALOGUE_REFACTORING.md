@@ -51,3 +51,9 @@ Audit Button_CALC_Click catalogue aggregate refresh. Existing creation/edit fixt
 Add catalogue-aggregate-refresh on the strict isolated database. Six article rows distinguish negative/zero/positive stock, alert boundary, promotion, quantity tiers and positive/zero purchase/average/sale prices across families A/B. Verify all eleven original output labels for null, empty, A, B and missing-family filters; missing-family sums exercise DBNull display. Preserve 20-character masked DH displays and the original _sql reset only for null/empty family.
 
 The fixture intentionally protects the original purchase-exclusion count that tests PRIX_MP rather than PRIX_A; do not correct it in this refactor. Require adapter-owned closed connection and unchanged row count. Production aggregate logic remains unchanged. Harness compilation passed locally; full Windows baseline is pending before query extraction.
+
+## Verified aggregates and lookup extraction
+
+Windows run [40949904984](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40949904984) passed for 76748dd461e1229bd057051505f81ec33157bb0b: all eleven outputs across null/empty/A/B/missing filters, NULL sums, money mask and _sql side effect. Independent run 40949910295 and prior regression checks passed.
+
+Move only family-filter SQL assembly and the ordered eleven-query UNION/adapter Fill into Infrastructure.Catalogue.CatalogueAggregateLookup.Read. Preserve query order/text, raw family concatenation, original purchase exclusion using PRIX_MP, adapter-owned connection behavior and DataTable result. The form retains _sql reset, DBNull checks, conversions/FLOUSS, every label assignment and original catch. No parameterization, query correction, cache, transaction or UI redesign. Full Windows regression is pending after extraction.
