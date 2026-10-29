@@ -94,3 +94,9 @@ Catalogue milestone now separates numeric input filtering, required identifier a
 Button_GENERER_Click mixes random prefix generation and deterministic final check digits. The requested length 12 branch appends a digit using alternating weights 1,3 across 12 digits; requested length 11 appends a digit using weights 3,1 across 11 digits. Both finish with (10 - sum % 10) % 10. Random generation, requested length handling, focus and the existing Module1.getBits call in the 12-digit branch must remain in place.
 
 Next: characterize the original generator for both requested lengths (result length, ASCII digits and independently computed checksum), then protect deterministic checksum cases before moving arithmetic. Do not redesign barcode formats, random generation or validation. Keep individual-save creation/modification mappings deferred; they differ in average price, inventory date and opening stock and require separate fixtures.
+
+## Original barcode generator characterization
+
+Add catalogue-barcodes to the isolated Windows harness. Invoke the original Button_GENERER_Click 24 times for each requested payload length 11 and 12; check final length, legacy 11 prefix, ASCII digits and a separate right-to-left alternating-weight checksum oracle. Random uniqueness is deliberately not asserted; preserve the original random/time behavior and getBits call. No product source changes in this baseline.
+
+Harness compiles locally. Full original-handler Windows evidence is pending before arithmetic extraction. The check covers generated valid payloads only; malformed input behavior and other requested lengths remain outside this boundary.
