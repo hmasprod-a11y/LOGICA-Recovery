@@ -14412,18 +14412,10 @@ public class Form_2_ARTICLES : Form
 						MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Ce Code est déja utilisé pour ==> ", dataTable.Rows[0]["Article"])), "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
 						return;
 					}
-					MySqlCommand val3 = new MySqlCommand();
-                    int num = LOGICA.Infrastructure.Catalogue.CatalogueCreationIdentityReader.ReadNextNumericId(val3, Module1.cn_SQL);
-                    string text = LOGICA.Infrastructure.Catalogue.CatalogueCreationIdentityReader.ReadArticleId(val3, Module1.cn_SQL);
-                    DT.Rows.Add();
-					int index = DT.Rows.Count - 1;
-					LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.PopulateNew(DT.Rows[index], num, text,
-                        new LOGICA.Presentation.Catalogue.CatalogueFormRowInput(this));
-                    LOGICA.Infrastructure.Catalogue.CatalogueRowPersistence.UpdateAndAccept(DA, DT);
-					LOGICA.Infrastructure.Catalogue.CatalogueCreationMovementWriter.Write(text,
-                        () => Text_CODE.Text, () => Text_ARTICLE.Text, () => Text_STOCK.Text, Module1.cn_SQL);
-					LOGICA.Infrastructure.Catalogue.CatalogueSequenceWriter.AdvanceArticle(val3, Module1.cn_SQL);
-					MessageBox.Show("Enregistré avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
+					new LOGICA.ApplicationLayer.Catalogue.CatalogueCreationService(
+                        new LOGICA.Infrastructure.Catalogue.MySqlCatalogueCreationStore(Module1.cn_SQL, DA, DT))
+                        .Create(new LOGICA.Presentation.Catalogue.CatalogueFormRowInput(this));
+                    MessageBox.Show("Enregistré avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
 				}
 				else if (Operators.CompareString(Label_TOP.Text, "MODIFICATION", TextCompare: false) == 0)
 				{

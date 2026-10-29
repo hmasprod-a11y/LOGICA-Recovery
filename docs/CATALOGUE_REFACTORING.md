@@ -259,3 +259,11 @@ Full Windows regression is pending after extraction. Missing sequence row, numer
 Full Windows run 40922446590 succeeded after identity extraction at 12123406e2ec2340b9ea082d595109af2f5bc7b6, including populated, empty MAX, SQL NULL sequence and combined cases, complete row mapping and all failure/regression checks. Independent rules passed. Revert that implementation commit to undo identity-reader extraction.
 
 Next audit candidate: after the duplicate-code guard, creation follows numeric identity read, article identity read, add/populate new row, adapter persistence/acceptance, movement write and sequence advance. A bounded application service may own that order using an injected store and the existing lazy input adapter; infrastructure must retain one reused command and existing connection/error semantics. Characterize lazy read timing, first-failure propagation, no later effects and unchanged partial writes with a fake store before moving orchestration. Keep UI warnings/refresh and image/normalization before this boundary. Do not extend the first service extraction into edit/delete/batch workflows.
+
+## Creation application service
+
+Before rewiring the form, add CatalogueCreationService/ICatalogueCreationStore and pass 63 standalone assertions locally: exact identity/append/persist/movement/sequence order, no early input reads, first store failure identity, no later effects, retained Added/accepted rows and mapping failure before persistence. All prior independent tests passed.
+
+Move only the post-duplicate-check creation block to this service. MySqlCatalogueCreationStore delegates to the verified identity/persistence/movement/sequence helpers, retains one command for both scalar reads and sequence update, and appends to the existing DataTable. Keep the existing lazy input adapter. The form retains normalization/image work, duplicate guard and warning, success warning, edit path, outer catch and refresh. No transaction, connection ownership or exception cleanup changes.
+
+Full Windows original-handler regression is pending after service wiring. Fake-store tests protect application order, not SQL/connection internals; existing isolated database fixtures cover those. Edit/delete/batch orchestration is outside this service.
