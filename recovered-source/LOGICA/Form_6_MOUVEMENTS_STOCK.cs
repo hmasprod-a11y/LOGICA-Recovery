@@ -1622,14 +1622,14 @@ public class Form_6_MOUVEMENTS_STOCK : Form
 			if (Operators.CompareString(Combo_FIND.Text, "DATES", TextCompare: false) == 0)
 			{
 				DT.Clear();
-				DA = new MySqlDataAdapter("select * from     TABLE_" + Label_TABLE.Text + "      Where       Dates   between   ' " + Strings.Format(DateTime1_FIND.Value, "yyyy-MM-dd") + " '     And      ' " + Strings.Format(DateTime2_FIND.Value, "yyyy-MM-dd") + " '               order by   ID    desc ", Module1.cn_SQL);
+				DA = LOGICA.Infrastructure.Inventory.StockMovementQuery.DateRange(Label_TABLE.Text, DateTime1_FIND.Value, DateTime2_FIND.Value, Module1.cn_SQL);
 				((DbDataAdapter)(object)DA).Fill(DT);
 			}
 			else if (Operators.CompareString(Text_FIND.Texts, "", TextCompare: false) != 0)
 			{
 				if (Check_FIND_DATE.Checked)
 				{
-					_sql = "        Dates   between   ' " + Strings.Format(DateTime1_FIND.Value, "yyyy-MM-dd") + " '     And      ' " + Strings.Format(DateTime2_FIND.Value, "yyyy-MM-dd") + " '         AND     ";
+					_sql = LOGICA.Infrastructure.Inventory.StockMovementQuery.DatePrefix(DateTime1_FIND.Value, DateTime2_FIND.Value);
 				}
 				else
 				{
@@ -1638,13 +1638,13 @@ public class Form_6_MOUVEMENTS_STOCK : Form
 				if (!Check_FIND_EXACTE.Checked)
 				{
 					DT.Clear();
-					DA = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat("select * from     TABLE_" + Label_TABLE.Text, "      Where            "), _sql), "            ("), Combo_FIND.Text), "  like  '%"), Text_FIND.Texts), "%'   )                                order by   ID    desc ")), Module1.cn_SQL);
+					DA = LOGICA.Infrastructure.Inventory.StockMovementQuery.Contains(Label_TABLE.Text, _sql, Combo_FIND.Text, Text_FIND.Texts, Module1.cn_SQL);
 					((DbDataAdapter)(object)DA).Fill(DT);
 				}
 				else if (Check_FIND_EXACTE.Checked)
 				{
 					DT.Clear();
-					DA = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat("select * from     TABLE_" + Label_TABLE.Text, "      Where            "), _sql), "            ("), Combo_FIND.Text), "  like  '"), Text_FIND.Texts), "'     )                                order by   ID    desc ")), Module1.cn_SQL);
+					DA = LOGICA.Infrastructure.Inventory.StockMovementQuery.ExactLike(Label_TABLE.Text, _sql, Combo_FIND.Text, Text_FIND.Texts, Module1.cn_SQL);
 					((DbDataAdapter)(object)DA).Fill(DT);
 				}
 			}
@@ -1691,7 +1691,7 @@ public class Form_6_MOUVEMENTS_STOCK : Form
 			Text_FIND.Texts = "";
 			((Control)Text_FIND).Focus();
 			DT.Clear();
-			DA = new MySqlDataAdapter("select * from      TABLE_" + Label_TABLE.Text + "                  order by   ID    desc ", Module1.cn_SQL);
+			DA = LOGICA.Infrastructure.Inventory.StockMovementQuery.Refresh(Label_TABLE.Text, Module1.cn_SQL);
 			((DbDataAdapter)(object)DA).Fill(DT);
 			DataGridView1.DataSource = DT;
 		}
