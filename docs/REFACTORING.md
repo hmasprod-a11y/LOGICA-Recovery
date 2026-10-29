@@ -281,3 +281,7 @@ Move the exact available-versus-requested object comparison into Domain.StockAva
 Preserve VB ConditionalCompareObjectLess semantics on raw objects, including numeric coercion, string-vs-string comparison and current-culture conversion. Do not normalize values to decimal during this structural slice.
 
 Local checks passed: 57 stock assertions across three cultures for shortage/equality/surplus, fractional/negative values, mixed numeric/string inputs, null, limits and conversion failure, plus all previous application/domain checks. The three configured-stock integration cases passed before extraction in run 40846566659. Full Windows CI remains required for the new rule call.
+
+Stock-comparison extraction verified: full Windows run 40847758941 passed configured shortage rejection, stock-mutation-disabled rejection, exact-stock acceptance and every existing check. Application/domain CI passed, including 57 stock-object comparison assertions. Revert bf031b3460aa1d81240a818e825363f26d19f16b to undo this extraction.
+
+Next bounded candidate: isolate the insufficient-stock lookup from the form, after characterizing its missing-article result. Preserve code lookup, raw values, missing-row behavior, connection ownership and current error UI; do not parameterize or normalize stock values as an incidental change.
