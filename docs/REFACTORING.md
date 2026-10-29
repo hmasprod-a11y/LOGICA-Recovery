@@ -55,3 +55,15 @@ Extracted the four identical net-amount expressions in Button_QTE_Click into Sal
 Local Windows checks: monetary rounding 60,039 assertions and sales line pricing 12,558 assertions passed. Cases include fractional/negative quantities, zero/100%/out-of-range discounts, unrounded fractions and overflow boundaries. Full branch CI must be checked after publication. Standalone rule tests do not exercise the modal quantity dialog or replace manual UI acceptance.
 
 Rollback for this slice: revert its commit; the previous rounding extraction is independent. Next useful step: characterize quantity-dialog/price-tier behavior before extracting more of Button_QTE_Click; map the checkout transaction before moving persistence.
+
+## Progress: third slice (2026-10-29)
+
+Verified the second slice with full Windows workflow 40812642731 (success).
+
+Extracted the quantity-price decision from Button_QTE_Click into SalesLinePricing.SelectQuantityPrice. A null result preserves the existing no-update behavior when the quantity price is zero or negative. Otherwise it selects the tier at/above the threshold and the standard price below it. The original double-based comparison is deliberately retained, including adjacent large-decimal precision behavior.
+
+Merged the two identical price assignment / sale-or-return amount / adapter update branches into one guarded block. Access dialogs, absolute quantity acquisition, article lookup, promotion, formatting, return sign, total refresh and error handling stay in place.
+
+Local tests: all previous tests passed plus 45 explicit quantity-price assertions across three cultures, covering below/equal/above threshold, fractional values, disabled tier, zero quantity/threshold, higher tier price, zero standard price, decimal limits, double precision and selected-price net calculation. Full Windows CI remains required after this commit. The modal quantity dialog has not been manually exercised in this session.
+
+Rollback: revert this slice's commit. Next: characterize the quantity-edit interaction and map the checkout transaction boundaries before moving persistence; avoid treating database recovery as project work.

@@ -16044,38 +16044,22 @@ public class Form_3_VENTE : Form
 				((IDisposable)val2)?.Dispose();
 			}
 			Module1.cn_SQL.Close();
-			if (Conversion.Val(num3) > 0.0)
+			decimal? quantityPrice = LOGICA.Domain.SalesLinePricing.SelectQuantityPrice(num, num2, num3, num4);
+			if (quantityPrice.HasValue)
 			{
-				if (Convert.ToDouble(num) >= Conversion.Val(num2))
+				decimal selectedUnitPrice = quantityPrice.Value;
+				Module1.dt1.Rows[position]["Prix_V"] = Strings.FormatNumber(selectedUnitPrice);
+				if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0)
 				{
-					Module1.dt1.Rows[position]["Prix_V"] = Strings.FormatNumber(num3);
-					if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0)
-					{
-						Module1.dt1.Rows[position]["TOTAL_NET"] = Strings.FormatNumber(LOGICA.Domain.SalesLinePricing.CalculateNetAmount(num3, num, d));
-					}
-					else if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR", TextCompare: false) == 0)
-					{
-						Module1.dt1.Rows[position]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(LOGICA.Domain.SalesLinePricing.CalculateNetAmount(num3, num, d))) * -1.0;
-					}
-					MySqlCommandBuilder val3 = new MySqlCommandBuilder(Module1.da1);
-					((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
-					Module1.dt1.AcceptChanges();
+					Module1.dt1.Rows[position]["TOTAL_NET"] = Strings.FormatNumber(LOGICA.Domain.SalesLinePricing.CalculateNetAmount(selectedUnitPrice, num, d));
 				}
-				else
+				else if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR", TextCompare: false) == 0)
 				{
-					Module1.dt1.Rows[position]["Prix_V"] = Strings.FormatNumber(num4);
-					if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0)
-					{
-						Module1.dt1.Rows[position]["TOTAL_NET"] = Strings.FormatNumber(LOGICA.Domain.SalesLinePricing.CalculateNetAmount(num4, num, d));
-					}
-					else if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR", TextCompare: false) == 0)
-					{
-						Module1.dt1.Rows[position]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(LOGICA.Domain.SalesLinePricing.CalculateNetAmount(num4, num, d))) * -1.0;
-					}
-					MySqlCommandBuilder val4 = new MySqlCommandBuilder(Module1.da1);
-					((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
-					Module1.dt1.AcceptChanges();
+					Module1.dt1.Rows[position]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(LOGICA.Domain.SalesLinePricing.CalculateNetAmount(selectedUnitPrice, num, d))) * -1.0;
 				}
+				MySqlCommandBuilder val3 = new MySqlCommandBuilder(Module1.da1);
+				((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+				Module1.dt1.AcceptChanges();
 			}
 			Text_TOTAL_NET_Click(RuntimeHelpers.GetObjectValue(sender), e);
 		}
