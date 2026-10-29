@@ -229,3 +229,11 @@ Automation configuration was checked: ACTIVE, ten-minute interval, existing prio
 Add checkout-select-seller, checkout-select-client and checkout-credit-client. Supply an empty required display name, call the original checkout handler, and verify that the appropriate chooser opens once, customer chooser receives the originating form name, checkout returns with sender re-enabled, and persistence remains unchanged. The credit-client case keeps the general client-required checkbox disabled and uses the original credit sender name to exercise its separate guard.
 
 Chooser Load/Shown/Activated callbacks are detached for an isolated cancel fixture. This tests routing/early return only, not list loading, choosing a record, authorization or user interaction. Production code remains unchanged pending runtime characterization.
+
+Chooser-routing baseline verified: full Windows run 40842634098 succeeded for seller-required, client-required and credit-client routing, with persistence unchanged and sender enabled, alongside all existing checks.
+
+## Progress: empty-selection rule extraction (2026-10-29)
+
+Move the exact VB empty-display-name comparison into Domain.CheckoutSelectionRules.IsMissing and use it at the three original chooser guard sites. Keep the checkbox/sender conditions outside the helper so their short-circuit behavior and property-read timing remain unchanged. Chooser opening, customer origin label, sender re-enabling and early returns stay in the form.
+
+Local tests passed: 30 selection assertions across three cultures, preserving null/empty recognition and accepting whitespace, zero-like and other untrimmed names as before, plus all previous rules/application tests. Full Windows integration CI remains required after extraction. This does not change chooser data loading or record-selection behavior.

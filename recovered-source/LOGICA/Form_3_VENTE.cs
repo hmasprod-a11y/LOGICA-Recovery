@@ -12767,20 +12767,20 @@ public class Form_3_VENTE : Form
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if (Check_CHOIX_VENDEUR.Checked && Operators.CompareString(((ButtonBase)Button_VENDEUR).Text, "", TextCompare: false) == 0)
+				if (Check_CHOIX_VENDEUR.Checked && LOGICA.Domain.CheckoutSelectionRules.IsMissing(((ButtonBase)Button_VENDEUR).Text))
 				{
 					((Form)MyProject.Forms.Form_5_VENDEURS_LISTE).ShowDialog();
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if (Check_CHOIX_CLIENT.Checked && Operators.CompareString(((ButtonBase)Button_CLIENT).Text, "", TextCompare: false) == 0)
+				if (Check_CHOIX_CLIENT.Checked && LOGICA.Domain.CheckoutSelectionRules.IsMissing(((ButtonBase)Button_CLIENT).Text))
 				{
 					MyProject.Forms.Form_5_CLIENTS_LISTE.Label1.Text = ((Control)this).Name;
 					((Form)MyProject.Forms.Form_5_CLIENTS_LISTE).ShowDialog();
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if (Operators.ConditionalCompareObjectEqual(NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null), "Button_SOLDER_CREDIT", TextCompare: false) && Operators.CompareString(((ButtonBase)Button_CLIENT).Text, "", TextCompare: false) == 0)
+				if (Operators.ConditionalCompareObjectEqual(NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null), "Button_SOLDER_CREDIT", TextCompare: false) && LOGICA.Domain.CheckoutSelectionRules.IsMissing(((ButtonBase)Button_CLIENT).Text))
 				{
 					MyProject.Forms.Form_5_CLIENTS_LISTE.Label1.Text = ((Control)this).Name;
 					((Form)MyProject.Forms.Form_5_CLIENTS_LISTE).ShowDialog();
