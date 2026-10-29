@@ -285,3 +285,9 @@ Local checks passed: 57 stock assertions across three cultures for shortage/equa
 Stock-comparison extraction verified: full Windows run 40847758941 passed configured shortage rejection, stock-mutation-disabled rejection, exact-stock acceptance and every existing check. Application/domain CI passed, including 57 stock-object comparison assertions. Revert bf031b3460aa1d81240a818e825363f26d19f16b to undo this extraction.
 
 Next bounded candidate: isolate the insufficient-stock lookup from the form, after characterizing its missing-article result. Preserve code lookup, raw values, missing-row behavior, connection ownership and current error UI; do not parameterize or normalize stock values as an incidental change.
+
+## Progress: missing stock-lookup characterization (2026-10-29)
+
+Before isolating the stock lookup, add checkout-missing-stock-lookup. Enable the existing shortage setting and supply a dt1 guard-model row whose code CI_MISSING has no article match, while the actual grid/database basket still contains the valid CI001 article. Assert the fixture code has no match and the original checkout accepts the valid basket, preserving the guard's existing empty-result skip behavior. All normal document/payment/stock assertions remain active.
+
+This is a focused guard-source fixture, not a claim that nonexistent actual basket articles are valid. Existing configured shortage rejection/exact-stock cases continue to protect the guard as a whole. Production code is unchanged pending characterization; connection and raw-result handling must be preserved when extracting lookup.
