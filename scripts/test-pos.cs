@@ -730,6 +730,62 @@ class PosSmoke {
   }
  }
 
+ static void CollectionVariantInsertion(Assembly assembly) {
+  CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_2_ARTICLES",true))) {
+   var sizes=(DataGridView)Get(form,"DataGridView_TAILLES");sizes.AllowUserToAddRows=false;sizes.Rows.Clear();
+   int size=sizes.Rows.Add();sizes.Rows[size].Cells["CODE_TAILLE"].Value="01";sizes.Rows[size].Cells["TAILLE"].Value="M";
+   sizes.CurrentCell=sizes.Rows[size].Cells[0];
+   var colors=(DataGridView)Get(form,"DataGridView_COULEURS");colors.AllowUserToAddRows=false;colors.Rows.Clear();
+   int color=colors.Rows.Add();colors.Rows[color].Cells["CODE_COULEUR"].Value="02";colors.Rows[color].Cells["COULEUR"].Value="Blue";
+   colors.CurrentCell=colors.Rows[color].Cells[0];
+   var grid=(DataGridView)Get(form,"DataGrid_COLLECTION");grid.AllowUserToAddRows=false;grid.Rows.Clear();
+   SetText(form,"Text_CODE_COLLECTION","221234");SetText(form,"Text_ARTICLE_COLLECTION"," CI's variant ");
+   SetText(form,"Text_PRIX_A_COLLECTION","10");SetText(form,"Text_PRIX_V_COLLECTION","20");SetText(form,"Text_QTE_COLLECTION","1.25");
+   var insert=form.GetType().GetMethod("Button_INSERER_Click",Flags);
+   using(var sender=new Button(){Name="CI_VARIANT_INSERT"})insert.Invoke(form,new object[]{sender,EventArgs.Empty});
+   if(grid.Rows.Count!=1)throw new Exception("Variant insertion did not append one row");
+   for(int sample=0;sample<2;sample++) {
+    if(sample==1) {
+     colors.Rows[color].Cells["CODE_COULEUR"].Value="03";colors.Rows[color].Cells["COULEUR"].Value="Red";
+     SetText(form,"Text_QTE_COLLECTION","-0.5");
+     using(var sender=new Button(){Name="CI_VARIANT_SECOND"})insert.Invoke(form,new object[]{sender,EventArgs.Empty});
+    }
+    string payload=sample==0?"221234990102":"221234990103";
+    int sum=0,weight=3;
+    for(int index=payload.Length-1;index>=0;index--){sum+=(payload[index]-'0')*weight;weight=4-weight;}
+    string expected=payload+((10-sum%10)%10).ToString(CultureInfo.InvariantCulture);
+    var row=grid.Rows[sample];
+    if(Convert.ToString(row.Cells["CODE_BARRE_LISTE"].Value)!=expected ||
+       Convert.ToString(row.Cells["ARTICLE_LISTE"].Value)!=" CI's variant " ||
+       Convert.ToString(row.Cells["TAILLE_LISTE"].Value)!="M" ||
+       Convert.ToString(row.Cells["COULEUR_LISTE"].Value)!=(sample==0?"Blue":"Red"))
+     throw new Exception("Variant barcode or raw attributes changed");
+    Eq(Convert.ToDecimal(row.Cells["Qté_LISTE"].Value),sample==0?1.25m:-0.5m,"variant stored quantity");
+    if(((Control)Get(form,"Text_QTE_COLLECTION")).Text!="0" || grid.CurrentCell.RowIndex!=sample)
+     throw new Exception("Variant quantity reset/last-row selection changed");
+    Eq(decimal.Parse(((Control)Get(form,"Label_TOTAL_QUANTITE_DOC")).Text),sample==0?1.25m:0.75m,"variant total quantity");
+    Eq(decimal.Parse(((Control)Get(form,"Label_NBR_ARTICLES_DOC")).Text),sample+1,"variant row count");
+    if(sample==0) {
+     SetText(form,"Text_QTE_COLLECTION","2.5");
+     int warnings=0;uint threadId=GetCurrentThreadId();
+     using(var stop=new ManualResetEvent(false)) {
+      var watcher=new Thread(delegate() {
+       while(!stop.WaitOne(100))if(DismissInjectedFailure(threadId,"Le CODE_BARRE est déja utilisé"))Interlocked.Increment(ref warnings);
+      });watcher.IsBackground=true;watcher.Start();
+      try {using(var sender=new Button(){Name="CI_VARIANT_DUPLICATE"})insert.Invoke(form,new object[]{sender,EventArgs.Empty});}
+      finally {stop.Set();if(!watcher.Join(2000))throw new Exception("Variant watcher did not stop");}
+     }
+     if(warnings!=1 || grid.Rows.Count!=1 || ((Control)Get(form,"Text_QTE_COLLECTION")).Text!="2.5" ||
+        Convert.ToDecimal(grid.Rows[0].Cells["Qté_LISTE"].Value)!=1.25m ||
+        decimal.Parse(((Control)Get(form,"Label_TOTAL_QUANTITE_DOC")).Text)!=1.25m)
+      throw new Exception("Duplicate variant changed rows, totals or pending quantity");
+    }
+   }
+   Console.WriteLine("PASS original variant insertion: independent barcode, five values, fractional/negative quantities, totals/reset/selection and duplicate rejection; no database writes");
+  }
+ }
+
  static void CatalogueKeys(Assembly assembly) {
   CultureInfo original=CultureInfo.CurrentCulture;
   int assertions=0;
@@ -766,7 +822,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);

@@ -344,3 +344,11 @@ Windows run 40938837380 succeeded after precheck service wiring at a9997936f06de
 Button_INSERER_Click validates raw-empty code, six-character length, raw-empty article and prices, constructs code + 99 + size-code + colour-code using VB object concatenation, converts quantity to decimal, then repeats the same twelve-digit checksum arithmetic already extracted elsewhere. It checks existing grid codes, only then calls IsNumeric(quantity), appends five grid values, refreshes totals, resets quantity to 0 and selects the last row. Preserve quantity conversion before numeric guard, object conversions and UI timing; do not silently add validation.
 
 Next fixture should supply original size/colour grids and a valid twelve-digit payload, verify independent check digit, five appended values, totals, reset and duplicate rejection with unchanged rows. Audit grid event callbacks before setup. Full batch commit/rollback is not needed to test this in-memory path and remains deferred.
+
+## Original in-memory variant insertion fixture
+
+Add collection-variant-insert invoking unchanged Button_INSERER_Click. Original size/colour grids have no attached callbacks; supply size 01/M and colours 02/Blue then 03/Red with prefix 221234. Verify the 13-digit code using an independent right-to-left checksum oracle, all five grid values (including unnormalized article apostrophe/spaces), fractional 1.25 and accepted negative -0.5 quantities, total 0.75, row counts, quantity reset and last-row selection.
+
+Between valid inserts, retry the same size/colour with quantity 2.5 and require the original duplicate warning, unchanged row/total and pending quantity left at 2.5. No database calls, transaction or SendKeys tail are involved in this method. Production source remains unchanged.
+
+Local harness compilation passed; full Windows original-handler baseline is pending before reusing CatalogueBarcodeChecksum in this second caller. Malformed size/colour/quantity paths are not claimed by this valid-payload slice.
