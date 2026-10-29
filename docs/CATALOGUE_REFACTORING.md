@@ -50,3 +50,9 @@ Button_SAVE_Click is approximately 346 lines. Stages: ordered required-field che
 Observed mapping differences must be preserved: creation fills PRIX_MP from purchase price, while modification fills it from the average-price control; inventory date/initial-stock sources also differ. No explicit transaction surrounds this individual-save handler; batch collection saving has a separate transaction. Do not unify mappings or add transaction behavior incidentally.
 
 Add catalogue-save-guards for empty/space-only code and article. A strict isolated fixture holds article/movement/sequence sentinels; require the expected warning, unchanged field text (including an apostrophe before normalization), closed connection and unchanged sentinels. This covers early rejection only, not successful product save or later required fields. Product source remains unchanged pending runtime evidence.
+
+## Verified required-identifier baseline
+
+Windows run [40855066392](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40855066392) and independent rules run 40855075441 succeeded for 4db87c0935a638d12ae0e6fa41d71302ea96f49d. All four original-handler required-code/article cases passed: expected warning, text unchanged before normalization, connection closed, article/movement sentinels and sequence unchanged. Numeric handler characterization and existing checkout/build/launcher checks also passed. No production save logic has changed.
+
+Next bounded slice: characterize the exact VB Trim/empty predicate independently before extracting the two required-identifier checks. Preserve ordered warnings and returns, all later raw-empty checks, and normalization timing. Do not substitute .NET Trim semantics or broaden this fixture into successful save coverage without separate database mapping fixtures. Creation/modification mapping and batch transaction differences remain deferred as recorded above.
