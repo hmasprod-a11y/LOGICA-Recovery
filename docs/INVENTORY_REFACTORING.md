@@ -4,7 +4,7 @@
 
 - Draft [PR #11](https://github.com/hmasprod-a11y/LOGICA-Recovery/pull/11), branch refactor/stock-movement-search, based on checkout PR #8 and independent of catalogue PR #10.
 - Verified implementation: aa707d0d15cafa00ed5c84d3a27ba149e60fd435.
-- [Windows run 40959202953](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40959202953) passed; independent runs 40959202967/40959211510 passed. Implementation is verified; the new original-handler failure fixture below awaits Windows verification.
+- [Windows run 40959202953](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40959202953) passed; independent runs 40959202967/40959211510 passed. Implementation and original-handler failure fixture are verified.
 - Query/adapter construction and date-prefix assembly are separated from Form_6_MOUVEMENTS_STOCK. Original UI/catch, DT clearing/binding, DA assignment before Fill and connection ownership remain unchanged.
 - Next: characterize query failure after a prior successful result, preserving cleared DT, newly assigned DA, filter side effect and warning/connection state before further orchestration changes.
 
@@ -51,3 +51,9 @@ Windows run 40958553076 caught a compile-time narrowing mistake in the new Conta
 Add stock-movement-search-failure after successful search/refresh setup. Select a deliberately missing fixture column with optional dates and query through original TextChanged/explicit search callbacks. Require the original column error warning, prior results cleared in the same DT, grid still bound to that DT, a newly assigned DA retaining the attempted query, updated object date prefix and adapter-owned closed connection. Fixture row count remains four. Warning count is not fixed because original control events can also invoke search.
 
 This protects the meaningful difference from empty search, which retains previous rows. No production code change; harness compilation passed locally. Full Windows baseline is pending before considering movement search orchestration extraction. Existing diagnostics remain within disposable CI files.
+
+## Verified query failure and next application boundary
+
+Windows run [40960626952](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40960626952) passed for a4fe6278362b911263d49802d647bba55731b4b4. The original query failure clears existing results in the same DT, retains newly assigned DA/query and date prefix, reports the expected warning and closes the adapter-owned connection. Independent run 40960632990 passed; prior checkout/build/launcher checks passed.
+
+Next extraction can move only Picture_FIND_Click branch ordering into Application.Inventory using a narrow context interface. Retain lazy column/text/date/exact reads (including the original second exact-checkbox read), date mode ignoring text, empty search rebinding previous DT, prefix update before lookup, and no BindResults after a thrown lookup. A nested form context can preserve private DT/DA mutations and original query factories without reflection or new connection ownership. Write independent ordering/read/failure tests before rewiring the original handler. Refresh and outer catch stay separate.
