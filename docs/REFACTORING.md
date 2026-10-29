@@ -261,3 +261,11 @@ The prior mismatch and rounded-acceptance integration baseline passed in run 408
 Consistency-rule extraction verified: full Windows run 40845260925 passed mismatch rejection, rounded acceptance and every existing checkout/chooser/payment/stock/rollback case, build and launcher checks. Application/domain CI passed, including 60 consistency assertions. Revert 5466a596053c4140b4c7d358c0165c0ce22e750b to undo this extraction.
 
 Next: inspect the insufficient-stock guard, its configured setting and Module1.dt1 row source; characterize a rejected insufficient-stock sale before extracting any rule. Keep source-data, rounding and UI behavior unchanged.
+
+## Progress: insufficient-stock guard characterization (2026-10-29)
+
+The existing guard is enabled by the VENTE operation and BLOCAGE_STOCK_INSUFFISANT setting; it reads Module1.dt1 rows and looks up current stock by code. Its gate does not include Check_STOCK.
+
+Add checkout-reject-stock with model quantity 2/current stock 1 and require unchanged persistence after the expected warning. Add checkout-reject-stock-off to preserve that same rejection even when stock mutation is disabled. Add checkout-stock-exact with model quantity/current stock both 2, which must be accepted and leave stock 0. Seed the actual configured setting and dt1 row source explicitly in the isolated fixture.
+
+Production code is unchanged pending characterization; do not change the setting/Check_STOCK relationship during extraction. Existing loopback fixture guards and scoped expected-warning acknowledgement apply.
