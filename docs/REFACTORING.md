@@ -257,3 +257,7 @@ Next extraction should retain the exact whole-unit Math.Round (default midpoint 
 Move the exact rounded-total predicate into Domain.BasketTotalConsistency.AreDifferent. Leave grid enumeration/summation, warning text, sender re-enabling, connection checks and early return in the form. Preserve default midpoint rounding to whole units, the basket decimal/string round-trip, current-culture VB parsing and Val comparison. Do not tighten the policy to cents equality.
 
 The prior mismatch and rounded-acceptance integration baseline passed in run 40844030553. Local tests passed: 60 consistency assertions across three cultures, including midpoint signs, fractional acceptance, large-number Val behavior and null/invalid input conversions, plus every previous application/domain test. Full Windows verification is required after extraction. Production behavior is intentionally unchanged.
+
+Consistency-rule extraction verified: full Windows run 40845260925 passed mismatch rejection, rounded acceptance and every existing checkout/chooser/payment/stock/rollback case, build and launcher checks. Application/domain CI passed, including 60 consistency assertions. Revert 5466a596053c4140b4c7d358c0165c0ce22e750b to undo this extraction.
+
+Next: inspect the insufficient-stock guard, its configured setting and Module1.dt1 row source; characterize a rejected insufficient-stock sale before extracting any rule. Keep source-data, rounding and UI behavior unchanged.
