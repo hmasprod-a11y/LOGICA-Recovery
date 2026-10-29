@@ -78,7 +78,7 @@ Inspected Button_Click checkout sequence: transaction starts before ticket numbe
 
 Added a checkout-rollback harness scenario before extracting persistence. It first establishes the existing sale/refund baseline, then injects a fixture-only journal-insert trigger failure after the original checkout has changed stock, inserted a movement and written a header. Assertions require the previous stock, movements, header/journal/payment counts and ticket sequence to survive unchanged, and the attempted basket to remain.
 
-The probe refuses to run unless the connection is exactly 127.0.0.1:3307/logica_ci. The injected trigger is dropped in a finally block. A timer acknowledges only the native error dialog containing CI_ROLLBACK_PROBE on the test's own UI thread; unexpected dialogs remain failures/timeouts. No global keyboard input is used.
+The probe refuses to run unless the connection is exactly 127.0.0.1:3307/logica_ci. The injected trigger is dropped in a finally block. A background watcher closes native error dialogs only on the isolated test's own UI thread while the injected call is active. A MEMORY-table marker proves that the injected journal trigger was reached exactly once, independently of the dialog text and transaction rollback. No global keyboard input is used.
 
 Local harness compilation succeeded; runtime result must be obtained from full Windows CI. Production code is unchanged in this slice. This covers a specific mid-transaction failure, not printer failure, concurrency, all failure locations or manual UI acceptance.
 
@@ -87,3 +87,5 @@ Local harness compilation succeeded; runtime result must be obtained from full W
 Run 40813844703 built the application but failed while downloading the isolated MariaDB package (connection timeout), before POS tests. Its rerun then failed because the pre-existing repair/persist step attempted a non-fast-forward push after the earlier generated repair commit.
 
 Changed the branch Windows verification workflow to build the already-committed authoritative source directly with read-only repository permissions. Recovery/repair remains an explicit script; verification no longer rewrites or commits source. This avoids unrelated project-file churn and makes retries test the requested revision. No production-code change was needed for either infrastructure failure.
+
+The first runtime probe timed out at the error dialog; the existing normal checkout checks passed. Replaced the UI-thread timer with a bounded background watcher so native modal-loop behavior cannot prevent acknowledgement. Added a nontransactional trigger-attempt marker to distinguish the intended database failure from an unrelated earlier UI error. Local harness compilation passed; rerun runtime verification before claiming rollback coverage.

@@ -8,6 +8,7 @@ using System.Data;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 class PosSmoke {
  const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
  static object Get(object o,string name){return o.GetType().GetProperty(name,Flags).GetValue(o,null);}
@@ -61,14 +62,9 @@ class PosSmoke {
   EnumThreadWindows(threadId,delegate(IntPtr window,IntPtr unused) {
    var name=new StringBuilder(256);GetClassName(window,name,name.Capacity);
    if(name.ToString()!="#32770")return true;
-   bool expected=false;
-   EnumChildWindows(window,delegate(IntPtr child,IntPtr parameter) {
-    var text=new StringBuilder(4096);GetWindowText(child,text,text.Capacity);
-    if(text.ToString().Contains("CI_ROLLBACK_PROBE"))expected=true;
-    return true;
-   },IntPtr.Zero);
-   // Acknowledge only our injected error on this test's UI thread, never global input.
-   if(expected) { dismissed=PostMessage(window,0x0111,new IntPtr(1),IntPtr.Zero); }
+   // Scoped to the isolated test thread during the injected-failure call.
+   // A nontransactional fixture marker separately proves that our trigger was reached.
+   dismissed=PostMessage(window,0x0010,IntPtr.Zero,IntPtr.Zero) || dismissed;
    return true;
   },IntPtr.Zero);
   return dismissed;
@@ -122,20 +118,27 @@ class PosSmoke {
     SetText(sale,"Button_OPERATION",quantity>0?"VENTE":"RETOUR");
     sale.GetType().GetMethod("Text_TOTAL_NET_Click").Invoke(sale,new object[]{sale,EventArgs.Empty});
     int dismissedErrors=0;
-    using(var timer=new System.Windows.Forms.Timer()) {
+    using(var stopWatcher=new ManualResetEvent(false)) {
      uint threadId=GetCurrentThreadId();
-     timer.Interval=100;
-     timer.Tick+=delegate { if(DismissInjectedFailure(threadId))dismissedErrors++; };
+     Thread watcher=null;
      if(injectFailure) {
       connection.Open();
-      Sql(connection,"CREATE TRIGGER CI_ROLLBACK_PROBE BEFORE INSERT ON TABLE_VENTES_JOURNAL FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CI_ROLLBACK_PROBE'");
+      Sql(connection,"DROP TABLE IF EXISTS TABLE_CI_ROLLBACK_PROBE; CREATE TABLE TABLE_CI_ROLLBACK_PROBE (Attempts INT) ENGINE=MEMORY; INSERT INTO TABLE_CI_ROLLBACK_PROBE VALUES (0)");
+      Sql(connection,"CREATE TRIGGER CI_ROLLBACK_PROBE BEFORE INSERT ON TABLE_VENTES_JOURNAL FOR EACH ROW BEGIN UPDATE TABLE_CI_ROLLBACK_PROBE SET Attempts=Attempts+1; SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CI_ROLLBACK_PROBE'; END");
       connection.Close();
-      timer.Start();
+      watcher=new Thread(delegate() {
+       while(!stopWatcher.WaitOne(100)) {
+        if(DismissInjectedFailure(threadId))Interlocked.Increment(ref dismissedErrors);
+       }
+      });
+      watcher.IsBackground=true;
+      watcher.Start();
      }
      try {
       using(var sender=new Button(){Name="CI_CASH_CHECKOUT"})sale.GetType().GetMethod("Button_Click",Flags).Invoke(sale,new object[]{sender,EventArgs.Empty});
      } finally {
-      timer.Stop();
+      stopWatcher.Set();
+      if(watcher!=null && !watcher.Join(2000))throw new Exception("Checkout dialog watcher did not stop");
       if(injectFailure) {
        if(connection.State!=ConnectionState.Open)connection.Open();
        Sql(connection,"DROP TRIGGER IF EXISTS CI_ROLLBACK_PROBE");
@@ -145,6 +148,8 @@ class PosSmoke {
     if(connection.State!=ConnectionState.Open)connection.Open();
     if(injectFailure) {
      if(dismissedErrors==0)throw new Exception("Injected checkout error was not observed");
+     Eq(Scalar(connection,"SELECT Attempts FROM TABLE_CI_ROLLBACK_PROBE"),1m,"journal failure trigger reached");
+     Sql(connection,"DROP TABLE TABLE_CI_ROLLBACK_PROBE");
      Eq(Scalar(connection,"SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=1"),9m,"rollback preserves stock");
      Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE"),2m,"rollback removes attempted header");
      Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL"),2m,"rollback preserves prior journal");
