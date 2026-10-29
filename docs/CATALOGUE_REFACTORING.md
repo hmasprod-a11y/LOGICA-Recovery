@@ -42,3 +42,11 @@ Add standalone tests for allowed editing/digit keys, ASCII boundaries, blocked n
 Full Windows run 40853349901 succeeded after extraction. All 13 original handlers passed the same 1,053 assertions; standalone filter tests passed 90 assertions and all prior application/domain tests passed. Existing checkout/build/launcher checks also passed. Revert fb94ea99a4275ec1f09fd511f084c7d9d0450c75 to undo this extraction.
 
 Next: map Button_SAVE_Click validation, normalization and persistence stages, then characterize rejected-input behavior before moving a save rule or database operation. Batch collection saving remains a separate higher-risk boundary.
+
+## Individual-save audit and required identifiers
+
+Button_SAVE_Click is approximately 346 lines. Stages: ordered required-field checks (code/article use VB Trim, most later fields use raw empty checks), promotion/image/group checks, article apostrophe replacement, optional balance-code formatting, image save with its own catch, then separate new/modification persistence and refresh.
+
+Observed mapping differences must be preserved: creation fills PRIX_MP from purchase price, while modification fills it from the average-price control; inventory date/initial-stock sources also differ. No explicit transaction surrounds this individual-save handler; batch collection saving has a separate transaction. Do not unify mappings or add transaction behavior incidentally.
+
+Add catalogue-save-guards for empty/space-only code and article. A strict isolated fixture holds article/movement/sequence sentinels; require the expected warning, unchanged field text (including an apostrophe before normalization), closed connection and unchanged sentinels. This covers early rejection only, not successful product save or later required fields. Product source remains unchanged pending runtime evidence.

@@ -311,6 +311,50 @@ class PosSmoke {
   }
  }
 
+ static void CatalogueSaveGuards(Assembly assembly) {
+  var module=assembly.GetType("LOGICA.Module1",true);
+  var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
+  var fixture=new System.Data.Common.DbConnectionStringBuilder();fixture.ConnectionString=connection.ConnectionString;
+  if(connection.Database!="logica_ci" || !fixture.ContainsKey("server") || Convert.ToString(fixture["server"])!="127.0.0.1" ||
+     !fixture.ContainsKey("port") || Convert.ToInt32(fixture["port"])!=3307)
+   throw new Exception("Catalogue guard fixture requires exactly 127.0.0.1:3307/logica_ci");
+  connection.Open();
+  Sql(connection,"DROP TABLE IF EXISTS TABLE_ARTICLES; CREATE TABLE TABLE_ARTICLES (ID INT, Code VARCHAR(50), Article VARCHAR(100)) ENGINE=InnoDB; INSERT INTO TABLE_ARTICLES VALUES (1,'CI_KEEP','CI sentinel')");
+  Sql(connection,"DROP TABLE IF EXISTS TABLE_MOUVEMENTS_STOCK; CREATE TABLE TABLE_MOUVEMENTS_STOCK (ID INT) ENGINE=InnoDB; INSERT INTO TABLE_MOUVEMENTS_STOCK VALUES (1)");
+  Sql(connection,"DROP TABLE IF EXISTS TABLE_NUM; CREATE TABLE TABLE_NUM (ID INT, ARTICLE INT) ENGINE=InnoDB; INSERT INTO TABLE_NUM VALUES (0,7)");
+  connection.Close();
+  string[][] cases={new[]{"","CI's untouched","-Code-"},new[]{"  ","CI's untouched","-Code-"},new[]{"CI_REQUIRED","","-Article-"},new[]{"CI_REQUIRED","  ","-Article-"}};
+  foreach(var data in cases) {
+   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_2_ARTICLES",true))) {
+    SetText(form,"Text_CODE",data[0]);SetText(form,"Text_ARTICLE",data[1]);
+    int observed=0;
+    uint threadId=GetCurrentThreadId();
+    using(var stop=new ManualResetEvent(false)) {
+     var watcher=new Thread(delegate() {
+      while(!stop.WaitOne(100))if(DismissInjectedFailure(threadId,data[2]))Interlocked.Increment(ref observed);
+     });
+     watcher.IsBackground=true;watcher.Start();
+     try {
+      using(var sender=new Button(){Name="CI_CATALOGUE_SAVE"})form.GetType().GetMethod("Button_SAVE_Click",Flags).Invoke(form,new object[]{sender,EventArgs.Empty});
+     } finally {
+      stop.Set();if(!watcher.Join(2000))throw new Exception("Catalogue guard watcher did not stop");
+     }
+    }
+    if(observed==0)throw new Exception("Expected catalogue required-field warning was not observed");
+    if(((Control)Get(form,"Text_CODE")).Text!=data[0] || ((Control)Get(form,"Text_ARTICLE")).Text!=data[1])
+     throw new Exception("Rejected catalogue save normalized text prematurely");
+    if(connection.State!=ConnectionState.Closed)throw new Exception("Required-field rejection left database connection open");
+    connection.Open();
+    Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_ARTICLES WHERE ID=1 AND Code='CI_KEEP' AND Article='CI sentinel'"),1m,"catalogue guard preserves article sentinel");
+    Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_ARTICLES"),1m,"catalogue guard creates no article");
+    Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK"),1m,"catalogue guard creates no movement");
+    Eq(Scalar(connection,"SELECT ARTICLE FROM TABLE_NUM WHERE ID=0"),7m,"catalogue guard preserves sequence");
+    connection.Close();
+   }
+  }
+  Console.WriteLine("PASS catalogue required code/article: empty and spaces rejected before normalization/persistence");
+ }
+
  static void CatalogueKeys(Assembly assembly) {
   CultureInfo original=CultureInfo.CurrentCulture;
   int assertions=0;
@@ -347,7 +391,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
