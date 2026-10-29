@@ -2547,15 +2547,27 @@ public class FormDialog_8_BASE_DONNEE : Form
 				{
 					Module1.cn_SQL.Open();
 				}
-				val.CommandText = "DELETE    from TABLE_VENTES_ENTETE            WHERE     ID_TICKET = '" + Strings.Trim(Label_ID_TICKET.Text) + "'              ";
-				val.Connection = Module1.cn_SQL;
-				val.ExecuteNonQuery();
-				val.CommandText = "DELETE    from TABLE_VENTES_JOURNAL            WHERE     ID_TICKET = '" + Strings.Trim(Label_ID_TICKET.Text) + "'              ";
-				val.Connection = Module1.cn_SQL;
-				val.ExecuteNonQuery();
-				val.CommandText = "DELETE    from TABLE_VENTES_REGLEMENTS          WHERE     ID_TICKET = '" + Strings.Trim(Label_ID_TICKET.Text) + "'              ";
-				val.Connection = Module1.cn_SQL;
-				val.ExecuteNonQuery();
+				using (MySqlTransaction ticketTransaction = Module1.cn_SQL.BeginTransaction())
+				{
+					try
+					{
+						val.Connection = Module1.cn_SQL;
+						val.Transaction = ticketTransaction;
+						val.CommandText = "DELETE FROM TABLE_VENTES_ENTETE WHERE ID_TICKET = @ticketId";
+						val.Parameters.AddWithValue("@ticketId", Strings.Trim(Label_ID_TICKET.Text));
+						val.ExecuteNonQuery();
+						val.CommandText = "DELETE FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET = @ticketId";
+						val.ExecuteNonQuery();
+						val.CommandText = "DELETE FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET = @ticketId";
+						val.ExecuteNonQuery();
+						ticketTransaction.Commit();
+					}
+					catch
+					{
+						ticketTransaction.Rollback();
+						throw;
+					}
+				}
 				string right = "Radio_SUPPRIMER | " + Label_ID_TICKET.Text;
 				File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
 				Module1.cn_SQL.Close();
