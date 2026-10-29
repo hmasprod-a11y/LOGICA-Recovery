@@ -187,3 +187,7 @@ Next: characterize stock-disabled checkout, then consider moving stock iteration
 Add checkout-stock-off before moving stock iteration into the application layer. Run both sale and refund with the original Check_STOCK flag disabled. Require stock to remain 10 and movement count/sum/identity/ticket labels to remain zero, while headers, journal, payment/refund amounts, basket clearing and ticket sequence still behave normally.
 
 Existing stock-enabled whole/fractional and rollback cases remain unchanged. Production code is unchanged in this slice. Harness compilation and full Windows runtime verification are required before treating this branch as characterized.
+
+Stock-disabled baseline verified: full Windows run 40830668371 succeeded. Both sale and refund preserved stock=10 and created zero movements while normal documents/payments/completion still passed. All established checkout variants/rollback and existing checks passed; application/domain CI passed.
+
+For the next stock-iteration move, preserve timing explicitly: current code applies stock first, builds payment-mode notes next, captures the adjusted date next, then reads/writes header and journal. Deferred stock inputs and a header-stage reader can preserve that sequence. Do not pre-capture date/payment notes before stock writes as an incidental restructuring.
