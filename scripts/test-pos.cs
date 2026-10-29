@@ -392,7 +392,7 @@ class PosSmoke {
   Console.WriteLine("PASS catalogue "+(edited?"edit":"create")+" all 33 persisted column values");
  }
 
- static void CatalogueCreateProduct(Assembly assembly,bool edit=false,bool duplicates=false) {
+ static void CatalogueCreateProduct(Assembly assembly,bool edit=false,bool duplicates=false,bool failMovement=false) {
   CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
   var module=assembly.GetType("LOGICA.Module1",true);
   var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
@@ -404,6 +404,7 @@ class PosSmoke {
   Sql(connection,"DROP TABLE IF EXISTS TABLE_ARTICLES; CREATE TABLE TABLE_ARTICLES (`ID` INT PRIMARY KEY,`ID_ARTICLE` VARCHAR(100) DEFAULT '',`Code` VARCHAR(100) DEFAULT '',`Article` VARCHAR(100) DEFAULT '',`Famille` VARCHAR(100) DEFAULT '',`Sous_Famille` VARCHAR(100) DEFAULT '',`GROUPE` VARCHAR(100) DEFAULT '',`Description` VARCHAR(100) DEFAULT '',`Prix_A` DECIMAL(14,4) DEFAULT 0,`PRIX_MP` DECIMAL(14,4) DEFAULT 0,`PRIX_V_1` DECIMAL(14,4) DEFAULT 0,`PRIX_V_2` DECIMAL(14,4) DEFAULT 0,`PRIX_QTE` DECIMAL(14,4) DEFAULT 0,`PRIX_QTE_MIN` DECIMAL(14,4) DEFAULT 0,`STOCK` DECIMAL(14,4) DEFAULT 0,`Alert` DECIMAL(14,4) DEFAULT 0,`DATES` DATE,`DATE_INVENTAIRE` DATE,`STOCK_INITIAL` DECIMAL(14,4) DEFAULT 0,`TAUX_TVA` DECIMAL(14,4) DEFAULT 0,`UNITE` VARCHAR(100) DEFAULT '',`REFERENCE` VARCHAR(100) DEFAULT '',`FOURNISSEUR` VARCHAR(100) DEFAULT '',`MODE_STOCK` VARCHAR(100) DEFAULT '',`PRINTER` VARCHAR(100) DEFAULT '',`PRINTER_DUPLICATA` VARCHAR(100) DEFAULT '',`Images` VARCHAR(100) DEFAULT '',`Taille` VARCHAR(100) DEFAULT '',`Couleur` VARCHAR(100) DEFAULT '',`Emplacement` VARCHAR(100) DEFAULT '',`PROMOTION` DECIMAL(14,4) DEFAULT 0,`FENETRE_PESAGE` VARCHAR(100) DEFAULT '',`BALANCE` VARCHAR(100) DEFAULT '') ENGINE=InnoDB; INSERT INTO TABLE_ARTICLES (ID,ID_ARTICLE,Code,Article) VALUES (41,'ART_CI_KEEP','CI_KEEP','CI sentinel')");
   Sql(connection,"DROP TABLE IF EXISTS TABLE_MOUVEMENTS_STOCK; CREATE TABLE TABLE_MOUVEMENTS_STOCK (DATES DATE,HEURE TIME,LIBELLE VARCHAR(100),ID_ARTICLE VARCHAR(100),CODE_ARTICLE VARCHAR(100),ARTICLE VARCHAR(100),QUANTITE DECIMAL(14,4)) ENGINE=InnoDB");
   Sql(connection,"DROP TABLE IF EXISTS TABLE_NUM; CREATE TABLE TABLE_NUM (ID INT PRIMARY KEY, ARTICLE INT) ENGINE=InnoDB; INSERT INTO TABLE_NUM VALUES (0,7)");
+  if(failMovement)Sql(connection,"CREATE TRIGGER CI_CATALOGUE_FAIL_MOVEMENT BEFORE INSERT ON TABLE_MOUVEMENTS_STOCK FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='CI_CATALOGUE_MOVE_FAILURE'");
   connection.Close();
   var forms=assembly.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",Flags).GetValue(null,null);
   var template=Get(forms,"Form_0_TEMPLATE");
@@ -441,12 +442,26 @@ class PosSmoke {
     int observed=0;uint threadId=GetCurrentThreadId();
     using(var stop=new ManualResetEvent(false)) {
      var watcher=new Thread(delegate() {
-      while(!stop.WaitOne(100))if(DismissInjectedFailure(threadId,"Enregistré avec succès"))Interlocked.Increment(ref observed);
+      while(!stop.WaitOne(100))if(DismissInjectedFailure(threadId,failMovement?"CI_CATALOGUE_MOVE_FAILURE":"Enregistré avec succès"))Interlocked.Increment(ref observed);
      });watcher.IsBackground=true;watcher.Start();
      try {
       using(var sender=new Button(){Name="CI_CATALOGUE_CREATE"})
        form.GetType().GetMethod("Button_SAVE_Click",Flags).Invoke(form,new object[]{sender,EventArgs.Empty});
      } finally {stop.Set();if(!watcher.Join(2000))throw new Exception("Catalogue create watcher did not stop");}
+    }
+    if(failMovement) {
+     if(observed!=1)throw new Exception("Expected catalogue movement failure warning");
+     if(connection.State!=ConnectionState.Open)throw new Exception("Legacy movement failure connection state changed");
+     if(table.Rows.Count!=2 || table.Rows[1].RowState!=DataRowState.Unchanged)throw new Exception("Legacy persisted row acceptance after failure changed");
+     VerifyCatalogueRow(connection,false);
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_ARTICLES"),2m,"catalogue partial failure retains inserted article");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_ARTICLES WHERE ID=41 AND Code='CI_KEEP' AND Article='CI sentinel'"),1m,"catalogue partial failure preserves existing article");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK"),0m,"catalogue partial failure inserts no movement");
+     Eq(Scalar(connection,"SELECT ARTICLE FROM TABLE_NUM WHERE ID=0"),7m,"catalogue partial failure does not advance sequence");
+     if(((Control)Get(form,"Label_ARTICLES")).Text=="2")throw new Exception("Failed catalogue save unexpectedly refreshed aggregates");
+     Sql(connection,"DROP TRIGGER CI_CATALOGUE_FAIL_MOVEMENT");connection.Close();
+     Console.WriteLine("PASS original catalogue partial failure: article remains committed and accepted; movement/sequence/refresh skipped; legacy open connection verified then fixture cleaned");
+     return;
     }
     if(observed!=1)throw new Exception("Expected one catalogue creation success warning");
     if(table.Rows.Count!=2 || table.Rows[1].RowState!=DataRowState.Unchanged)throw new Exception("Legacy row acceptance changed");
@@ -624,7 +639,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);

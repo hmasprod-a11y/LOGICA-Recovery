@@ -166,3 +166,11 @@ Full Windows run [40904525569](https://github.com/hmasprod-a11y/LOGICA-Recovery/
 Move only the three SQL adapter Fill operations to Infrastructure.Catalogue.CatalogueDuplicateLookup. Preserve SQL text and raw values verbatim, caller-supplied DataTables, original Clear calls, first-row Article access, warning/return order and adapter-managed connection opening/closing. The form retains the decisions and row mapping/persistence workflow. Remove the unused default adapter constructions; each actual query still constructs its own adapter as before. Do not add parameterization, disposal policy, transactions, validation or exception handling in this extraction.
 
 Pre-move isolated fixtures cover empty lookup results through creation/edit success and matching results through three rejection paths. Full Windows verification is pending after the move; no redundant standalone SQL-string mirror test was added. Database exceptions/partial failures remain a separate coverage boundary.
+
+## Verified duplicate lookup; partial movement-failure baseline
+
+Full Windows run [40906139855](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40906139855) succeeded for 63d009360ca0902dd14c37155b684dbf7453011b after SQL extraction; independent runs 40906139522 and 40906149715 also passed. Revert that implementation commit to undo duplicate lookup extraction.
+
+Add catalogue-movement-failure in the strictly isolated creation fixture. An isolated BEFORE INSERT trigger rejects only the movement write after adapter persistence and AcceptChanges. Require the original error warning, all 33 article values still persisted/accepted, no movement or sequence increment, no aggregate refresh and the original open-connection state on this failure path; then explicitly remove the fixture trigger and close the connection. This characterizes the absence of an individual-save transaction without introducing one or changing failure cleanup. Production code is unchanged in this test commit.
+
+Harness compilation passed locally. Full Windows injected-failure evidence is pending. The original catch may attempt its normal diagnostic capture within CI's disposable application directory; no shop files or database are used. Sequence-write and adapter-write failures remain separate boundaries.
