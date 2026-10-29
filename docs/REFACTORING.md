@@ -315,3 +315,7 @@ Standalone tests passed locally: 39 assertions for empty/missing/sufficient rows
 Stock-validation service verified: full Windows run 40851043358 passed all configured shortage/exact/missing-result and established checkout/chooser/payment/rollback checks, build and launcher checks. Application/domain CI passed, including 39 stock-validation service assertions. Revert b8d5a20af02f48ee7a5f18e97faff946e4c67b79 to undo this slice.
 
 Checkout milestone: reusable rules, stock-validation ordering and posting ordering now have UI/database-independent boundaries. Ticket acquisition, transaction/error UI and physical-device behavior remain deliberately unchanged. Next audit the catalogue/product handlers for the next bounded organizational change; keep expanded module work separately reviewable rather than adding unrelated behavior changes to this checkout milestone.
+
+## Active follow-on work: catalogue (2026-10-29)
+
+Catalogue audit/characterization is on refactor/catalogue-input-rules, draft PR #10 (https://github.com/hmasprod-a11y/LOGICA-Recovery/pull/10), based on this checkout branch. Keep its code changes separate from PR #8. Continue catalogue work from its latest head and docs/CATALOGUE_REFACTORING.md after checking both branches for concurrent changes. The first catalogue slice characterizes 13 repeated numeric KeyPress handlers; runtime CI is pending at this checkpoint. No checkout production changes were made for this follow-on.
