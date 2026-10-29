@@ -209,3 +209,13 @@ Next bounded candidate: inspect pre-checkout validation and characterize rejecte
 Before extracting pre-checkout guard rules, add three real-handler cases: negative displayed total for VENTE, positive displayed total for RETOUR, and an empty visible basket. Require no header/journal/payment/movement writes, unchanged stock/sequence/database basket, and a re-enabled sender. The empty-grid case intentionally leaves a database basket row to prove the UI guard does not alter it.
 
 Only the expected native warning text is acknowledged for sign rejections on the test UI thread; empty basket must return without a dialog. This extends the harness only; production behavior remains unchanged. Existing accepted-operation/payment/failure cases remain enabled. Compile locally and obtain full Windows runtime evidence before extracting guards.
+
+Rejected-checkout baseline verified: full Windows run 40832096582 passed all three rejection scenarios and existing checks. No persistence was changed by rejected attempts.
+
+## Progress: pre-checkout amount guard extraction (2026-10-29)
+
+Move the exact negative-VENTE and positive-RETOUR conditions from Button_Click into Domain.CheckoutAmountGuards. Preserve case-sensitive operation comparison, RETOUR substring matching, current-culture Visual Basic numeric conversion, eager '&' evaluation and exception ordering. Leave empty-basket checks, warning text, sender re-enabling, early returns and later validation in the form.
+
+Local checks passed: 96 guard assertions across fr-MA/fr-FR/en-US, including zero, operation variants, null/invalid inputs and legacy eager failures, plus all previous application/domain tests. Rejected-operation integration coverage was established before extraction. Full Windows CI remains required for this structural slice.
+
+The owner reiterated the priority: incremental organization of existing working LOGICA code, preserving behavior; TODO remains a selective reference. The existing automation remains scheduled every ten minutes.
