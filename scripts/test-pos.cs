@@ -162,6 +162,7 @@ class PosSmoke {
     if(settlement=="reject-sale" || settlement=="reject-sale-fractional")SetText(sale,"Text_TOTAL_NET",settlement=="reject-sale"?"-25":"-0.01");
     if(settlement=="reject-return" || settlement=="reject-return-fractional") { SetText(sale,"Button_OPERATION","RETOUR");SetText(sale,"Text_TOTAL_NET",settlement=="reject-return"?"25":"0.01"); }
     if(settlement=="reject-empty")grid.Rows.Clear();
+    if(settlement=="reject-invalid-total")SetText(sale,"Text_TOTAL_NET","not-a-number");
     bool senderEnabled=false;
     Form acceptedPayment=paymentDialog?PreparePaymentFixture(forms,module,quantity*12.5m,settlement):null;
     int dismissedErrors=0;
@@ -186,7 +187,12 @@ class PosSmoke {
      }
      try {
       using(var sender=new Button(){Name="CI_CASH_CHECKOUT"}) {
-       sale.GetType().GetMethod("Button_Click",Flags).Invoke(sale,new object[]{sender,EventArgs.Empty});
+       if(settlement=="reject-invalid-total") {
+        bool invalidCast=false;
+        try { sale.GetType().GetMethod("Button_Click",Flags).Invoke(sale,new object[]{sender,EventArgs.Empty}); }
+        catch(TargetInvocationException ex) { invalidCast=ex.InnerException is InvalidCastException; if(!invalidCast)throw; }
+        if(!invalidCast)throw new Exception("Expected original invalid displayed-total exception");
+       } else sale.GetType().GetMethod("Button_Click",Flags).Invoke(sale,new object[]{sender,EventArgs.Empty});
        senderEnabled=sender.Enabled;
       }
      } finally {
@@ -201,7 +207,7 @@ class PosSmoke {
     }
     if(connection.State!=ConnectionState.Open)connection.Open();
     if(rejected) {
-     if(!senderEnabled)throw new Exception("Rejected checkout did not re-enable sender");
+     if(settlement=="reject-invalid-total" ? senderEnabled : !senderEnabled)throw new Exception("Unexpected rejected-checkout sender state");
      if(settlement=="reject-empty"?dismissedErrors!=0:dismissedErrors==0)throw new Exception("Unexpected rejection dialog behavior");
      Eq(Scalar(connection,"SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=1"),10m,"rejection preserves stock");
      Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE"),0m,"rejection writes no header");
@@ -271,7 +277,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="checkout-reject-sale-fractional") { Checkout(assembly,false,"reject-sale-fractional"); } else if(args[0]=="checkout-reject-return-fractional") { Checkout(assembly,false,"reject-return-fractional"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="checkout-reject-invalid-total") { Checkout(assembly,false,"reject-invalid-total"); } else if(args[0]=="checkout-reject-sale-fractional") { Checkout(assembly,false,"reject-sale-fractional"); } else if(args[0]=="checkout-reject-return-fractional") { Checkout(assembly,false,"reject-return-fractional"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
