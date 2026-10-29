@@ -814,7 +814,7 @@ class PosSmoke {
   }
  }
 
- static void CatalogueAggregateRefresh(Assembly assembly) {
+ static void CatalogueAggregateRefresh(Assembly assembly,bool failLookup=false) {
   CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
   var module=assembly.GetType("LOGICA.Module1",true);
   var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
@@ -825,17 +825,37 @@ class PosSmoke {
   connection.Open();
   Sql(connection,"DROP TABLE IF EXISTS TABLE_ARTICLES; CREATE TABLE TABLE_ARTICLES (ID INT PRIMARY KEY,Famille VARCHAR(30),STOCK DECIMAL(14,4),Alert DECIMAL(14,4),PROMOTION DECIMAL(14,4),PRIX_MP DECIMAL(14,4),PRIX_A DECIMAL(14,4),PRIX_V_1 DECIMAL(14,4),PRIX_QTE DECIMAL(14,4)) ENGINE=InnoDB");
   Sql(connection,"INSERT INTO TABLE_ARTICLES VALUES (1,'A',5,6,10,2,3,4,7),(2,'A',-2,0,0,2,3,4,0),(3,'A',0,2,5,0,8,0,0),(4,'B',3,1,0,0,4,6,2),(5,'B',2,2,1,1,0,0,0),(6,'B',1,0,0,4,5,7,0)");
+  if(failLookup)Sql(connection,"ALTER TABLE TABLE_ARTICLES CHANGE PRIX_MP CI_MISSING_MP DECIMAL(14,4)");
   connection.Close();
   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_2_ARTICLES",true))) {
    string[] labels={"Label_ARTICLES","Label_ALERTS_STOCK","Label_STOCK_NEGATIF","Label_PROMOTIONS","Label_VALEURSTOCK_MP","Label_VALEURSTOCK_MP_NON","Label_VALEURSTOCK_A","Label_VALEURSTOCK_A_NON","Label_VALEURSTOCK_V","Label_VALEURSTOCK_V_NON","Label_PRIX_QTE"};
-   string[] filters={null,"","A","B","MISSING"};
+   string[] filters=failLookup?new[]{null,"A"}:new[]{null,"","A","B","MISSING"};
    decimal[][] expected={new[]{6m,3m,1m,3m,16m,3m,32m,3m,45m,3m,2m},new[]{6m,3m,1m,3m,16m,3m,32m,3m,45m,3m,2m},new[]{3m,2m,1m,2m,10m,2m,15m,2m,20m,2m,1m},new[]{3m,1m,0m,1m,6m,1m,17m,1m,25m,1m,1m},new decimal[11]};
    for(int scenario=0;scenario<filters.Length;scenario++) {
     form.GetType().GetField("_FAMILLE_FILTRE",Flags).SetValue(form,filters[scenario]);
     form.GetType().GetField("_sql",Flags).SetValue(form,"CI_BEFORE_FILTER");
     foreach(string label in labels)SetText(form,label,"CI_BEFORE_REFRESH");
-    using(var sender=new Button(){Name="CI_AGGREGATE_REFRESH"})
-     form.GetType().GetMethod("Button_CALC_Click",Flags).Invoke(form,new object[]{sender,EventArgs.Empty});
+    int warnings=0;uint threadId=GetCurrentThreadId();
+    using(var stop=new ManualResetEvent(false)) {
+     Thread watcher=null;
+     if(failLookup) {
+      watcher=new Thread(delegate() {
+       while(!stop.WaitOne(100))if(DismissInjectedFailure(threadId,"PRIX_MP"))Interlocked.Increment(ref warnings);
+      });watcher.IsBackground=true;watcher.Start();
+     }
+     try {
+      using(var sender=new Button(){Name="CI_AGGREGATE_REFRESH"})
+       form.GetType().GetMethod("Button_CALC_Click",Flags).Invoke(form,new object[]{sender,EventArgs.Empty});
+     } finally {stop.Set();if(watcher!=null && !watcher.Join(2000))throw new Exception("Aggregate failure watcher did not stop");}
+    }
+    if(failLookup) {
+     if(warnings!=1)throw new Exception("Expected aggregate lookup warning");
+     foreach(string label in labels)if(((Control)Get(form,label)).Text!="CI_BEFORE_REFRESH")throw new Exception("Failed aggregate lookup partially changed labels");
+     string failedSql=Convert.ToString(form.GetType().GetField("_sql",Flags).GetValue(form));
+     if(failedSql!=(scenario==0?"":"CI_BEFORE_FILTER"))throw new Exception("Aggregate failure changed filter side effect");
+     if(connection.State!=ConnectionState.Closed)throw new Exception("Aggregate failure left adapter-owned connection open");
+     continue;
+    }
     for(int index=0;index<labels.Length;index++) {
      string value=((Control)Get(form,labels[index])).Text;
      if(index==4 || index==6 || index==8) {
@@ -850,7 +870,7 @@ class PosSmoke {
    }
   }
   connection.Open();Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_ARTICLES"),6m,"aggregate refresh leaves fixture rows unchanged");connection.Close();
-  Console.WriteLine("PASS original catalogue aggregates: all 11 outputs for null/empty/family/missing filters, NULL sums, legacy purchase exclusion, mask and connection state");
+  Console.WriteLine(failLookup?"PASS original aggregate lookup failure: unchanged eleven labels, expected warning, filter side effect and closed connection":"PASS original catalogue aggregates: all 11 outputs for null/empty/family/missing filters, NULL sums, legacy purchase exclusion, mask and connection state");
  }
 
  static void CatalogueKeys(Assembly assembly) {
@@ -889,7 +909,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);

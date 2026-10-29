@@ -71,3 +71,9 @@ Replace the eleven repeated count/money DBNull branches with formatter calls. Re
 ## Verified aggregate display formatting
 
 Windows run 40952781294 passed after formatting extraction at 95384219e225ec976686fd188225367938953cee. All eleven original aggregate outputs, family filters, NULL sums, monetary mask and prior catalogue/checkout/build/launcher checks passed. Independent runs passed, including 114 raw-value/culture/rounding/exception assertions. Revert that implementation commit to undo formatting extraction.
+
+## Aggregate lookup failure fixture pending
+
+Add catalogue-aggregate-failure using only 127.0.0.1:3307/logica_ci. After seeding six fixture rows, rename the fixture PRIX_MP column so the unchanged aggregate query fails. Invoke the original handler with null and nonempty family filters, require its PRIX_MP error warning, all eleven labels still at their prior sentinels, original _sql reset/non-reset behavior, adapter-owned closed connection and unchanged row count. This avoids changing production query validation/escaping and exercises failure before any label assignment.
+
+Harness compilation passed locally. Full Windows failure-path verification is pending. Production source remains unchanged; normal aggregate fixtures retain their original schema and cases. The handler's existing diagnostics stay within disposable CI files.
