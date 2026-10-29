@@ -4,7 +4,7 @@
 
 - Draft [PR #11](https://github.com/hmasprod-a11y/LOGICA-Recovery/pull/11), branch refactor/stock-movement-search, based on checkout PR #8 and independent of catalogue PR #10.
 - Verified implementation: aa707d0d15cafa00ed5c84d3a27ba149e60fd435.
-- [Windows run 40959202953](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40959202953) passed; independent runs 40959202967/40959211510 passed. No implementation check is pending.
+- [Windows run 40959202953](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40959202953) passed; independent runs 40959202967/40959211510 passed. Implementation is verified; the new original-handler failure fixture below awaits Windows verification.
 - Query/adapter construction and date-prefix assembly are separated from Form_6_MOUVEMENTS_STOCK. Original UI/catch, DT clearing/binding, DA assignment before Fill and connection ownership remain unchanged.
 - Next: characterize query failure after a prior successful result, preserving cleared DT, newly assigned DA, filter side effect and warning/connection state before further orchestration changes.
 
@@ -45,3 +45,9 @@ Move only adapter construction/query assembly into Infrastructure.Inventory.Stoc
 ## Adapter factory signature repair
 
 Windows run 40958553076 caught a compile-time narrowing mistake in the new Contains/ExactLike factory signatures: the original form's _sql field is object, not string. Preserve that object boundary, matching its original VB ConcatenateObject usage; do not add a caller cast/string conversion. Change only the two datePrefix parameters to object. Production behavior was not exercised in that failed build; independent rules passed. Full Windows validation must run after the corrected signature before this extraction is accepted.
+
+## Search failure fixture pending
+
+Add stock-movement-search-failure after successful search/refresh setup. Select a deliberately missing fixture column with optional dates and query through original TextChanged/explicit search callbacks. Require the original column error warning, prior results cleared in the same DT, grid still bound to that DT, a newly assigned DA retaining the attempted query, updated object date prefix and adapter-owned closed connection. Fixture row count remains four. Warning count is not fixed because original control events can also invoke search.
+
+This protects the meaningful difference from empty search, which retains previous rows. No production code change; harness compilation passed locally. Full Windows baseline is pending before considering movement search orchestration extraction. Existing diagnostics remain within disposable CI files.

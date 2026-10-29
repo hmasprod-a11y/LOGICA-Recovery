@@ -311,7 +311,7 @@ class PosSmoke {
   }
  }
 
- static void StockMovementSearch(Assembly assembly) {
+ static void StockMovementSearch(Assembly assembly,bool failQuery=false) {
   CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
   var module=assembly.GetType("LOGICA.Module1",true);
   var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
@@ -356,6 +356,33 @@ class PosSmoke {
     form.GetType().GetMethod("Picture_REFRESH_Click",Flags).Invoke(form,new object[]{sender,EventArgs.Empty});
    expect("4,3,2,1");
    if(Convert.ToString(texts.GetValue(search,null))!="")throw new Exception("Movement refresh did not clear search");
+   if(failQuery) {
+    var beforeTable=(DataTable)form.GetType().GetField("DT",Flags).GetValue(form);
+    object beforeAdapter=form.GetType().GetField("DA",Flags).GetValue(form);
+    combo.Items.Add("CI_MISSING_COLUMN");combo.SelectedItem="CI_MISSING_COLUMN";setDate(true);setExact(false);
+    form.GetType().GetField("_sql",Flags).SetValue(form,"CI_BEFORE_FAILURE");
+    int warnings=0;uint threadId=GetCurrentThreadId();
+    using(var stop=new ManualResetEvent(false)) {
+     var watcher=new Thread(delegate() {
+      while(!stop.WaitOne(100))if(DismissInjectedFailure(threadId,"CI_MISSING_COLUMN"))Interlocked.Increment(ref warnings);
+     });watcher.IsBackground=true;watcher.Start();
+     try {query("ABC");}
+     finally {stop.Set();if(!watcher.Join(2000))throw new Exception("Movement failure watcher did not stop");}
+    }
+    if(warnings<1)throw new Exception("Expected movement query failure warning");
+    var afterTable=(DataTable)form.GetType().GetField("DT",Flags).GetValue(form);
+    object afterAdapter=form.GetType().GetField("DA",Flags).GetValue(form);
+    if(!Object.ReferenceEquals(beforeTable,afterTable) || afterTable.Rows.Count!=0)
+     throw new Exception("Movement failure did not retain cleared DT");
+    if(Object.ReferenceEquals(beforeAdapter,afterAdapter))throw new Exception("Movement failure did not keep newly assigned DA");
+    var adapter=(System.Data.Common.DbDataAdapter)afterAdapter;
+    if(!adapter.SelectCommand.CommandText.Contains("CI_MISSING_COLUMN") || !adapter.SelectCommand.CommandText.Contains("Dates   between"))
+     throw new Exception("Movement failure adapter lost attempted query");
+    string prefix=Convert.ToString(form.GetType().GetField("_sql",Flags).GetValue(form));
+    if(!prefix.Contains("Dates   between") || !prefix.Contains("AND"))throw new Exception("Movement failure filter-prefix side effect changed");
+    expect("");
+    Console.WriteLine("PASS original movement lookup failure: prior results cleared, DT/grid reference retained, new adapter/query/prefix kept, warning and closed connection");
+   }
   }
   connection.Open();Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK"),4m,"movement search preserves fixture row count");connection.Close();
   Console.WriteLine("PASS original movement search: date boundaries, wildcard/exact LIKE, optional date, empty retention, refresh and descending order; isolated read-only fixture");
@@ -365,7 +392,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
