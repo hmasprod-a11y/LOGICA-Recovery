@@ -2,11 +2,11 @@
 
 ## Current resume checkpoint
 
-- Verified implementation: a9997936f06de91907f9b519b19a9100d202c651, draft PR #10 stacked on #8; no merge/release.
-- Windows run [40938837380](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40938837380) passed; independent runs 40938837495/40938846091 passed. No implementation check remains pending.
-- Collection required identifiers, raw-object lookup and ordered precheck are separated; successful batch transaction and SendKeys tail remain untouched/unverified.
-- Next bounded candidate: original Button_INSERER_Click variant insertion/checksum. Characterize one valid size/colour row and duplicate rejection with totals and selected row before reusing the verified checksum helper. This path has no database writes or SendKeys tail.
-- Specification evidence map: REQUIREMENTS_STATUS.md. Untested modules are not declared missing; no global completion percentage is assigned.
+- Verified implementation: 4e52a89910db459e3be5582e462506c966445216, draft PR #10 stacked on #8; no merge/release.
+- Windows run [40944010253](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40944010253) and independent runs 40944010371/40944020561 passed. No implementation check remains pending.
+- Variant insertion now reuses the verified twelve-digit checksum. Original insertion/duplicate/totals/reset/selection behavior is covered; collection transaction and SendKeys tail remain unchanged/unverified.
+- Next bounded candidate: Button_CALC_DOC_Click quantity accumulation. Characterize empty grid and raw quantity types through the original handler before separating the VB AddObject/ToDecimal loop. Preserve FLOUSS and row-count display timing in the form.
+- Requirements evidence map: REQUIREMENTS_STATUS.md; no global completion percentage is assigned.
 
 ## Priority and baseline
 
@@ -366,3 +366,9 @@ Full Windows run [40943309383](https://github.com/hmasprod-a11y/LOGICA-Recovery/
 Replace only Button_INSERER_Click's repeated twelve-digit checksum arithmetic with the verified CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(text). Keep payload construction, quantity conversion before checksum, getBits call, suffix append, duplicate scan, later IsNumeric check and grid/total/reset/selection order. Retain the loop locals still used by the duplicate scan. No barcode format, quantity validation or UI changes.
 
 Full Windows original-handler regression is pending after reuse. Existing independent checksum assertions cover the reused helper; no duplicate mirror tests or redundant local rerun was added for unchanged helper code.
+
+## Verified variant checksum reuse
+
+Full Windows run 40944010253 succeeded after checksum reuse at 4e52a89910db459e3be5582e462506c966445216. Original variant insertion, fractional/negative quantities, duplicate warning, totals/reset/selection and all prior catalogue/checkout/build/launcher checks passed. Independent rules passed. Revert that implementation commit to undo the second checksum caller change.
+
+Next quantity-total audit: Button_CALC_DOC_Click snapshots the last grid index, starts decimal zero, and applies Conversions.ToDecimal(Operators.AddObject(total, raw cell value)) for each row. It then uses FLOUSS for display and reads current grid row count. Preserve raw-object VB conversion and exception timing; do not replace it with a decimal cast/LINQ Sum or move the later count read ahead of accumulation. A no-database original-handler fixture can characterize empty, numeric and string quantity cells before extraction.
