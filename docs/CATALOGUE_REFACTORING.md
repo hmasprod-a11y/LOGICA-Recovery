@@ -3,7 +3,7 @@
 ## Current resume checkpoint
 
 - Verified implementation: 6ecfe1465a871a1414102989e7864edc5e8757f0, draft PR #10 stacked on #8; no merge/release.
-- Windows run [40911101295](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40911101295) passed; independent runs 40911101430 and 40911114519 passed. Implementation is verified; adapter INSERT failure is verified and the new UPDATE-failure characterization below is pending Windows verification.
+- Windows run [40911101295](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40911101295) passed; independent runs 40911101430 and 40911114519 passed. Implementation is verified; adapter INSERT/UPDATE failures are verified; the persistence extraction below is pending Windows verification.
 - Separated: input/validation rules, barcode arithmetic, lazy 33-column mapping, duplicate SQL, creation movement and sequence writes. Preserve existing individual-save partial commits and error behavior.
 - Next: characterize adapter INSERT/UPDATE failures before extracting adapter persistence. Use isolated triggers, confirm database rows/movement/sequence/audit unchanged, and record actual DataRow state plus connection state; do not assume failure cleanup.
 
@@ -223,3 +223,11 @@ Production logic is unchanged. Harness compilation passed locally; these state e
 Full Windows run [40914441049](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40914441049) succeeded for 237d72bcbe3ca903a20ee7a1de9b1576ba8915f4. INSERT failure leaves database/sentinel unchanged, retains the populated Added row, closes the adapter-owned connection, and skips movement/sequence/audit/refresh. Independent run 40914450788 passed; prior checks passed.
 
 Add catalogue-update-failure after successful creation setup. A strictly isolated BEFORE UPDATE trigger rejects the original adapter update. Require all 33 persisted creation values unchanged, the mapped target row retained as Modified with its original Code version intact, unchanged other row/movement/sequence, adapter-owned closed connection, and no edit audit or aggregate refresh. Explicitly drop the fixture trigger afterward. Local harness compilation passed; full Windows UPDATE-failure baseline is pending. Production adapter code remains unchanged until that baseline passes.
+
+## Verified adapter failures; persistence extraction
+
+Full Windows run [40916050829](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40916050829) succeeded for 90310469ef32978b81ac6e6ceb120a0bf9d8e703. INSERT failure retains Added row with no persisted insert; UPDATE failure retains Modified row/original version with all 33 persisted creation values unchanged. Both adapter-owned connections close and skip later side effects. Independent run 40916062662 and all prior checks passed.
+
+Extract the two identical save-only command-builder/adapter Update/DT.AcceptChanges blocks into Infrastructure.Catalogue.CatalogueRowPersistence.UpdateAndAccept. Preserve command-builder association/lifetime policy (no new disposal), adapter settings, Update-before-AcceptChanges and exception propagation to the original catch. Do not include delete/batch handlers or add transactions/rollback. The form retains new/edit row selection/population and all surrounding workflow.
+
+Pre-move success and both injected adapter failure fixtures protect this boundary. Full Windows regression is pending after extraction. Next audit: creation MAX(ID) and ARTICLE-number reads, preserving their repeated ExecuteScalar calls and VB/null behavior; cover empty and populated source tables before moving those reads.

@@ -14435,9 +14435,7 @@ public class Form_2_ARTICLES : Form
 					int index = DT.Rows.Count - 1;
 					LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.PopulateNew(DT.Rows[index], num, text,
                         new LOGICA.Presentation.Catalogue.CatalogueFormRowInput(this));
-                    MySqlCommandBuilder val4 = new MySqlCommandBuilder(DA);
-					((DbDataAdapter)(object)DA).Update(DT);
-					DT.AcceptChanges();
+                    LOGICA.Infrastructure.Catalogue.CatalogueRowPersistence.UpdateAndAccept(DA, DT);
 					LOGICA.Infrastructure.Catalogue.CatalogueCreationMovementWriter.Write(text,
                         () => Text_CODE.Text, () => Text_ARTICLE.Text, () => Text_STOCK.Text, Module1.cn_SQL);
 					LOGICA.Infrastructure.Catalogue.CatalogueSequenceWriter.AdvanceArticle(val3, Module1.cn_SQL);
@@ -14465,9 +14463,7 @@ public class Form_2_ARTICLES : Form
 					int position = ((ContainerControl)this).BindingContext[(object)DT].Position;
 					LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.PopulateEdited(DT.Rows[position],
                         new LOGICA.Presentation.Catalogue.CatalogueFormRowInput(this));
-                    MySqlCommandBuilder val7 = new MySqlCommandBuilder(DA);
-					((DbDataAdapter)(object)DA).Update(DT);
-					DT.AcceptChanges();
+                    LOGICA.Infrastructure.Catalogue.CatalogueRowPersistence.UpdateAndAccept(DA, DT);
 					MessageBox.Show("Modifié avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
 					string right = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("MODIFICATION | ", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_ARTICLE"].Value), DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ARTICLE"].Value));
 					File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
