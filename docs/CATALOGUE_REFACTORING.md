@@ -287,3 +287,13 @@ Full Windows run [40928825469](https://github.com/hmasprod-a11y/LOGICA-Recovery/
 Before rewiring the handler, standalone BalanceCodeFormatting tests passed 705 assertions across three cultures for original numeric detection, Val parsing, midpoint width rounding, checked width overflow, zero-mask formatting, exception identity and deferred code-read timing. All prior independent tests passed.
 
 Move only Versioned.IsNumeric and the width/Val/format expression into Domain.BalanceCodeFormatting. Retain the form's OUI condition, warning/return, article normalization before this branch and later image/save behavior. Read code via a callback only after width conversion, preserving failures before that read. No new validation or pad-left policy. Full Windows regression is pending after extraction.
+
+## Verified balance formatting and collection method audit
+
+Full Windows run [40930424747](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40930424747) succeeded after balance extraction at d20933471f15bde44fe6ce0ebc12ee5f07d36306; independent runs 40930424748/40930432814 passed, including 705 balance assertions. Prior catalogue/checkout/build checks passed.
+
+Button_SAVE_COLLECTION_Click is 186 lines. Ordered required fields precede article apostrophe normalization. It checks duplicate grid codes before opening a transaction, then loops per row through MAX/sequence reads, direct article INSERT, movement INSERT and sequence UPDATE. Commit/rollback and DoEvents/Sleep/grid selection are batch-specific and must not reuse individual helpers that close connections. Its tail hides the panel, refreshes aggregates, focuses search and uses SendKeys; avoid running that tail in a normal desktop fixture without a bounded UI isolation strategy.
+
+Add collection-save-guards through the existing strictly isolated guard harness. Four original-handler cases (empty/spaces code/article) must warn with exact field order, retain control text before normalization, keep the connection closed and leave article/movement/sequence sentinels unchanged. Collection code TextChanged is empty; no transaction or SendKeys tail is reached. Production collection source remains unchanged.
+
+Local harness compilation passed. Full Windows baseline is pending. After it passes, reuse the existing exact CatalogueRequiredFields predicate only for the two matching collection identifier checks. Batch persistence/rollback coverage remains separate; do not broaden this guard slice into a transaction rewrite.
