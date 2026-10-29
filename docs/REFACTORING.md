@@ -157,3 +157,11 @@ Move the exact final basket DELETE and ticket-sequence UPDATE into Infrastructur
 Both journal-stage and late-stage rollback characterization passed before this extraction. Full Windows CI must verify this new structural move. Next: isolate the remaining stock mutation, then evaluate a cohesive application-service boundary; keep UI/payment/hardware behavior explicit.
 
 Completion-writer extraction verified: full Windows run 40827869841 passed, including journal-stage and late completion-stage rollback, all payment variants, sale/refund, build and existing checks. Domain CI passed. Revert 6d226a3077ba1679a65a39ac9e96ea473f0edef8 to undo this extraction. No production-data modification or merge performed.
+
+## Progress: cohesive checkout stock boundary (2026-10-29)
+
+Move the remaining stock UPDATE and its immediately-following movement into Infrastructure.Checkout.CheckoutStockWriter.Apply. Keep the exact legacy object concatenation, update-then-movement order, raw quantity/id values and shared command/connection/transaction. Reuse StockMovementWriter without changing its typed sign conversion. The form retains the Check_STOCK guard and row iteration.
+
+Extend existing checkout characterization with a 1.25-unit sale: expect stock 8.75, movement -1.25, raw journal total 15.625 and rounded header/payment 15.63. Existing whole-unit sale/refund plus both failure boundaries remain enabled. Harness compilation passed locally; full Windows runtime verification is required for this slice.
+
+The checkout writes now sit outside the form; orchestration and UI/hardware remain in it. Next evaluate a cohesive application service from these plain-context boundaries rather than moving unrelated features or changing financial rules.

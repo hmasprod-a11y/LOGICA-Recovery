@@ -12802,10 +12802,7 @@ public class Form_3_VENTE : Form
 							{
 								break;
 							}
-							val4.CommandText = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject("UPDATE     TABLE_ARTICLES    SET STOCK = STOCK - ", DataGridView1.Rows[num6].Cells["Qté"].Value), "    WHERE    ID_ARTICLE = '"), DataGridView1.Rows[num6].Cells["ID_ARTICLE"].Value), "'                           "));
-							val4.Connection = Module1.cn_SQL;
-							val4.ExecuteNonQuery();
-							LOGICA.Infrastructure.Checkout.StockMovementWriter.Write(val4, Module1.cn_SQL, _N_TICKET_SOLDER,
+							LOGICA.Infrastructure.Checkout.CheckoutStockWriter.Apply(val4, Module1.cn_SQL, _N_TICKET_SOLDER,
 								DataGridView1.Rows[num6].Cells["ID_ARTICLE"].Value,
 								DataGridView1.Rows[num6].Cells["Code"].Value,
 								DataGridView1.Rows[num6].Cells["Article"].Value,
