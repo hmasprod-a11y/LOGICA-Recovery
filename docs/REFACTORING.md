@@ -141,3 +141,9 @@ Existing cash/refund, mixed, change, credit and rollback tests cover this extrac
 Payment-writer verification: full Windows run 40826687096 succeeded, including cash sale/refund, mixed card/cash, tendered/change, credit-without-payment and injected journal-failure rollback; all existing build/data/launcher checks passed. Domain CI succeeded. Revert 20f20c8110abf87444af1fe0cd233546bf95ddc1 to undo the payment extraction.
 
 The main checkout writes now have explicit infrastructure boundaries for movements, headers, journal and payments. Remaining orchestration is still in the form. Next: characterize failure after payment writes, then isolate final basket/sequence completion and stock mutation without changing transaction ownership. A later application-service extraction should consume plain snapshots and keep hardware/UI callbacks explicit.
+
+## Progress: late-checkout rollback characterization (2026-10-29)
+
+Before moving final completion writes, add checkout-late-rollback. After establishing sale/refund baseline, inject a TABLE_NUM update failure after the attempted third payment has been inserted and the basket deleted. A nontransactional marker records PaymentRows=3 and BasketRows=0 at the failure boundary. Existing rollback assertions then require original payment sum, stock, header/journal, movement sum, sequence and retained basket to be restored.
+
+The earlier journal-failure scenario remains separate. The same exact isolated-database guard and scoped dialog watcher apply. This tests transactional completion after payment persistence; it does not certify physical printing or process crashes. Production code is unchanged pending runtime characterization.

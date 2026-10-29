@@ -98,7 +98,7 @@ class PosSmoke {
   };
   return dialog;
  }
- static void Checkout(Assembly assembly,bool rollbackProbe=false,string settlement="cash") {
+ static void Checkout(Assembly assembly,bool rollbackProbe=false,string settlement="cash",bool lateFailure=false) {
   CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
   var module=assembly.GetType("LOGICA.Module1",true);
   var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
@@ -155,8 +155,8 @@ class PosSmoke {
      Thread watcher=null;
      if(injectFailure) {
       connection.Open();
-      Sql(connection,"DROP TABLE IF EXISTS TABLE_CI_ROLLBACK_PROBE; CREATE TABLE TABLE_CI_ROLLBACK_PROBE (Attempts INT) ENGINE=MEMORY; INSERT INTO TABLE_CI_ROLLBACK_PROBE VALUES (0)");
-      Sql(connection,"CREATE TRIGGER CI_ROLLBACK_PROBE BEFORE INSERT ON TABLE_VENTES_JOURNAL FOR EACH ROW BEGIN UPDATE TABLE_CI_ROLLBACK_PROBE SET Attempts=Attempts+1; SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CI_ROLLBACK_PROBE'; END");
+      Sql(connection,"DROP TABLE IF EXISTS TABLE_CI_ROLLBACK_PROBE; CREATE TABLE TABLE_CI_ROLLBACK_PROBE (Attempts INT, PaymentRows INT, BasketRows INT) ENGINE=MEMORY; INSERT INTO TABLE_CI_ROLLBACK_PROBE VALUES (0,0,0)");
+      Sql(connection,"CREATE TRIGGER CI_ROLLBACK_PROBE BEFORE "+(lateFailure?"UPDATE ON TABLE_NUM":"INSERT ON TABLE_VENTES_JOURNAL")+" FOR EACH ROW BEGIN UPDATE TABLE_CI_ROLLBACK_PROBE SET Attempts=Attempts+1, PaymentRows=(SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS), BasketRows=(SELECT COUNT(*) FROM TABLE_CI_TEST); SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CI_ROLLBACK_PROBE'; END");
       connection.Close();
       watcher=new Thread(delegate() {
        while(!stopWatcher.WaitOne(100)) {
@@ -181,7 +181,11 @@ class PosSmoke {
     if(connection.State!=ConnectionState.Open)connection.Open();
     if(injectFailure) {
      if(dismissedErrors==0)throw new Exception("Injected checkout error was not observed");
-     Eq(Scalar(connection,"SELECT Attempts FROM TABLE_CI_ROLLBACK_PROBE"),1m,"journal failure trigger reached");
+     Eq(Scalar(connection,"SELECT Attempts FROM TABLE_CI_ROLLBACK_PROBE"),1m,"injected failure trigger reached");
+     if(lateFailure) {
+      Eq(Scalar(connection,"SELECT PaymentRows FROM TABLE_CI_ROLLBACK_PROBE"),3m,"late failure occurs after attempted payment insert");
+      Eq(Scalar(connection,"SELECT BasketRows FROM TABLE_CI_ROLLBACK_PROBE"),0m,"late failure occurs after attempted basket clear");
+     }
      Sql(connection,"DROP TABLE TABLE_CI_ROLLBACK_PROBE");
      Eq(Scalar(connection,"SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=1"),9m,"rollback preserves stock");
      Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE"),2m,"rollback removes attempted header");
@@ -191,7 +195,7 @@ class PosSmoke {
      Eq(Scalar(connection,"SELECT CL FROM TABLE_NUM WHERE ID=0"),3m,"rollback preserves ticket sequence");
      Eq(Scalar(connection,"SELECT SUM(QUANTITE) FROM TABLE_MOUVEMENTS_STOCK"),-1m,"rollback removes attempted stock movement");
      connection.Close();
-     Console.WriteLine("PASS injected failure after stock/header writes rolls back checkout");
+     Console.WriteLine(lateFailure?"PASS late failure rolls back payment and basket completion":"PASS injected journal failure rolls back checkout");
      continue;
     }
     Eq(Scalar(connection,"SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=1"),quantity>0?8m:9m,"original checkout stock after "+(quantity>0?"sale":"return"));
@@ -232,7 +236,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
