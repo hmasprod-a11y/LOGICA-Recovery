@@ -12870,11 +12870,22 @@ public class Form_3_VENTE : Form
 						});
 					if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 || Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR REMBOURSEMENT", TextCompare: false) == 0)
 					{
+						var paymentContext = new LOGICA.Infrastructure.Checkout.TicketPaymentContext
+						{
+							TicketId = Text_ID_TICKET.Text,
+							TicketNumber = _N_TICKET_SOLDER,
+							SaleDate = dateTime,
+							Cashier = ((ButtonBase)Button_CAISSIER).Text,
+							ClientId = Button_CLIENT._ID_Button,
+							ClientCode = Button_CLIENT._CODE_Button,
+							ClientName = ((ButtonBase)Button_CLIENT).Text,
+							Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
+							Operation = ((ButtonBase)Button_OPERATION).Text,
+							Remark = MyProject.Forms.FormDialog_calc.Text_REMARQUE.Text
+						};
 						if (!Check_ACCES_MODEP.Checked)
 						{
-							val4.CommandText = "INSERT  INTO   TABLE_VENTES_REGLEMENTS       (ID_TICKET, TICKET, DATES , CAISSIER , ID_CLIENT , CODE_CLIENT, CLIENT, POSTE, MONTANT, MODE_P, OPERATION ,NOTES_REMARQUE)         values           ('" + Text_ID_TICKET.Text + "' ,'" + _N_TICKET_SOLDER + "' ,'" + dateTime.ToString("yyyy-MM-dd") + "'  ,'" + ((ButtonBase)Button_CAISSIER).Text + "'   ,'" + Button_CLIENT._ID_Button + "', '" + Button_CLIENT._CODE_Button + "'  ,'" + ((ButtonBase)Button_CLIENT).Text + "' ,'" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "'  , '" + Conversions.ToString(Conversions.ToDecimal(Text_TOTAL_NET.Text)) + "'  ,'ESPECES'   , '" + ((ButtonBase)Button_OPERATION).Text + "'   , '" + MyProject.Forms.FormDialog_calc.Text_REMARQUE.Text + "'  )          ";
-							val4.Connection = Module1.cn_SQL;
-							val4.ExecuteNonQuery();
+							LOGICA.Infrastructure.Checkout.TicketPaymentWriter.WriteCash(val4, Module1.cn_SQL, paymentContext, Text_TOTAL_NET.Text);
 						}
 						else if (Check_ACCES_MODEP.Checked)
 						{
@@ -12888,16 +12899,15 @@ public class Form_3_VENTE : Form
 								{
 									break;
 								}
-								val4.CommandText = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat("INSERT  INTO   TABLE_VENTES_REGLEMENTS       (ID_TICKET, TICKET, DATES , CAISSIER , ID_CLIENT , CODE_CLIENT, CLIENT, POSTE, MONTANT, MODE_P, OPERATION ,NOTES_REMARQUE)         values           ('" + Text_ID_TICKET.Text, "' ,'"), _N_TICKET_SOLDER), "' ,'"), dateTime.ToString("yyyy-MM-dd")), "'  ,'"), ((ButtonBase)Button_CAISSIER).Text), "'   ,'"), Button_CLIENT._ID_Button), "', '"), Button_CLIENT._CODE_Button), "'  ,'"), ((ButtonBase)Button_CLIENT).Text), "' ,'"), MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), "'  , '"), Conversions.ToString(Conversions.ToDecimal(MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num12].Cells["PAYER"].Value))), "'  ,'"), MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num12].Cells["MODE_P"].Value), "' , '"), ((ButtonBase)Button_OPERATION).Text), "'   , '"), MyProject.Forms.FormDialog_calc.Text_REMARQUE.Text), "'   )          "));
-								val4.Connection = Module1.cn_SQL;
-								val4.ExecuteNonQuery();
+								LOGICA.Infrastructure.Checkout.TicketPaymentWriter.WriteTendered(val4, Module1.cn_SQL, paymentContext,
+									MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num12].Cells["PAYER"].Value,
+									MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num12].Cells["MODE_P"].Value);
 								num12++;
 							}
 							if (Conversion.Val(((ButtonBase)MyProject.Forms.FormDialog_calc.Button_RESTE).Text) < 0.0)
 							{
-								val4.CommandText = "INSERT  INTO   TABLE_VENTES_REGLEMENTS       (ID_TICKET, TICKET, DATES , CAISSIER , ID_CLIENT , CODE_CLIENT, CLIENT, POSTE, MONTANT, MODE_P, OPERATION ,NOTES_REMARQUE)         values           ('" + Text_ID_TICKET.Text + "' ,'" + _N_TICKET_SOLDER + "' ,'" + dateTime.ToString("yyyy-MM-dd") + "'  ,'" + ((ButtonBase)Button_CAISSIER).Text + "'   ,'" + Button_CLIENT._ID_Button + "', '" + Button_CLIENT._CODE_Button + "'  ,'" + ((ButtonBase)Button_CLIENT).Text + "' ,'" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "'  , '" + Conversions.ToString(Conversions.ToDecimal(((ButtonBase)MyProject.Forms.FormDialog_calc.Button_RESTE).Text)) + "'  ,'ESPECES' , '" + ((ButtonBase)Button_OPERATION).Text + "'   , '" + MyProject.Forms.FormDialog_calc.Text_REMARQUE.Text + "'   )          ";
-								val4.Connection = Module1.cn_SQL;
-								val4.ExecuteNonQuery();
+								LOGICA.Infrastructure.Checkout.TicketPaymentWriter.WriteChange(val4, Module1.cn_SQL, paymentContext,
+									((ButtonBase)MyProject.Forms.FormDialog_calc.Button_RESTE).Text);
 							}
 						}
 					}

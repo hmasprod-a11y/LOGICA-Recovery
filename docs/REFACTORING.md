@@ -129,3 +129,11 @@ Mixed/change scenarios supply an accepted payment-dialog fixture: original Load/
 Production code is unchanged in this slice. Harness compilation passed locally; full Windows runtime checks remain required. Only after those branches are characterized should the payment writer be extracted without changing transaction ownership or SQL.
 
 Payment-branch verification: full Windows run 40825823679 passed. checkout-mixed saved 15 card + 10 cash; checkout-change saved tendered 30 plus -5 cash change; checkout-credit saved zero payment rows. All existing checkout/refund/rollback, domain, build, data-regression and launcher checks passed. These are accepted-input persistence tests, not payment-dialog UX tests. Next slice may now extract payment writes with all three branches covered.
+
+## Progress: payment persistence boundary (2026-10-29)
+
+After mixed/change/credit characterization passed, moved all three TABLE_VENTES_REGLEMENTS command bodies into Infrastructure.Checkout.TicketPaymentWriter (cash, tendered row, change). Keep separate methods to retain each original SQL shape and conversion path, including VB object concatenation for tendered modes and string conversion for cash/change amounts.
+
+Capture unchanged ticket/client/cashier/workstation/operation/remark context once inside the original payable-operation guard. The form retains operation classification, payment-dialog acceptance, row iteration, negative-remainder condition, transaction ownership, ordering and printing. The writer receives no controls or Module1 reference and does not change connection lifetime or catch errors.
+
+Existing cash/refund, mixed, change, credit and rollback tests cover this extraction. Full Windows CI is required before claiming runtime verification. This is a structural move; legacy SQL concatenation and its limitations are intentionally not changed here.
