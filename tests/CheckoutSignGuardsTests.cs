@@ -49,6 +49,21 @@ internal static class CheckoutSignGuardsTests
             Check("PRE-RETOUR-POST", -1.0, false, false);
             Check("VENTE", double.PositiveInfinity, false, false);
             Check("RETOUR", double.NaN, false, false);
+            // Button_Click invokes VB Conversions.ToDouble before each extracted guard,
+            // regardless of the operation text. Characterize the conversion boundary
+            // without launching an unbounded modal form on the Windows runner.
+            foreach (string operation in new[] { "VENTE", "RETOUR", "CREDIT", "" })
+            {
+                assertions++;
+                bool failed = false;
+                try
+                {
+                    CheckoutSignGuards.RejectSale(operation,
+                        Microsoft.VisualBasic.CompilerServices.Conversions.ToDouble("not-a-number"));
+                }
+                catch (InvalidCastException) { failed = true; }
+                if (!failed) throw new Exception("Expected VB invalid-total conversion failure: " + operation);
+            }
             Console.WriteLine("PASS checkout sign predicates: " + assertions + " assertions");
             return 0;
         }
