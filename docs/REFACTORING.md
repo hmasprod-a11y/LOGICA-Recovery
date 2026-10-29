@@ -269,3 +269,7 @@ The existing guard is enabled by the VENTE operation and BLOCAGE_STOCK_INSUFFISA
 Add checkout-reject-stock with model quantity 2/current stock 1 and require unchanged persistence after the expected warning. Add checkout-reject-stock-off to preserve that same rejection even when stock mutation is disabled. Add checkout-stock-exact with model quantity/current stock both 2, which must be accepted and leave stock 0. Seed the actual configured setting and dt1 row source explicitly in the isolated fixture.
 
 Production code is unchanged pending characterization; do not change the setting/Check_STOCK relationship during extraction. Existing loopback fixture guards and scoped expected-warning acknowledgement apply.
+
+Insufficient-stock baseline verified: full Windows run 40846566659 passed both configured rejection cases (including stock mutation disabled) and exact-stock acceptance, plus every existing check. Domain/application CI passed. Revert b2bc2767cfc2af3e4b801a037dd3b5e893786de2 to undo this test slice.
+
+Next extraction should preserve Operators.ConditionalCompareObjectLess on raw available/requested objects; do not normalize types or move the missing-row guard/configuration gate while extracting the comparison.
