@@ -279,3 +279,11 @@ The next remaining individual-save rule worth auditing is optional balance-code 
 Add catalogue-balance-reject and catalogue-balance-format through the original save handler with OUI enabled and width 6. Nonnumeric CI_NOT_NUMERIC must warn after article apostrophe normalization but before identity reads/row addition/persistence; numeric 123 must become 000123 and reach the unchanged creation workflow. Verify normalized controls, unchanged sentinel, row state, movement/sequence/refresh boundaries and all 33 persisted fields for the accepted case, including BALANCE=OUI and formatted code in the movement. Keep current/previous image names identical; no hardware or image write is involved.
 
 Production code remains unchanged. Local harness compilation passed; full Windows baseline is pending. Culture-dependent numeric/format edge cases require independent characterization before extracting the original VB rule.
+
+## Verified balance baseline and rule extraction
+
+Full Windows run [40928825469](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40928825469) succeeded for fc0f5431aa5a0f6d7c504ea77561f9aea68b9cc1, including original numeric rejection and formatted successful creation. Independent run 40928834535 and all prior checks passed.
+
+Before rewiring the handler, standalone BalanceCodeFormatting tests passed 705 assertions across three cultures for original numeric detection, Val parsing, midpoint width rounding, checked width overflow, zero-mask formatting, exception identity and deferred code-read timing. All prior independent tests passed.
+
+Move only Versioned.IsNumeric and the width/Val/format expression into Domain.BalanceCodeFormatting. Retain the form's OUI condition, warning/return, article normalization before this branch and later image/save behavior. Read code via a callback only after width conversion, preserving failures before that read. No new validation or pad-left policy. Full Windows regression is pending after extraction.

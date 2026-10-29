@@ -14378,13 +14378,12 @@ public class Form_2_ARTICLES : Form
 				Text_ARTICLE.Text = Text_ARTICLE.Text.ToString().Replace("'", " ");
 				if (Operators.CompareString(Combo_BALANCE.Text, "OUI", TextCompare: false) == 0)
 				{
-					if (!Versioned.IsNumeric(Text_CODE.Text))
+					if (!LOGICA.Domain.BalanceCodeFormatting.IsNumeric(Text_CODE.Text))
 					{
 						Interaction.MsgBox("Erreur Code Article");
 						return;
 					}
-					int number = (int)Math.Round(Conversion.Val(TextBox_NBR_CODE_BALANCE.Text));
-					Text_CODE.Text = Conversion.Val(Text_CODE.Text).ToString(Strings.StrDup(number, "0"));
+					Text_CODE.Text = LOGICA.Domain.BalanceCodeFormatting.Format(TextBox_NBR_CODE_BALANCE.Text, () => Text_CODE.Text);
 				}
 				try
 				{
