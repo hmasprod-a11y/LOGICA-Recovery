@@ -247,3 +247,7 @@ Next bounded candidate: inspect the basket-vs-database total consistency check a
 Before extracting the consistency rule, add checkout-reject-total: keep the fixture database total at 25 but set the visible line total to 27. The real checkout refreshes its database total, detects the rounded mismatch and must leave all persistence unchanged with sender re-enabled. A scoped watcher acknowledges only the expected "Le Total Net" warning.
 
 Add checkout-rounding-window: visible line total 25.4 versus database/header total 25 must remain accepted under the existing whole-unit comparison. This deliberately preserves the original policy rather than tightening precision during a structural change. Existing fractional checkout also remains covered. Production code is unchanged pending runtime characterization.
+
+Consistency baseline verified: full Windows run 40844030553 passed checkout-reject-total and checkout-rounding-window plus all existing checks. Domain/application CI passed. Revert 671c8b273c009c44b7cfecae73747d2390f6b7a1 to undo this test slice.
+
+Next extraction should retain the exact whole-unit Math.Round (default midpoint policy), VB decimal/string conversion and Conversion.Val comparison. Keep grid summation, warning and early return in place unless separately characterized. Do not replace the comparison with exact cents equality during refactoring.
