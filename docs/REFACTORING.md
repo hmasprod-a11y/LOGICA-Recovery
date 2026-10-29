@@ -291,3 +291,11 @@ Next bounded candidate: isolate the insufficient-stock lookup from the form, aft
 Before isolating the stock lookup, add checkout-missing-stock-lookup. Enable the existing shortage setting and supply a dt1 guard-model row whose code CI_MISSING has no article match, while the actual grid/database basket still contains the valid CI001 article. Assert the fixture code has no match and the original checkout accepts the valid basket, preserving the guard's existing empty-result skip behavior. All normal document/payment/stock assertions remain active.
 
 This is a focused guard-source fixture, not a claim that nonexistent actual basket articles are valid. Existing configured shortage rejection/exact-stock cases continue to protect the guard as a whole. Production code is unchanged pending characterization; connection and raw-result handling must be preserved when extracting lookup.
+
+Missing-result baseline verified: full Windows run 40849003012 passed checkout-missing-stock-lookup and every existing check. Domain/application CI passed.
+
+## Progress: stock-availability lookup boundary (2026-10-29)
+
+Move the original DataTable/DataAdapter query/fill block into Infrastructure.Checkout.StockAvailabilityLookup.FindByCode. Keep exact SQL construction, raw code input, result columns/types and DataAdapter-managed connection behavior. The helper has no UI/Module1 dependency and does not add transaction ownership, error handling, parameterization or normalization.
+
+The form retains dt1 iteration, configured gate, missing-row short-circuit, comparison, warning and early return. Existing configured shortage/exact-stock and newly-verified missing-result cases cover the boundary. Full Windows verification is required after extraction.
