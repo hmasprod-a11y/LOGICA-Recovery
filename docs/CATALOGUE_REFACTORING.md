@@ -2,10 +2,10 @@
 
 ## Current resume checkpoint
 
-- Verified implementation: 6ecfe1465a871a1414102989e7864edc5e8757f0, draft PR #10 stacked on #8; no merge/release.
-- Windows run [40911101295](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40911101295) passed; independent runs 40911101430 and 40911114519 passed. Implementation is verified; adapter INSERT/UPDATE failures are verified; the persistence extraction below is pending Windows verification.
-- Separated: input/validation rules, barcode arithmetic, lazy 33-column mapping, duplicate SQL, creation movement and sequence writes. Preserve existing individual-save partial commits and error behavior.
-- Next: characterize adapter INSERT/UPDATE failures before extracting adapter persistence. Use isolated triggers, confirm database rows/movement/sequence/audit unchanged, and record actual DataRow state plus connection state; do not assume failure cleanup.
+- Verified implementation: 4758f51739271f88647eba58f2efddb4677e52a2, draft PR #10 stacked on #8; no merge/release.
+- Windows run [40917622281](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40917622281) passed; independent runs 40917622268 and 40917630572 passed. No implementation check is pending.
+- Separated: input/validation, barcode arithmetic, lazy 33-column mapping, duplicate lookup SQL, creation movement, sequence write and adapter Update/AcceptChanges. Preserve individual-save partial commits and failure states.
+- Next: characterize creation ID reads for an empty article table and NULL sequence before moving MAX(ID)/ARTICLE scalar queries. Existing populated fixture protects ID 42/ART000007. Preserve repeated ExecuteScalar calls and VB/DBNull behavior. Do not change generated identifier policy.
 
 ## Priority and baseline
 
@@ -231,3 +231,9 @@ Full Windows run [40916050829](https://github.com/hmasprod-a11y/LOGICA-Recovery/
 Extract the two identical save-only command-builder/adapter Update/DT.AcceptChanges blocks into Infrastructure.Catalogue.CatalogueRowPersistence.UpdateAndAccept. Preserve command-builder association/lifetime policy (no new disposal), adapter settings, Update-before-AcceptChanges and exception propagation to the original catch. Do not include delete/batch handlers or add transactions/rollback. The form retains new/edit row selection/population and all surrounding workflow.
 
 Pre-move success and both injected adapter failure fixtures protect this boundary. Full Windows regression is pending after extraction. Next audit: creation MAX(ID) and ARTICLE-number reads, preserving their repeated ExecuteScalar calls and VB/null behavior; cover empty and populated source tables before moving those reads.
+
+## Verified adapter persistence milestone
+
+Full Windows run 40917622281 succeeded after persistence extraction at 4758f51739271f88647eba58f2efddb4677e52a2. Both injected adapter failures retain Added/Modified rows and original database values/connection behavior; all 33 successful creation/edit values and previous catalogue/checkout/build/launcher checks passed. Independent rules passed. Revert that implementation commit to undo UpdateAndAccept extraction.
+
+Creation scalar audit: MAX(ID) query checks ExecuteScalar against DBNull then calls ExecuteScalar again for nonempty results, adds 1 using VB double conversion and checked rounded int conversion. ARTICLE query similarly reads twice when non-DBNull, formats ART plus six-digit VB number; DBNull produces string 0. Empty/missing sequence row can return null rather than DBNull, so treat missing-row behavior separately and do not infer it from NULL-column coverage. The original command is reused later for the sequence update.
