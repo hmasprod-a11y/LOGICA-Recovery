@@ -147,3 +147,11 @@ The main checkout writes now have explicit infrastructure boundaries for movemen
 Before moving final completion writes, add checkout-late-rollback. After establishing sale/refund baseline, inject a TABLE_NUM update failure after the attempted third payment has been inserted and the basket deleted. A nontransactional marker records PaymentRows=3 and BasketRows=0 at the failure boundary. Existing rollback assertions then require original payment sum, stock, header/journal, movement sum, sequence and retained basket to be restored.
 
 The earlier journal-failure scenario remains separate. The same exact isolated-database guard and scoped dialog watcher apply. This tests transactional completion after payment persistence; it does not certify physical printing or process crashes. Production code is unchanged pending runtime characterization.
+
+Late-failure baseline verified: full Windows run 40827404424 succeeded, including checkout-late-rollback. The test proves payment insertion and basket clearing occurred before the injected sequence-update failure, then verifies rollback restores previous financial records/stock and the basket.
+
+## Progress: checkout completion persistence boundary (2026-10-29)
+
+Move the exact final basket DELETE and ticket-sequence UPDATE into Infrastructure.Checkout.CheckoutCompletionWriter.Complete. Preserve statement order, SQL, legacy numeric ticket formatting and the caller's command/connection/transaction. The caller still prints before completion, commits immediately after it, and rolls back on failure. No transaction or connection lifetime is owned by the helper.
+
+Both journal-stage and late-stage rollback characterization passed before this extraction. Full Windows CI must verify this new structural move. Next: isolate the remaining stock mutation, then evaluate a cohesive application-service boundary; keep UI/payment/hardware behavior explicit.

@@ -12912,12 +12912,8 @@ public class Form_3_VENTE : Form
 						}
 					}
 					CREATION_IMPRESSION(RuntimeHelpers.GetObjectValue(sender));
-					val4.CommandText = "Delete  from TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "";
-					val4.Connection = Module1.cn_SQL;
-					val4.ExecuteNonQuery();
-					val4.CommandText = "UPDATE     TABLE_NUM    SET CL =  " + Strings.Format(Conversions.ToDouble(_N_TICKET_SOLDER) + 1.0, "000000") + "  ";
-					val4.Connection = Module1.cn_SQL;
-					val4.ExecuteNonQuery();
+					LOGICA.Infrastructure.Checkout.CheckoutCompletionWriter.Complete(val4, Module1.cn_SQL,
+						MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, _N_TICKET_SOLDER);
 					val5.Commit();
 					Module1.cn_SQL.Close();
 				}
