@@ -101,3 +101,11 @@ Selected a narrower persistence boundary: move the existing parameterized stock-
 Coverage before extraction: existing sale/refund movement sums and the successful injected journal-failure rollback test. Extend checkout assertions to verify article identity and exact ticket labels as well. Full Windows verification is required for this slice; physical printing is not exercised.
 
 Stock-movement slice verified: full Windows run 40822885285 passed, including sale/refund movement identity and ticket-reference checks, injected journal-failure rollback, build and all existing checks. Domain CI passed too. Revert commit c0c8c2b5c22c242813e180f57c78794e3e9f0b6a to undo this extraction. Next: inspect other persistence operations for a similarly bounded extraction without moving transaction ownership; do not combine parameterization or financial-behavior changes with structural moves.
+
+## Progress: ticket-header persistence boundary (2026-10-29)
+
+Extracted the existing TABLE_VENTES_ENTETE INSERT into Infrastructure.Checkout.TicketHeaderWriter, taking a plain TicketHeaderRecord rather than reading controls or Module1. The form captures the same header fields immediately before the write and retains the same date calculation, command/connection/transaction ownership, write order, errors and legacy SQL/culture conversion. SQL parameterization is deliberately outside this structural slice.
+
+Pre-existing sale/refund tests and the successful injected journal failure cover header persistence and rollback. Extended the fixture checks to verify exact ticket number, signed net amount, cashier, workstation and operation for both sale and refund. Harness compilation succeeded locally. Full branch Windows verification is required before claiming this extraction passes.
+
+Next boundary: journal INSERT ... SELECT or payment persistence, after enumerating the values read from the form. Keep the outer transaction in place; do not redesign printing or payment behavior incidentally.

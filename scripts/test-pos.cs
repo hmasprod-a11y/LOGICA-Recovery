@@ -163,6 +163,10 @@ class PosSmoke {
     }
     Eq(Scalar(connection,"SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=1"),quantity>0?8m:9m,"original checkout stock after "+(quantity>0?"sale":"return"));
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE"),quantity>0?1m:2m,"original checkout ticket persisted");
+    string expectedTicket=quantity>0?"000001":"000002";
+    string expectedOperation=quantity>0?"VENTE":"RETOUR REMBOURSEMENT";
+    Eq(Scalar(connection,"SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE TICKET='"+expectedTicket+"'"),quantity*12.5m,"header total and ticket preserved");
+    Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE TICKET='"+expectedTicket+"' AND CAISSIER='CI cashier' AND POSTE='CI_TEST' AND OPERATION='"+expectedOperation+"'"),1m,"header cashier workstation operation preserved");
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL"),quantity>0?1m:2m,"original checkout sales journal persisted");
     Eq(Scalar(connection,"SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS"),quantity>0?25m:12.5m,"original checkout cash payment/refund persisted");
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CI_TEST"),0m,"original checkout clears basket in database");

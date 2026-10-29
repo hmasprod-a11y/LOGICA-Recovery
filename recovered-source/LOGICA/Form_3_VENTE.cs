@@ -12838,9 +12838,20 @@ public class Form_3_VENTE : Form
 						}
 					}
 					DateTime dateTime = Conversions.ToDate(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).AddHours(Conversions.ToDouble("-" + Text_HEURE_RETARD.Text));
-					val4.CommandText = "INSERT  INTO   TABLE_VENTES_ENTETE               (ID_TICKET, TICKET, DATES , CAISSIER , ID_CLIENT , CODE_CLIENT, CLIENT, POSTE, Total_NET, OPERATION)         values           ('" + Text_ID_TICKET.Text + "' ,'" + _N_TICKET_SOLDER + "' ,'" + dateTime.ToString("yyyy-MM-dd") + "'  ,'" + ((ButtonBase)Button_CAISSIER).Text + "'   ,'" + Button_CLIENT._ID_Button + "', '" + Button_CLIENT._CODE_Button + "'  ,'" + ((ButtonBase)Button_CLIENT).Text + "'  ,'" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "'  , '" + Conversions.ToString(Conversions.ToDecimal(Text_TOTAL_NET.Text)) + "'  , '" + ((ButtonBase)Button_OPERATION).Text + "'    )        ";
-					val4.Connection = Module1.cn_SQL;
-					val4.ExecuteNonQuery();
+					LOGICA.Infrastructure.Checkout.TicketHeaderWriter.Write(val4, Module1.cn_SQL,
+						new LOGICA.Infrastructure.Checkout.TicketHeaderRecord
+						{
+							TicketId = Text_ID_TICKET.Text,
+							TicketNumber = _N_TICKET_SOLDER,
+							SaleDate = dateTime,
+							Cashier = ((ButtonBase)Button_CAISSIER).Text,
+							ClientId = Button_CLIENT._ID_Button,
+							ClientCode = Button_CLIENT._CODE_Button,
+							ClientName = ((ButtonBase)Button_CLIENT).Text,
+							Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
+							TotalText = Text_TOTAL_NET.Text,
+							Operation = ((ButtonBase)Button_OPERATION).Text
+						});
 					val4.CommandText = "INSERT  INTO   TABLE_VENTES_JOURNAL              (ID_TICKET, Ticket, Dates , Heure,ID_ARTICLE, Code, Article, Famille, PRIX_A, PRIX_MP, PRIX_V, Qté, Remise, Total_NET ,TAUX_TVA  , GROUPE,  Caissier, Vendeur , ID_CLIENT, CODE_CLIENT, CLIENT , POSTE, OPERATION, NOTES  ,NOTES_TYPE_PRIX  ,NOTES_MODE_P   )          SELECT        '" + Text_ID_TICKET.Text + "' ,'" + _N_TICKET_SOLDER + "', '" + dateTime.ToString("yyyy-MM-dd") + "', '" + dateTime.ToString("HH:mm:ss") + "', TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".ID_ARTICLE, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Code, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Article, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Famille, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".PRIX_A, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".PRIX_MP, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".PRIX_V, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Qté, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Remise, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".TOTAL_NET,  TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".TAUX_TVA,  TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".GROUPE,          '" + ((ButtonBase)Button_CAISSIER).Text + "' , '" + ((ButtonBase)Button_VENDEUR).Text + "' ,'" + Button_CLIENT._ID_Button + "', '" + Button_CLIENT._CODE_Button + "'  ,'" + ((ButtonBase)Button_CLIENT).Text + "'  ,'" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "'   , '" + ((ButtonBase)Button_OPERATION).Text + "' , ''       , '" + ((ButtonBase)Button_PRIX).Text + "'      , '" + text2 + "'       FROM TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "";
 					val4.Connection = Module1.cn_SQL;
 					val4.ExecuteNonQuery();
