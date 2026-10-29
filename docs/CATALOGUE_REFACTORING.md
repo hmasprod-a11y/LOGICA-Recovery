@@ -3,7 +3,7 @@
 ## Current resume checkpoint
 
 - Verified implementation: 51350bf1f6ab3fb1e974e5a4f1bfdd383e14080e, draft PR #10 stacked on #8; no merge/release.
-- Windows run [40925725827](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40925725827) and independent runs 40925725714/40925735920 passed. No implementation check remains pending.
+- Windows run [40925725827](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40925725827) and independent runs 40925725714/40925735920 passed. Implementation is verified; new original balance-branch fixtures below await Windows verification.
 - Creation application flow is now separated after the original duplicate guard. Rules, barcode, lazy mapping and individual database operations also remain separated. Preserve original partial commits and UI timing.
 - Next bounded audit: optional balance-code normalization in individual save. Characterize original numeric rejection and accepted formatting through isolated save fixtures before moving its VB numeric/Val/rounding/format rules. Keep image/group prerequisites and warnings in the form. No hardware or batch changes.
 
@@ -273,3 +273,9 @@ Full Windows original-handler regression is pending after service wiring. Fake-s
 Full Windows run 40925725827 succeeded after service wiring at 51350bf1f6ab3fb1e974e5a4f1bfdd383e14080e. Original creation/edit, all 33 values, duplicate guards, empty/NULL identifiers, four injected database failure boundaries, catalogue input/barcodes and prior checkout/build/launcher checks passed. Independent tests passed, including 63 creation-order/failure assertions. Revert that implementation commit to undo this service wiring.
 
 The next remaining individual-save rule worth auditing is optional balance-code formatting: after article apostrophe normalization, Combo_BALANCE == OUI first uses Versioned.IsNumeric(Text_CODE.Text), then rounds Conversion.Val of requested width, then formats Conversion.Val(code) with a VB-generated zero mask. Numeric rejection warns before image write/database persistence. Existing fixtures use NON, so do not claim coverage or extract this branch without new original-handler evidence. Do not substitute decimal parsing, pad-left or a new barcode policy.
+
+## Original balance-code branch fixtures
+
+Add catalogue-balance-reject and catalogue-balance-format through the original save handler with OUI enabled and width 6. Nonnumeric CI_NOT_NUMERIC must warn after article apostrophe normalization but before identity reads/row addition/persistence; numeric 123 must become 000123 and reach the unchanged creation workflow. Verify normalized controls, unchanged sentinel, row state, movement/sequence/refresh boundaries and all 33 persisted fields for the accepted case, including BALANCE=OUI and formatted code in the movement. Keep current/previous image names identical; no hardware or image write is involved.
+
+Production code remains unchanged. Local harness compilation passed; full Windows baseline is pending. Culture-dependent numeric/format edge cases require independent characterization before extracting the original VB rule.
