@@ -311,11 +311,43 @@ class PosSmoke {
   }
  }
 
+ static void CatalogueKeys(Assembly assembly) {
+  CultureInfo original=CultureInfo.CurrentCulture;
+  int assertions=0;
+  try {
+   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_2_ARTICLES",true))) {
+    string[] handlers={"TextBox8_KeyPress","TextBox13_KeyPress","TextBox16_KeyPress","TextBox17_KeyPress","Text_PRIX_MP_KeyPress","Text_PRIX_V_2_KeyPress","Text_PROMOTION_KeyPress","Text_PRIX_A_COLLECTION_KeyPress","Text_PRIX_V_COLLECTION_KeyPress","Text_QTE_KeyPress","Text_CODE_COLLECTION_KeyPress","Text_PRIX_QTE_KeyPress","Text_PRIX_QTE_MIN_KeyPress"};
+    char[] allowed={'0','1','2','3','4','5','6','7','8','9','\b','.','-'};
+    char[] blocked={'+',',',' ','a','e','\t','\r','\n','\0',(char)127,(char)0x0661,(char)0xff11};
+    foreach(string culture in new[]{"fr-MA","fr-FR","en-US"}) {
+     CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
+     foreach(string handler in handlers) {
+      var method=form.GetType().GetMethod(handler,Flags);
+      if(method==null)throw new Exception("Missing catalogue handler: "+handler);
+      foreach(char key in allowed) {
+       var e=new KeyPressEventArgs(key);method.Invoke(form,new object[]{form,e});assertions++;
+       if(e.Handled)throw new Exception(handler+" blocked a legacy allowed key");
+      }
+      foreach(char key in blocked) {
+       var e=new KeyPressEventArgs(key);method.Invoke(form,new object[]{form,e});assertions++;
+       if(!e.Handled)throw new Exception(handler+" accepted a legacy blocked key");
+      }
+      foreach(char key in new[]{'1','a'}) {
+       var e=new KeyPressEventArgs(key){Handled=true};method.Invoke(form,new object[]{form,e});assertions++;
+       if(!e.Handled)throw new Exception(handler+" cleared an existing handled state");
+      }
+     }
+    }
+   }
+   Console.WriteLine("PASS catalogue numeric key handlers: "+assertions+" assertions across 13 original handlers; no product writes");
+  } finally { CultureInfo.CurrentCulture=original; }
+ }
+
  [STAThread] static int Main(string[] args) {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
