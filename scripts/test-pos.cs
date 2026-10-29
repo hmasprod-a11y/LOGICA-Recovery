@@ -208,7 +208,7 @@ class PosSmoke {
     if(connection.State!=ConnectionState.Open)connection.Open();
     if(rejected) {
      if(settlement=="reject-invalid-total" ? senderEnabled : !senderEnabled)throw new Exception("Unexpected rejected-checkout sender state");
-     if(settlement=="reject-empty"?dismissedErrors!=0:dismissedErrors==0)throw new Exception("Unexpected rejection dialog behavior");
+     if((settlement=="reject-empty" || settlement=="reject-invalid-total")?dismissedErrors!=0:dismissedErrors==0)throw new Exception("Unexpected rejection dialog behavior");
      Eq(Scalar(connection,"SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=1"),10m,"rejection preserves stock");
      Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE"),0m,"rejection writes no header");
      Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL"),0m,"rejection writes no journal");
