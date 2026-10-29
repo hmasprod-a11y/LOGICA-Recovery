@@ -219,3 +219,7 @@ Move the exact negative-VENTE and positive-RETOUR conditions from Button_Click i
 Local checks passed: 96 guard assertions across fr-MA/fr-FR/en-US, including zero, operation variants, null/invalid inputs and legacy eager failures, plus all previous application/domain tests. Rejected-operation integration coverage was established before extraction. Full Windows CI remains required for this structural slice.
 
 The owner reiterated the priority: incremental organization of existing working LOGICA code, preserving behavior; TODO remains a selective reference. The existing automation remains scheduled every ten minutes.
+
+Amount-guard extraction verified: full Windows run 40841724505 passed, including negative-sale, positive-return and empty-grid rejection with zero persistence writes, plus all accepted checkout/payment/fractional/stock-disabled and rollback cases. Application/domain CI passed (96 guard and 48 posting assertions plus existing rules). Revert 50b87ac7eca4c7c833455123df7f538b03357437 to undo this slice.
+
+Automation configuration was checked: ACTIVE, ten-minute interval, existing priority-preserving prompt. No schedule change was needed. Next: inspect seller/client-required validation as its own UI boundary; characterize those dialogs before moving any related guard behavior.
