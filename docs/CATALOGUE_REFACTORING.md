@@ -3,7 +3,7 @@
 ## Current resume checkpoint
 
 - Verified implementation: 6ecfe1465a871a1414102989e7864edc5e8757f0, draft PR #10 stacked on #8; no merge/release.
-- Windows run [40911101295](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40911101295) passed; independent runs 40911101430 and 40911114519 passed. Implementation is verified; the new adapter INSERT-failure characterization below is pending Windows verification.
+- Windows run [40911101295](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40911101295) passed; independent runs 40911101430 and 40911114519 passed. Implementation is verified; adapter INSERT failure is verified and the new UPDATE-failure characterization below is pending Windows verification.
 - Separated: input/validation rules, barcode arithmetic, lazy 33-column mapping, duplicate SQL, creation movement and sequence writes. Preserve existing individual-save partial commits and error behavior.
 - Next: characterize adapter INSERT/UPDATE failures before extracting adapter persistence. Use isolated triggers, confirm database rows/movement/sequence/audit unchanged, and record actual DataRow state plus connection state; do not assume failure cleanup.
 
@@ -217,3 +217,9 @@ Adapter write failure is the next distinct boundary: before actual insert, the n
 Add catalogue-insert-failure with a strictly isolated BEFORE INSERT trigger on TABLE_ARTICLES installed after the sentinel seed. Invoke original creation through its error catch and require the injected warning, unchanged database/sentinel, no movement or sequence increment, no refresh/audit, and the mapped in-memory row retained as Added rather than accepted. Assert the adapter-owned connection is closed after failure; record this separately from the open connection observed for direct movement/sequence commands. Remove the fixture trigger explicitly.
 
 Production logic is unchanged. Harness compilation passed locally; these state expectations require full Windows verification before they are treated as observed baseline. Adapter UPDATE failure remains next, followed by a bounded Update/AcceptChanges extraction only after both failure paths pass.
+
+## Verified adapter INSERT failure; UPDATE fixture pending
+
+Full Windows run [40914441049](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40914441049) succeeded for 237d72bcbe3ca903a20ee7a1de9b1576ba8915f4. INSERT failure leaves database/sentinel unchanged, retains the populated Added row, closes the adapter-owned connection, and skips movement/sequence/audit/refresh. Independent run 40914450788 passed; prior checks passed.
+
+Add catalogue-update-failure after successful creation setup. A strictly isolated BEFORE UPDATE trigger rejects the original adapter update. Require all 33 persisted creation values unchanged, the mapped target row retained as Modified with its original Code version intact, unchanged other row/movement/sequence, adapter-owned closed connection, and no edit audit or aggregate refresh. Explicitly drop the fixture trigger afterward. Local harness compilation passed; full Windows UPDATE-failure baseline is pending. Production adapter code remains unchanged until that baseline passes.
