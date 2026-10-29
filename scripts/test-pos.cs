@@ -187,12 +187,9 @@ class PosSmoke {
      }
      try {
       using(var sender=new Button(){Name="CI_CASH_CHECKOUT"}) {
-       if(settlement=="reject-invalid-total") {
-        bool invalidCast=false;
-        try { sale.GetType().GetMethod("Button_Click",Flags).Invoke(sale,new object[]{sender,EventArgs.Empty}); }
-        catch(TargetInvocationException ex) { invalidCast=ex.InnerException is InvalidCastException; if(!invalidCast)throw; }
-        if(!invalidCast)throw new Exception("Expected original invalid displayed-total exception");
-       } else sale.GetType().GetMethod("Button_Click",Flags).Invoke(sale,new object[]{sender,EventArgs.Empty});
+       // Original Button_Click catches conversion failures, restores Enabled and
+       // displays its own VB error dialog. The scoped watcher dismisses that dialog.
+       sale.GetType().GetMethod("Button_Click",Flags).Invoke(sale,new object[]{sender,EventArgs.Empty});
        senderEnabled=sender.Enabled;
       }
      } finally {
@@ -207,7 +204,7 @@ class PosSmoke {
     }
     if(connection.State!=ConnectionState.Open)connection.Open();
     if(rejected) {
-     if(settlement=="reject-invalid-total" ? senderEnabled : !senderEnabled)throw new Exception("Unexpected rejected-checkout sender state");
+     if(!senderEnabled)throw new Exception("Rejected checkout did not re-enable sender");
      if(settlement=="reject-empty"?dismissedErrors!=0:dismissedErrors==0)throw new Exception("Unexpected rejection dialog behavior");
      Eq(Scalar(connection,"SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=1"),10m,"rejection preserves stock");
      Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE"),0m,"rejection writes no header");
