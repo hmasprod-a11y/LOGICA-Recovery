@@ -14413,25 +14413,9 @@ public class Form_2_ARTICLES : Form
 						return;
 					}
 					MySqlCommand val3 = new MySqlCommand();
-					val3.CommandText = "SELECT MAX(ID) From TABLE_ARTICLES ";
-					val3.Connection = Module1.cn_SQL;
-					val3.CommandType = CommandType.Text;
-					if (Module1.cn_SQL.State != ConnectionState.Open)
-					{
-						Module1.cn_SQL.Open();
-					}
-					int num = ((val3.ExecuteScalar() == DBNull.Value) ? 1 : ((int)Math.Round(Conversions.ToDouble(val3.ExecuteScalar()) + 1.0)));
-					Module1.cn_SQL.Close();
-					val3.CommandText = "Select ARTICLE from TABLE_NUM  where ID = 0 ";
-					val3.Connection = Module1.cn_SQL;
-					val3.CommandType = CommandType.Text;
-					if (Module1.cn_SQL.State != ConnectionState.Open)
-					{
-						Module1.cn_SQL.Open();
-					}
-					string text = ((val3.ExecuteScalar() != DBNull.Value) ? ("ART" + Strings.Format(Conversions.ToDouble(val3.ExecuteScalar()), "000000")) : Conversions.ToString(0));
-					Module1.cn_SQL.Close();
-					DT.Rows.Add();
+                    int num = LOGICA.Infrastructure.Catalogue.CatalogueCreationIdentityReader.ReadNextNumericId(val3, Module1.cn_SQL);
+                    string text = LOGICA.Infrastructure.Catalogue.CatalogueCreationIdentityReader.ReadArticleId(val3, Module1.cn_SQL);
+                    DT.Rows.Add();
 					int index = DT.Rows.Count - 1;
 					LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.PopulateNew(DT.Rows[index], num, text,
                         new LOGICA.Presentation.Catalogue.CatalogueFormRowInput(this));

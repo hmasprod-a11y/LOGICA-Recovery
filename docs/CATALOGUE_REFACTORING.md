@@ -245,3 +245,11 @@ Add isolated catalogue-create-empty, catalogue-create-null-sequence and catalogu
 Require empty MAX(ID) to produce numeric ID 1, SQL NULL ARTICLE to produce string ID_ARTICLE 0, all 33 product values, matching movement identity, accepted row, closed connection and aggregate refresh. Preserve SQL NULL after the unchanged sequence increment (NULL+1 remains NULL). Existing populated fixture still requires ID 42/ART000007 and sequence 8. Missing sequence row is deliberately not conflated with a NULL column.
 
 Production scalar reads remain unchanged. Harness compilation passed locally; Windows runtime evidence for these edge expectations is pending before extraction.
+
+## Verified scalar edges and identity-reader extraction
+
+Full Windows run [40920925847](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40920925847) succeeded for 8224f4f61c01b9456ad07ba664ae9ee105aa600d. Empty article, SQL NULL sequence and combined cases passed alongside the populated baseline, complete mapping, failures and all prior checks. Independent run 40920938953 passed.
+
+Move the two creation scalar queries into Infrastructure.Catalogue.CatalogueCreationIdentityReader, retaining the original caller-created command for both reads and the later sequence update. Preserve SQL/CommandType, repeated ExecuteScalar evaluations, DBNull comparisons, VB formatting/conversions, checked rounded int cast, separate open/close boundaries and original no-finally error behavior. Do not cache scalar results or alter identifier generation.
+
+Full Windows regression is pending after extraction. Missing sequence row, numeric overflow and scalar database errors remain unclaimed boundaries; exact legacy expressions are retained. No new standalone SQL/conversion mirror tests were added because original-handler database fixtures protect the moved paths.
