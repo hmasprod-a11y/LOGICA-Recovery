@@ -3,10 +3,10 @@
 ## Current checkpoint
 
 - Draft [PR #11](https://github.com/hmasprod-a11y/LOGICA-Recovery/pull/11), branch refactor/stock-movement-search, based on checkout PR #8 and independent of catalogue PR #10.
-- Verified implementation: aa707d0d15cafa00ed5c84d3a27ba149e60fd435.
-- [Windows run 40959202953](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40959202953) passed; independent runs 40959202967/40959211510 passed. Implementation and original-handler failure fixture are verified.
-- Query/adapter construction and date-prefix assembly are separated from Form_6_MOUVEMENTS_STOCK. Original UI/catch, DT clearing/binding, DA assignment before Fill and connection ownership remain unchanged.
-- Next: characterize query failure after a prior successful result, preserving cleared DT, newly assigned DA, filter side effect and warning/connection state before further orchestration changes.
+- Verified implementation: a7e9c976d74fa43e1dbf17d09500497dba81c8e3.
+- [Windows run 40962003804](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40962003804) and independent runs 40962003801/40962009645 passed. No implementation verification remains pending.
+- Search branch ordering is separated into Application.Inventory; original form context preserves DT/DA mutation, object prefix and query factories. Query/refresh SQL construction is already separated.
+- Next bounded audit: refresh ordering (sender Focus, clear search with reentrant original TextChanged, search Focus, clear/reload all, bind). Write independent action/failure ordering tests before moving it; retain the original-handler refresh fixture and original catch.
 
 ## Priority and scope
 
@@ -63,3 +63,7 @@ Next extraction can move only Picture_FIND_Click branch ordering into Applicatio
 Before rewiring the handler, StockMovementSearchService passed 89 standalone assertions locally: date branch avoids text reads; null/empty text rebinds old results; whitespace searches; optional prefix ordering; original second exact-checkbox read (including a changed second value); case-sensitive DATES comparison; first getter/load/bind exception identity and no later work.
 
 Move only branch ordering into ApplicationLayer.Inventory with a narrow context. A nested form context retains private DT/DA assignments and exact query-factory calls, clears before adapter creation, assigns before Fill, updates the object prefix at the same point and binds only after successful execution. Outer UI catch, refresh, original events and connection ownership remain in place. Independent runner includes the new Application/Inventory folder. Full original-handler Windows regression is pending after wiring.
+
+## Verified search application milestone
+
+Windows run 40962003804 passed after service wiring at a7e9c976d74fa43e1dbf17d09500497dba81c8e3, including all original search/refresh/failure paths and existing checkout/build/launcher checks. Independent tests passed, including 89 branch/read-order/exception assertions. Revert that implementation commit to undo search-flow extraction. No stock mutation behavior was changed or claimed by this read-model slice.
