@@ -36,3 +36,9 @@ Next: extract the shared character filter into a UI-independent Presentation/Inp
 Move the exact repeated character predicate into Presentation.Input.NumericEntryFilter.ShouldBlock, which has no WinForms dependency. All 13 handlers retain their conditional Handled=true assignment, so an already-handled event remains handled. Preserve VB binary character comparison, editing keys and current blocked characters; do not add locale-aware comma acceptance or complete-number validation.
 
 Add standalone tests for allowed editing/digit keys, ASCII boundaries, blocked non-ASCII digits and three cultures. Include Presentation/Input sources in the independent rules runner. Existing direct-handler fixture remains the integration safeguard. Full Windows runtime verification is required after extraction.
+
+## Verified shared filter
+
+Full Windows run 40853349901 succeeded after extraction. All 13 original handlers passed the same 1,053 assertions; standalone filter tests passed 90 assertions and all prior application/domain tests passed. Existing checkout/build/launcher checks also passed. Revert fb94ea99a4275ec1f09fd511f084c7d9d0450c75 to undo this extraction.
+
+Next: map Button_SAVE_Click validation, normalization and persistence stages, then characterize rejected-input behavior before moving a save rule or database operation. Batch collection saving remains a separate higher-risk boundary.
