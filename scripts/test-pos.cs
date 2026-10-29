@@ -735,10 +735,11 @@ class PosSmoke {
   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_2_ARTICLES",true))) {
    var sizes=(DataGridView)Get(form,"DataGridView_TAILLES");sizes.AllowUserToAddRows=false;sizes.Rows.Clear();
    int size=sizes.Rows.Add();sizes.Rows[size].Cells["CODE_TAILLE"].Value="01";sizes.Rows[size].Cells["TAILLE"].Value="M";
-   sizes.CurrentCell=sizes.Rows[size].Cells[0];
+   // Resource-defined code columns can be hidden; select the display column in the fixture.
+   sizes.Columns["TAILLE"].Visible=true;sizes.CurrentCell=sizes.Rows[size].Cells["TAILLE"];
    var colors=(DataGridView)Get(form,"DataGridView_COULEURS");colors.AllowUserToAddRows=false;colors.Rows.Clear();
    int color=colors.Rows.Add();colors.Rows[color].Cells["CODE_COULEUR"].Value="02";colors.Rows[color].Cells["COULEUR"].Value="Blue";
-   colors.CurrentCell=colors.Rows[color].Cells[0];
+   colors.Columns["COULEUR"].Visible=true;colors.CurrentCell=colors.Rows[color].Cells["COULEUR"];
    var grid=(DataGridView)Get(form,"DataGrid_COLLECTION");grid.AllowUserToAddRows=false;grid.Rows.Clear();
    SetText(form,"Text_CODE_COLLECTION","221234");SetText(form,"Text_ARTICLE_COLLECTION"," CI's variant ");
    SetText(form,"Text_PRIX_A_COLLECTION","10");SetText(form,"Text_PRIX_V_COLLECTION","20");SetText(form,"Text_QTE_COLLECTION","1.25");

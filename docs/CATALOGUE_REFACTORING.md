@@ -352,3 +352,9 @@ Add collection-variant-insert invoking unchanged Button_INSERER_Click. Original 
 Between valid inserts, retry the same size/colour with quantity 2.5 and require the original duplicate warning, unchanged row/total and pending quantity left at 2.5. No database calls, transaction or SendKeys tail are involved in this method. Production source remains unchanged.
 
 Local harness compilation passed; full Windows original-handler baseline is pending before reusing CatalogueBarcodeChecksum in this second caller. Malformed size/colour/quantity paths are not claimed by this valid-payload slice.
+
+## Variant fixture setup repair
+
+Windows run 40941830978 failed only collection-variant-insert during fixture selection: CurrentCell cannot target an invisible cell. The failure occurred in the harness before Button_INSERER_Click; resource-defined first code columns were selected by index. Existing catalogue/checkout cases passed; independent run 40941838830 passed. No production defect or checksum regression is established by this setup failure.
+
+Select explicit visible TAILLE/COULEUR display columns for the fixture's current size/colour rows. Keep code values in their original named columns for the handler's reads. Production source remains unchanged; rerun the justified Windows baseline with this fixture correction before extraction.
