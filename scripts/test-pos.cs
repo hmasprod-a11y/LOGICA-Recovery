@@ -107,7 +107,7 @@ class PosSmoke {
    var grid=(DataGridView)Get(sale,"DataGridView1");grid.AllowUserToAddRows=false;
    foreach(var n in new[]{"Check_CHOIX_VENDEUR","Check_CHOIX_CLIENT","Check_ACCES_MODEP","Check_ACCES_RFID"})Get(sale,n).GetType().GetProperty("Checked").SetValue(Get(sale,n),false,null);
    Get(sale,"Check_STOCK").GetType().GetProperty("Checked").SetValue(Get(sale,"Check_STOCK"),true,null);
-   SetText(sale,"Combo_PORT","");SetText(sale,"Text_HEURE_RETARD","0");SetText(sale,"Text_PRINTER_SOLDER","0");SetText(sale,"Button_CAISSIER","CI cashier");
+   SetText(sale,"Combo_PORT","");SetText(sale,"Text_HEURE_RETARD","0");SetText(sale,"Text_PRINTER_SOLDER","0");SetText(sale,"Button_CAISSIER","CI cashier");SetText(sale,"Button_VENDEUR","CI vendor");SetText(sale,"Button_PRIX","PRIX_1");
     connection.Open();
     Sql(connection,"INSERT INTO TABLE_CI_TEST ("+columns+",PRINTER,PRINTER_DUPLICATA) VALUES ('1','CI001','CI product','Test','5','5','12.5','"+quantity+"','0','"+(quantity*12.5m).ToString(CultureInfo.InvariantCulture)+"','0','','0','0')");
     connection.Close();
@@ -168,6 +168,10 @@ class PosSmoke {
     Eq(Scalar(connection,"SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE TICKET='"+expectedTicket+"'"),quantity*12.5m,"header total and ticket preserved");
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE TICKET='"+expectedTicket+"' AND CAISSIER='CI cashier' AND POSTE='CI_TEST' AND OPERATION='"+expectedOperation+"'"),1m,"header cashier workstation operation preserved");
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL"),quantity>0?1m:2m,"original checkout sales journal persisted");
+    Eq(Scalar(connection,"SELECT TOTAL_NET FROM TABLE_VENTES_JOURNAL WHERE Ticket='"+expectedTicket+"'"),quantity*12.5m,"journal signed line total preserved");
+    Eq(Scalar(connection,"SELECT Qté FROM TABLE_VENTES_JOURNAL WHERE Ticket='"+expectedTicket+"'"),quantity,"journal signed quantity preserved");
+    Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE Ticket='"+expectedTicket+"' AND Code='CI001' AND Article='CI product' AND PRIX_V='12.5' AND Remise='0'"),1m,"journal basket fields copied");
+    Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE Ticket='"+expectedTicket+"' AND Caissier='CI cashier' AND Vendeur='CI vendor' AND POSTE='CI_TEST' AND OPERATION='"+expectedOperation+"' AND NOTES_TYPE_PRIX='PRIX_1' AND NOTES_MODE_P='ESPECES;'"),1m,"journal checkout context preserved");
     Eq(Scalar(connection,"SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS"),quantity>0?25m:12.5m,"original checkout cash payment/refund persisted");
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CI_TEST"),0m,"original checkout clears basket in database");
     Eq(Scalar(connection,"SELECT CL FROM TABLE_NUM WHERE ID=0"),quantity>0?2m:3m,"original checkout increments ticket sequence");

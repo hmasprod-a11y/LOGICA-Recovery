@@ -111,3 +111,9 @@ Pre-existing sale/refund tests and the successful injected journal failure cover
 Next boundary: journal INSERT ... SELECT or payment persistence, after enumerating the values read from the form. Keep the outer transaction in place; do not redesign printing or payment behavior incidentally.
 
 Ticket-header slice verified: full Windows run 40823805091 succeeded. New assertions confirmed sale total 25 and refund total -12.5 with exact ticket/cashier/workstation/operation fields; checkout-rollback and all existing checks passed. Domain CI succeeded. Revert a51a5bd18f0cc2419a2600cd14d0d00cc28bd7c0 to undo this extraction.
+
+## Progress: sales-journal persistence boundary (2026-10-29)
+
+Moved the original TABLE_VENTES_JOURNAL INSERT ... SELECT into Infrastructure.Checkout.TicketJournalWriter. It receives a plain journal record captured at the existing call site and uses the caller's existing command/connection/transaction. Basket-table selection, copied columns, date/time formatting, seller/client/price/payment metadata, SQL and error propagation remain unchanged. The outer form still orchestrates stock -> header -> journal -> payments -> printing -> basket/sequence -> commit.
+
+Existing successful checkout and mid-journal failure/rollback checks protect the boundary. Added explicit sale/refund assertions for signed journal total and quantity, copied product/price/discount fields, cashier/seller/workstation/operation and price/payment notes. Full Windows CI is required for the new slice; no physical printing or all-payment-mode claim is made.
