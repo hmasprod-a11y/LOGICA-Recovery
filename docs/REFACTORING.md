@@ -299,3 +299,7 @@ Missing-result baseline verified: full Windows run 40849003012 passed checkout-m
 Move the original DataTable/DataAdapter query/fill block into Infrastructure.Checkout.StockAvailabilityLookup.FindByCode. Keep exact SQL construction, raw code input, result columns/types and DataAdapter-managed connection behavior. The helper has no UI/Module1 dependency and does not add transaction ownership, error handling, parameterization or normalization.
 
 The form retains dt1 iteration, configured gate, missing-row short-circuit, comparison, warning and early return. Existing configured shortage/exact-stock and newly-verified missing-result cases cover the boundary. Full Windows verification is required after extraction.
+
+Stock-lookup extraction verified: full Windows run 40849706145 passed missing-result acceptance, configured shortage rejection/exact-stock acceptance and every existing check. Application/domain CI passed. Revert 22b74f38a350eadcdd3b767dc949079462c1feda to undo lookup extraction.
+
+Next: evaluate a small application stock-validation service using a lookup interface and deferred dt1 row mapping, keeping the configured gate and warning UI in the form. Preserve missing-result skip, first-shortage early return, raw object comparison and lookup ordering; cover those with standalone service tests before moving the loop.
