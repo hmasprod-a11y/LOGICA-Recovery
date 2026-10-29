@@ -1,5 +1,12 @@
 # Catalogue code organization
 
+## Current resume checkpoint
+
+- Verified implementation: 6ecfe1465a871a1414102989e7864edc5e8757f0, draft PR #10 stacked on #8; no merge/release.
+- Windows run [40911101295](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40911101295) passed; independent runs 40911101430 and 40911114519 passed. No product verification remains pending at this checkpoint.
+- Separated: input/validation rules, barcode arithmetic, lazy 33-column mapping, duplicate SQL, creation movement and sequence writes. Preserve existing individual-save partial commits and error behavior.
+- Next: characterize adapter INSERT/UPDATE failures before extracting adapter persistence. Use isolated triggers, confirm database rows/movement/sequence/audit unchanged, and record actual DataRow state plus connection state; do not assume failure cleanup.
+
 ## Priority and baseline
 
 LOGICA is the working primary product. Organize existing code incrementally while preserving behavior; TODO POS is only a selective reference. Do not add features, migrate the framework or alter shop data.
@@ -198,3 +205,9 @@ Full Windows run [40910202833](https://github.com/hmasprod-a11y/LOGICA-Recovery/
 Extract only the article sequence update into Infrastructure.Catalogue.CatalogueSequenceWriter.AdvanceArticle. Reuse the original MySqlCommand, preserve open-before-command assignment, exact SQL including absence of WHERE, execute-before-close and open connection on failure. The form still calls it after movement completion and before success warning/refresh. No transaction, disposal or cleanup change.
 
 Success and injected sequence-failure fixtures passed before this move. Full Windows regression is pending after extraction. The current fixture contains one sequence row; do not claim multi-row coverage even though the unchanged legacy SQL updates every row. Adapter persistence failures and creation ID reads remain separate boundaries.
+
+## Verified sequence writer milestone
+
+Full Windows run 40911101295 succeeded after sequence extraction at 6ecfe1465a871a1414102989e7864edc5e8757f0. Both injected movement and sequence failures retain their documented original partial-commit/connection behavior; successful creation/edit, duplicate rejection, all catalogue and checkout/build/launcher checks passed. Independent rules passed. Revert that implementation commit to undo sequence extraction.
+
+Adapter write failure is the next distinct boundary: before actual insert, the new row has already been added/populated; before actual update, the selected row has been changed in memory. A database rejection may therefore leave Added/Modified data in DT even though no row was persisted. Characterize actual states, deferred errors, connection closure and absence of success/audit/movement/sequence effects before relocating adapter Update/AcceptChanges. Keep fixture trigger cleanup explicit and never introduce rollback semantics into this refactor.
