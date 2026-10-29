@@ -43,3 +43,9 @@ Before changing the predicate, CashCountInputRules passed 117 standalone asserti
 ## Verified counted-cash rules milestone
 
 Windows run 40966560485 passed after input-rule extraction, with all original LostFocus scenarios and prior checkout/build/launcher checks. Independent tests passed, including 759 arithmetic and 117 input-rule assertions. No cash-session/financial mutation path is covered or changed. Revert 532dbe84717eb88d2ed67b1966bec7930ebfc6e6 to undo the latest rule extraction.
+
+## Counted-cash orchestration extraction pending
+
+Before wiring the handler, CashRecountService passed 214 standalone assertions for background/eager normalization/lazy denomination calculation/total display/payment scan order, exact ESPECES matches, empty grid, first getter/action failure identity and retained partial row updates.
+
+Move only recount ordering into ApplicationLayer.Cash using a narrow context. A nested form context retains original late-bound background/text operations, denomination getters, VB FormatNumber for total and each matching row separately, checked last-index snapshot and raw payment-mode access. No eager snapshot, cached row formatting, financial Load/writes or new validation. Independent runner includes Application/Cash. Full original-handler Windows regression is pending after wiring.

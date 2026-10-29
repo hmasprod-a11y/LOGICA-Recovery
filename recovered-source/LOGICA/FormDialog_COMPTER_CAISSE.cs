@@ -3102,37 +3102,54 @@ public class FormDialog_COMPTER_CAISSE : Form
 		NewLateBinding.LateSet(sender, null, "BackColor", new object[1] { Color.Yellow }, null, null);
 	}
 
-	private void TextBox_LostFocus(object sender, EventArgs e)
-	{
-		NewLateBinding.LateSet(sender, null, "BackColor", new object[1] { Color.White }, null, null);
-		if (LOGICA.Domain.CashCountInputRules.ShouldReset(() => NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null)))
-		{
-			NewLateBinding.LateSet(sender, null, "text", new object[1] { 0 }, null, null);
-		}
-		Func<string>[] counts = new Func<string>[] { () => Text_200.Text, () => Text_100.Text, () => Text_50.Text, () => Text_20.Text, () => Text_10.Text, () => Text_5.Text, () => Text_2.Text, () => Text_1.Text, () => Text_0_5.Text, () => Text_0_2.Text, () => Text_0_1.Text };
-		decimal num = LOGICA.Domain.CashDenominationTotal.Calculate(index => counts[index]());
-		Text_TOTAL_ESPECES.Text = Strings.FormatNumber(num);
-		checked
-		{
-			int num2 = DataGridView1.Rows.Count - 1;
-			int num3 = 0;
-			while (true)
-			{
-				int num4 = num3;
-				int num5 = num2;
-				if (num4 <= num5)
-				{
-					if (Operators.ConditionalCompareObjectEqual(DataGridView1.Rows[num3].Cells["MODE_P"].Value, "ESPECES", TextCompare: false))
-					{
-						DataGridView1.Rows[num3].Cells["CAISSE"].Value = Strings.FormatNumber(num);
-					}
-					num3++;
-					continue;
-				}
-				break;
-			}
-		}
-	}
+	private sealed class CashRecountContext : LOGICA.ApplicationLayer.Cash.ICashRecountContext
+    {
+        private readonly FormDialog_COMPTER_CAISSE form;
+        private readonly object sender;
+        public CashRecountContext(FormDialog_COMPTER_CAISSE form, object sender) { this.form = form; this.sender = sender; }
+        public void ResetBackground()
+        {
+            NewLateBinding.LateSet(sender, null, "BackColor", new object[1] { Color.White }, null, null);
+        }
+        public object ReadSenderText()
+        {
+            return NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null);
+        }
+        public void ResetSender()
+        {
+            NewLateBinding.LateSet(sender, null, "text", new object[1] { 0 }, null, null);
+        }
+        public string ReadDenomination(int index)
+        {
+            switch (index)
+            {
+                case 0: return form.Text_200.Text;
+                case 1: return form.Text_100.Text;
+                case 2: return form.Text_50.Text;
+                case 3: return form.Text_20.Text;
+                case 4: return form.Text_10.Text;
+                case 5: return form.Text_5.Text;
+                case 6: return form.Text_2.Text;
+                case 7: return form.Text_1.Text;
+                case 8: return form.Text_0_5.Text;
+                case 9: return form.Text_0_2.Text;
+                case 10: return form.Text_0_1.Text;
+                default: throw new ArgumentOutOfRangeException("index");
+            }
+        }
+        public void DisplayTotal(decimal total) { form.Text_TOTAL_ESPECES.Text = Strings.FormatNumber(total); }
+        public int LastPaymentIndex { get { return checked(form.DataGridView1.Rows.Count - 1); } }
+        public object ReadPaymentMode(int index) { return form.DataGridView1.Rows[index].Cells["MODE_P"].Value; }
+        public void DisplayCashRow(int index, decimal total)
+        {
+            form.DataGridView1.Rows[index].Cells["CAISSE"].Value = Strings.FormatNumber(total);
+        }
+    }
+
+    private void TextBox_LostFocus(object sender, EventArgs e)
+    {
+        LOGICA.ApplicationLayer.Cash.CashRecountService.Recount(new CashRecountContext(this, sender));
+    }
 
 	private void Butt_Click(object sender, EventArgs e)
 	{
