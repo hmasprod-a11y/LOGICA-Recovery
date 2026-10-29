@@ -62,3 +62,9 @@ Next bounded slice: characterize the exact VB Trim/empty predicate independently
 Extract only the first two Button_SAVE_Click predicates into Domain.CatalogueRequiredFields.IsMissingIdentifier. Retain VB Strings.Trim and binary empty comparison verbatim; warning text, evaluation order, returns, normalization and all later checks stay in the form. No persistence mapping changes.
 
 The original-handler early rejection baseline passed before moving these predicates. Independent characterization passed locally: 393,243 assertions across fr-MA/fr-FR/en-US, with null/empty/spaces, literal identifiers, every UTF-16 code unit alone and space-padded against the legacy expression. Existing independent tests passed. Full Windows original-handler, checkout and build verification is pending for this extraction.
+
+## Verified identifier extraction
+
+Full Windows run [40883154526](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40883154526) succeeded for d7af8e8fcf2f2c22650ccf74d08de599b457d0c3. Original catalogue save warnings and no-write sentinels passed after extraction, as did numeric handler, checkout, build and launcher checks. Independent rules runs 40883154083 and 40883163814 also succeeded. Revert d7af8e8fcf2f2c22650ccf74d08de599b457d0c3 to undo this extraction.
+
+Next candidate audited: promotion guard uses short-circuit OR between raw-empty comparison and VB decimal conversion >100. Negative values are currently accepted by this predicate, exactly 100 is accepted, and malformed nonempty values throw through the handler's existing catch. Do not normalize text, add a lower bound or change conversion culture. Before extracting it, extend the original-handler fixture through preceding required fields to cover empty/over-100 rejection and retain pre-normalization/no-write evidence. Accepted values and later image/group/save branches need a separate bounded fixture; this milestone does not verify successful product persistence.
