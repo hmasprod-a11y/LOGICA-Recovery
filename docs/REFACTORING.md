@@ -237,3 +237,7 @@ Chooser-routing baseline verified: full Windows run 40842634098 succeeded for se
 Move the exact VB empty-display-name comparison into Domain.CheckoutSelectionRules.IsMissing and use it at the three original chooser guard sites. Keep the checkbox/sender conditions outside the helper so their short-circuit behavior and property-read timing remain unchanged. Chooser opening, customer origin label, sender re-enabling and early returns stay in the form.
 
 Local tests passed: 30 selection assertions across three cultures, preserving null/empty recognition and accepting whitespace, zero-like and other untrimmed names as before, plus all previous rules/application tests. Full Windows integration CI remains required after extraction. This does not change chooser data loading or record-selection behavior.
+
+Selection-rule extraction verified: full Windows run 40843312672 passed seller-required, client-required and credit-client routing plus every existing accepted/rejected/payment/stock/failure case, build and launcher checks. Application/domain CI passed, including 30 selection assertions. Revert ca6e5a076782fba80aa9da6cf9089c52124f49b5 to undo the rule extraction.
+
+Next bounded candidate: inspect the basket-vs-database total consistency check and characterize its rejection path before separating it. Preserve legacy rounding/conversion, connection checks and UI messages; avoid introducing precision or validation changes as structural cleanup.
