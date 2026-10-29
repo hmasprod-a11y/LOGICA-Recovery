@@ -372,3 +372,9 @@ Full Windows original-handler regression is pending after reuse. Existing indepe
 Full Windows run 40944010253 succeeded after checksum reuse at 4e52a89910db459e3be5582e462506c966445216. Original variant insertion, fractional/negative quantities, duplicate warning, totals/reset/selection and all prior catalogue/checkout/build/launcher checks passed. Independent rules passed. Revert that implementation commit to undo the second checksum caller change.
 
 Next quantity-total audit: Button_CALC_DOC_Click snapshots the last grid index, starts decimal zero, and applies Conversions.ToDecimal(Operators.AddObject(total, raw cell value)) for each row. It then uses FLOUSS for display and reads current grid row count. Preserve raw-object VB conversion and exception timing; do not replace it with a decimal cast/LINQ Sum or move the later count read ahead of accumulation. A no-database original-handler fixture can characterize empty, numeric and string quantity cells before extraction.
+
+## Original collection quantity-total fixture
+
+Add collection-quantity-totals invoking unchanged Button_CALC_DOC_Click for an empty grid, fractional/negative decimals, numeric strings, mixed integral types and a zero cell. Require both total/count labels to replace sentinels with expected values, and every raw cell value and row count to remain unchanged. No database writes or keyboard actions are involved.
+
+Harness compilation passed locally. Full Windows baseline is pending before moving the accumulation loop. DBNull/malformed cells and deferred read exceptions need independent characterization against the exact legacy expression; do not infer blanket decimal-cast behavior from these valid cases. FLOUSS and the later current-row-count read must stay at their original UI points.
