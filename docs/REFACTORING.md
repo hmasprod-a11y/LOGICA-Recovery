@@ -119,3 +119,11 @@ Moved the original TABLE_VENTES_JOURNAL INSERT ... SELECT into Infrastructure.Ch
 Existing successful checkout and mid-journal failure/rollback checks protect the boundary. Added explicit sale/refund assertions for signed journal total and quantity, copied product/price/discount fields, cashier/seller/workstation/operation and price/payment notes. Full Windows CI is required for the new slice; no physical printing or all-payment-mode claim is made.
 
 Journal slice verified: full Windows run 40824761557 succeeded, including new journal signed-value/context/copy assertions, checkout-rollback and all existing checks. Domain CI succeeded. Revert d830affcb04d98770ead4fdae7a68a208ba0c95f to undo this extraction. Next: enumerate payment branches and add mixed-payment/change/credit coverage before moving payment persistence; cash-sale/refund coverage alone is insufficient for all branches.
+
+## Progress: payment persistence branch characterization (2026-10-29)
+
+Before moving payment writes, add checkout-mixed (15 card + 10 cash), checkout-change (30 tendered / -5 cash change on a 25 sale), and checkout-credit (CREDIT operation persists without payment rows). Each scenario uses the real checkout handler and verifies existing stock/header/journal/sequence behavior plus payment amounts and journal notes.
+
+Mixed/change scenarios supply an accepted payment-dialog fixture: original Load/Shown/Activated and grid calculation callbacks are detached for this fixture instance, rows are seeded, and the modal is closed via its own Shown event. This deliberately covers checkout persistence after acceptance, not payment-dialog calculation/validation/interaction. The credit case starts from the accepted CREDIT operation and does not cover the human credit-confirmation dialog.
+
+Production code is unchanged in this slice. Harness compilation passed locally; full Windows runtime checks remain required. Only after those branches are characterized should the payment writer be extracted without changing transaction ownership or SQL.

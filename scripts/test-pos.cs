@@ -69,7 +69,36 @@ class PosSmoke {
   },IntPtr.Zero);
   return dismissed;
  }
- static void Checkout(Assembly assembly,bool rollbackProbe=false) {
+ static Form PreparePaymentFixture(object forms,Type module,decimal total,string settlement) {
+  var dialog=(Form)Get(forms,"FormDialog_calc");
+  // Exercise checkout persistence with an accepted dialog fixture, not payment-dialog UX.
+  var events=(EventHandlerList)typeof(Component).GetProperty("Events",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(dialog,null);
+  foreach(var keyName in new[]{"EVENT_LOAD","EVENT_SHOWN","EVENT_ACTIVATED"}) {
+   var field=typeof(Form).GetField(keyName,BindingFlags.Static|BindingFlags.NonPublic);
+   if(field!=null){var key=field.GetValue(null);events.RemoveHandler(key,events[key]);}
+  }
+  var grid=(DataGridView)Get(dialog,"DataGridView_CALC");
+  var changed=(DataGridViewCellEventHandler)Delegate.CreateDelegate(typeof(DataGridViewCellEventHandler),dialog,dialog.GetType().GetMethod("DataGridView1_CellValueChanged",Flags));
+  grid.CellValueChanged-=changed;
+  grid.AllowUserToAddRows=false;grid.Rows.Clear();
+  SetText(dialog,"Text_TOTAL_NET",total.ToString(CultureInfo.InvariantCulture));
+  if(settlement=="mixed") {
+   grid.Rows.Add(new object[]{15m,15m,0m,"CARTE",null});
+   grid.Rows.Add(new object[]{10m,10m,0m,"ESPECES",null});
+   SetText(dialog,"Button_RESTE","0");
+  } else {
+   grid.Rows.Add(new object[]{25m,30m,5m,"ESPECES",null});
+   SetText(dialog,"Button_RESTE","-5");
+  }
+  SetText(dialog,"Text_REMARQUE","CI accepted payment fixture");
+  dialog.Shown+=delegate {
+   module.GetField("_quittersolder",Flags).SetValue(null,false);
+   dialog.DialogResult=DialogResult.OK;
+   dialog.Close();
+  };
+  return dialog;
+ }
+ static void Checkout(Assembly assembly,bool rollbackProbe=false,string settlement="cash") {
   CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
   var module=assembly.GetType("LOGICA.Module1",true);
   var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
@@ -101,12 +130,14 @@ class PosSmoke {
   var template=Get(forms,"Form_0_TEMPLATE");SetText(template,"Label_POSTE","CI_TEST");
   var list=(ListView)Get(template,"ListView1");list.Items.Add("BLOCAGE_STOCK_INSUFFISANT").SubItems.Add("False");
   int scenario=0;
-  foreach(int quantity in rollbackProbe?new[]{2,-1,2}:new[]{2,-1}) {
+  foreach(int quantity in rollbackProbe?new[]{2,-1,2}:(settlement=="cash"?new[]{2,-1}:new[]{2})) {
   bool injectFailure=rollbackProbe && scenario++==2;
   using(var sale=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
    var grid=(DataGridView)Get(sale,"DataGridView1");grid.AllowUserToAddRows=false;
    foreach(var n in new[]{"Check_CHOIX_VENDEUR","Check_CHOIX_CLIENT","Check_ACCES_MODEP","Check_ACCES_RFID"})Get(sale,n).GetType().GetProperty("Checked").SetValue(Get(sale,n),false,null);
    Get(sale,"Check_STOCK").GetType().GetProperty("Checked").SetValue(Get(sale,"Check_STOCK"),true,null);
+   bool paymentDialog=settlement=="mixed" || settlement=="change";
+   Get(sale,"Check_ACCES_MODEP").GetType().GetProperty("Checked").SetValue(Get(sale,"Check_ACCES_MODEP"),paymentDialog,null);
    SetText(sale,"Combo_PORT","");SetText(sale,"Text_HEURE_RETARD","0");SetText(sale,"Text_PRINTER_SOLDER","0");SetText(sale,"Button_CAISSIER","CI cashier");SetText(sale,"Button_VENDEUR","CI vendor");SetText(sale,"Button_PRIX","PRIX_1");
     connection.Open();
     Sql(connection,"INSERT INTO TABLE_CI_TEST ("+columns+",PRINTER,PRINTER_DUPLICATA) VALUES ('1','CI001','CI product','Test','5','5','12.5','"+quantity+"','0','"+(quantity*12.5m).ToString(CultureInfo.InvariantCulture)+"','0','','0','0')");
@@ -115,8 +146,9 @@ class PosSmoke {
     grid.Rows[row].Cells["Qté"].Value=quantity;grid.Rows[row].Cells["TOTAL_NET"].Value=quantity*12.5m;
     grid.Rows[row].Cells["ID_ARTICLE"].Value=1;grid.Rows[row].Cells["Code"].Value="CI001";grid.Rows[row].Cells["Article"].Value="CI product";
     grid.Rows[row].Cells["PRINTER"].Value="0";grid.Rows[row].Cells["PRINTER_DUPLICATA"].Value="0";
-    SetText(sale,"Button_OPERATION",quantity>0?"VENTE":"RETOUR");
+    SetText(sale,"Button_OPERATION",settlement=="credit"?"CREDIT":(quantity>0?"VENTE":"RETOUR"));
     sale.GetType().GetMethod("Text_TOTAL_NET_Click").Invoke(sale,new object[]{sale,EventArgs.Empty});
+    Form acceptedPayment=paymentDialog?PreparePaymentFixture(forms,module,quantity*12.5m,settlement):null;
     int dismissedErrors=0;
     using(var stopWatcher=new ManualResetEvent(false)) {
      uint threadId=GetCurrentThreadId();
@@ -137,6 +169,7 @@ class PosSmoke {
      try {
       using(var sender=new Button(){Name="CI_CASH_CHECKOUT"})sale.GetType().GetMethod("Button_Click",Flags).Invoke(sale,new object[]{sender,EventArgs.Empty});
      } finally {
+      if(acceptedPayment!=null)acceptedPayment.Dispose();
       stopWatcher.Set();
       if(watcher!=null && !watcher.Join(2000))throw new Exception("Checkout dialog watcher did not stop");
       if(injectFailure) {
@@ -164,15 +197,27 @@ class PosSmoke {
     Eq(Scalar(connection,"SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=1"),quantity>0?8m:9m,"original checkout stock after "+(quantity>0?"sale":"return"));
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE"),quantity>0?1m:2m,"original checkout ticket persisted");
     string expectedTicket=quantity>0?"000001":"000002";
-    string expectedOperation=quantity>0?"VENTE":"RETOUR REMBOURSEMENT";
+    string expectedOperation=settlement=="credit"?"CREDIT":(quantity>0?"VENTE":"RETOUR REMBOURSEMENT");
+    string expectedPaymentNotes=settlement=="mixed"?"CARTE;ESPECES;":(settlement=="credit"?"":"ESPECES;");
     Eq(Scalar(connection,"SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE TICKET='"+expectedTicket+"'"),quantity*12.5m,"header total and ticket preserved");
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE TICKET='"+expectedTicket+"' AND CAISSIER='CI cashier' AND POSTE='CI_TEST' AND OPERATION='"+expectedOperation+"'"),1m,"header cashier workstation operation preserved");
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL"),quantity>0?1m:2m,"original checkout sales journal persisted");
     Eq(Scalar(connection,"SELECT TOTAL_NET FROM TABLE_VENTES_JOURNAL WHERE Ticket='"+expectedTicket+"'"),quantity*12.5m,"journal signed line total preserved");
     Eq(Scalar(connection,"SELECT Qté FROM TABLE_VENTES_JOURNAL WHERE Ticket='"+expectedTicket+"'"),quantity,"journal signed quantity preserved");
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE Ticket='"+expectedTicket+"' AND Code='CI001' AND Article='CI product' AND PRIX_V='12.5' AND Remise='0'"),1m,"journal basket fields copied");
-    Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE Ticket='"+expectedTicket+"' AND Caissier='CI cashier' AND Vendeur='CI vendor' AND POSTE='CI_TEST' AND OPERATION='"+expectedOperation+"' AND NOTES_TYPE_PRIX='PRIX_1' AND NOTES_MODE_P='ESPECES;'"),1m,"journal checkout context preserved");
-    Eq(Scalar(connection,"SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS"),quantity>0?25m:12.5m,"original checkout cash payment/refund persisted");
+    Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE Ticket='"+expectedTicket+"' AND Caissier='CI cashier' AND Vendeur='CI vendor' AND POSTE='CI_TEST' AND OPERATION='"+expectedOperation+"' AND NOTES_TYPE_PRIX='PRIX_1' AND NOTES_MODE_P='"+expectedPaymentNotes+"'"),1m,"journal checkout context preserved");
+    Eq(Scalar(connection,"SELECT COALESCE(SUM(MONTANT),0) FROM TABLE_VENTES_REGLEMENTS"),settlement=="credit"?0m:(quantity>0?25m:12.5m),"checkout net payment preserved");
+    if(settlement=="mixed") {
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS"),2m,"mixed payment row count");
+     Eq(Scalar(connection,"SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS WHERE MODE_P='CARTE'"),15m,"mixed card amount");
+     Eq(Scalar(connection,"SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS WHERE MODE_P='ESPECES'"),10m,"mixed cash amount");
+    } else if(settlement=="change") {
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS"),2m,"overpayment and cash change rows");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE MONTANT='30'"),1m,"tendered cash preserved");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE MONTANT='-5' AND MODE_P='ESPECES'"),1m,"negative cash change preserved");
+    } else if(settlement=="credit") {
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS"),0m,"credit does not create payment rows");
+    }
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CI_TEST"),0m,"original checkout clears basket in database");
     Eq(Scalar(connection,"SELECT CL FROM TABLE_NUM WHERE ID=0"),quantity>0?2m:3m,"original checkout increments ticket sequence");
     Eq(Scalar(connection,"SELECT SUM(QUANTITE) FROM TABLE_MOUVEMENTS_STOCK"),quantity>0?-2m:-1m,"original checkout stock movements persisted");
@@ -187,7 +232,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
