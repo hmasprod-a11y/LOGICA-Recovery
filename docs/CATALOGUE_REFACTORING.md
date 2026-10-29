@@ -2,10 +2,11 @@
 
 ## Current resume checkpoint
 
-- Verified implementation: a659ab855a490190ce345fac8b4e1bc6fbe1f0cc, draft PR #10 stacked on #8; no merge/release.
-- Windows run [40933111877](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40933111877) passed; independent runs 40933111854/40933122516 passed.
-- Collection identifier predicates now reuse the verified rule. Batch SQL/transaction/UI tail remains unchanged.
-- Current test-only slice: collection duplicate-code rejection before transaction; Windows verification pending after publication. After it passes, consider extracting only this lookup, preserving raw object/VB concatenation behavior and no connection closing inside batch transactions.
+- Verified implementation: a9997936f06de91907f9b519b19a9100d202c651, draft PR #10 stacked on #8; no merge/release.
+- Windows run [40938837380](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40938837380) passed; independent runs 40938837495/40938846091 passed. No implementation check remains pending.
+- Collection required identifiers, raw-object lookup and ordered precheck are separated; successful batch transaction and SendKeys tail remain untouched/unverified.
+- Next bounded candidate: original Button_INSERER_Click variant insertion/checksum. Characterize one valid size/colour row and duplicate rejection with totals and selected row before reusing the verified checksum helper. This path has no database writes or SendKeys tail.
+- Specification evidence map: REQUIREMENTS_STATUS.md. Untested modules are not declared missing; no global completion percentage is assigned.
 
 ## Priority and baseline
 
@@ -335,3 +336,11 @@ Full Windows run [40937242346](https://github.com/hmasprod-a11y/LOGICA-Recovery/
 Before moving the loop, standalone CollectionDuplicatePrecheck tests passed 45 assertions for raw code object identity, read/lookup/no-match selection ordering, first-match termination, empty range and read/lookup/selection failure identity without later work. All prior independent tests passed.
 
 Move only pre-transaction duplicate iteration into this ApplicationLayer service. The form supplies a snapshot last index, lazy grid-cell reads, the verified lookup, and an explicit callback retaining its two original last-row selection operations. The form retains exact warning/return and the entire transaction/UI tail. Service returns the original first matching DataRow for raw Article access; no input normalization or new policy. Full Windows regression is pending after wiring. Batch insertion/commit/rollback remains unverified and unchanged.
+
+## Verified precheck service; next variant audit
+
+Windows run 40938837380 succeeded after precheck service wiring at a9997936f06de91907f9b519b19a9100d202c651; independent tests passed, including 45 ordering/raw-object/exception assertions. Original first/later duplicate fixtures and all prior checks passed. Revert that implementation commit to undo precheck wiring.
+
+Button_INSERER_Click validates raw-empty code, six-character length, raw-empty article and prices, constructs code + 99 + size-code + colour-code using VB object concatenation, converts quantity to decimal, then repeats the same twelve-digit checksum arithmetic already extracted elsewhere. It checks existing grid codes, only then calls IsNumeric(quantity), appends five grid values, refreshes totals, resets quantity to 0 and selects the last row. Preserve quantity conversion before numeric guard, object conversions and UI timing; do not silently add validation.
+
+Next fixture should supply original size/colour grids and a valid twelve-digit payload, verify independent check digit, five appended values, totals, reset and duplicate rejection with unchanged rows. Audit grid event callbacks before setup. Full batch commit/rollback is not needed to test this in-memory path and remains deferred.
