@@ -199,3 +199,7 @@ Extend CheckoutPostingService to apply deferred stock rows before document posti
 The form maps stock rows lazily in ReadCheckoutStock, retaining the original Check_STOCK guard and row-count/iteration behavior. Payment-mode notes and adjusted date are read inside the deferred header reader, after all stock writes, preserving original ordering. Header/journal/payment/print/completion readers remain in their established positions. Ticket-number acquisition, transaction ownership, rollback and error UI stay in the form.
 
 Extend standalone order/failure tests with stock reads/writes, document-preparation timing and stock-disabled flows (48 assertions). All local application/domain tests passed. Existing stock-disabled, whole/fractional, refund and both rollback integration cases cover this extraction; full Windows CI is required before claiming integration success.
+
+Stock-inclusive application flow verified: full Windows run 40831404766 passed. Stock-enabled/disabled sale/refund, fractional sale, payment variants and both rollback boundaries all passed, plus build and existing checks. Application/domain CI passed with 48 ordered/failure assertions. Revert 62f17e7b5956a91c195e8c35483c597c6d913369 to undo this slice.
+
+Next bounded candidate: inspect pre-checkout validation and characterize rejected operations before extracting guard rules. Ticket-number acquisition and transaction/rollback error UI remain unchanged; do not move or repair them incidentally.
