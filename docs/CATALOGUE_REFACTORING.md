@@ -7,9 +7,9 @@ LOGICA already works. Organize internals incrementally while preserving behavior
 ## Verified state
 
 - Branch: refactor/catalogue-input-rules, draft PR [#10](https://github.com/hmasprod-a11y/LOGICA-Recovery/pull/10), stacked on draft #8.
-- Latest implementation: 01b0aa9494b56ec12b63533976dfce80c6432afe.
-- [Windows run 40951282675](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40947592637) succeeded; independent runs 40951282878/40951292006 succeeded. Implementation is verified; new aggregate fixture verification is pending.
-- Current change separates raw-object collection quantity accumulation. 111 standalone assertions cover cultures, empty values, conversion/overflow and lazy failure behavior; original-handler empty/decimal/string/integral/zero fixtures passed.
+- Latest implementation: 95384219e225ec976686fd188225367938953cee.
+- [Windows run 40952781294](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40952781294) succeeded; independent runs 40952781377/40952787375 succeeded. No implementation verification remains pending.
+- Current milestone separates aggregate SQL and UI-independent count/money formatting, retaining all eleven original labels/filter branches and 114 independent formatting assertions.
 - Documentation-only checkpoint updates do not require another expensive Windows run.
 
 ## Completed boundaries
@@ -38,7 +38,7 @@ Original Windows checkout/build/launcher checks and independent rules/services t
 
 ## Next bounded work
 
-Aggregate SQL extraction is verified across all eleven outputs and null/empty/A/B/missing family filters. Next inspect the repeated count/money display conversions before extracting a UI-independent formatter. Preserve DBNull branches, VB Val/ToString, existing monetary rounding, 20-character # padding, DH suffix and partial label assignment order. Write independent culture/raw-value/exception tests before replacing any label branch; retain the original-handler aggregate fixture.
+Before moving further refresh orchestration, characterize aggregate lookup failure through the original handler: unchanged label sentinels when Fill fails, original _sql side effect, adapter-owned connection state and error propagation to the existing warning/catch. Use only the strict isolated database; avoid changing raw family SQL escaping/validation as incidental cleanup. Successful output/formatting is already covered across all eleven labels. Batch transaction, physical devices and image handling remain separate boundaries.
 
 ## Evidence and history
 
@@ -67,3 +67,7 @@ Windows run [40951282675](https://github.com/hmasprod-a11y/LOGICA-Recovery/actio
 Before changing label branches, CatalogueAggregateFormatting tests passed 114 standalone assertions across three cultures for DBNull/null, raw numeric/string values, monetary midpoint rounding, 20-character #/DH mask, large values and equivalent exception types. All prior independent tests passed. Independent runner includes only the new UI-independent Presentation/Formatting folder, not the WinForms adapter folder.
 
 Replace the eleven repeated count/money DBNull branches with formatter calls. Retain original label assignment order, per-row DataTable value access, _sql side effect, lookup/error catch and rounding rules. The formatter uses verified MonetaryRounding (the existing FLOUSS compatibility target). No display redesign or value normalization. Full Windows original-handler aggregate regression is pending after extraction.
+
+## Verified aggregate display formatting
+
+Windows run 40952781294 passed after formatting extraction at 95384219e225ec976686fd188225367938953cee. All eleven original aggregate outputs, family filters, NULL sums, monetary mask and prior catalogue/checkout/build/launcher checks passed. Independent runs passed, including 114 raw-value/culture/rounding/exception assertions. Revert that implementation commit to undo formatting extraction.
