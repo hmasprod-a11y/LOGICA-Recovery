@@ -12755,13 +12755,13 @@ public class Form_3_VENTE : Form
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if ((Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0) & (Conversions.ToDouble(Text_TOTAL_NET.Text) < 0.0))
+				if (LOGICA.Domain.CheckoutSignGuards.RejectSale(((ButtonBase)Button_OPERATION).Text, Conversions.ToDouble(Text_TOTAL_NET.Text)))
 				{
 					MessageBox.Show("Si le Type d'opération (VENTE), le total doit étre Positif", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if (((ButtonBase)Button_OPERATION).Text.Contains("RETOUR") & (Conversions.ToDouble(Text_TOTAL_NET.Text) > 0.0))
+				if (LOGICA.Domain.CheckoutSignGuards.RejectReturn(((ButtonBase)Button_OPERATION).Text, Conversions.ToDouble(Text_TOTAL_NET.Text)))
 				{
 					MessageBox.Show("Si le Type d'opération (RETOUR), le total doit étre Négatif", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
