@@ -323,10 +323,21 @@ class PosSmoke {
   Sql(connection,"DROP TABLE IF EXISTS TABLE_MOUVEMENTS_STOCK; CREATE TABLE TABLE_MOUVEMENTS_STOCK (ID INT) ENGINE=InnoDB; INSERT INTO TABLE_MOUVEMENTS_STOCK VALUES (1)");
   Sql(connection,"DROP TABLE IF EXISTS TABLE_NUM; CREATE TABLE TABLE_NUM (ID INT, ARTICLE INT) ENGINE=InnoDB; INSERT INTO TABLE_NUM VALUES (0,7)");
   connection.Close();
-  string[][] cases={new[]{"","CI's untouched","-Code-"},new[]{"  ","CI's untouched","-Code-"},new[]{"CI_REQUIRED","","-Article-"},new[]{"CI_REQUIRED","  ","-Article-"}};
+  string[][] cases={new[]{"","CI's untouched","-Code-"},new[]{"  ","CI's untouched","-Code-"},new[]{"CI_REQUIRED","","-Article-"},new[]{"CI_REQUIRED","  ","-Article-"},new[]{"CI_REQUIRED","CI's untouched","-PROMOTION-",""},new[]{"CI_REQUIRED","CI's untouched","-PROMOTION-","101"},new[]{"CI_REQUIRED","CI's untouched","-PROMOTION-","1000"},new[]{"CI_REQUIRED","CI's untouched","-IMAGE-","-1"},new[]{"CI_REQUIRED","CI's untouched","-IMAGE-","0"},new[]{"CI_REQUIRED","CI's untouched","-IMAGE-","100"}};
   foreach(var data in cases) {
    using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_2_ARTICLES",true))) {
     SetText(form,"Text_CODE",data[0]);SetText(form,"Text_ARTICLE",data[1]);
+    if(data.Length==4) {
+     // Reach promotion with original controls/events; stop at image for accepted values.
+     foreach(string name in new[]{"Combo_FAMILLE","Combo_PRINTER","Combo_TAUX_TVA"}) {
+      var combo=(ComboBox)Get(form,name);combo.Items.Add("CI_FIXTURE");combo.SelectedIndex=combo.Items.Count-1;
+     }
+     foreach(string name in new[]{"Text_PRIX_A","Text_PRIX_MP","Text_PRIX_V","Text_PRIX_V_2","Text_PRIX_QTE","Text_PRIX_QTE_MIN","Text_STOCK","Text_ALERT"})
+      SetText(form,name,"1");
+     SetText(form,"Text_DATE_CREATION","2026-01-01");
+     SetText(form,"Text_LIEN_PICTURE","");
+     SetText(form,"Text_PROMOTION",data[3]);
+    }
     int observed=0;
     uint threadId=GetCurrentThreadId();
     using(var stop=new ManualResetEvent(false)) {
@@ -340,7 +351,8 @@ class PosSmoke {
       stop.Set();if(!watcher.Join(2000))throw new Exception("Catalogue guard watcher did not stop");
      }
     }
-    if(observed==0)throw new Exception("Expected catalogue required-field warning was not observed");
+    if(observed==0)throw new Exception("Expected catalogue warning was not observed: "+data[2]);
+    if(data.Length==4 && ((Control)Get(form,"Text_PROMOTION")).Text!=data[3])throw new Exception("Promotion guard altered input");
     if(((Control)Get(form,"Text_CODE")).Text!=data[0] || ((Control)Get(form,"Text_ARTICLE")).Text!=data[1])
      throw new Exception("Rejected catalogue save normalized text prematurely");
     if(connection.State!=ConnectionState.Closed)throw new Exception("Required-field rejection left database connection open");
@@ -352,7 +364,7 @@ class PosSmoke {
     connection.Close();
    }
   }
-  Console.WriteLine("PASS catalogue required code/article: empty and spaces rejected before normalization/persistence");
+  Console.WriteLine("PASS catalogue required code/article and promotion guards: 10 cases; promotion empty/over-100 rejected, -1/0/100 reach image guard before normalization/persistence");
  }
 
  static void CatalogueKeys(Assembly assembly) {
