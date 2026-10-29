@@ -2553,12 +2553,12 @@ public class FormDialog_8_BASE_DONNEE : Form
 					{
 						val.Connection = Module1.cn_SQL;
 						val.Transaction = ticketTransaction;
-						val.CommandText = "DELETE FROM TABLE_VENTES_ENTETE WHERE ID_TICKET = @ticketId";
+						val.CommandText = "DELETE FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET = @ticketId";
 						val.Parameters.AddWithValue("@ticketId", Strings.Trim(Label_ID_TICKET.Text));
 						val.ExecuteNonQuery();
-						val.CommandText = "DELETE FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET = @ticketId";
-						val.ExecuteNonQuery();
 						val.CommandText = "DELETE FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET = @ticketId";
+						val.ExecuteNonQuery();
+						val.CommandText = "DELETE FROM TABLE_VENTES_ENTETE WHERE ID_TICKET = @ticketId";
 						val.ExecuteNonQuery();
 						ticketTransaction.Commit();
 					}
