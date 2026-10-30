@@ -3437,7 +3437,7 @@ public class Form_5_CLIENTS_REGLE : Form
 					MessageBox.Show("Veuillez remplir le champ -MONTANT- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Conversion.Val(TextBox_MONTANT.Text) <= 0.0)
+				if (LOGICA.Domain.ClientSettlementAmountRule.IsRejected(TextBox_MONTANT.Text))
 				{
 					MessageBox.Show("Veuillez remplir le champ -MONTANT- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
