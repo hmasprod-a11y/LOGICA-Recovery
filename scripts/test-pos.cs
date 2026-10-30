@@ -1178,15 +1178,24 @@ class PosSmoke {
     SetText(form,"Combo_MODE_P","ESPECES");
     SetText(form,"TextBox_NOTES","CI_TEST_NOTE");
     ((DateTimePicker)Get(form,"DateTimePicker_DATE")).Value=new DateTime(2026,1,3);
-    int observed=0;uint threadId=GetCurrentThreadId();
+    int observed=0, unexpected=0;string unexpectedDialog=null;uint threadId=GetCurrentThreadId();
+    Console.WriteLine("CI client settlement: entering original save handler");Console.Out.Flush();
     using(var stop=new ManualResetEvent(false)) {
      var watcher=new Thread(delegate() {
-      while(!stop.WaitOne(60))
-       if(DismissInjectedFailure(threadId,"Enregistré avec succès"))Interlocked.Increment(ref observed);
+      while(!stop.WaitOne(60)) {
+       if(DismissInjectedFailure(threadId,"Enregistré avec succès")) {Interlocked.Increment(ref observed);continue;}
+       // A failure/validation MsgBox would otherwise block Invoke forever. Capture it
+       // explicitly and fail the test rather than reporting only a generic timeout.
+       if(DismissInjectedFailure(threadId)) {
+        Interlocked.Increment(ref unexpected);
+        unexpectedDialog="Original settlement handler showed an unexpected modal dialog";
+       }
+      }
      });watcher.IsBackground=true;watcher.Start();
      try {form.GetType().GetMethod("Button12_Click",Flags).Invoke(form,new object[]{form,EventArgs.Empty});}
      finally {stop.Set();if(!watcher.Join(2000))throw new Exception("Settlement watcher did not stop");}
     }
+    if(unexpected>0)throw new Exception(unexpectedDialog+" (count="+unexpected+")");
     if(observed==0)throw new Exception("Original settlement success dialog was not observed");
     if(table.GetChanges()!=null || table.Rows.Count!=2)throw new Exception("Settlement adapter did not accept inserted row");
    }
