@@ -59,6 +59,16 @@ class RecoveredCheck {
      lock(errors){observed=string.Join(" | ",errors.ToArray());}
      throw new Exception("Original consultation did not load detail product: "+formName+" rows="+body.Rows.Count+" cons="+grid.Columns["cons"].Index+" totalColumns="+grid.ColumnCount+" modalErrors="+observed);
     }
+    // Characterize the content loaded by the original handler, not just row presence.
+    if(body.Rows.Count!=1)throw new Exception("Original consultation returned unexpected detail count: "+formName+" rows="+body.Rows.Count);
+    string quantityColumn=kind=="R"?"Qté":"STOCK_PHYSIQUE";
+    if(body.Columns[quantityColumn]==null)throw new Exception("Original detail column missing: "+formName+" "+quantityColumn);
+    decimal expected=kind=="R"?2m:7m;
+    decimal quantity=Convert.ToDecimal(body.Rows[0].Cells[quantityColumn].Value,System.Globalization.CultureInfo.CurrentCulture);
+    if(quantity!=expected)throw new Exception("Original consultation changed detail quantity: "+formName+" "+quantity);
+    string documentControl=kind=="R"?"Text_ID_BR":"Text_ID_INV";
+    if(((Control)Get(form,documentControl)).Text!=marker)throw new Exception("Original consultation selected wrong document: "+formName);
+    Console.WriteLine("PASS original "+formName+" consultation quantity="+quantity+" document="+marker);
     Console.WriteLine("PASS original "+formName+" consultation loads pending product from isolated recovered tables");
    }
   } finally {
