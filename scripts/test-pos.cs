@@ -1147,6 +1147,8 @@ class PosSmoke {
   EnumThreadWindows(threadId,delegate(IntPtr window,IntPtr ignored) {
    var cls=new StringBuilder(256);GetClassName(window,cls,cls.Capacity);
    if(cls.ToString()!="#32770")return true;
+   var title=new StringBuilder(1024);GetWindowText(window,title,title.Capacity);
+   lines.Add("dialog title: "+title.ToString());
    EnumChildWindows(window,delegate(IntPtr child,IntPtr ignoredChild) {
     var value=new StringBuilder(4096);GetWindowText(child,value,value.Capacity);
     if(value.Length>0)lines.Add(value.ToString().Replace("\r"," ").Replace("\n"," "));
@@ -1192,6 +1194,8 @@ class PosSmoke {
     SetText(form,"Combo_MODE_P","ESPECES");
     SetText(form,"TextBox_NOTES","CI_TEST_NOTE");
     ((DateTimePicker)Get(form,"DateTimePicker_DATE")).Value=new DateTime(2026,1,3);
+    // Original exception handler writes its diagnostic screenshot here before log_erreur.sni.
+    Directory.CreateDirectory(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"tchak"));
     int observed=0, unexpected=0;string unexpectedDialog=null;uint threadId=GetCurrentThreadId();
     Console.WriteLine("CI client settlement: entering original save handler");Console.Out.Flush();
     using(var stop=new ManualResetEvent(false)) {
