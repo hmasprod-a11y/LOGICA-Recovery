@@ -9,6 +9,31 @@ class RecoveredCheck {
  [DllImport("user32.dll")]static extern bool PostMessage(IntPtr w,uint m,IntPtr a,IntPtr b);
  static volatile bool stop=false;static List<string> errors=new List<string>();
  static object Get(object o,string n){return o.GetType().GetProperty(n,BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public).GetValue(o,null);}
+ static void VerifyOriginalValidationFixtureSchema(IDbConnection conn) {
+  // Validate the columns read by the original DataGridView1_CellClick handlers
+  // before attempting a full accepted WinForms validation fixture.
+  if(!conn.ConnectionString.Contains("logica_recovered_check") || !conn.ConnectionString.Contains("127.0.0.1"))
+   throw new Exception("Fixture schema check requires isolated recovered database");
+  var required=new Dictionary<string,string[]> {
+   {"TABLE_RECEPTIONS_ENTETE",new[]{"ID","ID_BR","DATES","UTILISATEUR","ID_FOURNISSEUR","CODE_FOURNISSEUR","FOURNISSEUR","N_BON_FOURNISSEUR","TOTAL_NET_ACHATS","TOTAL_NET_VENTES","NOTES","ETAT"}},
+   {"TABLE_RECEPTIONS_DETAILS",new[]{"ID_BR","ID_ARTICLE","Code","Article","PRIX_A","PRIX_V","Qté","TOTAL_NET_ACHATS","TOTAL_NET_VENTES","DATE_PEREMPTION","N_LOT","ETAT"}},
+   {"TABLE_INVENTAIRES_ENTETE",new[]{"ID","ID_INV","DATES","UTILISATEUR","TOTAL_VALEUR","NOTES","ETAT"}},
+   {"TABLE_INVENTAIRES_DETAILS",new[]{"ID_INV","ID_ARTICLE","Code","Article","PRIX_A","STOCK_LOGIQUE","STOCK_PHYSIQUE","ECART","VALEUR","ETAT"}},
+   {"TABLE_ARTICLES",new[]{"ID_ARTICLE","STOCK","STOCK_INITIAL","DATE_INVENTAIRE","PRIX_MP","PRIX_A","Prix_V_1","Fournisseur"}},
+   {"TABLE_MOUVEMENTS_STOCK",new[]{"ID","DATES","HEURE","LIBELLE","ID_ARTICLE","CODE_ARTICLE","ARTICLE","QUANTITE"}}
+  };
+  foreach(var entry in required) {
+   var found=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+   using(var c=conn.CreateCommand()) {
+    c.CommandText="SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@table";
+    var p=c.CreateParameter();p.ParameterName="@table";p.Value=entry.Key;c.Parameters.Add(p);
+    using(var reader=c.ExecuteReader())while(reader.Read())found.Add(reader.GetString(0));
+   }
+   foreach(var col in entry.Value)if(!found.Contains(col))
+    throw new Exception("Original validation fixture schema lacks "+entry.Key+"."+col);
+   Console.WriteLine("PASS original validation fixture schema "+entry.Key+" columns="+entry.Value.Length);
+  }
+ }
  static void ActualRecoveredInventoryRollback(IDbConnection conn) {
   if(!conn.ConnectionString.Contains("logica_recovered_check") || !conn.ConnectionString.Contains("127.0.0.1"))
    throw new Exception("Original-schema rollback only allowed in isolated recovered check database");
@@ -93,7 +118,7 @@ class RecoveredCheck {
  var forms=a.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null,null);var form=(Form)Get(forms,"Form_0_TEMPLATE");var handle=form.Handle;
  var module=a.GetType("LOGICA.Module1",true);var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
  if(!connection.ConnectionString.Contains("logica_recovered_check"))throw new Exception("Wrong recovery test database");
- connection.Open();ActualRecoveredInventoryRollback(connection);foreach(var entry in new[]{new[]{"TABLE_ARTICLES","120"},new[]{"TABLE_FAMILLES","15"},new[]{"TABLE_VENTES_ENTETE","11"},new[]{"TABLE_VENTES_JOURNAL","54"},new[]{"TABLE_VENTES_REGLEMENTS","11"}}){using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM "+entry[0];var count=Convert.ToInt32(c.ExecuteScalar());if(count!=int.Parse(entry[1]))throw new Exception("Recovered row count mismatch "+entry[0]);Console.WriteLine("PASS recovered "+entry[0]+" rows="+count);}}
+ connection.Open();VerifyOriginalValidationFixtureSchema(connection);ActualRecoveredInventoryRollback(connection);foreach(var entry in new[]{new[]{"TABLE_ARTICLES","120"},new[]{"TABLE_FAMILLES","15"},new[]{"TABLE_VENTES_ENTETE","11"},new[]{"TABLE_VENTES_JOURNAL","54"},new[]{"TABLE_VENTES_REGLEMENTS","11"}}){using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM "+entry[0];var count=Convert.ToInt32(c.ExecuteScalar());if(count!=int.Parse(entry[1]))throw new Exception("Recovered row count mismatch "+entry[0]);Console.WriteLine("PASS recovered "+entry[0]+" rows="+count);}}
  int verified=0;
  var inventory=File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"..","input","database-inventory.json"));
  foreach(System.Text.RegularExpressions.Match entry in System.Text.RegularExpressions.Regex.Matches(inventory,"\\\"([A-Za-z_][A-Za-z_0-9]*)\\\"\\s*:\\s*\\{\\s*\\\"rows\\\":\\s*(\\d+)")) {
