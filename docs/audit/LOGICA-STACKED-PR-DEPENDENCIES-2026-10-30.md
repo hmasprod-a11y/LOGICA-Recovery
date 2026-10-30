@@ -21,6 +21,13 @@ main └─ PR #21 audit/workflow-gates-baseline-20261030
 
 Caution: the diagram's `main → refactor/preserve-behavior-foundation` line represents the branch hierarchy described by PR metadata, **not proof that the parent branch itself contains only changes already approved for main**. Its diff must be audited separately.
 
+### Fresh comparison of prerequisite foundation and integration (2026-10-30)
+GitHub Compare `main...refactor/preserve-behavior-foundation`: **87 commits ahead, 0 behind, 41 files changed**. Notably `Form_3_VENTE.cs` has 350 changed lines (202 additions / 148 deletions), and `scripts/test-pos.cs` has 354 changed lines. This is a substantial checkout/persistence prerequisite, **not a small pre-approved base**. PR #8 targets `main` and must be audited before #14 or any downstream settlement PR can be accepted.
+
+GitHub Compare `refactor/preserve-behavior-foundation...integration/codex-refactors-20261030`: **12 commits ahead, 0 behind, 55 files changed**. Largest production diff: `Form_2_ARTICLES.cs` has 461 changed lines (72 additions / 389 deletions); the POS harness changes 711 lines. The numerical size does not itself imply a defect, but it requires targeted behavioral parity and full integrated Windows regression evidence. This comparison was read-only; no production tests were executed during the comparison.
+
+Review order: (1) PR #8 foundation, especially checkout and database writes; (2) PR #14 catalogue/inventory/cash integration; (3) PRs #15–#20 settlement chain; (4) PR #24 failure-path test. Never treat a green test on one child branch as blanket approval for all parent changes.
+
 | PR | Base ref | Head SHA | Observed scope | Current decision |
 |---|---|---|---|---|
 | #14 | `refactor/preserve-behavior-foundation` | `2079d722` | Catalogue, stock movement, counted-cash integration; 55 changed files | Draft; review high change surface and upstream foundation |
