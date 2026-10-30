@@ -1205,13 +1205,20 @@ class PosSmoke {
     using(var stop=new ManualResetEvent(false)) {
      var watcher=new Thread(delegate() {
       while(!stop.WaitOne(60)) {
-       if(DismissInjectedFailure(threadId,"Enregistr")) {Interlocked.Increment(ref observed);continue;}
-       // A failure/validation MsgBox would otherwise block Invoke forever. Capture it
-       // explicitly and fail the test rather than reporting only a generic timeout.
+       // Snapshot the dialog before attempting to close it. Previously the success
+       // dialog could appear between the filtered and unfiltered dismissal calls,
+       // making a genuine success look like an unexpected error.
        string details=DescribeThreadDialogs(threadId);
+       if(details.Length==0)continue;
+       if(details.Contains("dialog title: ok") && details.Contains("Enregistr")) {
+        if(DismissInjectedFailure(threadId,"Enregistr"))Interlocked.Increment(ref observed);
+        continue;
+       }
+       // A failure/validation MsgBox would otherwise block Invoke forever. Capture it
+       // explicitly and fail the success test rather than reporting a generic timeout.
        if(DismissInjectedFailure(threadId)) {
         Interlocked.Increment(ref unexpected);
-        unexpectedDialog="Original settlement handler showed an unexpected modal dialog: "+details;
+        unexpectedDialog="Original settlement handler showed a non-success modal dialog: "+details;
        }
       }
      });watcher.IsBackground=true;watcher.Start();
