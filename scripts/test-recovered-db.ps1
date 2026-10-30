@@ -31,6 +31,14 @@ if($LASTEXITCODE -ne 0){throw 'Recovered article rollback SQL could not execute'
 $rollbackOutput | Set-Content results/recovered-article-rollback.log
 if($rollbackOutput -notmatch 'RECOVERED_ARTICLE_ROLLBACK=PASS'){throw "Recovered article rollback failed: $rollbackOutput"}
 Write-Host 'PASS recovered article stock rollback in isolated imported snapshot'
+# Regression guard: ensure receipt/inventory posting handlers retain their transaction calls.
+foreach($name in @('RECEPTIONS','INVENTAIRES')) {
+  $source=Get-Content (Join-Path $PSScriptRoot "../recovered-source/LOGICA/Form_6_$name.cs") -Raw
+  foreach($token in @('void Button_VALIDER_Click(', 'BeginTransaction()', 'val2.Commit()', 'val2.Rollback()')) {
+    if(-not $source.Contains($token)){throw "Missing $token in original $name source"}
+  }
+  Write-Host "PASS original $name validation transaction source guard (static only)"
+}
 # Capture actual recovered schema needed to construct safe original-handler fixtures.
 # Read-only metadata; no inserts into business tables or changes to their structure.
 $schemaSql="SELECT TABLE_NAME, ORDINAL_POSITION, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='logica_recovered_check' AND TABLE_NAME IN ('table_articles','table_mouvements_stock','table_receptions_entete','table_receptions_details','table_inventaires_entete','table_inventaires_details') ORDER BY TABLE_NAME, ORDINAL_POSITION;"
