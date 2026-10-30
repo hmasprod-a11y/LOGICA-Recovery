@@ -94,3 +94,25 @@ No production code, database, or UI was modified in this checkpoint.
 Windows CI [40986857187](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40986857187) passed on commit `2660b3cc`. The isolated `inventory-transaction-preflight` verifies a deliberately failed second insert rolls back its dedicated InnoDB movement table (0 rows) and restores its dedicated header state (1 pending row). This **does not exercise** original receipt or inventory validation handlers. The recovered database audit independently listed `table_articles`, `table_mouvements_stock`, `table_receptions_entete`, `table_receptions_details`, `table_inventaires_entete`, and `table_inventaires_details` as **InnoDB**. Storage-engine support alone is not proof of each original form's transaction behavior.
 
 Next characterization was added in `scripts/test-pos.cs` and registered in `scripts/test-pos.ps1` as `inventory-empty-validation`: invoke each actual `Button_VALIDER_Click` with an empty document list and verify the original handler returns without changing rows and re-enables the validation button. This is an early-return-only smoke test; it does not touch inventory records and must pass Windows CI before being treated as evidence. **Further acceptance:** original-form success and second-movement-failure scenarios on an independently constructed isolated receipt/inventory fixture, with bounded UI dialog handling and before/after DB comparisons.
+
+## Original WinForms VALIDATE acceptance fixture design — 2026-10-30
+
+**Latest verified baseline:** [Windows CI 40996836522](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40996836522) passed on `0f15b961`, including rollback of original-schema article, receipt/inventory header/detail and movement rows after an injected duplicate key. The later two-article test `471e2b5b` passed [Windows CI 40997598560](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40997598560). Neither test invokes original `Button_VALIDER_Click` on a nonempty, accepted document.
+
+### Confirmed original-handler dependency order
+
+1. `Form_6_RECEPTIONS` and `Form_6_INVENTAIRES` constructors initialize settings/forms (receipt requires `Form_0_TEMPLATE.ListView1` `HT_TTC`).
+2. `DataGridView1` must contain a selected pending row with `ETAT != VALIDER` and `ID_BR` or `ID_INV`. Clicking **Yes** at `Voulez-vous vraiment Valider le Bon N° ...` triggers a synthetic `DataGridView1_CellClick` on column `cons` **before** `BeginTransaction`.
+3. The cell-click handler reads the form's in-memory `DT` at the binding-context position, populates document header controls, then queries `TABLE_RECEPTIONS_DETAILS` / `TABLE_INVENTAIRES_DETAILS`, fills `DataGrid_BODY`, and recalculates totals. A fixture supplying only grid rows cannot prove this path: it must also provide a matching `DT` and isolated database header/detail records.
+4. `Button_VALIDER_Click` then starts a transaction, processes each detail and inserts stock movements, marks both document tables validated, commits, and reloads the list. Receipt updates weighted purchase cost, prices, supplier and stock; inventory replaces physical/current/initial stock. Failure handling uses a modal, rollback and subsequent UI reload.
+5. Existing early-return and **No** modal characterization is separately verified; do not conflate these with an accepted validation transaction.
+
+### Safe next bounded test
+
+- Construct the **isolated** `logica_ci` receipt/inventory schema and two-row pending-document fixture using captured original column shapes, without touching real data. Set `DT`/grid/binding context exactly as the original list loader would; initialize `HT_TTC` and other original runtime settings.
+- Handle confirmation/validation/error dialogs using a scoped thread watcher and the existing per-process 60-second timeout; fail closed if an unexpected dialog appears, rather than clicking **Yes** indiscriminately.
+- Capture pre-state for both articles (stock, `PRIX_MP`, `Prix_A`, `Prix_V_1`, `STOCK_INITIAL`, `DATE_INVENTAIRE`, supplier), both header/detail statuses and all movement rows. Verify normal accepted commit separately for receipt and inventory.
+- Inject failure on the **second** movement insert; ensure the watcher dismisses the original handler's transaction-error dialog and that both products, both document status sets and all movements return to pre-state. Then separately verify the original form's button/error-state cleanup.
+- If fixtures fail before `BeginTransaction` (e.g., `DataGridView1_CellClick`, missing configuration), classify as **harness prerequisite**, not a rollback defect. If original handler executes and rollback genuinely fails, open a separate behavior-fix PR rather than altering code in this audit.
+
+**Scope note:** no evidence yet that the accepted/failed original WinForms posting path passes. Audit and fixture design are not acceptance results. Preserve all legacy financial, stock, and validation semantics pending characterization.
