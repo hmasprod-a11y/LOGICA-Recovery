@@ -12,6 +12,14 @@ on:
       - 'input/mysql-compatibility.sql'
       - '.github/workflows/windows-reference-diagnostic.yml'
 jobs:
+  workflow-static:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify CI source-write protection
+        run: python3 scripts/test-workflow-readonly.py
   build-test:
     runs-on: windows-latest
     timeout-minutes: 25
