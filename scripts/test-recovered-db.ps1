@@ -9,6 +9,12 @@ $compat=(Resolve-Path input/mysql-compatibility.sql).Path.Replace('\','/')
 if($LASTEXITCODE -ne 0){throw 'Original Access snapshot import failed'}
 & "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --default-character-set=utf8mb4 --abort-source-on-error logica_recovered_check -e "source $compat"
 if($LASTEXITCODE -ne 0){throw 'Additive schema compatibility migration failed'}
+# Read-only engine inventory from the recovered schema, after compatibility SQL import.
+# Report missing/nontransactional tables as audit findings, not an invented POS test failure.
+$engineSql="SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA='logica_recovered_check' AND TABLE_NAME IN ('TABLE_ARTICLES','TABLE_MOUVEMENTS_STOCK','TABLE_RECEPTIONS_ENTETE','TABLE_RECEPTIONS_DETAILS','TABLE_INVENTAIRES_ENTETE','TABLE_INVENTAIRES_DETAILS') ORDER BY TABLE_NAME;"
+& "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --batch --raw -e $engineSql | Set-Content results/recovered-inventory-table-engines.tsv
+if($LASTEXITCODE -ne 0){throw 'Recovered inventory engine audit failed'}
+Get-Content results/recovered-inventory-table-engines.tsv | ForEach-Object { Write-Host "RECOVERED-TABLE-ENGINE $_" }
 $dist=(Resolve-Path dist).Path
 New-Item -ItemType Directory -Force "$dist/bd","$dist/tchak" | Out-Null
 $settings=Get-Content input/original-startup.json -Raw | ConvertFrom-Json
