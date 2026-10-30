@@ -1,8 +1,9 @@
+param([string]$DistPath='dist')
 $ErrorActionPreference='Stop'
-$dist=(Resolve-Path dist).Path
+$dist=(Resolve-Path $DistPath).Path
 # Keep startup settings portable. Existing installations should retain their own settings.
 $defaults=@{
- 'CHEMIN_DB.sni'='127.0.0.1';'CHEMIN_FOLDER.sni'='Application.StartupPath';'poste.sni'='01';'mode_windows.sni'='False';'log_erreur.sni'='';'raccourcies.sni'='';'hash_licence.sni'='';
+ 'CHEMIN_DB.sni'='127.0.0.1';'CHEMIN_FOLDER.sni'='Application.StartupPath';'poste.sni'='01';'mode_windows.sni'='False';'log_erreur.sni'='';'raccourcies.sni'='';
  'splitterdistance_v.sni'='400';'acces_rfid.sni'='False';'afficher_ecran_pub.sni'='False';'choix_client.sni'='False';'choix_vendeur.sni'='False';'gestion_credit.sni'='False'
 }
 foreach($n in @('CL','C1','C2','C3','C4','C5','C6','C7','ADD','RAPPORT')){$defaults["PRINTER_$n.sni"]='0'}
@@ -12,7 +13,12 @@ if(Test-Path input/original-startup.json){
 }
 $defaults['CHEMIN_FOLDER.sni']='Application.StartupPath'
 $defaults['log_erreur.sni']=''
-foreach($entry in $defaults.GetEnumerator()){[IO.File]::WriteAllText((Join-Path $dist $entry.Key),$entry.Value)}
+# Never overwrite existing installation settings. In particular do not issue a blank
+# activation hash or replace a shop's database host on a routine rebuild.
+foreach($entry in $defaults.GetEnumerator()){
+ $target=Join-Path $dist $entry.Key
+ if(-not (Test-Path -LiteralPath $target)){[IO.File]::WriteAllText($target,$entry.Value)}
+}
 Copy-Item docs/RUNNING.md dist/RUNNING.md -Force
 Copy-Item scripts/Launch-LOGICA.ps1,scripts/Start-LOGICA.cmd dist -Force
 Remove-Item dist/PosSmoke* -Force -ErrorAction SilentlyContinue
