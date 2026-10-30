@@ -48,26 +48,16 @@ class PosSmoke {
   }
  }
  static void InventoryTransactionPreflight(Assembly assembly) {
-  // Preflight only: checks isolated DB transaction support and actual module table engines.
+  // Preflight only: checks rollback support using separate isolated InnoDB tables.
   // It does not claim to invoke the original receipt/inventory validation handler.
   var module=assembly.GetType("LOGICA.Module1",true);
   using(var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null)) {
    if(!connection.ConnectionString.Contains("127.0.0.1") || !connection.ConnectionString.Contains("logica_ci"))
     throw new Exception("Transaction preflight requires isolated logica_ci database");
    connection.Open();
-   string[] tables={"TABLE_ARTICLES","TABLE_MOUVEMENTS_STOCK","TABLE_RECEPTIONS_ENTETE",
-     "TABLE_RECEPTIONS_DETAILS","TABLE_INVENTAIRES_ENTETE","TABLE_INVENTAIRES_DETAILS"};
-   foreach(string table in tables) {
-    using(var c=connection.CreateCommand()) {
-     c.CommandText="SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@name";
-     var p=c.CreateParameter();p.ParameterName="@name";p.Value=table;c.Parameters.Add(p);
-     object engine=c.ExecuteScalar();
-     if(engine==null || engine==DBNull.Value)throw new Exception("Missing transaction table: "+table);
-     Console.WriteLine("OBSERVED "+table+" ENGINE="+engine);
-     if(!string.Equals(Convert.ToString(engine),"InnoDB",StringComparison.OrdinalIgnoreCase))
-      throw new Exception("Transactional table required for rollback acceptance: "+table+" engine="+engine);
-    }
-   }
+   // The isolated checkout fixture does not load the recovered receipt/inventory schema.
+   // Do not report missing production tables or assert production table engines here.
+   // This test proves only rollback on dedicated InnoDB fixture tables.
    Sql(connection,"DROP TABLE IF EXISTS TABLE_CI_TX_HEADER");
    Sql(connection,"DROP TABLE IF EXISTS TABLE_CI_TX_MOVEMENT");
    Sql(connection,"CREATE TABLE TABLE_CI_TX_HEADER (ID INT PRIMARY KEY, ETAT VARCHAR(20)) ENGINE=InnoDB");
@@ -88,7 +78,7 @@ class PosSmoke {
     }
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CI_TX_MOVEMENT"),0m,"isolated movement rollback");
     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CI_TX_HEADER WHERE ETAT='EN_COURS'"),1m,"isolated header rollback");
-    Console.WriteLine("PASS isolated MySQL transaction rollback preflight (not original WinForms handler)");
+    Console.WriteLine("PASS isolated InnoDB rollback preflight; original tables and WinForms handlers NOT tested");
    } finally {
     Sql(connection,"DROP TABLE IF EXISTS TABLE_CI_TX_MOVEMENT");
     Sql(connection,"DROP TABLE IF EXISTS TABLE_CI_TX_HEADER");
