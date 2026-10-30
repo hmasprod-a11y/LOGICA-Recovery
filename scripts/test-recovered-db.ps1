@@ -31,6 +31,15 @@ if($LASTEXITCODE -ne 0){throw 'Recovered article rollback SQL could not execute'
 $rollbackOutput | Set-Content results/recovered-article-rollback.log
 if($rollbackOutput -notmatch 'RECOVERED_ARTICLE_ROLLBACK=PASS'){throw "Recovered article rollback failed: $rollbackOutput"}
 Write-Host 'PASS recovered article stock rollback in isolated imported snapshot'
+# Capture actual recovered schema needed to construct safe original-handler fixtures.
+# Read-only metadata; no inserts into business tables or changes to their structure.
+$schemaSql="SELECT TABLE_NAME, ORDINAL_POSITION, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='logica_recovered_check' AND TABLE_NAME IN ('table_articles','table_mouvements_stock','table_receptions_entete','table_receptions_details','table_inventaires_entete','table_inventaires_details') ORDER BY TABLE_NAME, ORDINAL_POSITION;"
+& "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --batch --raw -e $schemaSql | Set-Content results/recovered-inventory-schema.tsv
+if($LASTEXITCODE -ne 0){throw 'Recovered inventory column audit failed'}
+$keysSql="SELECT TABLE_NAME, INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='logica_recovered_check' AND TABLE_NAME IN ('table_articles','table_mouvements_stock','table_receptions_entete','table_receptions_details','table_inventaires_entete','table_inventaires_details') ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX;"
+& "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --batch --raw -e $keysSql | Set-Content results/recovered-inventory-indexes.tsv
+if($LASTEXITCODE -ne 0){throw 'Recovered inventory index audit failed'}
+Write-Host 'PASS read-only recovered receipt/inventory schema and index inventory'
 $dist=(Resolve-Path dist).Path
 New-Item -ItemType Directory -Force "$dist/bd","$dist/tchak" | Out-Null
 $settings=Get-Content input/original-startup.json -Raw | ConvertFrom-Json
