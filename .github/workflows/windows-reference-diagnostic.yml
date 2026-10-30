@@ -6,6 +6,8 @@ on:
       - 'recovered-source/**'
       - 'scripts/repair-source.py'
       - 'scripts/test-pos*'
+      - 'scripts/package-runtime.ps1'
+      - 'scripts/test-package-settings.ps1'
       - 'scripts/test-recovered*'
       - 'input/recovered-original.sql'
       - 'input/mysql-compatibility.sql'
@@ -74,6 +76,10 @@ jobs:
           } finally {
             Remove-Item dist/bd/mysql-data,dist/bd/mysql-credential.xml,dist/bd/mysql-import-complete.txt -Recurse -Force -ErrorAction SilentlyContinue
           }
+      - name: Verify packaging preserves license and database settings
+        if: always()
+        shell: pwsh
+        run: ./scripts/test-package-settings.ps1
       - name: Finalize portable runtime package
         if: always()
         shell: pwsh
