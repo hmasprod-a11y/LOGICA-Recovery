@@ -1287,7 +1287,7 @@ class PosSmoke {
    throw new Exception("Settlement sequence race requires disposable 127.0.0.1:3307/logica_ci");
   if(shared.State!=ConnectionState.Closed)
    throw new Exception("Settlement sequence race requires initially closed shared connection");
-  shared.Open();
+  // MySqlConnection may erase the password from ConnectionString after Open()\n  // (PersistSecurityInfo=false). Capture it before fixture setup for new cashiers.\n  string isolatedConnectionString=shared.ConnectionString;\n  shared.Open();
   try {
    Sql(shared,"DROP TABLE IF EXISTS TABLE_CLIENTS_REGLE; "+
      "CREATE TABLE TABLE_CLIENTS_REGLE (ID INT PRIMARY KEY, ID_CLIENT VARCHAR(50), MONTANT DECIMAL(14,4)) ENGINE=InnoDB; "+
@@ -1301,7 +1301,7 @@ class PosSmoke {
    Action<int> worker=delegate(int slot) {
     IDbConnection local=null;
     try {
-     local=(IDbConnection)Activator.CreateInstance(shared.GetType(),new object[]{shared.ConnectionString});
+     local=(IDbConnection)Activator.CreateInstance(shared.GetType(),new object[]{isolatedConnectionString});
      local.Open();
      Func<object> readMaximum=delegate() {
       using(var command=local.CreateCommand()) {
