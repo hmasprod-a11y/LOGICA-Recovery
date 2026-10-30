@@ -15,6 +15,22 @@ $engineSql="SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE
 & "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --batch --raw -e $engineSql | Set-Content results/recovered-inventory-table-engines.tsv
 if($LASTEXITCODE -ne 0){throw 'Recovered inventory engine audit failed'}
 Get-Content results/recovered-inventory-table-engines.tsv | ForEach-Object { Write-Host "RECOVERED-TABLE-ENGINE $_" }
+# Exercise an actual recovered articles table in a rollback-only transaction.
+# This is an isolated imported snapshot, not a live shop database or WinForms handler.
+$rollbackSql=@'
+SET @article_id = (SELECT MIN(ID_ARTICLE) FROM table_articles);
+SET @before_stock = (SELECT STOCK FROM table_articles WHERE ID_ARTICLE=@article_id LIMIT 1);
+START TRANSACTION;
+UPDATE table_articles SET STOCK=COALESCE(STOCK,0)+1 WHERE ID_ARTICLE=@article_id;
+SET @during_stock = (SELECT STOCK FROM table_articles WHERE ID_ARTICLE=@article_id LIMIT 1);
+ROLLBACK;
+SELECT CONCAT('RECOVERED_ARTICLE_ROLLBACK=',IF(@article_id IS NOT NULL AND @during_stock=COALESCE(@before_stock,0)+1 AND (SELECT STOCK <=> @before_stock FROM table_articles WHERE ID_ARTICLE=@article_id LIMIT 1),'PASS','FAIL'));
+'@
+$rollbackOutput=(& "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --batch --skip-column-names logica_recovered_check -e $rollbackSql) -join "`n"
+if($LASTEXITCODE -ne 0){throw 'Recovered article rollback SQL could not execute'}
+$rollbackOutput | Set-Content results/recovered-article-rollback.log
+if($rollbackOutput -notmatch 'RECOVERED_ARTICLE_ROLLBACK=PASS'){throw "Recovered article rollback failed: $rollbackOutput"}
+Write-Host 'PASS recovered article stock rollback in isolated imported snapshot'
 $dist=(Resolve-Path dist).Path
 New-Item -ItemType Directory -Force "$dist/bd","$dist/tchak" | Out-Null
 $settings=Get-Content input/original-startup.json -Raw | ConvertFrom-Json
