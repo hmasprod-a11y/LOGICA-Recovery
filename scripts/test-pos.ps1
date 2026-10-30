@@ -21,9 +21,17 @@ foreach($case in $cases) {
 }
 # Launch the real Windows entry point as well as exercising forms through the harness.
 $app=Start-Process (Join-Path $dist 'LOGICA.exe') -WorkingDirectory $dist -PassThru
-Start-Sleep -Seconds 8
-$app.Refresh()
-$status=if(-not $app.HasExited -and $app.MainWindowHandle -ne 0 -and $app.Responding){'PASS'}else{'FAIL'}
+# Windows cold-start may take longer than the former fixed eight seconds.
+# Poll for a real responsive main window; do not count a live headless process as PASS.
+$deadline=[Diagnostics.Stopwatch]::StartNew()
+$ready=$false
+do {
+  Start-Sleep -Seconds 2
+  $app.Refresh()
+  if($app.HasExited){break}
+  if($app.MainWindowHandle -ne 0 -and $app.Responding){$ready=$true;break}
+} while ($deadline.Elapsed.TotalSeconds -lt 30)
+$status=if($ready){'PASS'}else{'FAIL'}
 $results+=[pscustomobject]@{test='LOGICA.exe startup';status=$status;exitCode=$null}
 Write-Host "Real LOGICA.exe startup $status; process running=$(-not $app.HasExited); window=$($app.MainWindowHandle); responding=$($app.Responding)"
 if(-not $app.HasExited){$app.Kill()}
