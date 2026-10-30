@@ -5,6 +5,7 @@ on:
     paths:
       - 'recovered-source/**'
       - 'scripts/repair-source.py'
+      - 'scripts/test-workflow-readonly.py'
       - 'scripts/test-pos*'
       - 'scripts/test-recovered*'
       - 'input/recovered-original.sql'
@@ -15,26 +16,23 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 25
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Repair and persist original source
+      - name: Verify CI cannot auto-push source changes
+        shell: pwsh
+        run: python scripts/test-workflow-readonly.py
+      - name: Repair original source in disposable CI workspace only
         shell: pwsh
         run: |
           python scripts/repair-source.py
           if ($LASTEXITCODE -ne 0) { throw 'Source repair failed' }
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -f recovered-source
-          git reset -- recovered-source/obj recovered-source/bin
-          git diff --cached --quiet
-          if ($LASTEXITCODE -ne 0) {
-            git commit -m 'Persist repaired original C# source and portable project'
-            git push
-            if ($LASTEXITCODE -ne 0) { throw 'Source persistence failed' }
+          $changes = git status --porcelain -- recovered-source
+          if ($changes) {
+            Write-Host 'NOTICE: Source repair modified only this temporary CI checkout. Open a reviewed PR to persist source changes.'
           }
       - name: Restore original runtime dependencies
         shell: pwsh
