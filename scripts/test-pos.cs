@@ -1142,6 +1142,20 @@ class PosSmoke {
  }
 
 
+ static string DescribeThreadDialogs(uint threadId) {
+  var lines=new System.Collections.Generic.List<string>();
+  EnumThreadWindows(threadId,delegate(IntPtr window,IntPtr ignored) {
+   var cls=new StringBuilder(256);GetClassName(window,cls,cls.Capacity);
+   if(cls.ToString()!="#32770")return true;
+   EnumChildWindows(window,delegate(IntPtr child,IntPtr ignoredChild) {
+    var value=new StringBuilder(4096);GetWindowText(child,value,value.Capacity);
+    if(value.Length>0)lines.Add(value.ToString().Replace("\r"," ").Replace("\n"," "));
+    return true;
+   },IntPtr.Zero);
+   return true;
+  },IntPtr.Zero);
+  return String.Join(" | ",lines.ToArray());
+ }
  static void ClientSettlementSave(Assembly assembly) {
   CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
   var module=assembly.GetType("LOGICA.Module1",true);
@@ -1186,9 +1200,10 @@ class PosSmoke {
        if(DismissInjectedFailure(threadId,"Enregistré avec succès")) {Interlocked.Increment(ref observed);continue;}
        // A failure/validation MsgBox would otherwise block Invoke forever. Capture it
        // explicitly and fail the test rather than reporting only a generic timeout.
+       string details=DescribeThreadDialogs(threadId);
        if(DismissInjectedFailure(threadId)) {
         Interlocked.Increment(ref unexpected);
-        unexpectedDialog="Original settlement handler showed an unexpected modal dialog";
+        unexpectedDialog="Original settlement handler showed an unexpected modal dialog: "+details;
        }
       }
      });watcher.IsBackground=true;watcher.Start();
