@@ -3457,7 +3457,7 @@ public class Form_5_CLIENTS_REGLE : Form
 					{
 						Module1.cn_SQL.Open();
 					}
-					int num = ((val.ExecuteScalar() == DBNull.Value) ? 1 : ((int)Math.Round(Conversions.ToDouble(val.ExecuteScalar()) + 1.0)));
+					int num = LOGICA.Domain.ClientSettlementSequence.NextId(() => val.ExecuteScalar());
 					Module1.cn_SQL.Close();
 					DT.Rows.Add();
 					int index = DT.Rows.Count - 1;
