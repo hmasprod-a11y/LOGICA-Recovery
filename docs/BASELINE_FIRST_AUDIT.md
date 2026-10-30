@@ -56,3 +56,35 @@ This checkpoint is based on inspecting actual recovered C# form files on the cur
 **Next bounded implementation:** inspect `Form_6_RECEPTIONS.Button_VALIDER_Click` and `Form_6_INVENTAIRES.Button_VALIDER_Click` to identify their original transaction boundaries, stock movement write order, and failure recovery before introducing any extraction. Prepare a characterization fixture with an isolated DB and no actual store data. Record whether stock and journal updates are atomic; do not assume they are. Then continue with customer/supplier settlement paths and role checks.
 
 The status in `docs/REQUIREMENTS_STATUS.md` is still partial and must be updated when new Windows characterization results exist. No source logic, schema, production records, UI or activation was changed by this inventory checkpoint.
+
+## Receipt and inventory validation transaction review — 2026-10-30
+
+Inspected actual `Button_VALIDER_Click` handlers in `Form_6_RECEPTIONS.cs` and `Form_6_INVENTAIRES.cs`. **Code-level observation only; rollback behavior has not yet been exercised in an isolated Windows/DB test.**
+
+### Receipt validation (`Form_6_RECEPTIONS.Button_VALIDER_Click`)
+
+- Disables validation button; exits early if list empty or current row already `VALIDER`; asks confirmation and selects the detail row.
+- Opens `Module1.cn_SQL` if necessary, creates `MySqlTransaction` and assigns it to a reused `MySqlCommand`.
+- For each detail row: reads `TABLE_ARTICLES.PRIX_MP` and `STOCK`; computes weighted purchase price using existing `Module1.FLOUSS` rounding when old stock > 0, otherwise uses current purchase price; updates article stock, purchase/sale prices and supplier; inserts a `TABLE_MOUVEMENTS_STOCK` row.
+- After the loop, marks `TABLE_RECEPTIONS_ENTETE` and `TABLE_RECEPTIONS_DETAILS` `VALIDER`, then commits. Inner catch calls `Rollback` and displays a transaction error.
+- **Risks requiring characterization:** SQL is assembled by concatenation (including supplier and row values); `Application.DoEvents()` inside an open transaction allows reentrant UI events; the code invokes `ExecuteNonQuery` for SELECT before `ExecuteScalar`; all referenced tables must use transactional storage for rollback. No claim yet about atomicity on runtime failure.
+
+### Inventory validation (`Form_6_INVENTAIRES.Button_VALIDER_Click`)
+
+- Same early empty/already-validated checks, confirmation, single connection/transaction and reused command pattern.
+- For each detail row: updates `TABLE_ARTICLES.STOCK` and `STOCK_INITIAL` to `Stock_Physique`, sets `DATE_INVENTAIRE`; then inserts `TABLE_MOUVEMENTS_STOCK` with `LIBELLE='Inventaire'` and `QUANTITE=Stock_Physique` (absolute physical quantity as written, **not visibly a stock delta**).
+- Marks `TABLE_INVENTAIRES_ENTETE` and `TABLE_INVENTAIRES_DETAILS` `VALIDER`, commits; inner catch rolls back and displays a transaction error.
+- **Risks requiring characterization:** the movement quantity semantics might differ from a before/after delta requirement; do not silently change it. SQL concatenation and `Application.DoEvents()` inside transaction require separate risk review. Verify transactional table engines and failure rollback on an isolated DB.
+
+### SAVE is a separate lifecycle boundary
+
+Both forms also implement `Button_SAVE_Click` with document writes; the examined SAVE handlers contain no `BeginTransaction`/`Commit`/`Rollback` calls. This **does not prove** a failed save leaves partial data: trace any delegated calls and test failure boundaries before assigning defect status. Validation and save should be characterized separately.
+
+### Next test acceptance (no production DB)
+
+1. In isolated MariaDB, seed two article rows and one pending receipt/inventory header with details; capture pre-state of stock, prices, movement count and document status.
+2. Exercise the **original** validation handler on Windows with a bounded dialog watcher, confirming both normal completion and injected failure on the second movement insert; after failure assert every captured value remains unchanged and no partial movement remains.
+3. Record table engines and transaction attachment of every executed command. If rollback fails, open a separate bug report with reproducer; do not alter financial/inventory semantics in a refactor PR.
+4. Characterize SAVE's header/detail write ordering separately, then consider a minimal behavior-preserving extraction.
+
+No production code, database, or UI was modified in this checkpoint.
