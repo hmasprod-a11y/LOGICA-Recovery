@@ -9,13 +9,62 @@ class RecoveredCheck {
  [DllImport("user32.dll")]static extern bool PostMessage(IntPtr w,uint m,IntPtr a,IntPtr b);
  static volatile bool stop=false;static List<string> errors=new List<string>();
  static object Get(object o,string n){return o.GetType().GetProperty(n,BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public).GetValue(o,null);}
+ static void ActualRecoveredInventoryRollback(IDbConnection conn) {
+  if(!conn.ConnectionString.Contains("logica_recovered_check") || !conn.ConnectionString.Contains("127.0.0.1"))
+   throw new Exception("Original-schema rollback only allowed in isolated recovered check database");
+  string articleId;object originalStock;
+  using(var c=conn.CreateCommand()) {
+   c.CommandText="SELECT ID_ARTICLE FROM TABLE_ARTICLES ORDER BY ID LIMIT 1";
+   articleId=Convert.ToString(c.ExecuteScalar());
+   if(string.IsNullOrEmpty(articleId))throw new Exception("No recovered article for rollback fixture");
+   c.CommandText="SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=@article LIMIT 1";
+   var p=c.CreateParameter();p.ParameterName="@article";p.Value=articleId;c.Parameters.Add(p);
+   originalStock=c.ExecuteScalar();
+  }
+  const string receipt="CI_RECOVERED_TX_ROLLBACK_BR";
+  const string count="CI_RECOVERED_TX_ROLLBACK_INV";
+  using(var check=conn.CreateCommand()) {
+   check.CommandText="SELECT (SELECT COUNT(*) FROM TABLE_RECEPTIONS_ENTETE WHERE ID_BR='"+receipt+"')+(SELECT COUNT(*) FROM TABLE_INVENTAIRES_ENTETE WHERE ID_INV='"+count+"')";
+   if(Convert.ToInt32(check.ExecuteScalar())!=0)throw new Exception("Recovered transaction fixture marker already exists");
+  }
+  bool injectedFailure=false;
+  using(var tx=conn.BeginTransaction()) {
+   try {
+    using(var c=conn.CreateCommand()) {
+     c.Transaction=tx;
+     c.CommandText="UPDATE TABLE_ARTICLES SET STOCK=COALESCE(STOCK,0)+1 WHERE ID_ARTICLE=@article";
+     var p=c.CreateParameter();p.ParameterName="@article";p.Value=articleId;c.Parameters.Add(p);
+     if(c.ExecuteNonQuery()!=1)throw new Exception("Recovered article update did not affect exactly one row");
+     c.Parameters.Clear();
+     c.CommandText="INSERT INTO TABLE_RECEPTIONS_ENTETE (ID_BR,ETAT) VALUES ('"+receipt+"','VALIDER')";c.ExecuteNonQuery();
+     c.CommandText="INSERT INTO TABLE_INVENTAIRES_ENTETE (ID_INV,ETAT) VALUES ('"+count+"','VALIDER')";c.ExecuteNonQuery();
+     c.CommandText="INSERT INTO TABLE_MOUVEMENTS_STOCK (LIBELLE,ID_ARTICLE,QUANTITE) VALUES ('CI_RECOVERED_ROLLBACK',@article,'1')";
+     p=c.CreateParameter();p.ParameterName="@article";p.Value=articleId;c.Parameters.Add(p);c.ExecuteNonQuery();
+     c.Parameters.Clear();c.CommandText="SELECT LAST_INSERT_ID()";var movementId=Convert.ToInt64(c.ExecuteScalar());
+     c.CommandText="INSERT INTO TABLE_MOUVEMENTS_STOCK (ID,LIBELLE) VALUES ("+movementId+",'CI_DUPLICATE')";
+     try { c.ExecuteNonQuery(); } catch(System.Data.Common.DbException) { injectedFailure=true; }
+     if(!injectedFailure)throw new Exception("Expected duplicate movement key violation was not observed");
+    }
+   } finally { tx.Rollback(); }
+  }
+  using(var c=conn.CreateCommand()) {
+   c.CommandText="SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=@article LIMIT 1";
+   var p=c.CreateParameter();p.ParameterName="@article";p.Value=articleId;c.Parameters.Add(p);
+   object afterStock=c.ExecuteScalar();
+   if(!object.Equals(Convert.ToString(originalStock),Convert.ToString(afterStock)))throw new Exception("Original article stock changed despite rollback");
+   c.Parameters.Clear();
+   c.CommandText="SELECT (SELECT COUNT(*) FROM TABLE_RECEPTIONS_ENTETE WHERE ID_BR='"+receipt+"')+(SELECT COUNT(*) FROM TABLE_INVENTAIRES_ENTETE WHERE ID_INV='"+count+"')+(SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE='CI_RECOVERED_ROLLBACK')";
+   if(Convert.ToInt32(c.ExecuteScalar())!=0)throw new Exception("Recovered rollback left partial header or movement");
+  }
+  Console.WriteLine("PASS recovered original-schema article + receipt/inventory headers + movement rollback on injected duplicate key");
+ }
  static void Watch(){while(!stop){EnumWindows(delegate(IntPtr w,IntPtr x){uint pid;GetWindowThreadProcessId(w,out pid);if(pid!=Process.GetCurrentProcess().Id)return true;var b=new StringBuilder(100);GetClassName(w,b,100);if(b.ToString()!="#32770")return true;var all=new StringBuilder();EnumChildWindows(w,delegate(IntPtr c,IntPtr y){var text=new StringBuilder(600);GetWindowText(c,text,600);if(text.Length>0)all.Append(text+" ");return true;},IntPtr.Zero);lock(errors){errors.Add(all.ToString());}PostMessage(w,0x10,IntPtr.Zero,IntPtr.Zero);return true;},IntPtr.Zero);Thread.Sleep(100);}}
  [STAThread]static int Main(){var watcher=new Thread(Watch);watcher.IsBackground=true;watcher.Start();try{
  Application.EnableVisualStyles();var a=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
  var forms=a.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null,null);var form=(Form)Get(forms,"Form_0_TEMPLATE");var handle=form.Handle;
  var module=a.GetType("LOGICA.Module1",true);var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
  if(!connection.ConnectionString.Contains("logica_recovered_check"))throw new Exception("Wrong recovery test database");
- connection.Open();foreach(var entry in new[]{new[]{"TABLE_ARTICLES","120"},new[]{"TABLE_FAMILLES","15"},new[]{"TABLE_VENTES_ENTETE","11"},new[]{"TABLE_VENTES_JOURNAL","54"},new[]{"TABLE_VENTES_REGLEMENTS","11"}}){using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM "+entry[0];var count=Convert.ToInt32(c.ExecuteScalar());if(count!=int.Parse(entry[1]))throw new Exception("Recovered row count mismatch "+entry[0]);Console.WriteLine("PASS recovered "+entry[0]+" rows="+count);}}
+ connection.Open();ActualRecoveredInventoryRollback(connection);foreach(var entry in new[]{new[]{"TABLE_ARTICLES","120"},new[]{"TABLE_FAMILLES","15"},new[]{"TABLE_VENTES_ENTETE","11"},new[]{"TABLE_VENTES_JOURNAL","54"},new[]{"TABLE_VENTES_REGLEMENTS","11"}}){using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM "+entry[0];var count=Convert.ToInt32(c.ExecuteScalar());if(count!=int.Parse(entry[1]))throw new Exception("Recovered row count mismatch "+entry[0]);Console.WriteLine("PASS recovered "+entry[0]+" rows="+count);}}
  int verified=0;
  var inventory=File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"..","input","database-inventory.json"));
  foreach(System.Text.RegularExpressions.Match entry in System.Text.RegularExpressions.Regex.Matches(inventory,"\\\"([A-Za-z_][A-Za-z_0-9]*)\\\"\\s*:\\s*\\{\\s*\\\"rows\\\":\\s*(\\d+)")) {
