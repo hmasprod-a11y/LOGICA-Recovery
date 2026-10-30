@@ -3426,6 +3426,16 @@ public class Form_5_CLIENTS_REGLE : Form
 		public void Set(string column, object value) { row[column] = value; }
 	}
 
+	private sealed class SettlementValidationContext : LOGICA.ApplicationLayer.Clients.IClientSettlementValidationContext
+	{
+		private readonly Form_5_CLIENTS_REGLE form;
+		public SettlementValidationContext(Form_5_CLIENTS_REGLE form) { this.form=form; }
+		public string ClientId { get { return form.Button_CLIENT._ID_Button; } }
+		public string ClientName { get { return ((ButtonBase)form.Button_CLIENT).Text; } }
+		public string Amount { get { return form.TextBox_MONTANT.Text; } }
+		public string PaymentMode { get { return form.Combo_MODE_P.Text; } }
+	}
+
 	private void Button12_Click(object sender, EventArgs e)
 	{
 		//IL_04a0: Unknown result type (might be due to invalid IL or missing references)
@@ -3444,29 +3454,10 @@ public class Form_5_CLIENTS_REGLE : Form
 		{
 			try
 			{
-				if (Operators.CompareString(Button_CLIENT._ID_Button, "", TextCompare: false) == 0)
+				string warning = LOGICA.ApplicationLayer.Clients.ClientSettlementValidationService.FirstWarning(new SettlementValidationContext(this));
+				if (warning != null)
 				{
-					MessageBox.Show("Veuillez remplir le champ -ID_CLIENT- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
-				if (Operators.CompareString(((ButtonBase)Button_CLIENT).Text, "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -CLIENT- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
-				if (Operators.CompareString(TextBox_MONTANT.Text, "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -MONTANT- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
-				if (LOGICA.Domain.ClientSettlementAmountRule.IsRejected(TextBox_MONTANT.Text))
-				{
-					MessageBox.Show("Veuillez remplir le champ -MONTANT- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
-				if (Operators.CompareString(Combo_MODE_P.Text, "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -MODE_P- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					MessageBox.Show(warning, "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
 				if (Operators.CompareString(Label_TOP.Text, "NOUVEAU", TextCompare: false) == 0)
