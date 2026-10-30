@@ -38,6 +38,10 @@ class RecoveredCheck {
      c.Parameters.Clear();
      c.CommandText="INSERT INTO TABLE_RECEPTIONS_ENTETE (ID_BR,ETAT) VALUES ('"+receipt+"','VALIDER')";c.ExecuteNonQuery();
      c.CommandText="INSERT INTO TABLE_INVENTAIRES_ENTETE (ID_INV,ETAT) VALUES ('"+count+"','VALIDER')";c.ExecuteNonQuery();
+     c.CommandText="INSERT INTO TABLE_RECEPTIONS_DETAILS (ID_BR,ID_ARTICLE,ETAT) VALUES ('"+receipt+"',@article,'VALIDER')";
+     p=c.CreateParameter();p.ParameterName="@article";p.Value=articleId;c.Parameters.Add(p);c.ExecuteNonQuery();c.Parameters.Clear();
+     c.CommandText="INSERT INTO TABLE_INVENTAIRES_DETAILS (ID_INV,ID_ARTICLE,ETAT) VALUES ('"+count+"',@article,'VALIDER')";
+     p=c.CreateParameter();p.ParameterName="@article";p.Value=articleId;c.Parameters.Add(p);c.ExecuteNonQuery();c.Parameters.Clear();
      c.CommandText="INSERT INTO TABLE_MOUVEMENTS_STOCK (LIBELLE,ID_ARTICLE,QUANTITE) VALUES ('CI_RECOVERED_ROLLBACK',@article,'1')";
      p=c.CreateParameter();p.ParameterName="@article";p.Value=articleId;c.Parameters.Add(p);c.ExecuteNonQuery();
      c.Parameters.Clear();c.CommandText="SELECT LAST_INSERT_ID()";var movementId=Convert.ToInt64(c.ExecuteScalar());
@@ -53,10 +57,10 @@ class RecoveredCheck {
    object afterStock=c.ExecuteScalar();
    if(!object.Equals(Convert.ToString(originalStock),Convert.ToString(afterStock)))throw new Exception("Original article stock changed despite rollback");
    c.Parameters.Clear();
-   c.CommandText="SELECT (SELECT COUNT(*) FROM TABLE_RECEPTIONS_ENTETE WHERE ID_BR='"+receipt+"')+(SELECT COUNT(*) FROM TABLE_INVENTAIRES_ENTETE WHERE ID_INV='"+count+"')+(SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE='CI_RECOVERED_ROLLBACK')";
+   c.CommandText="SELECT (SELECT COUNT(*) FROM TABLE_RECEPTIONS_ENTETE WHERE ID_BR='"+receipt+"')+(SELECT COUNT(*) FROM TABLE_RECEPTIONS_DETAILS WHERE ID_BR='"+receipt+"')+(SELECT COUNT(*) FROM TABLE_INVENTAIRES_ENTETE WHERE ID_INV='"+count+"')+(SELECT COUNT(*) FROM TABLE_INVENTAIRES_DETAILS WHERE ID_INV='"+count+"')+(SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE='CI_RECOVERED_ROLLBACK')";
    if(Convert.ToInt32(c.ExecuteScalar())!=0)throw new Exception("Recovered rollback left partial header or movement");
   }
-  Console.WriteLine("PASS recovered original-schema article + receipt/inventory headers + movement rollback on injected duplicate key");
+  Console.WriteLine("PASS recovered original-schema article + receipt/inventory headers/details + movement rollback on injected duplicate key");
  }
  static void Watch(){while(!stop){EnumWindows(delegate(IntPtr w,IntPtr x){uint pid;GetWindowThreadProcessId(w,out pid);if(pid!=Process.GetCurrentProcess().Id)return true;var b=new StringBuilder(100);GetClassName(w,b,100);if(b.ToString()!="#32770")return true;var all=new StringBuilder();EnumChildWindows(w,delegate(IntPtr c,IntPtr y){var text=new StringBuilder(600);GetWindowText(c,text,600);if(text.Length>0)all.Append(text+" ");return true;},IntPtr.Zero);lock(errors){errors.Add(all.ToString());}PostMessage(w,0x10,IntPtr.Zero,IntPtr.Zero);return true;},IntPtr.Zero);Thread.Sleep(100);}}
  [STAThread]static int Main(){var watcher=new Thread(Watch);watcher.IsBackground=true;watcher.Start();try{
