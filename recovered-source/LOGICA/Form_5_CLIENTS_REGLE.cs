@@ -3328,7 +3328,7 @@ public class Form_5_CLIENTS_REGLE : Form
 						decimal d2 = Conversions.ToDecimal(list[1]);
 						decimal d3 = Conversions.ToDecimal(list[2]);
 						decimal d4 = Conversions.ToDecimal(list[3]);
-						_total_credit = decimal.Subtract(decimal.Add(decimal.Add(d, d2), d3), d4);
+						_total_credit = LOGICA.Domain.ClientCreditBalance.Calculate(d, d2, d3, d4);
 					}
 					else
 					{
@@ -3726,7 +3726,7 @@ public class Form_5_CLIENTS_REGLE : Form
 			decimal num4 = 0m;
 			num4 = ((dataTable.Rows[0]["N"] != DBNull.Value) ? Conversions.ToDecimal(Strings.FormatNumber(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"]))) : Conversions.ToDecimal(Strings.FormatNumber(0)));
 			Label_REGLE_CLIENT.Text = Conversions.ToString(num4);
-			Text_CREDIT.Text = Conversions.ToString(decimal.Subtract(decimal.Add(decimal.Add(num, num2), num3), num4)) + " DH";
+			Text_CREDIT.Text = Conversions.ToString(LOGICA.Domain.ClientCreditBalance.Calculate(num, num2, num3, num4)) + " DH";
 		}
 	}
 
