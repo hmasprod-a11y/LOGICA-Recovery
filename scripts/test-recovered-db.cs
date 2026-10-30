@@ -9,6 +9,60 @@ class RecoveredCheck {
  [DllImport("user32.dll")]static extern bool PostMessage(IntPtr w,uint m,IntPtr a,IntPtr b);
  static volatile bool stop=false;static List<string> errors=new List<string>();
  static object Get(object o,string n){return o.GetType().GetProperty(n,BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public).GetValue(o,null);}
+ static void OriginalDocumentConsultation(Assembly assembly,IDbConnection conn,string kind) {
+  if(!conn.ConnectionString.Contains("logica_recovered_check") || !conn.ConnectionString.Contains("127.0.0.1"))
+   throw new Exception("Original consultation requires isolated recovered database");
+  string header=kind=="R"?"TABLE_RECEPTIONS_ENTETE":"TABLE_INVENTAIRES_ENTETE";
+  string details=kind=="R"?"TABLE_RECEPTIONS_DETAILS":"TABLE_INVENTAIRES_DETAILS";
+  string key=kind=="R"?"ID_BR":"ID_INV";
+  string formName=kind=="R"?"Form_6_RECEPTIONS":"Form_6_INVENTAIRES";
+  string marker=kind=="R"?"CI_CONSULT_RECEIPT":"CI_CONSULT_INVENTORY";
+  string article;
+  using(var c=conn.CreateCommand()) {
+   c.CommandText="SELECT ID_ARTICLE FROM TABLE_ARTICLES WHERE ID_ARTICLE IS NOT NULL AND ID_ARTICLE<>'' ORDER BY ID LIMIT 1";
+   article=Convert.ToString(c.ExecuteScalar());
+   if(string.IsNullOrEmpty(article))throw new Exception("Missing recovered article for consultation");
+  }
+  // Fresh imported database: insert only a disposable pending test document.
+  using(var c=conn.CreateCommand()) {
+   c.CommandText="INSERT INTO "+header+" ("+key+",Dates,UTILISATEUR,ETAT) VALUES ('"+marker+"','2026-10-30','CI','EN_COURS')";
+   c.ExecuteNonQuery();
+   if(kind=="R")c.CommandText="INSERT INTO "+details+" (ID_BR,ID_ARTICLE,Code,Article,Prix_A,Prix_V,`Qté`,TOTAL_NET_ACHATS,TOTAL_NET_VENTES,DATE_PEREMPTION,N_LOT,ETAT) VALUES ('"+marker+"','"+article+"','CI','CI Product',10,12,2,20,24,'2027-10-30','LOT-CI','EN_COURS')";
+   else c.CommandText="INSERT INTO "+details+" (ID_INV,ID_ARTICLE,Code,Article,Prix_A,STOCK_LOGIQUE,STOCK_PHYSIQUE,ECART,VALEUR,ETAT) VALUES ('"+marker+"','"+article+"','CI','CI Product',10,5,7,2,20,'EN_COURS')";
+   c.ExecuteNonQuery();
+  }
+  try {
+   var forms=assembly.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null,null);
+   var template=Get(forms,"Form_0_TEMPLATE");
+   var list=(ListView)Get(template,"ListView1");
+   if(list.Items.Count==0 || list.FindItemWithText("HT_TTC",false,0)==null)list.Items.Add("HT_TTC").SubItems.Add("TTC");
+   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA."+formName,true))) {
+    DataTable dt=new DataTable();
+    using(var c=conn.CreateCommand()){
+     c.CommandText="SELECT * FROM "+header+" WHERE "+key+"='"+marker+"'";
+     using(var reader=c.ExecuteReader())dt.Load(reader);
+    }
+    form.GetType().GetField("DT",BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic).SetValue(form,dt);
+    var grid=(DataGridView)Get(form,"DataGridView1");
+    grid.DataSource=dt;
+    if(grid.Rows.Count!=1)throw new Exception("Original form did not bind one pending document: "+formName);
+    var handle=form.Handle;
+    if(grid.Columns["cons"]==null)throw new Exception("Original consultation column missing: "+formName);
+    grid.CurrentCell=grid.Rows[0].Cells[key];
+    form.GetType().GetMethod("DataGridView1_CellClick",BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public).Invoke(form,new object[]{grid,new DataGridViewCellEventArgs(grid.Columns["cons"].Index,0)});
+    var body=(DataGridView)Get(form,"DataGrid_BODY");
+    if(body.Rows.Count<1 || Convert.ToString(body.Rows[0].Cells["ID_ARTICLE"].Value)!=article)
+     throw new Exception("Original consultation did not load detail product: "+formName+" rows="+body.Rows.Count);
+    Console.WriteLine("PASS original "+formName+" consultation loads pending product from isolated recovered tables");
+   }
+  } finally {
+   if(conn.State!=ConnectionState.Open)conn.Open();
+   using(var c=conn.CreateCommand()){
+    c.CommandText="DELETE FROM "+details+" WHERE "+key+"='"+marker+"'";c.ExecuteNonQuery();
+    c.CommandText="DELETE FROM "+header+" WHERE "+key+"='"+marker+"'";c.ExecuteNonQuery();
+   }
+  }
+ }
  static void VerifyOriginalValidationFixtureSchema(IDbConnection conn) {
   // Validate the columns read by the original DataGridView1_CellClick handlers
   // before attempting a full accepted WinForms validation fixture.
@@ -118,7 +172,7 @@ class RecoveredCheck {
  var forms=a.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",BindingFlags.NonPublic|BindingFlags.Static).GetValue(null,null);var form=(Form)Get(forms,"Form_0_TEMPLATE");var handle=form.Handle;
  var module=a.GetType("LOGICA.Module1",true);var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
  if(!connection.ConnectionString.Contains("logica_recovered_check"))throw new Exception("Wrong recovery test database");
- connection.Open();VerifyOriginalValidationFixtureSchema(connection);ActualRecoveredInventoryRollback(connection);foreach(var entry in new[]{new[]{"TABLE_ARTICLES","120"},new[]{"TABLE_FAMILLES","15"},new[]{"TABLE_VENTES_ENTETE","11"},new[]{"TABLE_VENTES_JOURNAL","54"},new[]{"TABLE_VENTES_REGLEMENTS","11"}}){using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM "+entry[0];var count=Convert.ToInt32(c.ExecuteScalar());if(count!=int.Parse(entry[1]))throw new Exception("Recovered row count mismatch "+entry[0]);Console.WriteLine("PASS recovered "+entry[0]+" rows="+count);}}
+ connection.Open();VerifyOriginalValidationFixtureSchema(connection);ActualRecoveredInventoryRollback(connection);OriginalDocumentConsultation(a,connection,"R");OriginalDocumentConsultation(a,connection,"I");foreach(var entry in new[]{new[]{"TABLE_ARTICLES","120"},new[]{"TABLE_FAMILLES","15"},new[]{"TABLE_VENTES_ENTETE","11"},new[]{"TABLE_VENTES_JOURNAL","54"},new[]{"TABLE_VENTES_REGLEMENTS","11"}}){using(var c=connection.CreateCommand()){c.CommandText="SELECT COUNT(*) FROM "+entry[0];var count=Convert.ToInt32(c.ExecuteScalar());if(count!=int.Parse(entry[1]))throw new Exception("Recovered row count mismatch "+entry[0]);Console.WriteLine("PASS recovered "+entry[0]+" rows="+count);}}
  int verified=0;
  var inventory=File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"..","input","database-inventory.json"));
  foreach(System.Text.RegularExpressions.Match entry in System.Text.RegularExpressions.Regex.Matches(inventory,"\\\"([A-Za-z_][A-Za-z_0-9]*)\\\"\\s*:\\s*\\{\\s*\\\"rows\\\":\\s*(\\d+)")) {
