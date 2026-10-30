@@ -1607,7 +1607,41 @@ public class Form_6_MOUVEMENTS_STOCK : Form
 		Picture_FIND_Click(RuntimeHelpers.GetObjectValue(sender), e);
 	}
 
-	private void Picture_FIND_Click(object sender, EventArgs e)
+	private sealed class MovementSearchContext : LOGICA.ApplicationLayer.Inventory.IStockMovementSearchContext
+    {
+        private readonly Form_6_MOUVEMENTS_STOCK form;
+        public MovementSearchContext(Form_6_MOUVEMENTS_STOCK form) { this.form = form; }
+        public string Column { get { return form.Combo_FIND.Text; } }
+        public string Text { get { return form.Text_FIND.Texts; } }
+        public bool UseDates { get { return form.Check_FIND_DATE.Checked; } }
+        public bool Exact { get { return form.Check_FIND_EXACTE.Checked; } }
+        public void LoadDateRange()
+        {
+            form.DT.Clear();
+            form.DA = LOGICA.Infrastructure.Inventory.StockMovementQuery.DateRange(form.Label_TABLE.Text, form.DateTime1_FIND.Value, form.DateTime2_FIND.Value, Module1.cn_SQL);
+            ((DbDataAdapter)(object)form.DA).Fill(form.DT);
+        }
+        public void SetDatePrefix()
+        {
+            form._sql = LOGICA.Infrastructure.Inventory.StockMovementQuery.DatePrefix(form.DateTime1_FIND.Value, form.DateTime2_FIND.Value);
+        }
+        public void ClearDatePrefix() { form._sql = ""; }
+        public void LoadContains()
+        {
+            form.DT.Clear();
+            form.DA = LOGICA.Infrastructure.Inventory.StockMovementQuery.Contains(form.Label_TABLE.Text, form._sql, form.Combo_FIND.Text, form.Text_FIND.Texts, Module1.cn_SQL);
+            ((DbDataAdapter)(object)form.DA).Fill(form.DT);
+        }
+        public void LoadExactLike()
+        {
+            form.DT.Clear();
+            form.DA = LOGICA.Infrastructure.Inventory.StockMovementQuery.ExactLike(form.Label_TABLE.Text, form._sql, form.Combo_FIND.Text, form.Text_FIND.Texts, Module1.cn_SQL);
+            ((DbDataAdapter)(object)form.DA).Fill(form.DT);
+        }
+        public void BindResults() { form.DataGridView1.DataSource = form.DT; }
+    }
+
+    private void Picture_FIND_Click(object sender, EventArgs e)
 	{
 		//IL_039e: Unknown result type (might be due to invalid IL or missing references)
 		//IL_03a5: Expected Obj, but got Unknown
@@ -1619,36 +1653,7 @@ public class Form_6_MOUVEMENTS_STOCK : Form
 		//IL_02e7: Expected Obj, but got Unknown
 		try
 		{
-			if (Operators.CompareString(Combo_FIND.Text, "DATES", TextCompare: false) == 0)
-			{
-				DT.Clear();
-				DA = new MySqlDataAdapter("select * from     TABLE_" + Label_TABLE.Text + "      Where       Dates   between   ' " + Strings.Format(DateTime1_FIND.Value, "yyyy-MM-dd") + " '     And      ' " + Strings.Format(DateTime2_FIND.Value, "yyyy-MM-dd") + " '               order by   ID    desc ", Module1.cn_SQL);
-				((DbDataAdapter)(object)DA).Fill(DT);
-			}
-			else if (Operators.CompareString(Text_FIND.Texts, "", TextCompare: false) != 0)
-			{
-				if (Check_FIND_DATE.Checked)
-				{
-					_sql = "        Dates   between   ' " + Strings.Format(DateTime1_FIND.Value, "yyyy-MM-dd") + " '     And      ' " + Strings.Format(DateTime2_FIND.Value, "yyyy-MM-dd") + " '         AND     ";
-				}
-				else
-				{
-					_sql = "";
-				}
-				if (!Check_FIND_EXACTE.Checked)
-				{
-					DT.Clear();
-					DA = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat("select * from     TABLE_" + Label_TABLE.Text, "      Where            "), _sql), "            ("), Combo_FIND.Text), "  like  '%"), Text_FIND.Texts), "%'   )                                order by   ID    desc ")), Module1.cn_SQL);
-					((DbDataAdapter)(object)DA).Fill(DT);
-				}
-				else if (Check_FIND_EXACTE.Checked)
-				{
-					DT.Clear();
-					DA = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat("select * from     TABLE_" + Label_TABLE.Text, "      Where            "), _sql), "            ("), Combo_FIND.Text), "  like  '"), Text_FIND.Texts), "'     )                                order by   ID    desc ")), Module1.cn_SQL);
-					((DbDataAdapter)(object)DA).Fill(DT);
-				}
-			}
-			DataGridView1.DataSource = DT;
+			LOGICA.ApplicationLayer.Inventory.StockMovementSearchService.Search(new MovementSearchContext(this));
 		}
 		catch (Exception ex)
 		{
@@ -1679,7 +1684,27 @@ public class Form_6_MOUVEMENTS_STOCK : Form
 		}
 	}
 
-	public void Picture_REFRESH_Click(object sender, EventArgs e)
+	private sealed class MovementRefreshContext : LOGICA.ApplicationLayer.Inventory.IStockMovementRefreshContext
+    {
+        private readonly Form_6_MOUVEMENTS_STOCK form;
+        private readonly object sender;
+        public MovementRefreshContext(Form_6_MOUVEMENTS_STOCK form, object sender) { this.form = form; this.sender = sender; }
+        public void FocusSender()
+        {
+            NewLateBinding.LateCall(sender, null, "Focus", new object[0], null, null, null, IgnoreReturn: true);
+        }
+        public void ClearSearch() { form.Text_FIND.Texts = ""; }
+        public void FocusSearch() { ((Control)form.Text_FIND).Focus(); }
+        public void ReloadAll()
+        {
+            form.DT.Clear();
+            form.DA = LOGICA.Infrastructure.Inventory.StockMovementQuery.Refresh(form.Label_TABLE.Text, Module1.cn_SQL);
+            ((DbDataAdapter)(object)form.DA).Fill(form.DT);
+        }
+        public void BindResults() { form.DataGridView1.DataSource = form.DT; }
+    }
+
+    public void Picture_REFRESH_Click(object sender, EventArgs e)
 	{
 		//IL_0062: Unknown result type (might be due to invalid IL or missing references)
 		//IL_006c: Expected Obj, but got Unknown
@@ -1687,13 +1712,7 @@ public class Form_6_MOUVEMENTS_STOCK : Form
 		//IL_0127: Expected Obj, but got Unknown
 		try
 		{
-			NewLateBinding.LateCall(sender, null, "Focus", new object[0], null, null, null, IgnoreReturn: true);
-			Text_FIND.Texts = "";
-			((Control)Text_FIND).Focus();
-			DT.Clear();
-			DA = new MySqlDataAdapter("select * from      TABLE_" + Label_TABLE.Text + "                  order by   ID    desc ", Module1.cn_SQL);
-			((DbDataAdapter)(object)DA).Fill(DT);
-			DataGridView1.DataSource = DT;
+			LOGICA.ApplicationLayer.Inventory.StockMovementRefreshService.Refresh(new MovementRefreshContext(this, sender));
 		}
 		catch (Exception ex)
 		{
