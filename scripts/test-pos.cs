@@ -47,6 +47,57 @@ class PosSmoke {
    }
   }
  }
+ static bool DeclineValidationDialog(uint threadId,string expectedDocument) {
+  bool declined=false;
+  EnumThreadWindows(threadId,delegate(IntPtr window,IntPtr unused) {
+   var cls=new StringBuilder(128);GetClassName(window,cls,cls.Capacity);
+   if(cls.ToString()!="#32770")return true;
+   bool matching=false;
+   EnumChildWindows(window,delegate(IntPtr child,IntPtr ignored) {
+    var label=new StringBuilder(1024);GetWindowText(child,label,label.Capacity);
+    if(label.ToString().Contains("Voulez-vous vraiment Valider") && label.ToString().Contains(expectedDocument))matching=true;
+    return true;
+   },IntPtr.Zero);
+   // WM_COMMAND / IDNO=7. Explicitly decline; never accept a posting.
+   if(matching)declined=PostMessage(window,0x0111,new IntPtr(7),IntPtr.Zero) || declined;
+   return true;
+  },IntPtr.Zero);
+  return declined;
+ }
+ static void DeclinedValidationGuard(Assembly assembly) {
+  var forms=assembly.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",Flags).GetValue(null,null);
+  var template=Get(forms,"Form_0_TEMPLATE");
+  var settings=(ListView)Get(template,"ListView1");
+  if(settings.Items.Count==0 || settings.FindItemWithText("HT_TTC",false,0)==null)
+   settings.Items.Add("HT_TTC").SubItems.Add("TTC");
+  foreach(string formName in new[]{"Form_6_RECEPTIONS","Form_6_INVENTAIRES"}) {
+   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA."+formName,true))) {
+    var grid=(DataGridView)Get(form,"DataGridView1");
+    grid.AllowUserToAddRows=false;grid.Rows.Clear();
+    string idColumn=formName=="Form_6_RECEPTIONS"?"ID_BR":"ID_INV";
+    if(grid.Columns["ETAT"]==null)grid.Columns.Add("ETAT","ETAT");
+    if(grid.Columns[idColumn]==null)grid.Columns.Add(idColumn,idColumn);
+    int row=grid.Rows.Add();grid.Rows[row].Cells["ETAT"].Value="EN_COURS";
+    string document="CI_NO_"+(formName=="Form_6_RECEPTIONS"?"BR":"INV");
+    grid.Rows[row].Cells[idColumn].Value=document;
+    grid.CurrentCell=grid.Rows[row].Cells["ETAT"];
+    var button=(Control)Get(form,"Button_VALIDER");button.Enabled=true;
+    uint threadId=GetCurrentThreadId();int declineCount=0;
+    using(var stop=new ManualResetEvent(false)) {
+     var watcher=new Thread(delegate() {
+      while(!stop.WaitOne(60))if(DeclineValidationDialog(threadId,document))Interlocked.Increment(ref declineCount);
+     });watcher.IsBackground=true;watcher.Start();
+     try { form.GetType().GetMethod("Button_VALIDER_Click",Flags).Invoke(form,new object[]{button,EventArgs.Empty}); }
+     finally { stop.Set();if(!watcher.Join(2000))throw new Exception("Decline watcher did not stop"); }
+    }
+    if(declineCount==0)throw new Exception("No original decline confirmation observed: "+formName);
+    if(!button.Enabled)throw new Exception("Declined validation left button disabled: "+formName);
+    if(grid.Rows.Count!=1 || Convert.ToString(grid.Rows[row].Cells["ETAT"].Value)!="EN_COURS")
+     throw new Exception("Declined validation changed original list: "+formName);
+    Console.WriteLine("PASS original declined validation "+formName);
+   }
+  }
+ }
  static void EmptyValidationGuard(Assembly assembly) {
   // Characterize only the original empty-document early return, with no modal or DB writes.
   var forms=assembly.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",Flags).GetValue(null,null);
@@ -385,7 +436,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
