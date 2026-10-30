@@ -15,26 +15,17 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 25
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Repair and persist original source
+      - name: Verify committed source is present
         shell: pwsh
         run: |
-          python scripts/repair-source.py
-          if ($LASTEXITCODE -ne 0) { throw 'Source repair failed' }
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -f recovered-source
-          git reset -- recovered-source/obj recovered-source/bin
-          git diff --cached --quiet
-          if ($LASTEXITCODE -ne 0) {
-            git commit -m 'Persist repaired original C# source and portable project'
-            git push
-            if ($LASTEXITCODE -ne 0) { throw 'Source persistence failed' }
+          if (-not (Test-Path -LiteralPath 'recovered-source/LOGICA.csproj')) {
+            throw 'Authoritative committed project missing'
           }
       - name: Restore original runtime dependencies
         shell: pwsh

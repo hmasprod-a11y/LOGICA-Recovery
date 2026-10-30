@@ -1,0 +1,325 @@
+# LOGICA: preserve behavior, then improve structure
+
+## Priority agreed with the owner (2026-10-29)
+
+LOGICA is the primary product and the owner reports that it works well. The first objective is to organize its code incrementally while preserving existing behavior. TODO POS is an optional reference for selected ideas, not the implementation base. New features and broad UI redesign follow stabilization.
+
+The requirements list is a target inventory, not evidence that features are missing. No full rewrite, framework migration, database replacement or production-data migration is part of this first change.
+
+## Inspected baseline
+
+Repository commit: d4b13ca553b53c923fe8afd0eefd037b08206057.
+This is a preliminary source inventory, not a complete audit or a new runtime certification.
+
+| Area | Evidence | Current assessment | Next acceptance evidence |
+| --- | --- | --- | --- |
+| Windows build | recovered-source/LOGICA.csproj | net48, x86, WinForms; keep target | Full existing Windows build and POS workflow |
+| Sales | recovered-source/LOGICA/Form_3_VENTE.cs (668747 bytes) | Large source file; extraction candidates need method-level inspection | Existing basket/checkout tests plus focused regression cases before moving logic |
+| Catalogue | recovered-source/LOGICA/Form_2_ARTICLES.cs (646163 bytes) | Large source file; not proof of faulty behavior | Record representative product editing/import workflows before refactoring |
+| Shared state and utilities | recovered-source/LOGICA/Module1.cs | Money, barcode, database connection and UI-dependent initialization coexist | Separate pure rules first; preserve legacy call sites |
+| Existing regression checks | scripts/test-pos.cs | Basket, checkout/refund, rounding and form smoke checks exist | Execute against isolated fixture; expand failures/concurrency later |
+| Existing CI | .github/workflows/windows-reference-diagnostic.yml | Builds source, provisions fixture, runs POS checks; repair step can commit generated repairs | Inspect actual branch run; do not infer success from workflow presence |
+| Archive workflow | .github/workflows/build-recovered-source.yml | Builds archive, unlike the authoritative-source workflow | Do not use archive build as proof that current source passed |
+| Peripherals | README.md | Real physical devices explicitly outside prior checks | Manual device acceptance on shop-equivalent hardware |
+
+No AGENTS.md was present in the recursive repository tree at the inspected commit.
+Credentials and activation behavior are not changed by this extraction.
+
+## First implementation slice
+
+Move the exact FLOUSS rounding expression into LOGICA.Domain.MonetaryRounding. Keep Module1.FLOUSS as the compatibility entry point, so existing callers remain intact. The SDK project automatically includes the new C# file.
+
+Preserve both rounding away from zero and the existing culture-sensitive Visual Basic conversion. Removing that conversion or its dependency is a separate decision after compatibility review. The new type has no UI, database or Module1 dependency.
+
+Add standalone characterization checks covering explicit expected values, positive and negative amounts, midpoint boundaries, large amounts, decimal limits and fr-MA/fr-FR/en-US cultures. The standalone runner compiles the production rule directly using Windows .NET Framework tooling. Existing POS tests still exercise the compatibility entry point in the built EXE.
+
+## Ordered next slices
+
+1. Verify the existing full Windows build, isolated checkout/refund fixture and baseline screens for this branch.
+2. Inspect basket calculation and checkout methods. Map UI reads, database writes, stock movements, ticket numbering and printer calls before selecting the next extraction.
+3. Add regression cases for the selected rule, then extract that one responsibility behind the existing form entry point.
+4. Separate database access after transaction and error behavior is documented. Treat financial behavior changes as separate fixes.
+5. Repeat for stock/catalogue; evaluate selected TODO ideas only after the relevant LOGICA area is protected.
+
+Each slice must list original entry points, preserved behavior, tests actually run, limitations and a rollback commit. Changes stay on a review branch until accepted. A full requirement-by-requirement audit and effort estimates remain to be completed; file size alone is not an effort estimate.
+
+## Progress: second slice (2026-10-29)
+
+The owner reaffirmed that organizing code is the priority; the existing application is already working and tried in use. Database checks are regression protection only.
+
+Inspected Form_3_VENTE.Text_TOTAL_NET_Click: database total -> display formatting -> grid quantity aggregation -> optional serial display. These boundaries remain unchanged.
+Inspected Button_MODIF_QTE_Click: access check -> quantity dialog -> article price lookup -> quantity-tier selection -> net amount -> basket update -> total refresh.
+
+Extracted the four identical net-amount expressions in Button_MODIF_QTE_Click into SalesLinePricing.CalculateNetAmount. Kept quantity-tier decisions, promotion input, sale/return branches, VB formatting, return double conversion, database writes and existing exceptions in the form. The calculation intentionally remains unrounded and retains intermediate decimal overflow. No new discount validation was introduced.
+
+Local Windows checks: monetary rounding 60,039 assertions and sales line pricing 12,558 assertions passed. Cases include fractional/negative quantities, zero/100%/out-of-range discounts, unrounded fractions and overflow boundaries. Full branch CI must be checked after publication. Standalone rule tests do not exercise the modal quantity dialog or replace manual UI acceptance.
+
+Rollback for this slice: revert its commit; the previous rounding extraction is independent. Next useful step: characterize quantity-dialog/price-tier behavior before extracting more of Button_MODIF_QTE_Click; map the checkout transaction before moving persistence.
+
+## Progress: third slice (2026-10-29)
+
+Verified the second slice with full Windows workflow 40812642731 (success).
+
+Extracted the quantity-price decision from Button_MODIF_QTE_Click into SalesLinePricing.SelectQuantityPrice. A null result preserves the existing no-update behavior when the quantity price is zero or negative. Otherwise it selects the tier at/above the threshold and the standard price below it. The original double-based comparison is deliberately retained, including adjacent large-decimal precision behavior.
+
+Merged the two identical price assignment / sale-or-return amount / adapter update branches into one guarded block. Access dialogs, absolute quantity acquisition, article lookup, promotion, formatting, return sign, total refresh and error handling stay in place.
+
+Local tests: all previous tests passed plus 45 explicit quantity-price assertions across three cultures, covering below/equal/above threshold, fractional values, disabled tier, zero quantity/threshold, higher tier price, zero standard price, decimal limits, double precision and selected-price net calculation. Full Windows CI remains required after this commit. The modal quantity dialog has not been manually exercised in this session.
+
+Rollback: revert this slice's commit. Next: characterize the quantity-edit interaction and map the checkout transaction boundaries before moving persistence; avoid treating database recovery as project work.
+
+### Third-slice verification and checkout reconnaissance
+
+Full Windows run 40813225057 passed, including build, existing POS checks and launcher/package checks. Domain checks passed for the implementation commit. Manual modal quantity-dialog interaction remains unverified.
+
+Inspected Button_Click checkout sequence: transaction starts before ticket number read; stock and movement writes -> header -> journal -> payment rows -> CREATION_IMPRESSION -> clear basket -> increment number -> commit. Rollback is in the inner catch. This is a map of current source, not a change request. Before extracting persistence, add controlled-failure coverage for transaction behavior and inspect CREATION_IMPRESSION side effects. Do not move printing or alter financial behavior as an incidental cleanup.
+
+## Progress: controlled checkout failure coverage (2026-10-29)
+
+Added a checkout-rollback harness scenario before extracting persistence. It first establishes the existing sale/refund baseline, then injects a fixture-only journal-insert trigger failure after the original checkout has changed stock, inserted a movement and written a header. Assertions require the previous stock, movements, header/journal/payment counts and ticket sequence to survive unchanged, and the attempted basket to remain.
+
+The probe refuses to run unless the connection is exactly 127.0.0.1:3307/logica_ci. The injected trigger is dropped in a finally block. A background watcher closes native error dialogs only on the isolated test's own UI thread while the injected call is active. A MEMORY-table marker proves that the injected journal trigger was reached exactly once, independently of the dialog text and transaction rollback. No global keyboard input is used.
+
+Local harness compilation succeeded; runtime result must be obtained from full Windows CI. Production code is unchanged in this slice. This covers a specific mid-transaction failure, not printer failure, concurrency, all failure locations or manual UI acceptance.
+
+### Verification infrastructure follow-up
+
+Run 40813844703 built the application but failed while downloading the isolated MariaDB package (connection timeout), before POS tests. Its rerun then failed because the pre-existing repair/persist step attempted a non-fast-forward push after the earlier generated repair commit.
+
+Changed the branch Windows verification workflow to build the already-committed authoritative source directly with read-only repository permissions. Recovery/repair remains an explicit script; verification no longer rewrites or commits source. This avoids unrelated project-file churn and makes retries test the requested revision. No production-code change was needed for either infrastructure failure.
+
+The first runtime probe timed out at the error dialog; the existing normal checkout checks passed. Replaced the UI-thread timer with a bounded background watcher so native modal-loop behavior cannot prevent acknowledgement. Added a nontransactional trigger-attempt marker to distinguish the intended database failure from an unrelated earlier UI error. Local harness compilation passed; rerun runtime verification before claiming rollback coverage.
+
+Final verification: Windows run 40822250487 succeeded. checkout-rollback PASS: trigger Attempts=1, stock=9, previous headers=2, journal rows=2, payments=12.5, retained basket rows=1, ticket sequence=3 and movement sum=-1. All existing POS, build, data-regression and portable-launcher checks also passed. Production behavior remains unchanged; this new coverage now protects a mid-transaction failure before further persistence extraction.
+
+## Progress: stock-movement persistence boundary (2026-10-29)
+
+Reviewed CREATION_IMPRESSION: it reads form configuration and dispatches physical USB/serial ticket, return and credit printing, including operation-dependent copies. It remains unchanged and is not an appropriate pure-rule extraction.
+
+Selected a narrower persistence boundary: move the existing parameterized stock-movement INSERT from Button_Click into Infrastructure.Checkout.StockMovementWriter. The form still owns the transaction and stock update. The helper uses the exact caller command and connection, preserves parameter types/sign/date calls/ticket label, executes once, and clears parameters on the same successful path. It does not open/close connections, begin/commit/rollback, catch errors, or reference forms/Module1.
+
+Coverage before extraction: existing sale/refund movement sums and the successful injected journal-failure rollback test. Extend checkout assertions to verify article identity and exact ticket labels as well. Full Windows verification is required for this slice; physical printing is not exercised.
+
+Stock-movement slice verified: full Windows run 40822885285 passed, including sale/refund movement identity and ticket-reference checks, injected journal-failure rollback, build and all existing checks. Domain CI passed too. Revert commit c0c8c2b5c22c242813e180f57c78794e3e9f0b6a to undo this extraction. Next: inspect other persistence operations for a similarly bounded extraction without moving transaction ownership; do not combine parameterization or financial-behavior changes with structural moves.
+
+## Progress: ticket-header persistence boundary (2026-10-29)
+
+Extracted the existing TABLE_VENTES_ENTETE INSERT into Infrastructure.Checkout.TicketHeaderWriter, taking a plain TicketHeaderRecord rather than reading controls or Module1. The form captures the same header fields immediately before the write and retains the same date calculation, command/connection/transaction ownership, write order, errors and legacy SQL/culture conversion. SQL parameterization is deliberately outside this structural slice.
+
+Pre-existing sale/refund tests and the successful injected journal failure cover header persistence and rollback. Extended the fixture checks to verify exact ticket number, signed net amount, cashier, workstation and operation for both sale and refund. Harness compilation succeeded locally. Full branch Windows verification is required before claiming this extraction passes.
+
+Next boundary: journal INSERT ... SELECT or payment persistence, after enumerating the values read from the form. Keep the outer transaction in place; do not redesign printing or payment behavior incidentally.
+
+Ticket-header slice verified: full Windows run 40823805091 succeeded. New assertions confirmed sale total 25 and refund total -12.5 with exact ticket/cashier/workstation/operation fields; checkout-rollback and all existing checks passed. Domain CI succeeded. Revert a51a5bd18f0cc2419a2600cd14d0d00cc28bd7c0 to undo this extraction.
+
+## Progress: sales-journal persistence boundary (2026-10-29)
+
+Moved the original TABLE_VENTES_JOURNAL INSERT ... SELECT into Infrastructure.Checkout.TicketJournalWriter. It receives a plain journal record captured at the existing call site and uses the caller's existing command/connection/transaction. Basket-table selection, copied columns, date/time formatting, seller/client/price/payment metadata, SQL and error propagation remain unchanged. The outer form still orchestrates stock -> header -> journal -> payments -> printing -> basket/sequence -> commit.
+
+Existing successful checkout and mid-journal failure/rollback checks protect the boundary. Added explicit sale/refund assertions for signed journal total and quantity, copied product/price/discount fields, cashier/seller/workstation/operation and price/payment notes. Full Windows CI is required for the new slice; no physical printing or all-payment-mode claim is made.
+
+Journal slice verified: full Windows run 40824761557 succeeded, including new journal signed-value/context/copy assertions, checkout-rollback and all existing checks. Domain CI succeeded. Revert d830affcb04d98770ead4fdae7a68a208ba0c95f to undo this extraction. Next: enumerate payment branches and add mixed-payment/change/credit coverage before moving payment persistence; cash-sale/refund coverage alone is insufficient for all branches.
+
+## Progress: payment persistence branch characterization (2026-10-29)
+
+Before moving payment writes, add checkout-mixed (15 card + 10 cash), checkout-change (30 tendered / -5 cash change on a 25 sale), and checkout-credit (CREDIT operation persists without payment rows). Each scenario uses the real checkout handler and verifies existing stock/header/journal/sequence behavior plus payment amounts and journal notes.
+
+Mixed/change scenarios supply an accepted payment-dialog fixture: original Load/Shown/Activated and grid calculation callbacks are detached for this fixture instance, rows are seeded, and the modal is closed via its own Shown event. This deliberately covers checkout persistence after acceptance, not payment-dialog calculation/validation/interaction. The credit case starts from the accepted CREDIT operation and does not cover the human credit-confirmation dialog.
+
+Production code is unchanged in this slice. Harness compilation passed locally; full Windows runtime checks remain required. Only after those branches are characterized should the payment writer be extracted without changing transaction ownership or SQL.
+
+Payment-branch verification: full Windows run 40825823679 passed. checkout-mixed saved 15 card + 10 cash; checkout-change saved tendered 30 plus -5 cash change; checkout-credit saved zero payment rows. All existing checkout/refund/rollback, domain, build, data-regression and launcher checks passed. These are accepted-input persistence tests, not payment-dialog UX tests. Next slice may now extract payment writes with all three branches covered.
+
+## Progress: payment persistence boundary (2026-10-29)
+
+After mixed/change/credit characterization passed, moved all three TABLE_VENTES_REGLEMENTS command bodies into Infrastructure.Checkout.TicketPaymentWriter (cash, tendered row, change). Keep separate methods to retain each original SQL shape and conversion path, including VB object concatenation for tendered modes and string conversion for cash/change amounts.
+
+Capture unchanged ticket/client/cashier/workstation/operation/remark context once inside the original payable-operation guard. The form retains operation classification, payment-dialog acceptance, row iteration, negative-remainder condition, transaction ownership, ordering and printing. The writer receives no controls or Module1 reference and does not change connection lifetime or catch errors.
+
+Existing cash/refund, mixed, change, credit and rollback tests cover this extraction. Full Windows CI is required before claiming runtime verification. This is a structural move; legacy SQL concatenation and its limitations are intentionally not changed here.
+
+Payment-writer verification: full Windows run 40826687096 succeeded, including cash sale/refund, mixed card/cash, tendered/change, credit-without-payment and injected journal-failure rollback; all existing build/data/launcher checks passed. Domain CI succeeded. Revert 20f20c8110abf87444af1fe0cd233546bf95ddc1 to undo the payment extraction.
+
+The main checkout writes now have explicit infrastructure boundaries for movements, headers, journal and payments. Remaining orchestration is still in the form. Next: characterize failure after payment writes, then isolate final basket/sequence completion and stock mutation without changing transaction ownership. A later application-service extraction should consume plain snapshots and keep hardware/UI callbacks explicit.
+
+## Progress: late-checkout rollback characterization (2026-10-29)
+
+Before moving final completion writes, add checkout-late-rollback. After establishing sale/refund baseline, inject a TABLE_NUM update failure after the attempted third payment has been inserted and the basket deleted. A nontransactional marker records PaymentRows=3 and BasketRows=0 at the failure boundary. Existing rollback assertions then require original payment sum, stock, header/journal, movement sum, sequence and retained basket to be restored.
+
+The earlier journal-failure scenario remains separate. The same exact isolated-database guard and scoped dialog watcher apply. This tests transactional completion after payment persistence; it does not certify physical printing or process crashes. Production code is unchanged pending runtime characterization.
+
+Late-failure baseline verified: full Windows run 40827404424 succeeded, including checkout-late-rollback. The test proves payment insertion and basket clearing occurred before the injected sequence-update failure, then verifies rollback restores previous financial records/stock and the basket.
+
+## Progress: checkout completion persistence boundary (2026-10-29)
+
+Move the exact final basket DELETE and ticket-sequence UPDATE into Infrastructure.Checkout.CheckoutCompletionWriter.Complete. Preserve statement order, SQL, legacy numeric ticket formatting and the caller's command/connection/transaction. The caller still prints before completion, commits immediately after it, and rolls back on failure. No transaction or connection lifetime is owned by the helper.
+
+Both journal-stage and late-stage rollback characterization passed before this extraction. Full Windows CI must verify this new structural move. Next: isolate the remaining stock mutation, then evaluate a cohesive application-service boundary; keep UI/payment/hardware behavior explicit.
+
+Completion-writer extraction verified: full Windows run 40827869841 passed, including journal-stage and late completion-stage rollback, all payment variants, sale/refund, build and existing checks. Domain CI passed. Revert 6d226a3077ba1679a65a39ac9e96ea473f0edef8 to undo this extraction. No production-data modification or merge performed.
+
+## Progress: cohesive checkout stock boundary (2026-10-29)
+
+Move the remaining stock UPDATE and its immediately-following movement into Infrastructure.Checkout.CheckoutStockWriter.Apply. Keep the exact legacy object concatenation, update-then-movement order, raw quantity/id values and shared command/connection/transaction. Reuse StockMovementWriter without changing its typed sign conversion. The form retains the Check_STOCK guard and row iteration.
+
+Extend existing checkout characterization with a 1.25-unit sale: expect stock 8.75, movement -1.25, raw journal total 15.625 and rounded header/payment 15.63. Existing whole-unit sale/refund plus both failure boundaries remain enabled. Harness compilation passed locally; full Windows runtime verification is required for this slice.
+
+The checkout writes now sit outside the form; orchestration and UI/hardware remain in it. Next evaluate a cohesive application service from these plain-context boundaries rather than moving unrelated features or changing financial rules.
+
+Checkout-stock extraction verified: full Windows run 40828578089 passed. Fractional checkout confirmed stock 8.75, movement -1.25, journal 15.625, rounded header/payment 15.63. Whole-unit sale/refund, all payment branches and both rollback boundaries passed; domain CI passed. Revert cf057349dd5619c91fb0e6f4ab3cdc4f29496dcb to undo this extraction. Remaining service work should preserve the established transaction and hardware ordering.
+
+## Progress: application-layer document posting service (2026-10-29)
+
+Introduce Application/Checkout/CheckoutPostingService with ICheckoutDocumentStore. It owns the established header -> journal -> payment rows -> print callback -> completion ordering without WinForms, MySQL or Module1 dependencies. Move plain header/journal/payment records into the application layer. MySqlCheckoutDocumentStore adapts the interface to the already-verified infrastructure writers using the existing command/connection/transaction.
+
+Use the namespace LOGICA.ApplicationLayer.Checkout to avoid shadowing WinForms Application inside the legacy LOGICA namespace. Folder placement remains Application/Checkout.
+
+Readers are deferred deliberately: header and journal values are captured at their original stages; payment rows are yielded lazily between database writes; remainder/change is evaluated after tendered rows; completion values are read after printing. The form's new ReadCheckoutPayments iterator retains the existing operation classification and payment-dialog data mapping. The form still owns stock iteration, ticket-number acquisition, transaction lifetime, rollback/error UI and pre/post-checkout behavior.
+
+Add standalone service tests for exact read/write/print/completion order, empty credit payments, and exception identity/short-circuit at every stage, including lazy row reads and printing. Local Windows checks passed: 32 service assertions plus all prior domain checks. Full application/checkout CI is required before claiming integration verification. No physical printing or transaction ownership change is introduced.
+
+Posting-service integration verified: full Windows run 40829989863 succeeded, including every established checkout/payment/fractional scenario, both rollback boundaries, build and existing checks. Standalone application/domain CI passed; 32 application assertions exercise ordered deferred inputs and failure short-circuit. Revert 44ee84195ef689fe07d6cc2daeb08d85c12df1bc to undo this slice.
+
+Next: characterize stock-disabled checkout, then consider moving stock iteration into the application flow while keeping date capture after stock writes and preserving original ticket/transaction behavior. Do not move transaction error UI or physical printing ownership without their own coverage.
+
+## Progress: stock-disabled checkout characterization (2026-10-29)
+
+Add checkout-stock-off before moving stock iteration into the application layer. Run both sale and refund with the original Check_STOCK flag disabled. Require stock to remain 10 and movement count/sum/identity/ticket labels to remain zero, while headers, journal, payment/refund amounts, basket clearing and ticket sequence still behave normally.
+
+Existing stock-enabled whole/fractional and rollback cases remain unchanged. Production code is unchanged in this slice. Harness compilation and full Windows runtime verification are required before treating this branch as characterized.
+
+Stock-disabled baseline verified: full Windows run 40830668371 succeeded. Both sale and refund preserved stock=10 and created zero movements while normal documents/payments/completion still passed. All established checkout variants/rollback and existing checks passed; application/domain CI passed.
+
+For the next stock-iteration move, preserve timing explicitly: current code applies stock first, builds payment-mode notes next, captures the adjusted date next, then reads/writes header and journal. Deferred stock inputs and a header-stage reader can preserve that sequence. Do not pre-capture date/payment notes before stock writes as an incidental restructuring.
+
+## Progress: application flow includes stock iteration (2026-10-29)
+
+Extend CheckoutPostingService to apply deferred stock rows before document posting. Rename the persistence interface/adapter to ICheckoutPostingStore / MySqlCheckoutPostingStore to reflect their wider scope. CheckoutStockLine carries raw row values; the adapter forwards them to the already-verified stock writer on the same transaction.
+
+The form maps stock rows lazily in ReadCheckoutStock, retaining the original Check_STOCK guard and row-count/iteration behavior. Payment-mode notes and adjusted date are read inside the deferred header reader, after all stock writes, preserving original ordering. Header/journal/payment/print/completion readers remain in their established positions. Ticket-number acquisition, transaction ownership, rollback and error UI stay in the form.
+
+Extend standalone order/failure tests with stock reads/writes, document-preparation timing and stock-disabled flows (48 assertions). All local application/domain tests passed. Existing stock-disabled, whole/fractional, refund and both rollback integration cases cover this extraction; full Windows CI is required before claiming integration success.
+
+Stock-inclusive application flow verified: full Windows run 40831404766 passed. Stock-enabled/disabled sale/refund, fractional sale, payment variants and both rollback boundaries all passed, plus build and existing checks. Application/domain CI passed with 48 ordered/failure assertions. Revert 62f17e7b5956a91c195e8c35483c597c6d913369 to undo this slice.
+
+Next bounded candidate: inspect pre-checkout validation and characterize rejected operations before extracting guard rules. Ticket-number acquisition and transaction/rollback error UI remain unchanged; do not move or repair them incidentally.
+
+## Progress: rejected-checkout characterization (2026-10-29)
+
+Before extracting pre-checkout guard rules, add three real-handler cases: negative displayed total for VENTE, positive displayed total for RETOUR, and an empty visible basket. Require no header/journal/payment/movement writes, unchanged stock/sequence/database basket, and a re-enabled sender. The empty-grid case intentionally leaves a database basket row to prove the UI guard does not alter it.
+
+Only the expected native warning text is acknowledged for sign rejections on the test UI thread; empty basket must return without a dialog. This extends the harness only; production behavior remains unchanged. Existing accepted-operation/payment/failure cases remain enabled. Compile locally and obtain full Windows runtime evidence before extracting guards.
+
+Rejected-checkout baseline verified: full Windows run 40832096582 passed all three rejection scenarios and existing checks. No persistence was changed by rejected attempts.
+
+## Progress: pre-checkout amount guard extraction (2026-10-29)
+
+Move the exact negative-VENTE and positive-RETOUR conditions from Button_Click into Domain.CheckoutAmountGuards. Preserve case-sensitive operation comparison, RETOUR substring matching, current-culture Visual Basic numeric conversion, eager '&' evaluation and exception ordering. Leave empty-basket checks, warning text, sender re-enabling, early returns and later validation in the form.
+
+Local checks passed: 96 guard assertions across fr-MA/fr-FR/en-US, including zero, operation variants, null/invalid inputs and legacy eager failures, plus all previous application/domain tests. Rejected-operation integration coverage was established before extraction. Full Windows CI remains required for this structural slice.
+
+The owner reiterated the priority: incremental organization of existing working LOGICA code, preserving behavior; TODO remains a selective reference. The existing automation remains scheduled every ten minutes.
+
+Amount-guard extraction verified: full Windows run 40841724505 passed, including negative-sale, positive-return and empty-grid rejection with zero persistence writes, plus all accepted checkout/payment/fractional/stock-disabled and rollback cases. Application/domain CI passed (96 guard and 48 posting assertions plus existing rules). Revert 50b87ac7eca4c7c833455123df7f538b03357437 to undo this slice.
+
+Automation configuration was checked: ACTIVE, ten-minute interval, existing priority-preserving prompt. No schedule change was needed. Next: inspect seller/client-required validation as its own UI boundary; characterize those dialogs before moving any related guard behavior.
+
+## Progress: required seller/client routing characterization (2026-10-29)
+
+Add checkout-select-seller, checkout-select-client and checkout-credit-client. Supply an empty required display name, call the original checkout handler, and verify that the appropriate chooser opens once, customer chooser receives the originating form name, checkout returns with sender re-enabled, and persistence remains unchanged. The credit-client case keeps the general client-required checkbox disabled and uses the original credit sender name to exercise its separate guard.
+
+Chooser Load/Shown/Activated callbacks are detached for an isolated cancel fixture. This tests routing/early return only, not list loading, choosing a record, authorization or user interaction. Production code remains unchanged pending runtime characterization.
+
+Chooser-routing baseline verified: full Windows run 40842634098 succeeded for seller-required, client-required and credit-client routing, with persistence unchanged and sender enabled, alongside all existing checks.
+
+## Progress: empty-selection rule extraction (2026-10-29)
+
+Move the exact VB empty-display-name comparison into Domain.CheckoutSelectionRules.IsMissing and use it at the three original chooser guard sites. Keep the checkbox/sender conditions outside the helper so their short-circuit behavior and property-read timing remain unchanged. Chooser opening, customer origin label, sender re-enabling and early returns stay in the form.
+
+Local tests passed: 30 selection assertions across three cultures, preserving null/empty recognition and accepting whitespace, zero-like and other untrimmed names as before, plus all previous rules/application tests. Full Windows integration CI remains required after extraction. This does not change chooser data loading or record-selection behavior.
+
+Selection-rule extraction verified: full Windows run 40843312672 passed seller-required, client-required and credit-client routing plus every existing accepted/rejected/payment/stock/failure case, build and launcher checks. Application/domain CI passed, including 30 selection assertions. Revert ca6e5a076782fba80aa9da6cf9089c52124f49b5 to undo the rule extraction.
+
+Next bounded candidate: inspect the basket-vs-database total consistency check and characterize its rejection path before separating it. Preserve legacy rounding/conversion, connection checks and UI messages; avoid introducing precision or validation changes as structural cleanup.
+
+## Progress: basket-total consistency characterization (2026-10-29)
+
+Before extracting the consistency rule, add checkout-reject-total: keep the fixture database total at 25 but set the visible line total to 27. The real checkout refreshes its database total, detects the rounded mismatch and must leave all persistence unchanged with sender re-enabled. A scoped watcher acknowledges only the expected "Le Total Net" warning.
+
+Add checkout-rounding-window: visible line total 25.4 versus database/header total 25 must remain accepted under the existing whole-unit comparison. This deliberately preserves the original policy rather than tightening precision during a structural change. Existing fractional checkout also remains covered. Production code is unchanged pending runtime characterization.
+
+Consistency baseline verified: full Windows run 40844030553 passed checkout-reject-total and checkout-rounding-window plus all existing checks. Domain/application CI passed. Revert 671c8b273c009c44b7cfecae73747d2390f6b7a1 to undo this test slice.
+
+Next extraction should retain the exact whole-unit Math.Round (default midpoint policy), VB decimal/string conversion and Conversion.Val comparison. Keep grid summation, warning and early return in place unless separately characterized. Do not replace the comparison with exact cents equality during refactoring.
+
+## Progress: basket-total consistency rule extraction (2026-10-29)
+
+Move the exact rounded-total predicate into Domain.BasketTotalConsistency.AreDifferent. Leave grid enumeration/summation, warning text, sender re-enabling, connection checks and early return in the form. Preserve default midpoint rounding to whole units, the basket decimal/string round-trip, current-culture VB parsing and Val comparison. Do not tighten the policy to cents equality.
+
+The prior mismatch and rounded-acceptance integration baseline passed in run 40844030553. Local tests passed: 60 consistency assertions across three cultures, including midpoint signs, fractional acceptance, large-number Val behavior and null/invalid input conversions, plus every previous application/domain test. Full Windows verification is required after extraction. Production behavior is intentionally unchanged.
+
+Consistency-rule extraction verified: full Windows run 40845260925 passed mismatch rejection, rounded acceptance and every existing checkout/chooser/payment/stock/rollback case, build and launcher checks. Application/domain CI passed, including 60 consistency assertions. Revert 5466a596053c4140b4c7d358c0165c0ce22e750b to undo this extraction.
+
+Next: inspect the insufficient-stock guard, its configured setting and Module1.dt1 row source; characterize a rejected insufficient-stock sale before extracting any rule. Keep source-data, rounding and UI behavior unchanged.
+
+## Progress: insufficient-stock guard characterization (2026-10-29)
+
+The existing guard is enabled by the VENTE operation and BLOCAGE_STOCK_INSUFFISANT setting; it reads Module1.dt1 rows and looks up current stock by code. Its gate does not include Check_STOCK.
+
+Add checkout-reject-stock with model quantity 2/current stock 1 and require unchanged persistence after the expected warning. Add checkout-reject-stock-off to preserve that same rejection even when stock mutation is disabled. Add checkout-stock-exact with model quantity/current stock both 2, which must be accepted and leave stock 0. Seed the actual configured setting and dt1 row source explicitly in the isolated fixture.
+
+Production code is unchanged pending characterization; do not change the setting/Check_STOCK relationship during extraction. Existing loopback fixture guards and scoped expected-warning acknowledgement apply.
+
+Insufficient-stock baseline verified: full Windows run 40846566659 passed both configured rejection cases (including stock mutation disabled) and exact-stock acceptance, plus every existing check. Domain/application CI passed. Revert b2bc2767cfc2af3e4b801a037dd3b5e893786de2 to undo this test slice.
+
+Next extraction should preserve Operators.ConditionalCompareObjectLess on raw available/requested objects; do not normalize types or move the missing-row guard/configuration gate while extracting the comparison.
+
+## Progress: stock-availability rule extraction (2026-10-29)
+
+Move the exact available-versus-requested object comparison into Domain.StockAvailability.IsBelowRequested. Keep the configured operation gate, Module1.dt1 source, database lookup, missing-row short-circuit, warning and early return in the form.
+
+Preserve VB ConditionalCompareObjectLess semantics on raw objects, including numeric coercion, string-vs-string comparison and current-culture conversion. Do not normalize values to decimal during this structural slice.
+
+Local checks passed: 57 stock assertions across three cultures for shortage/equality/surplus, fractional/negative values, mixed numeric/string inputs, null, limits and conversion failure, plus all previous application/domain checks. The three configured-stock integration cases passed before extraction in run 40846566659. Full Windows CI remains required for the new rule call.
+
+Stock-comparison extraction verified: full Windows run 40847758941 passed configured shortage rejection, stock-mutation-disabled rejection, exact-stock acceptance and every existing check. Application/domain CI passed, including 57 stock-object comparison assertions. Revert bf031b3460aa1d81240a818e825363f26d19f16b to undo this extraction.
+
+Next bounded candidate: isolate the insufficient-stock lookup from the form, after characterizing its missing-article result. Preserve code lookup, raw values, missing-row behavior, connection ownership and current error UI; do not parameterize or normalize stock values as an incidental change.
+
+## Progress: missing stock-lookup characterization (2026-10-29)
+
+Before isolating the stock lookup, add checkout-missing-stock-lookup. Enable the existing shortage setting and supply a dt1 guard-model row whose code CI_MISSING has no article match, while the actual grid/database basket still contains the valid CI001 article. Assert the fixture code has no match and the original checkout accepts the valid basket, preserving the guard's existing empty-result skip behavior. All normal document/payment/stock assertions remain active.
+
+This is a focused guard-source fixture, not a claim that nonexistent actual basket articles are valid. Existing configured shortage rejection/exact-stock cases continue to protect the guard as a whole. Production code is unchanged pending characterization; connection and raw-result handling must be preserved when extracting lookup.
+
+Missing-result baseline verified: full Windows run 40849003012 passed checkout-missing-stock-lookup and every existing check. Domain/application CI passed.
+
+## Progress: stock-availability lookup boundary (2026-10-29)
+
+Move the original DataTable/DataAdapter query/fill block into Infrastructure.Checkout.StockAvailabilityLookup.FindByCode. Keep exact SQL construction, raw code input, result columns/types and DataAdapter-managed connection behavior. The helper has no UI/Module1 dependency and does not add transaction ownership, error handling, parameterization or normalization.
+
+The form retains dt1 iteration, configured gate, missing-row short-circuit, comparison, warning and early return. Existing configured shortage/exact-stock and newly-verified missing-result cases cover the boundary. Full Windows verification is required after extraction.
+
+Stock-lookup extraction verified: full Windows run 40849706145 passed missing-result acceptance, configured shortage rejection/exact-stock acceptance and every existing check. Application/domain CI passed. Revert 22b74f38a350eadcdd3b767dc949079462c1feda to undo lookup extraction.
+
+Next: evaluate a small application stock-validation service using a lookup interface and deferred dt1 row mapping, keeping the configured gate and warning UI in the form. Preserve missing-result skip, first-shortage early return, raw object comparison and lookup ordering; cover those with standalone service tests before moving the loop.
+
+## Progress: application stock-validation service (2026-10-29)
+
+Introduce ApplicationLayer.Checkout.StockValidationService and IStockAvailabilityLookup. The service walks deferred guard-model rows, skips missing lookup results without reading quantity, compares raw stock/quantity through the verified domain rule, and stops at the first shortage. Article name is read only for that shortage. MySqlStockAvailabilityLookup adapts the verified DataTable lookup without owning the connection.
+
+The form retains the configured VENTE/setting gate and warning/early-return UI. ReadStockValidationRows preserves the dt1 row-count snapshot and deferred Code/quantity access. No database or WinForms dependency enters the service.
+
+Standalone tests passed locally: 39 assertions for empty/missing/sufficient rows, first-shortage ordering, deferred quantity/name reads and exact exception propagation, plus all prior application/domain checks. Full Windows integration must verify existing configured shortage/exact/missing-result and all checkout cases after this move.
+
+Stock-validation service verified: full Windows run 40851043358 passed all configured shortage/exact/missing-result and established checkout/chooser/payment/rollback checks, build and launcher checks. Application/domain CI passed, including 39 stock-validation service assertions. Revert b8d5a20af02f48ee7a5f18e97faff946e4c67b79 to undo this slice.
+
+Checkout milestone: reusable rules, stock-validation ordering and posting ordering now have UI/database-independent boundaries. Ticket acquisition, transaction/error UI and physical-device behavior remain deliberately unchanged. Next audit the catalogue/product handlers for the next bounded organizational change; keep expanded module work separately reviewable rather than adding unrelated behavior changes to this checkout milestone.
+
+## Active follow-on work: catalogue (2026-10-29)
+
+Catalogue audit/characterization is on refactor/catalogue-input-rules, draft PR #10 (https://github.com/hmasprod-a11y/LOGICA-Recovery/pull/10), based on this checkout branch. Keep its code changes separate from PR #8. Continue catalogue work from its latest head and docs/CATALOGUE_REFACTORING.md after checking both branches for concurrent changes. The first catalogue slice characterizes 13 repeated numeric KeyPress handlers; runtime CI is pending at this checkpoint. No checkout production changes were made for this follow-on.
+
+Catalogue follow-on baseline verified: PR #10 on refactor/catalogue-input-rules passed full Windows run 40852190847, including 1,053 direct-handler assertions. Continue the shared numeric-character filter extraction from that branch and docs/CATALOGUE_REFACTORING.md; retain checkout PR #8 as the dependency. No catalogue production changes have been made yet.
+
+Catalogue PR #10 now contains the verified shared numeric-character filter. Full Windows run 40853349901 passed 1,053 original-handler assertions plus standalone rule checks. Continue catalogue save-handler audit from refactor/catalogue-input-rules and docs/CATALOGUE_REFACTORING.md; no further checkout changes are required for that next slice.

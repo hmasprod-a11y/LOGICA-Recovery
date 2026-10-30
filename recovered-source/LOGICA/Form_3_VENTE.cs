@@ -12601,6 +12601,144 @@ public class Form_3_VENTE : Form
 		}
 	}
 
+
+
+
+	private System.Collections.Generic.IEnumerable<LOGICA.ApplicationLayer.Checkout.StockValidationRow> ReadStockValidationRows()
+	{
+		checked
+		{
+			int lastRow = Module1.dt1.Rows.Count - 1;
+			int rowIndex = 0;
+			while (true)
+			{
+				if (rowIndex > lastRow)
+				{
+					break;
+				}
+				yield return new LOGICA.ApplicationLayer.Checkout.StockValidationRow
+				{
+					ArticleCode = Module1.dt1.Rows[rowIndex]["Code"],
+					ReadQuantity = () => Module1.dt1.Rows[rowIndex]["Qté"]
+				};
+				rowIndex++;
+			}
+		}
+	}
+
+	private System.Collections.Generic.IEnumerable<LOGICA.ApplicationLayer.Checkout.CheckoutStockLine> ReadCheckoutStock()
+	{
+		checked
+		{
+			if (Check_STOCK.Checked)
+			{
+				int num5 = DataGridView1.Rows.Count - 1;
+				int num6 = 0;
+				while (true)
+				{
+					int num7 = num6;
+					int num4 = num5;
+					if (num7 > num4)
+					{
+						break;
+					}
+					yield return new LOGICA.ApplicationLayer.Checkout.CheckoutStockLine
+					{
+						TicketNumber = _N_TICKET_SOLDER,
+						ArticleId = DataGridView1.Rows[num6].Cells["ID_ARTICLE"].Value,
+						ArticleCode = DataGridView1.Rows[num6].Cells["Code"].Value,
+						ArticleName = DataGridView1.Rows[num6].Cells["Article"].Value,
+						BasketQuantity = DataGridView1.Rows[num6].Cells["Qté"].Value
+					};
+					num6++;
+				}
+			}
+		}
+	}
+
+
+	private string ReadCheckoutPaymentModes()
+	{
+		checked
+		{
+			string text2 = "";
+			if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 || Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR REMBOURSEMENT", TextCompare: false) == 0)
+			{
+				if (!Check_ACCES_MODEP.Checked)
+				{
+					text2 = "ESPECES;";
+				}
+				else if (Check_ACCES_MODEP.Checked)
+				{
+					int num8 = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows.Count - 1;
+					int num9 = 0;
+					while (true)
+					{
+						int num10 = num9;
+						int num4 = num8;
+						if (num10 > num4)
+						{
+							break;
+						}
+						text2 = Conversions.ToString(Operators.AddObject(text2, Operators.ConcatenateObject(MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num9].Cells["MODE_P"].Value, ";")));
+						num9++;
+					}
+				}
+			}
+			return text2;
+		}
+	}
+
+	private System.Collections.Generic.IEnumerable<LOGICA.ApplicationLayer.Checkout.TicketPaymentWrite> ReadCheckoutPayments(DateTime dateTime)
+	{
+		checked
+		{
+			if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 || Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR REMBOURSEMENT", TextCompare: false) == 0)
+			{
+				var paymentContext = new LOGICA.ApplicationLayer.Checkout.TicketPaymentContext
+				{
+					TicketId = Text_ID_TICKET.Text,
+					TicketNumber = _N_TICKET_SOLDER,
+					SaleDate = dateTime,
+					Cashier = ((ButtonBase)Button_CAISSIER).Text,
+					ClientId = Button_CLIENT._ID_Button,
+					ClientCode = Button_CLIENT._CODE_Button,
+					ClientName = ((ButtonBase)Button_CLIENT).Text,
+					Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
+					Operation = ((ButtonBase)Button_OPERATION).Text,
+					Remark = MyProject.Forms.FormDialog_calc.Text_REMARQUE.Text
+				};
+				if (!Check_ACCES_MODEP.Checked)
+				{
+					yield return new LOGICA.ApplicationLayer.Checkout.TicketPaymentWrite { Kind = LOGICA.ApplicationLayer.Checkout.TicketPaymentKind.Cash, Context = paymentContext, AmountText = Text_TOTAL_NET.Text };
+				}
+				else if (Check_ACCES_MODEP.Checked)
+				{
+					int num11 = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows.Count - 1;
+					int num12 = 0;
+					while (true)
+					{
+						int num13 = num12;
+						int num4 = num11;
+						if (num13 > num4)
+						{
+							break;
+						}
+						yield return new LOGICA.ApplicationLayer.Checkout.TicketPaymentWrite { Kind = LOGICA.ApplicationLayer.Checkout.TicketPaymentKind.Tendered, Context = paymentContext,
+							Amount = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num12].Cells["PAYER"].Value,
+							Mode = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num12].Cells["MODE_P"].Value };
+						num12++;
+					}
+					if (Conversion.Val(((ButtonBase)MyProject.Forms.FormDialog_calc.Button_RESTE).Text) < 0.0)
+					{
+						yield return new LOGICA.ApplicationLayer.Checkout.TicketPaymentWrite { Kind = LOGICA.ApplicationLayer.Checkout.TicketPaymentKind.Change, Context = paymentContext,
+							AmountText = ((ButtonBase)MyProject.Forms.FormDialog_calc.Button_RESTE).Text };
+					}
+				}
+			}
+		}
+	}
+
 	private void Button_Click(object sender, EventArgs e)
 	{
 		//IL_038a: Unknown result type (might be due to invalid IL or missing references)
@@ -12640,32 +12778,32 @@ public class Form_3_VENTE : Form
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if ((Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0) & (Conversions.ToDouble(Text_TOTAL_NET.Text) < 0.0))
+				if (LOGICA.Domain.CheckoutAmountGuards.IsNegativeSale(((ButtonBase)Button_OPERATION).Text, Text_TOTAL_NET.Text))
 				{
 					MessageBox.Show("Si le Type d'opération (VENTE), le total doit étre Positif", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if (((ButtonBase)Button_OPERATION).Text.Contains("RETOUR") & (Conversions.ToDouble(Text_TOTAL_NET.Text) > 0.0))
+				if (LOGICA.Domain.CheckoutAmountGuards.IsPositiveReturn(((ButtonBase)Button_OPERATION).Text, Text_TOTAL_NET.Text))
 				{
 					MessageBox.Show("Si le Type d'opération (RETOUR), le total doit étre Négatif", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if (Check_CHOIX_VENDEUR.Checked && Operators.CompareString(((ButtonBase)Button_VENDEUR).Text, "", TextCompare: false) == 0)
+				if (Check_CHOIX_VENDEUR.Checked && LOGICA.Domain.CheckoutSelectionRules.IsMissing(((ButtonBase)Button_VENDEUR).Text))
 				{
 					((Form)MyProject.Forms.Form_5_VENDEURS_LISTE).ShowDialog();
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if (Check_CHOIX_CLIENT.Checked && Operators.CompareString(((ButtonBase)Button_CLIENT).Text, "", TextCompare: false) == 0)
+				if (Check_CHOIX_CLIENT.Checked && LOGICA.Domain.CheckoutSelectionRules.IsMissing(((ButtonBase)Button_CLIENT).Text))
 				{
 					MyProject.Forms.Form_5_CLIENTS_LISTE.Label1.Text = ((Control)this).Name;
 					((Form)MyProject.Forms.Form_5_CLIENTS_LISTE).ShowDialog();
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if (Operators.ConditionalCompareObjectEqual(NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null), "Button_SOLDER_CREDIT", TextCompare: false) && Operators.CompareString(((ButtonBase)Button_CLIENT).Text, "", TextCompare: false) == 0)
+				if (Operators.ConditionalCompareObjectEqual(NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null), "Button_SOLDER_CREDIT", TextCompare: false) && LOGICA.Domain.CheckoutSelectionRules.IsMissing(((ButtonBase)Button_CLIENT).Text))
 				{
 					MyProject.Forms.Form_5_CLIENTS_LISTE.Label1.Text = ((Control)this).Name;
 					((Form)MyProject.Forms.Form_5_CLIENTS_LISTE).ShowDialog();
@@ -12707,7 +12845,7 @@ public class Form_3_VENTE : Form
 					return;
 				}
 				Text_TOTAL_NET_Click(RuntimeHelpers.GetObjectValue(sender), e);
-				if (Conversion.Val(Math.Round(Conversions.ToDecimal(((IEnumerable)DataGridView1.Rows).Cast<DataGridViewRow>().Sum([SpecialName] (DataGridViewRow t) => Convert.ToDecimal(RuntimeHelpers.GetObjectValue(t.Cells["TOTAL_NET"].Value))).ToString()))) != Conversion.Val(Math.Round(Conversions.ToDecimal(Text_TOTAL_NET.Text))))
+				if (LOGICA.Domain.BasketTotalConsistency.AreDifferent(((IEnumerable)DataGridView1.Rows).Cast<DataGridViewRow>().Sum([SpecialName] (DataGridViewRow t) => Convert.ToDecimal(RuntimeHelpers.GetObjectValue(t.Cells["TOTAL_NET"].Value))), Text_TOTAL_NET.Text))
 				{
 					MessageBox.Show("il y a une erreur critique\r\nLe Total Net est différent avec le total des lignes de commande\r\nmerci d'Actualiser le panier ou redémarrer l'application", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
@@ -12715,28 +12853,13 @@ public class Form_3_VENTE : Form
 				}
 				if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 && Operators.CompareString(MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("BLOCAGE_STOCK_INSUFFISANT", false, 0).Index].SubItems[1].Text, "True", TextCompare: false) == 0)
 				{
-					int num = Module1.dt1.Rows.Count - 1;
-					int num2 = 0;
-					while (true)
+					var shortage = LOGICA.ApplicationLayer.Checkout.StockValidationService.FindFirstShortage(
+						new LOGICA.Infrastructure.Checkout.MySqlStockAvailabilityLookup(Module1.cn_SQL), ReadStockValidationRows());
+					if (shortage != null)
 					{
-						int num3 = num2;
-						int num4 = num;
-						if (num3 > num4)
-						{
-							break;
-						}
-						DataTable dataTable = new DataTable();
-						MySqlDataAdapter val3 = new MySqlDataAdapter();
-						dataTable.Clear();
-						val3 = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("select   Code,Article,STOCK   from   TABLE_ARTICLES     WHERE      Code =   '", Module1.dt1.Rows[num2]["Code"]), "'       ")), Module1.cn_SQL);
-						((DbDataAdapter)(object)val3).Fill(dataTable);
-						if (dataTable.Rows.Count != 0 && Operators.ConditionalCompareObjectLess(dataTable.Rows[0]["STOCK"], Module1.dt1.Rows[num2]["Qté"], TextCompare: false))
-						{
-							MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("stock insuffisant de l'article -", dataTable.Rows[0]["Article"]), "-")), "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
-							NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
-							return;
-						}
-						num2++;
+						MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("stock insuffisant de l'article -", shortage.ArticleName), "-")), "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
+						NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
+						return;
 					}
 				}
 				if (Operators.ConditionalCompareObjectEqual(NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null), "Button_SOLDER_CREDIT", TextCompare: false))
@@ -12790,107 +12913,54 @@ public class Form_3_VENTE : Form
 				Text_ID_TICKET.Text = Strings.Format(DateTime.Now, "ddMMyyHHmmssfff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text;
 				try
 				{
-					if (Check_STOCK.Checked)
-					{
-						int num5 = DataGridView1.Rows.Count - 1;
-						int num6 = 0;
-						while (true)
-						{
-							int num7 = num6;
-							int num4 = num5;
-							if (num7 > num4)
-							{
-								break;
-							}
-							val4.CommandText = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject("UPDATE     TABLE_ARTICLES    SET STOCK = STOCK - ", DataGridView1.Rows[num6].Cells["Qté"].Value), "    WHERE    ID_ARTICLE = '"), DataGridView1.Rows[num6].Cells["ID_ARTICLE"].Value), "'                           "));
-							val4.Connection = Module1.cn_SQL;
-							val4.ExecuteNonQuery();
-							val4.CommandText = "INSERT INTO TABLE_MOUVEMENTS_STOCK (DATES, HEURE, LIBELLE, ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE) VALUES (@movementDate, @movementTime, @movementLabel, @movementId, @movementCode, @movementArticle, @movementQuantity)";
-							val4.Parameters.Clear();
-							val4.Parameters.AddWithValue("@movementDate", DateTime.Now.ToString("yyyy-MM-dd"));
-							val4.Parameters.AddWithValue("@movementTime", DateTime.Now.ToString("HH:mm:ss"));
-							val4.Parameters.AddWithValue("@movementLabel", "TICKET | " + _N_TICKET_SOLDER);
-							val4.Parameters.AddWithValue("@movementId", DataGridView1.Rows[num6].Cells["ID_ARTICLE"].Value);
-							val4.Parameters.AddWithValue("@movementCode", DataGridView1.Rows[num6].Cells["Code"].Value);
-							val4.Parameters.AddWithValue("@movementArticle", DataGridView1.Rows[num6].Cells["Article"].Value);
-							val4.Parameters.AddWithValue("@movementQuantity", -Conversions.ToDecimal(DataGridView1.Rows[num6].Cells["Qté"].Value));
-							val4.Connection = Module1.cn_SQL;
-							val4.ExecuteNonQuery();
-							val4.Parameters.Clear();
-							num6++;
-						}
-					}
 					string text2 = "";
-					if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 || Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR REMBOURSEMENT", TextCompare: false) == 0)
-					{
-						if (!Check_ACCES_MODEP.Checked)
+					DateTime dateTime = default(DateTime);
+					LOGICA.ApplicationLayer.Checkout.CheckoutPostingService.Post(
+						new LOGICA.Infrastructure.Checkout.MySqlCheckoutPostingStore(val4, Module1.cn_SQL),
+						new LOGICA.ApplicationLayer.Checkout.CheckoutPostingInput
 						{
-							text2 = "ESPECES;";
-						}
-						else if (Check_ACCES_MODEP.Checked)
-						{
-							int num8 = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows.Count - 1;
-							int num9 = 0;
-							while (true)
+							ReadStock = () => ReadCheckoutStock(),
+							ReadHeader = () =>
 							{
-								int num10 = num9;
-								int num4 = num8;
-								if (num10 > num4)
+								text2 = ReadCheckoutPaymentModes();
+								dateTime = Conversions.ToDate(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).AddHours(Conversions.ToDouble("-" + Text_HEURE_RETARD.Text));
+								return new LOGICA.ApplicationLayer.Checkout.TicketHeaderRecord
 								{
-									break;
-								}
-								text2 = Conversions.ToString(Operators.AddObject(text2, Operators.ConcatenateObject(MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num9].Cells["MODE_P"].Value, ";")));
-								num9++;
-							}
-						}
-					}
-					DateTime dateTime = Conversions.ToDate(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).AddHours(Conversions.ToDouble("-" + Text_HEURE_RETARD.Text));
-					val4.CommandText = "INSERT  INTO   TABLE_VENTES_ENTETE               (ID_TICKET, TICKET, DATES , CAISSIER , ID_CLIENT , CODE_CLIENT, CLIENT, POSTE, Total_NET, OPERATION)         values           ('" + Text_ID_TICKET.Text + "' ,'" + _N_TICKET_SOLDER + "' ,'" + dateTime.ToString("yyyy-MM-dd") + "'  ,'" + ((ButtonBase)Button_CAISSIER).Text + "'   ,'" + Button_CLIENT._ID_Button + "', '" + Button_CLIENT._CODE_Button + "'  ,'" + ((ButtonBase)Button_CLIENT).Text + "'  ,'" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "'  , '" + Conversions.ToString(Conversions.ToDecimal(Text_TOTAL_NET.Text)) + "'  , '" + ((ButtonBase)Button_OPERATION).Text + "'    )        ";
-					val4.Connection = Module1.cn_SQL;
-					val4.ExecuteNonQuery();
-					val4.CommandText = "INSERT  INTO   TABLE_VENTES_JOURNAL              (ID_TICKET, Ticket, Dates , Heure,ID_ARTICLE, Code, Article, Famille, PRIX_A, PRIX_MP, PRIX_V, Qté, Remise, Total_NET ,TAUX_TVA  , GROUPE,  Caissier, Vendeur , ID_CLIENT, CODE_CLIENT, CLIENT , POSTE, OPERATION, NOTES  ,NOTES_TYPE_PRIX  ,NOTES_MODE_P   )          SELECT        '" + Text_ID_TICKET.Text + "' ,'" + _N_TICKET_SOLDER + "', '" + dateTime.ToString("yyyy-MM-dd") + "', '" + dateTime.ToString("HH:mm:ss") + "', TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".ID_ARTICLE, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Code, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Article, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Famille, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".PRIX_A, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".PRIX_MP, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".PRIX_V, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Qté, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Remise, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".TOTAL_NET,  TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".TAUX_TVA,  TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".GROUPE,          '" + ((ButtonBase)Button_CAISSIER).Text + "' , '" + ((ButtonBase)Button_VENDEUR).Text + "' ,'" + Button_CLIENT._ID_Button + "', '" + Button_CLIENT._CODE_Button + "'  ,'" + ((ButtonBase)Button_CLIENT).Text + "'  ,'" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "'   , '" + ((ButtonBase)Button_OPERATION).Text + "' , ''       , '" + ((ButtonBase)Button_PRIX).Text + "'      , '" + text2 + "'       FROM TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "";
-					val4.Connection = Module1.cn_SQL;
-					val4.ExecuteNonQuery();
-					if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 || Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR REMBOURSEMENT", TextCompare: false) == 0)
-					{
-						if (!Check_ACCES_MODEP.Checked)
-						{
-							val4.CommandText = "INSERT  INTO   TABLE_VENTES_REGLEMENTS       (ID_TICKET, TICKET, DATES , CAISSIER , ID_CLIENT , CODE_CLIENT, CLIENT, POSTE, MONTANT, MODE_P, OPERATION ,NOTES_REMARQUE)         values           ('" + Text_ID_TICKET.Text + "' ,'" + _N_TICKET_SOLDER + "' ,'" + dateTime.ToString("yyyy-MM-dd") + "'  ,'" + ((ButtonBase)Button_CAISSIER).Text + "'   ,'" + Button_CLIENT._ID_Button + "', '" + Button_CLIENT._CODE_Button + "'  ,'" + ((ButtonBase)Button_CLIENT).Text + "' ,'" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "'  , '" + Conversions.ToString(Conversions.ToDecimal(Text_TOTAL_NET.Text)) + "'  ,'ESPECES'   , '" + ((ButtonBase)Button_OPERATION).Text + "'   , '" + MyProject.Forms.FormDialog_calc.Text_REMARQUE.Text + "'  )          ";
-							val4.Connection = Module1.cn_SQL;
-							val4.ExecuteNonQuery();
-						}
-						else if (Check_ACCES_MODEP.Checked)
-						{
-							int num11 = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows.Count - 1;
-							int num12 = 0;
-							while (true)
+									TicketId = Text_ID_TICKET.Text,
+									TicketNumber = _N_TICKET_SOLDER,
+									SaleDate = dateTime,
+									Cashier = ((ButtonBase)Button_CAISSIER).Text,
+									ClientId = Button_CLIENT._ID_Button,
+									ClientCode = Button_CLIENT._CODE_Button,
+									ClientName = ((ButtonBase)Button_CLIENT).Text,
+									Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
+									TotalText = Text_TOTAL_NET.Text,
+									Operation = ((ButtonBase)Button_OPERATION).Text
+								};
+							},
+							ReadJournal = () => new LOGICA.ApplicationLayer.Checkout.TicketJournalRecord
 							{
-								int num13 = num12;
-								int num4 = num11;
-								if (num13 > num4)
-								{
-									break;
-								}
-								val4.CommandText = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat("INSERT  INTO   TABLE_VENTES_REGLEMENTS       (ID_TICKET, TICKET, DATES , CAISSIER , ID_CLIENT , CODE_CLIENT, CLIENT, POSTE, MONTANT, MODE_P, OPERATION ,NOTES_REMARQUE)         values           ('" + Text_ID_TICKET.Text, "' ,'"), _N_TICKET_SOLDER), "' ,'"), dateTime.ToString("yyyy-MM-dd")), "'  ,'"), ((ButtonBase)Button_CAISSIER).Text), "'   ,'"), Button_CLIENT._ID_Button), "', '"), Button_CLIENT._CODE_Button), "'  ,'"), ((ButtonBase)Button_CLIENT).Text), "' ,'"), MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), "'  , '"), Conversions.ToString(Conversions.ToDecimal(MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num12].Cells["PAYER"].Value))), "'  ,'"), MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num12].Cells["MODE_P"].Value), "' , '"), ((ButtonBase)Button_OPERATION).Text), "'   , '"), MyProject.Forms.FormDialog_calc.Text_REMARQUE.Text), "'   )          "));
-								val4.Connection = Module1.cn_SQL;
-								val4.ExecuteNonQuery();
-								num12++;
-							}
-							if (Conversion.Val(((ButtonBase)MyProject.Forms.FormDialog_calc.Button_RESTE).Text) < 0.0)
+								TicketId = Text_ID_TICKET.Text,
+								TicketNumber = _N_TICKET_SOLDER,
+								SaleDate = dateTime,
+								Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
+								Cashier = ((ButtonBase)Button_CAISSIER).Text,
+								Seller = ((ButtonBase)Button_VENDEUR).Text,
+								ClientId = Button_CLIENT._ID_Button,
+								ClientCode = Button_CLIENT._CODE_Button,
+								ClientName = ((ButtonBase)Button_CLIENT).Text,
+								Operation = ((ButtonBase)Button_OPERATION).Text,
+								PriceType = ((ButtonBase)Button_PRIX).Text,
+								PaymentModes = text2
+							},
+							ReadPayments = () => ReadCheckoutPayments(dateTime),
+							Print = () => CREATION_IMPRESSION(RuntimeHelpers.GetObjectValue(sender)),
+							ReadCompletion = () => new LOGICA.ApplicationLayer.Checkout.CheckoutCompletionRecord
 							{
-								val4.CommandText = "INSERT  INTO   TABLE_VENTES_REGLEMENTS       (ID_TICKET, TICKET, DATES , CAISSIER , ID_CLIENT , CODE_CLIENT, CLIENT, POSTE, MONTANT, MODE_P, OPERATION ,NOTES_REMARQUE)         values           ('" + Text_ID_TICKET.Text + "' ,'" + _N_TICKET_SOLDER + "' ,'" + dateTime.ToString("yyyy-MM-dd") + "'  ,'" + ((ButtonBase)Button_CAISSIER).Text + "'   ,'" + Button_CLIENT._ID_Button + "', '" + Button_CLIENT._CODE_Button + "'  ,'" + ((ButtonBase)Button_CLIENT).Text + "' ,'" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "'  , '" + Conversions.ToString(Conversions.ToDecimal(((ButtonBase)MyProject.Forms.FormDialog_calc.Button_RESTE).Text)) + "'  ,'ESPECES' , '" + ((ButtonBase)Button_OPERATION).Text + "'   , '" + MyProject.Forms.FormDialog_calc.Text_REMARQUE.Text + "'   )          ";
-								val4.Connection = Module1.cn_SQL;
-								val4.ExecuteNonQuery();
+								Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
+								TicketNumber = _N_TICKET_SOLDER
 							}
-						}
-					}
-					CREATION_IMPRESSION(RuntimeHelpers.GetObjectValue(sender));
-					val4.CommandText = "Delete  from TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "";
-					val4.Connection = Module1.cn_SQL;
-					val4.ExecuteNonQuery();
-					val4.CommandText = "UPDATE     TABLE_NUM    SET CL =  " + Strings.Format(Conversions.ToDouble(_N_TICKET_SOLDER) + 1.0, "000000") + "  ";
-					val4.Connection = Module1.cn_SQL;
-					val4.ExecuteNonQuery();
+						});
 					val5.Commit();
 					Module1.cn_SQL.Close();
 				}
@@ -16044,38 +16114,22 @@ public class Form_3_VENTE : Form
 				((IDisposable)val2)?.Dispose();
 			}
 			Module1.cn_SQL.Close();
-			if (Conversion.Val(num3) > 0.0)
+			decimal? quantityPrice = LOGICA.Domain.SalesLinePricing.SelectQuantityPrice(num, num2, num3, num4);
+			if (quantityPrice.HasValue)
 			{
-				if (Convert.ToDouble(num) >= Conversion.Val(num2))
+				decimal selectedUnitPrice = quantityPrice.Value;
+				Module1.dt1.Rows[position]["Prix_V"] = Strings.FormatNumber(selectedUnitPrice);
+				if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0)
 				{
-					Module1.dt1.Rows[position]["Prix_V"] = Strings.FormatNumber(num3);
-					if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0)
-					{
-						Module1.dt1.Rows[position]["TOTAL_NET"] = Strings.FormatNumber(decimal.Subtract(decimal.Multiply(num3, num), decimal.Divide(decimal.Multiply(decimal.Multiply(num3, num), d), 100m)));
-					}
-					else if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR", TextCompare: false) == 0)
-					{
-						Module1.dt1.Rows[position]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(decimal.Subtract(decimal.Multiply(num3, num), decimal.Divide(decimal.Multiply(decimal.Multiply(num3, num), d), 100m)))) * -1.0;
-					}
-					MySqlCommandBuilder val3 = new MySqlCommandBuilder(Module1.da1);
-					((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
-					Module1.dt1.AcceptChanges();
+					Module1.dt1.Rows[position]["TOTAL_NET"] = Strings.FormatNumber(LOGICA.Domain.SalesLinePricing.CalculateNetAmount(selectedUnitPrice, num, d));
 				}
-				else
+				else if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR", TextCompare: false) == 0)
 				{
-					Module1.dt1.Rows[position]["Prix_V"] = Strings.FormatNumber(num4);
-					if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0)
-					{
-						Module1.dt1.Rows[position]["TOTAL_NET"] = Strings.FormatNumber(decimal.Subtract(decimal.Multiply(num4, num), decimal.Divide(decimal.Multiply(decimal.Multiply(num4, num), d), 100m)));
-					}
-					else if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR", TextCompare: false) == 0)
-					{
-						Module1.dt1.Rows[position]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(decimal.Subtract(decimal.Multiply(num4, num), decimal.Divide(decimal.Multiply(decimal.Multiply(num4, num), d), 100m)))) * -1.0;
-					}
-					MySqlCommandBuilder val4 = new MySqlCommandBuilder(Module1.da1);
-					((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
-					Module1.dt1.AcceptChanges();
+					Module1.dt1.Rows[position]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(LOGICA.Domain.SalesLinePricing.CalculateNetAmount(selectedUnitPrice, num, d))) * -1.0;
 				}
+				MySqlCommandBuilder val3 = new MySqlCommandBuilder(Module1.da1);
+				((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+				Module1.dt1.AcceptChanges();
 			}
 			Text_TOTAL_NET_Click(RuntimeHelpers.GetObjectValue(sender), e);
 		}

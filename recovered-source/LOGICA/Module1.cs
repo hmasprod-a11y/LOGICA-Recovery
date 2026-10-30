@@ -63,7 +63,7 @@ internal sealed class Module1
 
 	public static decimal FLOUSS(decimal num)
 	{
-		return Conversions.ToDecimal(Math.Round(num, 2, MidpointRounding.AwayFromZero).ToString("N2"));
+		return LOGICA.Domain.MonetaryRounding.Round(num);
 	}
 
 	public static string XOR_Encrypt(string Input, string pass)

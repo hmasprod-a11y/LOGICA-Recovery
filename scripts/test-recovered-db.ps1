@@ -9,12 +9,51 @@ $compat=(Resolve-Path input/mysql-compatibility.sql).Path.Replace('\','/')
 if($LASTEXITCODE -ne 0){throw 'Original Access snapshot import failed'}
 & "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --default-character-set=utf8mb4 --abort-source-on-error logica_recovered_check -e "source $compat"
 if($LASTEXITCODE -ne 0){throw 'Additive schema compatibility migration failed'}
+# Read-only engine inventory from the recovered schema, after compatibility SQL import.
+# Report missing/nontransactional tables as audit findings, not an invented POS test failure.
+$engineSql="SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA='logica_recovered_check' AND TABLE_NAME IN ('TABLE_ARTICLES','TABLE_MOUVEMENTS_STOCK','TABLE_RECEPTIONS_ENTETE','TABLE_RECEPTIONS_DETAILS','TABLE_INVENTAIRES_ENTETE','TABLE_INVENTAIRES_DETAILS') ORDER BY TABLE_NAME;"
+& "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --batch --raw -e $engineSql | Set-Content results/recovered-inventory-table-engines.tsv
+if($LASTEXITCODE -ne 0){throw 'Recovered inventory engine audit failed'}
+Get-Content results/recovered-inventory-table-engines.tsv | ForEach-Object { Write-Host "RECOVERED-TABLE-ENGINE $_" }
+# Exercise an actual recovered articles table in a rollback-only transaction.
+# This is an isolated imported snapshot, not a live shop database or WinForms handler.
+$rollbackSql=@'
+SET @article_id = (SELECT MIN(ID_ARTICLE) FROM table_articles);
+SET @before_stock = (SELECT STOCK FROM table_articles WHERE ID_ARTICLE=@article_id LIMIT 1);
+START TRANSACTION;
+UPDATE table_articles SET STOCK=COALESCE(STOCK,0)+1 WHERE ID_ARTICLE=@article_id;
+SET @during_stock = (SELECT STOCK FROM table_articles WHERE ID_ARTICLE=@article_id LIMIT 1);
+ROLLBACK;
+SELECT CONCAT('RECOVERED_ARTICLE_ROLLBACK=',IF(@article_id IS NOT NULL AND @during_stock=COALESCE(@before_stock,0)+1 AND (SELECT STOCK <=> @before_stock FROM table_articles WHERE ID_ARTICLE=@article_id LIMIT 1),'PASS','FAIL'));
+'@
+$rollbackOutput=(& "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --batch --skip-column-names logica_recovered_check -e $rollbackSql) -join "`n"
+if($LASTEXITCODE -ne 0){throw 'Recovered article rollback SQL could not execute'}
+$rollbackOutput | Set-Content results/recovered-article-rollback.log
+if($rollbackOutput -notmatch 'RECOVERED_ARTICLE_ROLLBACK=PASS'){throw "Recovered article rollback failed: $rollbackOutput"}
+Write-Host 'PASS recovered article stock rollback in isolated imported snapshot'
+# Regression guard: ensure receipt/inventory posting handlers retain their transaction calls.
+foreach($name in @('RECEPTIONS','INVENTAIRES')) {
+  $source=Get-Content (Join-Path $PSScriptRoot "../recovered-source/LOGICA/Form_6_$name.cs") -Raw
+  foreach($token in @('void Button_VALIDER_Click(', 'BeginTransaction()', 'val2.Commit()', 'val2.Rollback()')) {
+    if(-not $source.Contains($token)){throw "Missing $token in original $name source"}
+  }
+  Write-Host "PASS original $name validation transaction source guard (static only)"
+}
+# Capture actual recovered schema needed to construct safe original-handler fixtures.
+# Read-only metadata; no inserts into business tables or changes to their structure.
+$schemaSql="SELECT TABLE_NAME, ORDINAL_POSITION, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='logica_recovered_check' AND TABLE_NAME IN ('table_articles','table_mouvements_stock','table_receptions_entete','table_receptions_details','table_inventaires_entete','table_inventaires_details') ORDER BY TABLE_NAME, ORDINAL_POSITION;"
+& "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --batch --raw -e $schemaSql | Set-Content results/recovered-inventory-schema.tsv
+if($LASTEXITCODE -ne 0){throw 'Recovered inventory column audit failed'}
+$keysSql="SELECT TABLE_NAME, INDEX_NAME, NON_UNIQUE, SEQ_IN_INDEX, COLUMN_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='logica_recovered_check' AND TABLE_NAME IN ('table_articles','table_mouvements_stock','table_receptions_entete','table_receptions_details','table_inventaires_entete','table_inventaires_details') ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX;"
+& "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --batch --raw -e $keysSql | Set-Content results/recovered-inventory-indexes.tsv
+if($LASTEXITCODE -ne 0){throw 'Recovered inventory index audit failed'}
+Write-Host 'PASS read-only recovered receipt/inventory schema and index inventory'
 $dist=(Resolve-Path dist).Path
 New-Item -ItemType Directory -Force "$dist/bd","$dist/tchak" | Out-Null
 $settings=Get-Content input/original-startup.json -Raw | ConvertFrom-Json
 foreach($p in $settings.PSObject.Properties){[IO.File]::WriteAllText((Join-Path $dist $p.Name),[string]$p.Value)}
 [IO.File]::WriteAllText("$dist/log_erreur.sni",'')
-$env:LOGICA_DB_CONNECTION_STRING='Server=127.0.0.1;Port=3307;Database=logica_recovered_check;Uid=root;Pwd=logica-ci-only;SslMode=None;Connection Timeout=5;'
+$env:LOGICA_DB_CONNECTION_STRING='Server=127.0.0.1;Port=3307;Database=logica_recovered_check;Uid=root;Pwd=logica-ci-only;CharSet=utf8mb4;SslMode=None;Connection Timeout=5;'
 $csc=Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
 & $csc /nologo /platform:x86 /target:exe /r:System.Windows.Forms.dll /r:System.Data.dll "/out:$dist\RecoveredCheck.exe" (Join-Path $PSScriptRoot 'test-recovered-db.cs')
 if($LASTEXITCODE -ne 0){throw 'Recovery checker compilation failed'}
