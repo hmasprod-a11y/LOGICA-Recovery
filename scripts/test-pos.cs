@@ -64,6 +64,18 @@ class PosSmoke {
     if(!button.Enabled)throw new Exception("Empty validation did not re-enable button: "+formName);
     if(rows.Rows.Count!=0)throw new Exception("Empty validation changed document grid: "+formName);
     Console.WriteLine("PASS original empty validation early-return "+formName);
+    // The second original early return is an already-validated document. Avoid
+    // the confirmation dialog and all database writes by exercising that guard.
+    if(rows.Columns["ETAT"]==null)rows.Columns.Add("ETAT","ETAT");
+    int row=rows.Rows.Add();
+    rows.Rows[row].Cells["ETAT"].Value="VALIDER";
+    rows.CurrentCell=rows.Rows[row].Cells["ETAT"];
+    button.Enabled=true;
+    form.GetType().GetMethod("Button_VALIDER_Click",Flags).Invoke(form,new object[]{button,EventArgs.Empty});
+    if(!button.Enabled)throw new Exception("Validated document did not re-enable button: "+formName);
+    if(rows.Rows.Count!=1 || Convert.ToString(rows.Rows[row].Cells["ETAT"].Value)!="VALIDER")
+      throw new Exception("Validated document guard changed grid state: "+formName);
+    Console.WriteLine("PASS original already-validated document guard "+formName);
    }
   }
  }
