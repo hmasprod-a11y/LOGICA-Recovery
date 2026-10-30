@@ -37,3 +37,22 @@ Latest independent draft PRs #8–#12 have selected passing Windows and/or domai
 4. Record defects as separate, evidence-backed fixes; only then consider TODO UX ideas or broader UI work.
 
 Source of priorities: user-supplied `LOGICA_POS_2_Cahier_des_Charges_V1` (2026-10-29), especially sections 16–20. This file documents an audit method and initial evidence, not completion of the requested exhaustive audit.
+
+## Source-level inventory checkpoint — 2026-10-30
+
+This checkpoint is based on inspecting actual recovered C# form files on the current draft #8 branch. **Presence of handlers and SQL table references proves an implementation surface exists, not that its behavior passes acceptance.** No missing-feature classification is made here.
+
+| Module / file (under `recovered-source/LOGICA/`) | Observed code entry points | Referenced tables | Classification / next test |
+| --- | --- | --- | --- |
+| `Form_5_CLIENTS.cs` | Grid selection, edit buttons, search/filter handlers | `TABLE_CLIENTS`, `TABLE_CLIENTS_REGLE`, `TABLE_VENTES_ENTETE`, `TABLE_VENTES_JOURNAL`, `TABLE_PASS` | Exists, needs isolated create/edit/credit-history and permissions tests |
+| `Form_5_CLIENTS_REGLE.cs` | Client selection, date filtering, refresh, export, payment handlers | `TABLE_CLIENTS_REGLE`, `TABLE_MODE_P`, `TABLE_VENTES_JOURNAL`, `TABLE_CLIENTS` | Exists, needs settlement and balance-reconciliation tests |
+| `Form_6_FOURNISSEURS.cs` | Grid selection/edit and supplier detail handlers | `TABLE_FOURNISSEURS`, `TABLE_FOURNISSEURS_REGLE`, `TABLE_RECEPTIONS_ENTETE`, `TABLE_SORTIES_ENTETE` | Exists, needs supplier balance and payment tests |
+| `Form_6_COMMANDES.cs` | `Form_Load`, `Button_SAVE_Click`, `Button_ADD_Click`, search and supplier selection | `TABLE_COMMANDES_ENTETE`, `TABLE_COMMANDES_DETAILS`, `TABLE_ARTICLES`, `TABLE_FOURNISSEURS` | Exists, needs order lifecycle tests |
+| `Form_6_RECEPTIONS.cs` | `Button_SAVE_Click`, `Button_VALIDER_Click`, supplier selection and totals | `TABLE_RECEPTIONS_ENTETE`, `TABLE_RECEPTIONS_DETAILS`, `TABLE_MOUVEMENTS_STOCK`, `TABLE_ARTICLES` | Exists, high-risk receipt-to-stock atomicity and rollback tests |
+| `Form_6_INVENTAIRES.cs` | `Button_SAVE_Click`, `Button_VALIDER_Click`, inventory-state and item search | `TABLE_INVENTAIRES_ENTETE`, `TABLE_INVENTAIRES_DETAILS`, `TABLE_MOUVEMENTS_STOCK`, `TABLE_ARTICLES` | Exists, high-risk stock adjustment/validation tests |
+| `Form_1_LOGIN.cs` | Login initialization, `Butt_ok_Click`, navigation into sale/stock/journal/management | `TABLE_PASS` | Exists, needs role/credential/unauthorized-access characterization |
+| `Form_9_PARAMETRE.cs` | Users, config, payment-method, database navigation buttons | `TABLE_PASS` | Exists, needs permission/settings/backup behavior audit |
+
+**Next bounded implementation:** inspect `Form_6_RECEPTIONS.Button_VALIDER_Click` and `Form_6_INVENTAIRES.Button_VALIDER_Click` to identify their original transaction boundaries, stock movement write order, and failure recovery before introducing any extraction. Prepare a characterization fixture with an isolated DB and no actual store data. Record whether stock and journal updates are atomic; do not assume they are. Then continue with customer/supplier settlement paths and role checks.
+
+The status in `docs/REQUIREMENTS_STATUS.md` is still partial and must be updated when new Windows characterization results exist. No source logic, schema, production records, UI or activation was changed by this inventory checkpoint.
