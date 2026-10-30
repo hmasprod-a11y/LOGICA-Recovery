@@ -53,7 +53,7 @@ New-Item -ItemType Directory -Force "$dist/bd","$dist/tchak" | Out-Null
 $settings=Get-Content input/original-startup.json -Raw | ConvertFrom-Json
 foreach($p in $settings.PSObject.Properties){[IO.File]::WriteAllText((Join-Path $dist $p.Name),[string]$p.Value)}
 [IO.File]::WriteAllText("$dist/log_erreur.sni",'')
-$env:LOGICA_DB_CONNECTION_STRING='Server=127.0.0.1;Port=3307;Database=logica_recovered_check;Uid=root;Pwd=logica-ci-only;SslMode=None;Connection Timeout=5;'
+$env:LOGICA_DB_CONNECTION_STRING='Server=127.0.0.1;Port=3307;Database=logica_recovered_check;Uid=root;Pwd=logica-ci-only;CharSet=utf8mb4;SslMode=None;Connection Timeout=5;'
 $csc=Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
 & $csc /nologo /platform:x86 /target:exe /r:System.Windows.Forms.dll /r:System.Data.dll "/out:$dist\RecoveredCheck.exe" (Join-Path $PSScriptRoot 'test-recovered-db.cs')
 if($LASTEXITCODE -ne 0){throw 'Recovery checker compilation failed'}
