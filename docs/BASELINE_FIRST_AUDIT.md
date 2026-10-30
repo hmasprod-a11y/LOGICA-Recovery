@@ -88,3 +88,9 @@ Both forms also implement `Button_SAVE_Click` with document writes; the examined
 4. Characterize SAVE's header/detail write ordering separately, then consider a minimal behavior-preserving extraction.
 
 No production code, database, or UI was modified in this checkpoint.
+
+## Verified DB rollback preflight and next original-handler tests — 2026-10-30
+
+Windows CI [40986857187](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40986857187) passed on commit `2660b3cc`. The isolated `inventory-transaction-preflight` verifies a deliberately failed second insert rolls back its dedicated InnoDB movement table (0 rows) and restores its dedicated header state (1 pending row). This **does not exercise** original receipt or inventory validation handlers. The recovered database audit independently listed `table_articles`, `table_mouvements_stock`, `table_receptions_entete`, `table_receptions_details`, `table_inventaires_entete`, and `table_inventaires_details` as **InnoDB**. Storage-engine support alone is not proof of each original form's transaction behavior.
+
+Next characterization was added in `scripts/test-pos.cs` and registered in `scripts/test-pos.ps1` as `inventory-empty-validation`: invoke each actual `Button_VALIDER_Click` with an empty document list and verify the original handler returns without changing rows and re-enables the validation button. This is an early-return-only smoke test; it does not touch inventory records and must pass Windows CI before being treated as evidence. **Further acceptance:** original-form success and second-movement-failure scenarios on an independently constructed isolated receipt/inventory fixture, with bounded UI dialog handling and before/after DB comparisons.
