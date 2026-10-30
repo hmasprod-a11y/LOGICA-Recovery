@@ -14290,12 +14290,12 @@ public class Form_2_ARTICLES : Form
 		{
 			try
 			{
-				if (Operators.CompareString(Strings.Trim(Text_CODE.Text), "", TextCompare: false) == 0)
+				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_CODE.Text))
 				{
 					MessageBox.Show("Veuillez remplir le champ -Code- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Operators.CompareString(Strings.Trim(Text_ARTICLE.Text), "", TextCompare: false) == 0)
+				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_ARTICLE.Text))
 				{
 					MessageBox.Show("Veuillez remplir le champ -Article- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
@@ -14360,7 +14360,7 @@ public class Form_2_ARTICLES : Form
 					MessageBox.Show("Veuillez remplir le champ -TAUX_TVA- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Operators.CompareString(Text_PROMOTION.Text, "", TextCompare: false) == 0 || decimal.Compare(Conversions.ToDecimal(Text_PROMOTION.Text), 100m) > 0)
+				if (LOGICA.Domain.CataloguePromotionRules.IsRejected(Text_PROMOTION.Text))
 				{
 					MessageBox.Show("Veuillez remplir le champ -PROMOTION- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
@@ -14378,13 +14378,12 @@ public class Form_2_ARTICLES : Form
 				Text_ARTICLE.Text = Text_ARTICLE.Text.ToString().Replace("'", " ");
 				if (Operators.CompareString(Combo_BALANCE.Text, "OUI", TextCompare: false) == 0)
 				{
-					if (!Versioned.IsNumeric(Text_CODE.Text))
+					if (!LOGICA.Domain.BalanceCodeFormatting.IsNumeric(Text_CODE.Text))
 					{
 						Interaction.MsgBox("Erreur Code Article");
 						return;
 					}
-					int number = (int)Math.Round(Conversion.Val(TextBox_NBR_CODE_BALANCE.Text));
-					Text_CODE.Text = Conversion.Val(Text_CODE.Text).ToString(Strings.StrDup(number, "0"));
+					Text_CODE.Text = LOGICA.Domain.BalanceCodeFormatting.Format(TextBox_NBR_CODE_BALANCE.Text, () => Text_CODE.Text);
 				}
 				try
 				{
@@ -14405,150 +14404,41 @@ public class Form_2_ARTICLES : Form
 				if (Operators.CompareString(Label_TOP.Text, "NOUVEAU", TextCompare: false) == 0)
 				{
 					DataTable dataTable = new DataTable();
-					MySqlDataAdapter val2 = new MySqlDataAdapter();
 					dataTable.Clear();
-					val2 = new MySqlDataAdapter("select ID,Code,Article     from TABLE_ARTICLES WHERE   Code = '" + Text_CODE.Text + "'", Module1.cn_SQL);
-					((DbDataAdapter)(object)val2).Fill(dataTable);
+					LOGICA.Infrastructure.Catalogue.CatalogueDuplicateLookup.FillNewCode(dataTable, Text_CODE.Text, Module1.cn_SQL);
 					if (dataTable.Rows.Count != 0)
 					{
 						MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Ce Code est déja utilisé pour ==> ", dataTable.Rows[0]["Article"])), "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
 						return;
 					}
-					MySqlCommand val3 = new MySqlCommand();
-					val3.CommandText = "SELECT MAX(ID) From TABLE_ARTICLES ";
-					val3.Connection = Module1.cn_SQL;
-					val3.CommandType = CommandType.Text;
-					if (Module1.cn_SQL.State != ConnectionState.Open)
-					{
-						Module1.cn_SQL.Open();
-					}
-					int num = ((val3.ExecuteScalar() == DBNull.Value) ? 1 : ((int)Math.Round(Conversions.ToDouble(val3.ExecuteScalar()) + 1.0)));
-					Module1.cn_SQL.Close();
-					val3.CommandText = "Select ARTICLE from TABLE_NUM  where ID = 0 ";
-					val3.Connection = Module1.cn_SQL;
-					val3.CommandType = CommandType.Text;
-					if (Module1.cn_SQL.State != ConnectionState.Open)
-					{
-						Module1.cn_SQL.Open();
-					}
-					string text = ((val3.ExecuteScalar() != DBNull.Value) ? ("ART" + Strings.Format(Conversions.ToDouble(val3.ExecuteScalar()), "000000")) : Conversions.ToString(0));
-					Module1.cn_SQL.Close();
-					DT.Rows.Add();
-					int index = DT.Rows.Count - 1;
-					DT.Rows[index]["ID"] = num;
-					DT.Rows[index]["ID_ARTICLE"] = text;
-					DT.Rows[index]["Code"] = Strings.Trim(Text_CODE.Text);
-					DT.Rows[index]["Article"] = Strings.Trim(Text_ARTICLE.Text);
-					DT.Rows[index]["Famille"] = Combo_FAMILLE.Text;
-					DT.Rows[index]["Sous_Famille"] = Text_SOUS_FAMILLE.Text;
-					DT.Rows[index]["GROUPE"] = Combo_GROUPES.Text;
-					DT.Rows[index]["Description"] = Text_DESCRIPTION.Text;
-					DT.Rows[index]["Prix_A"] = Strings.FormatNumber(Text_PRIX_A.Text);
-					DT.Rows[index]["PRIX_MP"] = Strings.FormatNumber(Text_PRIX_A.Text);
-					DT.Rows[index]["PRIX_V_1"] = Strings.FormatNumber(Text_PRIX_V.Text);
-					DT.Rows[index]["PRIX_V_2"] = Strings.FormatNumber(Text_PRIX_V_2.Text);
-					DT.Rows[index]["PRIX_QTE"] = Strings.FormatNumber(Text_PRIX_QTE.Text);
-					DT.Rows[index]["PRIX_QTE_MIN"] = Conversion.Val(Text_PRIX_QTE_MIN.Text);
-					DT.Rows[index]["STOCK"] = Text_STOCK.Text;
-					DT.Rows[index]["Alert"] = Text_ALERT.Text;
-					DT.Rows[index]["DATES"] = Text_DATE_CREATION.Text;
-					DT.Rows[index]["DATE_INVENTAIRE"] = Text_DATE_CREATION.Text;
-					DT.Rows[index]["STOCK_INITIAL"] = Text_STOCK.Text;
-					DT.Rows[index]["TAUX_TVA"] = Combo_TAUX_TVA.Text;
-					DT.Rows[index]["UNITE"] = Combo_UNITE.Text;
-					DT.Rows[index]["REFERENCE"] = Text_REFERENCE.Text;
-					DT.Rows[index]["FOURNISSEUR"] = Combo_FOURNISSEUR.Text;
-					DT.Rows[index]["MODE_STOCK"] = Combo_MODE_STOCK.Text;
-					DT.Rows[index]["PRINTER"] = Combo_PRINTER.Text;
-					DT.Rows[index]["PRINTER_DUPLICATA"] = Combo_PRINTER_DUPLICATA.Text;
-					DT.Rows[index]["Images"] = Text_LIEN_PICTURE.Text;
-					DT.Rows[index]["Taille"] = Combo_TAILLES.Text;
-					DT.Rows[index]["Couleur"] = Combo_COULEURS.Text;
-					DT.Rows[index]["Emplacement"] = Text_EMPLACEMENT.Text;
-					DT.Rows[index]["PROMOTION"] = Strings.FormatNumber(Text_PROMOTION.Text);
-					DT.Rows[index]["FENETRE_PESAGE"] = Combo_FENETRE_PESEE.Text;
-					DT.Rows[index]["BALANCE"] = Combo_BALANCE.Text;
-					MySqlCommandBuilder val4 = new MySqlCommandBuilder(DA);
-					((DbDataAdapter)(object)DA).Update(DT);
-					DT.AcceptChanges();
-					MySqlCommand val5 = new MySqlCommand();
-					if (Module1.cn_SQL.State != ConnectionState.Open)
-					{
-						Module1.cn_SQL.Open();
-					}
-					val5.CommandText = "INSERT  INTO   TABLE_MOUVEMENTS_STOCK               ( DATES , HEURE , LIBELLE, ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE)         values           ( '" + DateTime.Now.ToString("yyyy-MM-dd") + "' ,  '" + DateTime.Now.ToString("HH:mm:ss") + "'  ,'Création d''article'    ,'" + text + "' ,'" + Text_CODE.Text + "' ,'" + Text_ARTICLE.Text + "'  ,'" + Text_STOCK.Text + "'       )        ";
-					val5.Connection = Module1.cn_SQL;
-					val5.ExecuteNonQuery();
-					Module1.cn_SQL.Close();
-					if (Module1.cn_SQL.State != ConnectionState.Open)
-					{
-						Module1.cn_SQL.Open();
-					}
-					val3.CommandText = "UPDATE     TABLE_NUM    SET ARTICLE =  ARTICLE + 1   ";
-					val3.Connection = Module1.cn_SQL;
-					val3.ExecuteNonQuery();
-					Module1.cn_SQL.Close();
-					MessageBox.Show("Enregistré avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
+					new LOGICA.ApplicationLayer.Catalogue.CatalogueCreationService(
+                        new LOGICA.Infrastructure.Catalogue.MySqlCatalogueCreationStore(Module1.cn_SQL, DA, DT))
+                        .Create(new LOGICA.Presentation.Catalogue.CatalogueFormRowInput(this));
+                    MessageBox.Show("Enregistré avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
 				}
 				else if (Operators.CompareString(Label_TOP.Text, "MODIFICATION", TextCompare: false) == 0)
 				{
 					DataGridView1.CurrentCell = DataGridView1.Rows[Conversions.ToInteger(Label_INDEX.Text)].Cells[0];
 					DataGridView1.Rows[Conversions.ToInteger(Label_INDEX.Text)].Selected = true;
 					DataTable dataTable2 = new DataTable();
-					MySqlDataAdapter val6 = new MySqlDataAdapter();
 					dataTable2.Clear();
-					val6 = new MySqlDataAdapter("select ID,Code,Article     from TABLE_ARTICLES WHERE   Code = '" + Text_CODE.Text + "'    AND    ID <> " + Text_ID.Text + "    ", Module1.cn_SQL);
-					((DbDataAdapter)(object)val6).Fill(dataTable2);
+					LOGICA.Infrastructure.Catalogue.CatalogueDuplicateLookup.FillEditedCode(dataTable2, Text_CODE.Text, Text_ID.Text, Module1.cn_SQL);
 					if (dataTable2.Rows.Count != 0)
 					{
 						MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Ce Code est déja utilisé pour ==> ", dataTable2.Rows[0]["Article"])), "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
 						return;
 					}
 					dataTable2.Clear();
-					val6 = new MySqlDataAdapter("select ID,ID_ARTICLE     from TABLE_ARTICLES WHERE   ID_ARTICLE = '" + Text_ID_ARTICLE.Text + "'    AND    ID <> " + Text_ID.Text + "    ", Module1.cn_SQL);
-					((DbDataAdapter)(object)val6).Fill(dataTable2);
+					LOGICA.Infrastructure.Catalogue.CatalogueDuplicateLookup.FillEditedArticleId(dataTable2, Text_ID_ARTICLE.Text, Text_ID.Text, Module1.cn_SQL);
 					if (dataTable2.Rows.Count != 0)
 					{
 						MessageBox.Show("Cet ID est déja utilisé", "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
 						return;
 					}
 					int position = ((ContainerControl)this).BindingContext[(object)DT].Position;
-					DT.Rows[position]["ID"] = Text_ID.Text;
-					DT.Rows[position]["ID_ARTICLE"] = Text_ID_ARTICLE.Text;
-					DT.Rows[position]["Code"] = Strings.Trim(Text_CODE.Text);
-					DT.Rows[position]["Article"] = Strings.Trim(Text_ARTICLE.Text);
-					DT.Rows[position]["Famille"] = Combo_FAMILLE.Text;
-					DT.Rows[position]["Sous_Famille"] = Text_SOUS_FAMILLE.Text;
-					DT.Rows[position]["GROUPE"] = Combo_GROUPES.Text;
-					DT.Rows[position]["Description"] = Text_DESCRIPTION.Text;
-					DT.Rows[position]["Prix_A"] = Strings.FormatNumber(Text_PRIX_A.Text);
-					DT.Rows[position]["PRIX_MP"] = Strings.FormatNumber(Text_PRIX_MP.Text);
-					DT.Rows[position]["PRIX_V_1"] = Strings.FormatNumber(Text_PRIX_V.Text);
-					DT.Rows[position]["PRIX_V_2"] = Strings.FormatNumber(Text_PRIX_V_2.Text);
-					DT.Rows[position]["PRIX_QTE"] = Strings.FormatNumber(Text_PRIX_QTE.Text);
-					DT.Rows[position]["PRIX_QTE_MIN"] = Conversion.Val(Text_PRIX_QTE_MIN.Text);
-					DT.Rows[position]["STOCK"] = Text_STOCK.Text;
-					DT.Rows[position]["Alert"] = Text_ALERT.Text;
-					DT.Rows[position]["DATES"] = Text_DATE_CREATION.Text;
-					DT.Rows[position]["DATE_INVENTAIRE"] = Text_DATE_INVENTAIRE.Text;
-					DT.Rows[position]["STOCK_INITIAL"] = Text_STOCK_INITIAL.Text;
-					DT.Rows[position]["TAUX_TVA"] = Combo_TAUX_TVA.Text;
-					DT.Rows[position]["UNITE"] = Combo_UNITE.Text;
-					DT.Rows[position]["REFERENCE"] = Text_REFERENCE.Text;
-					DT.Rows[position]["FOURNISSEUR"] = Combo_FOURNISSEUR.Text;
-					DT.Rows[position]["MODE_STOCK"] = Combo_MODE_STOCK.Text;
-					DT.Rows[position]["PRINTER"] = Combo_PRINTER.Text;
-					DT.Rows[position]["PRINTER_DUPLICATA"] = Combo_PRINTER_DUPLICATA.Text;
-					DT.Rows[position]["Images"] = Text_LIEN_PICTURE.Text;
-					DT.Rows[position]["Taille"] = Combo_TAILLES.Text;
-					DT.Rows[position]["Couleur"] = Combo_COULEURS.Text;
-					DT.Rows[position]["Emplacement"] = Text_EMPLACEMENT.Text;
-					DT.Rows[position]["PROMOTION"] = Strings.FormatNumber(Text_PROMOTION.Text);
-					DT.Rows[position]["FENETRE_PESAGE"] = Combo_FENETRE_PESEE.Text;
-					DT.Rows[position]["BALANCE"] = Combo_BALANCE.Text;
-					MySqlCommandBuilder val7 = new MySqlCommandBuilder(DA);
-					((DbDataAdapter)(object)DA).Update(DT);
-					DT.AcceptChanges();
+					LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.PopulateEdited(DT.Rows[position],
+                        new LOGICA.Presentation.Catalogue.CatalogueFormRowInput(this));
+                    LOGICA.Infrastructure.Catalogue.CatalogueRowPersistence.UpdateAndAccept(DA, DT);
 					MessageBox.Show("Modifié avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
 					string right = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("MODIFICATION | ", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_ARTICLE"].Value), DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ARTICLE"].Value));
 					File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
@@ -14610,70 +14500,13 @@ public class Form_2_ARTICLES : Form
 			}
 			if ((Text_CODE.Text.Length == 12) & (num == 12))
 			{
-				int num2 = 0;
-				int num3 = 0;
-				byte[] array = new byte[13];
-				int num4 = 0;
-				int num5;
-				int num6;
-				do
-				{
-					array[num4] = (byte)Conversions.ToInteger(Text_CODE.Text.Substring(num4, 1));
-					if (unchecked(num4 % 2) == 1)
-					{
-						num3 += array[num4];
-					}
-					else
-					{
-						num2 += array[num4];
-					}
-					num4++;
-					num5 = num4;
-					num6 = 11;
-				}
-				while (num5 <= num6);
-				unchecked
-				{
-					num4 = checked(num2 + num3 * 3) % 10;
-				}
-				if (num4 == 0)
-				{
-					array[12] = 0;
-				}
-				else
-				{
-					array[12] = (byte)(10 - num4);
-				}
+				byte[] array = LOGICA.Domain.CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(Text_CODE.Text);
 				byte[] bits = Module1.getBits(array);
 				Text_CODE.Text += Conversions.ToString(array[12]);
 			}
 			if ((Text_CODE.Text.Length == 11) & (num == 11))
 			{
-				string text3 = Text_CODE.Text.Substring(0, 1);
-				string text4 = Text_CODE.Text.Substring(1, 5);
-				string text5 = Text_CODE.Text.Substring(6, 5);
-				string text6 = text3 + text4 + text5;
-				int num7 = 0;
-				int num8 = 0;
-				int length = text6.Length;
-				int num9 = 1;
-				while (true)
-				{
-					int num10 = num9;
-					int num6 = length;
-					if (num10 > num6)
-					{
-						break;
-					}
-					num8 = Convert.ToInt32(text6.Substring(num9 - 1, 1));
-					num7 = ((unchecked(num9 % 2) != 0) ? (num7 + num8 * 3) : (num7 + num8 * 1));
-					num9++;
-				}
-				unchecked
-				{
-					string text7 = (checked(10 - unchecked(num7 % 10)) % 10).ToString();
-					Text_CODE.Text += text7;
-				}
+				Text_CODE.Text += LOGICA.Domain.CatalogueBarcodeChecksum.GetElevenDigitPayloadSuffix(Text_CODE.Text);
 			}
 			((Control)Text_CODE).Focus();
 		}
@@ -14689,7 +14522,7 @@ public class Form_2_ARTICLES : Form
 
 	private void TextBox8_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -14701,7 +14534,7 @@ public class Form_2_ARTICLES : Form
 
 	private void TextBox13_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -14709,7 +14542,7 @@ public class Form_2_ARTICLES : Form
 
 	private void TextBox16_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -14717,7 +14550,7 @@ public class Form_2_ARTICLES : Form
 
 	private void TextBox17_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -14947,122 +14780,20 @@ public class Form_2_ARTICLES : Form
 		//IL_022d: Expected Obj, but got Unknown
 		try
 		{
-			string text = default;
-			string text2 = default;
 			if (Operators.CompareString(_FAMILLE_FILTRE, "", TextCompare: false) == 0)
-			{
-				_sql = "";
-			}
-			else
-			{
-				text = "  WHERE  Famille =   '" + _FAMILLE_FILTRE + "'        ";
-				text2 = "  AND      Famille =   '" + _FAMILLE_FILTRE + "'        ";
-			}
-			string text3 = "select    count(ID)  as N  from  TABLE_ARTICLES     " + text + "  ";
-			string text4 = "select    count(ID)  as N   from  TABLE_ARTICLES    WHERE       STOCK    <=  Alert   and   STOCK <> 0  " + text2 + " ";
-			string text5 = "select    count(ID)  as N   from  TABLE_ARTICLES    WHERE       STOCK    < 0  " + text2 + " ";
-			string text6 = "select    count(ID)   as N    from  TABLE_ARTICLES    WHERE       PROMOTION <> 0     " + text2 + "  ";
-			string text7 = "select    sum(STOCK * PRIX_MP)   as N   from  TABLE_ARTICLES  where  STOCK > 0     and    PRIX_MP > 0       " + text2 + "  ";
-			string text8 = "select    count(ID)   as N   from  TABLE_ARTICLES  where  (STOCK < 0     OR    PRIX_MP <= 0)       " + text2 + "  ";
-			string text9 = "select    sum(STOCK * PRIX_A)   as N   from  TABLE_ARTICLES  where  STOCK > 0     and    PRIX_A > 0       " + text2 + " ";
-			string text10 = "select    count(ID)   as N   from  TABLE_ARTICLES  where  (STOCK < 0     OR    PRIX_MP <= 0)       " + text2 + "  ";
-			string text11 = "select    sum(STOCK * PRIX_V_1)   as N   from  TABLE_ARTICLES  where  STOCK > 0     AND    PRIX_V_1 > 0      " + text2 + "   ";
-			string text12 = "select    count(id)   as N   from  TABLE_ARTICLES  where  (STOCK < 0     OR    PRIX_V_1 <= 0)       " + text2 + "  ";
-			string text13 = "select    count(ID)   as N    from  TABLE_ARTICLES    WHERE        PRIX_QTE <> 0     " + text2 + "  ";
-			DataTable dataTable = new DataTable();
-			MySqlDataAdapter val = new MySqlDataAdapter();
-			dataTable.Clear();
-			dataTable = new DataTable();
-			val = new MySqlDataAdapter(" ( " + text3 + " )       UNION ALL         ( " + text4 + " )        UNION ALL     ( " + text5 + " )      UNION ALL     ( " + text6 + " )      UNION ALL      ( " + text7 + " )      UNION ALL     ( " + text8 + " )     UNION ALL     ( " + text9 + " )      UNION ALL     ( " + text10 + " )     UNION ALL      ( " + text11 + " )       UNION ALL      ( " + text12 + " )      UNION ALL      ( " + text13 + " )       ", Module1.cn_SQL);
-			((DbDataAdapter)(object)val).Fill(dataTable);
-			if (dataTable.Rows[0]["N"] == DBNull.Value)
-			{
-				Label_ARTICLES.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_ARTICLES.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"])));
-			}
-			if (dataTable.Rows[1]["N"] == DBNull.Value)
-			{
-				Label_ALERTS_STOCK.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_ALERTS_STOCK.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[1]["N"])));
-			}
-			if (dataTable.Rows[2]["N"] == DBNull.Value)
-			{
-				Label_STOCK_NEGATIF.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_STOCK_NEGATIF.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[2]["N"])));
-			}
-			if (dataTable.Rows[3]["N"] == DBNull.Value)
-			{
-				Label_PROMOTIONS.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_PROMOTIONS.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[3]["N"])));
-			}
-			if (dataTable.Rows[4]["N"] == DBNull.Value)
-			{
-				Label_VALEURSTOCK_MP.Text = (Conversions.ToString(0) + " DH").PadLeft(20, '#');
-			}
-			else
-			{
-				Label_VALEURSTOCK_MP.Text = (Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(dataTable.Rows[4]["N"]))) + " DH").PadLeft(20, '#');
-			}
-			if (dataTable.Rows[5]["N"] == DBNull.Value)
-			{
-				Label_VALEURSTOCK_MP_NON.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_VALEURSTOCK_MP_NON.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[5]["N"])));
-			}
-			if (dataTable.Rows[6]["N"] == DBNull.Value)
-			{
-				Label_VALEURSTOCK_A.Text = (Conversions.ToString(0) + " DH").PadLeft(20, '#');
-			}
-			else
-			{
-				Label_VALEURSTOCK_A.Text = (Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(dataTable.Rows[6]["N"]))) + " DH").PadLeft(20, '#');
-			}
-			if (dataTable.Rows[7]["N"] == DBNull.Value)
-			{
-				Label_VALEURSTOCK_A_NON.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_VALEURSTOCK_A_NON.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[7]["N"])));
-			}
-			if (dataTable.Rows[8]["N"] == DBNull.Value)
-			{
-				Label_VALEURSTOCK_V.Text = (Conversions.ToString(0) + " DH").PadLeft(20, '#');
-			}
-			else
-			{
-				Label_VALEURSTOCK_V.Text = (Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(dataTable.Rows[8]["N"]))) + " DH").PadLeft(20, '#');
-			}
-			if (dataTable.Rows[9]["N"] == DBNull.Value)
-			{
-				Label_VALEURSTOCK_V_NON.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_VALEURSTOCK_V_NON.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[9]["N"])));
-			}
-			if (dataTable.Rows[10]["N"] == DBNull.Value)
-			{
-				Label_PRIX_QTE.Text = Conversions.ToString(0);
-			}
-			else
-			{
-				Label_PRIX_QTE.Text = Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(dataTable.Rows[10]["N"])));
-			}
+                _sql = "";
+            DataTable dataTable = LOGICA.Infrastructure.Catalogue.CatalogueAggregateLookup.Read(_FAMILLE_FILTRE, Module1.cn_SQL);
+            Label_ARTICLES.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[0]["N"]);
+			Label_ALERTS_STOCK.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[1]["N"]);
+			Label_STOCK_NEGATIF.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[2]["N"]);
+			Label_PROMOTIONS.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[3]["N"]);
+			Label_VALEURSTOCK_MP.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Money(dataTable.Rows[4]["N"]);
+			Label_VALEURSTOCK_MP_NON.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[5]["N"]);
+			Label_VALEURSTOCK_A.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Money(dataTable.Rows[6]["N"]);
+			Label_VALEURSTOCK_A_NON.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[7]["N"]);
+			Label_VALEURSTOCK_V.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Money(dataTable.Rows[8]["N"]);
+			Label_VALEURSTOCK_V_NON.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[9]["N"]);
+			Label_PRIX_QTE.Text = LOGICA.Presentation.Formatting.CatalogueAggregateFormatting.Count(dataTable.Rows[10]["N"]);
 		}
 		catch (Exception ex)
 		{
@@ -15394,7 +15125,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_PRIX_MP_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -15436,7 +15167,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_PRIX_V_2_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -16555,7 +16286,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_PROMOTION_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -17353,7 +17084,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_PRIX_A_COLLECTION_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -17365,7 +17096,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_PRIX_V_COLLECTION_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -17416,41 +17147,10 @@ public class Form_2_ARTICLES : Form
 				string text3 = Conversions.ToString(DataGridView_TAILLES.Rows[((DataGridViewBand)DataGridView_TAILLES.CurrentRow).Index].Cells["TAILLE"].Value);
 				string text4 = Conversions.ToString(DataGridView_COULEURS.Rows[((DataGridViewBand)DataGridView_COULEURS.CurrentRow).Index].Cells["COULEUR"].Value);
 				decimal num = Conversions.ToDecimal(Text_QTE_COLLECTION.Text);
-				int num2 = 0;
-				int num3 = 0;
-				byte[] array = new byte[13];
-				int num4 = 0;
-				int num5;
-				int num6;
-				do
-				{
-					array[num4] = (byte)Conversions.ToInteger(text.Substring(num4, 1));
-					if (unchecked(num4 % 2) == 1)
-					{
-						num3 += array[num4];
-					}
-					else
-					{
-						num2 += array[num4];
-					}
-					num4++;
-					num5 = num4;
-					num6 = 11;
-				}
-				while (num5 <= num6);
-				unchecked
-				{
-					num4 = checked(num2 + num3 * 3) % 10;
-				}
-				if (num4 == 0)
-				{
-					array[12] = 0;
-				}
-				else
-				{
-					array[12] = (byte)(10 - num4);
-				}
-				byte[] bits = Module1.getBits(array);
+				byte[] array = LOGICA.Domain.CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(text);
+                int num4;
+                int num6;
+                byte[] bits = Module1.getBits(array);
 				text += Conversions.ToString(array[12]);
 				int num7 = DataGrid_COLLECTION.Rows.Count - 1;
 				num4 = 0;
@@ -17518,21 +17218,9 @@ public class Form_2_ARTICLES : Form
 		{
 			try
 			{
-				decimal num = 0m;
-				int num2 = DataGrid_COLLECTION.Rows.Count - 1;
-				int num3 = 0;
-				while (true)
-				{
-					int num4 = num3;
-					int num5 = num2;
-					if (num4 > num5)
-					{
-						break;
-					}
-					num = Conversions.ToDecimal(Operators.AddObject(num, DataGrid_COLLECTION.Rows[num3].Cells["Qté_LISTE"].Value));
-					num3++;
-				}
-				Label_TOTAL_QUANTITE_DOC.Text = Conversions.ToString(Module1.FLOUSS(num));
+				decimal num = LOGICA.Domain.CollectionQuantityTotals.Accumulate(
+                    DataGrid_COLLECTION.Rows.Count - 1, index => DataGrid_COLLECTION.Rows[index].Cells["Qté_LISTE"].Value);
+                Label_TOTAL_QUANTITE_DOC.Text = Conversions.ToString(Module1.FLOUSS(num));
 				Label_NBR_ARTICLES_DOC.Text = Conversions.ToString(DataGrid_COLLECTION.Rows.Count);
 			}
 			catch (Exception ex)
@@ -17720,12 +17408,12 @@ public class Form_2_ARTICLES : Form
 		{
 			try
 			{
-				if (Operators.CompareString(Strings.Trim(Text_CODE_COLLECTION.Text), "", TextCompare: false) == 0)
+				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_CODE_COLLECTION.Text))
 				{
 					MessageBox.Show("Veuillez remplir le champ -Code- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Operators.CompareString(Strings.Trim(Text_ARTICLE_COLLECTION.Text), "", TextCompare: false) == 0)
+				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_ARTICLE_COLLECTION.Text))
 				{
 					MessageBox.Show("Veuillez remplir le champ -Article- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
@@ -17758,31 +17446,26 @@ public class Form_2_ARTICLES : Form
 				Text_ARTICLE_COLLECTION.Text = Text_ARTICLE_COLLECTION.Text.ToString().Replace("'", " ");
 				if (Operators.CompareString(Label_TOP_COLLECTION.Text, "NOUVEAU", TextCompare: false) == 0)
 				{
-					int num = 0;
-					int num2 = DataGrid_COLLECTION.Rows.Count - 1;
-					int num3 = 0;
-					while (true)
-					{
-						int num4 = num3;
-						int num5 = num2;
-						if (num4 > num5)
-						{
-							break;
-						}
-						DataTable dataTable = new DataTable();
-						MySqlDataAdapter val = new MySqlDataAdapter();
-						dataTable.Clear();
-						val = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("select ID,Code,Article     from TABLE_ARTICLES WHERE   Code = '", DataGrid_COLLECTION.Rows[num3].Cells[0].Value), "'      ")), Module1.cn_SQL);
-						((DbDataAdapter)(object)val).Fill(dataTable);
-						if (dataTable.Rows.Count != 0)
-						{
-							MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Ce Code est déja utilisé pour ==> ", dataTable.Rows[0]["Article"])), "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
-							return;
-						}
-						DataGrid_COLLECTION.CurrentCell = DataGrid_COLLECTION.Rows[DataGrid_COLLECTION.Rows.Count - 1].Cells[0];
-						DataGrid_COLLECTION.Rows[DataGrid_COLLECTION.Rows.Count - 1].Selected = true;
-						num3++;
-					}
+                    DataRow duplicate = LOGICA.ApplicationLayer.Catalogue.CollectionDuplicatePrecheck.FindFirst(
+                        DataGrid_COLLECTION.Rows.Count - 1,
+                        index => DataGrid_COLLECTION.Rows[index].Cells[0].Value,
+                        code =>
+                        {
+                            DataTable matches = new DataTable();
+                            matches.Clear();
+                            LOGICA.Infrastructure.Catalogue.CatalogueDuplicateLookup.FillCollectionCode(matches, code, Module1.cn_SQL);
+                            return matches;
+                        },
+                        () =>
+                        {
+                            DataGrid_COLLECTION.CurrentCell = DataGrid_COLLECTION.Rows[DataGrid_COLLECTION.Rows.Count - 1].Cells[0];
+                            DataGrid_COLLECTION.Rows[DataGrid_COLLECTION.Rows.Count - 1].Selected = true;
+                        });
+                    if (duplicate != null)
+                    {
+                        MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Ce Code est déja utilisé pour ==> ", duplicate["Article"])), "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
+                        return;
+                    }
 					MySqlCommand val2 = new MySqlCommand();
 					if (Module1.cn_SQL.State != ConnectionState.Open)
 					{
@@ -17904,7 +17587,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_QTE_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -18058,7 +17741,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_CODE_COLLECTION_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -18311,7 +17994,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_PRIX_QTE_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}
@@ -18323,7 +18006,7 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_PRIX_QTE_MIN_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		if (LOGICA.Presentation.Input.NumericEntryFilter.ShouldBlock(e.KeyChar))
 		{
 			e.Handled = true;
 		}

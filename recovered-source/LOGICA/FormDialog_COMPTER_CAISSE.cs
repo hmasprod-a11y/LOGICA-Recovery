@@ -3102,36 +3102,54 @@ public class FormDialog_COMPTER_CAISSE : Form
 		NewLateBinding.LateSet(sender, null, "BackColor", new object[1] { Color.Yellow }, null, null);
 	}
 
-	private void TextBox_LostFocus(object sender, EventArgs e)
-	{
-		NewLateBinding.LateSet(sender, null, "BackColor", new object[1] { Color.White }, null, null);
-		if ((Operators.CompareString(Strings.Trim(Conversions.ToString(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null))), "", TextCompare: false) == 0) | !Versioned.IsNumeric(RuntimeHelpers.GetObjectValue(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null))))
-		{
-			NewLateBinding.LateSet(sender, null, "text", new object[1] { 0 }, null, null);
-		}
-		decimal num = new decimal(Convert.ToDouble(decimal.Add(decimal.Add(decimal.Add(decimal.Add(decimal.Add(decimal.Add(decimal.Add(decimal.Add(0m, decimal.Multiply(Conversions.ToDecimal(Text_200.Text), 200m)), decimal.Multiply(Conversions.ToDecimal(Text_100.Text), 100m)), decimal.Multiply(Conversions.ToDecimal(Text_50.Text), 50m)), decimal.Multiply(Conversions.ToDecimal(Text_20.Text), 20m)), decimal.Multiply(Conversions.ToDecimal(Text_10.Text), 10m)), decimal.Multiply(Conversions.ToDecimal(Text_5.Text), 5m)), decimal.Multiply(Conversions.ToDecimal(Text_2.Text), 2m)), decimal.Multiply(Conversions.ToDecimal(Text_1.Text), 1m))) + Convert.ToDouble(Conversions.ToDecimal(Text_0_5.Text)) * 0.5 + Convert.ToDouble(Conversions.ToDecimal(Text_0_2.Text)) * 0.2 + Convert.ToDouble(Conversions.ToDecimal(Text_0_1.Text)) * 0.1);
-		Text_TOTAL_ESPECES.Text = Strings.FormatNumber(num);
-		checked
-		{
-			int num2 = DataGridView1.Rows.Count - 1;
-			int num3 = 0;
-			while (true)
-			{
-				int num4 = num3;
-				int num5 = num2;
-				if (num4 <= num5)
-				{
-					if (Operators.ConditionalCompareObjectEqual(DataGridView1.Rows[num3].Cells["MODE_P"].Value, "ESPECES", TextCompare: false))
-					{
-						DataGridView1.Rows[num3].Cells["CAISSE"].Value = Strings.FormatNumber(num);
-					}
-					num3++;
-					continue;
-				}
-				break;
-			}
-		}
-	}
+	private sealed class CashRecountContext : LOGICA.ApplicationLayer.Cash.ICashRecountContext
+    {
+        private readonly FormDialog_COMPTER_CAISSE form;
+        private readonly object sender;
+        public CashRecountContext(FormDialog_COMPTER_CAISSE form, object sender) { this.form = form; this.sender = sender; }
+        public void ResetBackground()
+        {
+            NewLateBinding.LateSet(sender, null, "BackColor", new object[1] { Color.White }, null, null);
+        }
+        public object ReadSenderText()
+        {
+            return NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null);
+        }
+        public void ResetSender()
+        {
+            NewLateBinding.LateSet(sender, null, "text", new object[1] { 0 }, null, null);
+        }
+        public string ReadDenomination(int index)
+        {
+            switch (index)
+            {
+                case 0: return form.Text_200.Text;
+                case 1: return form.Text_100.Text;
+                case 2: return form.Text_50.Text;
+                case 3: return form.Text_20.Text;
+                case 4: return form.Text_10.Text;
+                case 5: return form.Text_5.Text;
+                case 6: return form.Text_2.Text;
+                case 7: return form.Text_1.Text;
+                case 8: return form.Text_0_5.Text;
+                case 9: return form.Text_0_2.Text;
+                case 10: return form.Text_0_1.Text;
+                default: throw new ArgumentOutOfRangeException("index");
+            }
+        }
+        public void DisplayTotal(decimal total) { form.Text_TOTAL_ESPECES.Text = Strings.FormatNumber(total); }
+        public int LastPaymentIndex { get { return checked(form.DataGridView1.Rows.Count - 1); } }
+        public object ReadPaymentMode(int index) { return form.DataGridView1.Rows[index].Cells["MODE_P"].Value; }
+        public void DisplayCashRow(int index, decimal total)
+        {
+            form.DataGridView1.Rows[index].Cells["CAISSE"].Value = Strings.FormatNumber(total);
+        }
+    }
+
+    private void TextBox_LostFocus(object sender, EventArgs e)
+    {
+        LOGICA.ApplicationLayer.Cash.CashRecountService.Recount(new CashRecountContext(this, sender));
+    }
 
 	private void Butt_Click(object sender, EventArgs e)
 	{
