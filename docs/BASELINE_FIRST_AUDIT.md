@@ -116,3 +116,11 @@ Next characterization was added in `scripts/test-pos.cs` and registered in `scri
 - If fixtures fail before `BeginTransaction` (e.g., `DataGridView1_CellClick`, missing configuration), classify as **harness prerequisite**, not a rollback defect. If original handler executes and rollback genuinely fails, open a separate behavior-fix PR rather than altering code in this audit.
 
 **Scope note:** no evidence yet that the accepted/failed original WinForms posting path passes. Audit and fixture design are not acceptance results. Preserve all legacy financial, stock, and validation semantics pending characterization.
+
+### Recovered receipt lot-field discrepancy — verified 2026-10-30
+
+- [Windows run 41000041280](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/41000041280) passed the original `LOGICA.exe` visible startup check, but failed the new original-handler schema prerequisite: `TABLE_RECEPTIONS_DETAILS.N_LOT` absent.
+- Recovered Access SQL `input/recovered-original.sql` lacks this column. The original `Form_6_RECEPTIONS.DataGridView1_CellClick` **reads** `val6["N_LOT"]` when populating the receipt detail grid. This is a documented mismatch between recovered data and original executable expectations, not proof that the receipt posting handler failed.
+- Additive isolated import compatibility migration in commit `68dbe135` appends `N_LOT varchar(255) DEFAULT ''` to `TABLE_RECEPTIONS_DETAILS`. It does not alter the original recovered SQL dump or existing receipt values.
+- [Windows run 41000494090](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/41000494090) **passed**, including visible real executable startup, the original-handler column prerequisite checks for all six receipt/inventory tables, two-article transaction rollback, isolated data verification, and packaging.
+- **Boundary:** this proves isolated *schema compatibility* and independent rollback checks. No accepted, populated original WinForms `Button_VALIDER_Click` path has been verified yet. Prioritize executing that path with deliberately isolated document fixtures before claiming end-to-end validation or changing original handler code.
