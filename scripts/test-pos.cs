@@ -1204,7 +1204,7 @@ class PosSmoke {
     using(var stop=new ManualResetEvent(false)) {
      var watcher=new Thread(delegate() {
       while(!stop.WaitOne(60)) {
-       if(DismissInjectedFailure(threadId,"Enregistré avec succès")) {Interlocked.Increment(ref observed);continue;}
+       if(DismissInjectedFailure(threadId,"Enregistr")) {Interlocked.Increment(ref observed);continue;}
        // A failure/validation MsgBox would otherwise block Invoke forever. Capture it
        // explicitly and fail the test rather than reporting only a generic timeout.
        string details=DescribeThreadDialogs(threadId);
