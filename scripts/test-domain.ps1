@@ -11,12 +11,15 @@ try {
     $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Application/Checkout') -Filter '*.cs' | ForEach-Object { $_.FullName })
     $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Application/Inventory') -Filter '*.cs' | ForEach-Object { $_.FullName })
     $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Application/Cash') -Filter '*.cs' | ForEach-Object { $_.FullName })
+    $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Application/Catalogue') -Filter '*.cs' | ForEach-Object { $_.FullName })
+    $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Presentation/Input') -Filter '*.cs' | ForEach-Object { $_.FullName })
+    $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Presentation/Formatting') -Filter '*.cs' | ForEach-Object { $_.FullName })
     $tests = @(Get-ChildItem -LiteralPath (Join-Path $root 'tests') -Filter '*Tests.cs' | Sort-Object Name)
     if ($sources.Count -eq 0 -or $tests.Count -eq 0) { throw 'Domain sources or tests missing' }
     foreach ($test in $tests) {
         $executable = Join-Path $temporary ($test.BaseName + '.exe')
         $createdFiles += $executable
-        & $compiler /nologo /platform:x86 /target:exe "/r:$visualBasic" "/out:$executable" $sources $test.FullName
+        & $compiler /nologo /platform:x86 /target:exe /r:System.Data.dll "/r:$visualBasic" "/out:$executable" $sources $test.FullName
         if ($LASTEXITCODE -ne 0) { throw "Domain test compilation failed: $($test.Name)" }
         & $executable
         if ($LASTEXITCODE -ne 0) { throw "Domain tests failed: $($test.Name)" }
