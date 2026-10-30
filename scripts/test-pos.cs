@@ -1158,7 +1158,7 @@ class PosSmoke {
   },IntPtr.Zero);
   return String.Join(" | ",lines.ToArray());
  }
- static void ClientSettlementSave(Assembly assembly, bool rejectInsert=false, bool repeatHandler=false) {
+ static void ClientSettlementSave(Assembly assembly, bool rejectInsert=false, bool repeatHandler=false, bool retryAfterRejection=false) {
   CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("en-US");
   var module=assembly.GetType("LOGICA.Module1",true);
   var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
@@ -1225,6 +1225,18 @@ class PosSmoke {
      try {
       var save=form.GetType().GetMethod("Button12_Click",Flags);
       save.Invoke(form,new object[]{form,EventArgs.Empty});
+      if(retryAfterRejection) {
+       // Original failed write leaves an Added row in memory. Remove only the
+       // disposable CI CHECK to simulate an operator retry after DB recovery.
+       if(connection.State!=ConnectionState.Closed)
+        throw new Exception("First failed settlement unexpectedly left SQL connection open");
+       connection.Open();
+       try { Sql(connection,"ALTER TABLE TABLE_CLIENTS_REGLE DROP CONSTRAINT ci_reject_amount"); }
+       finally { connection.Close(); }
+       Console.WriteLine("CI settlement retry: database rejection lifted, invoking same original handler again");
+       Console.Out.Flush();
+       save.Invoke(form,new object[]{form,EventArgs.Empty});
+      }
       if(repeatHandler) {
        // Deliberate second invocation on the same form with unchanged inputs.
        // This characterizes handler re-entry, not real mouse double-click timing.
@@ -1234,7 +1246,19 @@ class PosSmoke {
      }
      finally {stop.Set();if(!watcher.Join(2000))throw new Exception("Settlement watcher did not stop");}
     }
-    if(rejectInsert) {
+    if(retryAfterRejection) {
+     if(unexpected!=2 || observed!=0)
+      throw new Exception("Expected two error dialogs and zero success dialogs, got errors="+unexpected+" success="+observed+" last="+unexpectedDialog);
+     if(unexpectedDialog==null ||
+        unexpectedDialog.IndexOf("Duplicate entry",StringComparison.OrdinalIgnoreCase)<0)
+      throw new Exception("Expected duplicate-key error after retry, got: "+unexpectedDialog);
+     if(table.Rows.Count!=3 || table.Rows[0].RowState!=DataRowState.Unchanged ||
+        table.Rows[1].RowState!=DataRowState.Unchanged || table.Rows[2].RowState!=DataRowState.Added)
+      throw new Exception("Retry did not leave first pending row accepted and second pending row unsaved");
+     if(Convert.ToDecimal(table.Rows[1]["ID"])!=8m || Convert.ToDecimal(table.Rows[2]["ID"])!=8m)
+      throw new Exception("Retry did not reuse original settlement ID 8 in two rows");
+     Console.WriteLine("CI settlement retry duplicate-key dialog: "+unexpectedDialog);
+    } else if(rejectInsert) {
      if(unexpected==0)throw new Exception("Original settlement failure dialog was not observed");
      if(observed!=0)throw new Exception("Unexpected settlement success dialog on rejected insert");
      // Prove that the modal came from the intended disposable MariaDB CHECK rejection,
@@ -1260,15 +1284,16 @@ class PosSmoke {
   }
   if(connection.State!=ConnectionState.Closed)throw new Exception("Settlement save left connection open");
   connection.Open();
-  Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE"),rejectInsert?1m:(repeatHandler?3m:2m),"settlement row count");
+  Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE"),retryAfterRejection?2m:(rejectInsert?1m:(repeatHandler?3m:2m)),"settlement row count");
   Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE WHERE ID=7 AND ID_REGLE='PREV' AND MONTANT=5 AND NOTES='keep'"),1m,"settlement sentinel untouched");
-  Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE WHERE ID=8 AND ID_CLIENT='C123' AND CODE_CLIENT='BC123' AND CLIENT='Test client' AND MONTANT=12.75 AND MODE_P='ESPECES' AND UTILISATEUR='CI_CASHIER' AND NOTES='CI_TEST_NOTE' AND ETAT='VALIDER' AND DATES='2026-01-03'"),rejectInsert?0m:1m,"settlement exact persisted fields");
+  Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE WHERE ID=8 AND ID_CLIENT='C123' AND CODE_CLIENT='BC123' AND CLIENT='Test client' AND MONTANT=12.75 AND MODE_P='ESPECES' AND UTILISATEUR='CI_CASHIER' AND NOTES='CI_TEST_NOTE' AND ETAT='VALIDER' AND DATES='2026-01-03'"),(rejectInsert&&!retryAfterRejection)?0m:1m,"settlement exact persisted fields");
   if(repeatHandler) {
    Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE WHERE ID=9 AND ID_CLIENT='C123' AND MONTANT=12.75 AND MODE_P='ESPECES' AND ETAT='VALIDER'"),1m,"settlement second invocation persisted independently");
    Eq(Scalar(connection,"SELECT SUM(MONTANT) FROM TABLE_CLIENTS_REGLE WHERE ID_CLIENT='C123'"),25.5m,"settlement repeated handler total persisted");
   }
   connection.Close();
-  Console.WriteLine(rejectInsert ? "PASS original settlement failed insert: modal error, unsaved pending row, unchanged database and sentinel" :
+  Console.WriteLine(retryAfterRejection ? "CHARACTERIZATION PASS original settlement retry after rejected insert: first pending row persisted, second same-ID row rejected, error shown, no success dialog" :
+   rejectInsert ? "PASS original settlement failed insert: modal error, unsaved pending row, unchanged database and sentinel" :
    repeatHandler ? "CHARACTERIZATION PASS original settlement handler re-entry persisted two payments from unchanged inputs (not a UI double-click test)" :
    "PASS original client settlement accepted save: commandbuilder insert, next ID, row data, connection and sentinel");
  }
@@ -1354,7 +1379,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="client-settlement-sequence-race") { ClientSettlementSequenceRace(assembly); } else if(args[0]=="client-settlement-repeat-handler") { ClientSettlementSave(assembly,false,true); } else if(args[0]=="client-settlement-insert-failure") { ClientSettlementSave(assembly,true); } else if(args[0]=="client-settlement-save") { ClientSettlementSave(assembly); } else if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="client-settlement-retry-after-rejection") { ClientSettlementSave(assembly,true,false,true); } else if(args[0]=="client-settlement-sequence-race") { ClientSettlementSequenceRace(assembly); } else if(args[0]=="client-settlement-repeat-handler") { ClientSettlementSave(assembly,false,true); } else if(args[0]=="client-settlement-insert-failure") { ClientSettlementSave(assembly,true); } else if(args[0]=="client-settlement-save") { ClientSettlementSave(assembly); } else if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
