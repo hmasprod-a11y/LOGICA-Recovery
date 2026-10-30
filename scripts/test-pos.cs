@@ -49,6 +49,10 @@ class PosSmoke {
  }
  static void EmptyValidationGuard(Assembly assembly) {
   // Characterize only the original empty-document early return, with no modal or DB writes.
+  var forms=assembly.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",Flags).GetValue(null,null);
+  var template=Get(forms,"Form_0_TEMPLATE");
+  var settings=(ListView)Get(template,"ListView1");
+  if(settings.FindItemWithText("HT_TTC",false,0)==null)settings.Items.Add("HT_TTC").SubItems.Add("TTC");
   foreach(string formName in new[]{"Form_6_RECEPTIONS","Form_6_INVENTAIRES"}) {
    using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA."+formName,true))) {
     var rows=(DataGridView)Get(form,"DataGridView1");
