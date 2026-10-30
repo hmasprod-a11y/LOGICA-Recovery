@@ -3404,6 +3404,28 @@ public class Form_5_CLIENTS_REGLE : Form
 		}
 	}
 
+	private sealed class SettlementRowContext : LOGICA.ApplicationLayer.Clients.IClientSettlementRowContext
+	{
+		private readonly Form_5_CLIENTS_REGLE form;
+		private readonly DataRow row;
+		private readonly int id;
+		public SettlementRowContext(Form_5_CLIENTS_REGLE form, DataRow row, int id)
+		{
+			this.form = form; this.row = row; this.id = id;
+		}
+		public object ReadId() { return id; }
+		public object ReadDate() { return form.DateTimePicker_DATE.Value; }
+		public object ReadUser() { return form.Text_UTILISATEUR.Text; }
+		public object ReadDocumentId() { return Strings.Format(DateTime.Now, "ddMMyyHHmmssfff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text; }
+		public object ReadClientId() { return form.Button_CLIENT._ID_Button; }
+		public object ReadClientCode() { return form.Button_CLIENT._CODE_Button; }
+		public object ReadClientName() { return ((ButtonBase)form.Button_CLIENT).Text; }
+		public object ReadAmount() { return form.TextBox_MONTANT.Text; }
+		public object ReadPaymentMode() { return form.Combo_MODE_P.Text; }
+		public object ReadNotes() { return form.TextBox_NOTES.Text; }
+		public void Set(string column, object value) { row[column] = value; }
+	}
+
 	private void Button12_Click(object sender, EventArgs e)
 	{
 		//IL_04a0: Unknown result type (might be due to invalid IL or missing references)
@@ -3461,17 +3483,7 @@ public class Form_5_CLIENTS_REGLE : Form
 					Module1.cn_SQL.Close();
 					DT.Rows.Add();
 					int index = DT.Rows.Count - 1;
-					DT.Rows[index]["ID"] = num;
-					DT.Rows[index]["DATES"] = DateTimePicker_DATE.Value;
-					DT.Rows[index]["UTILISATEUR"] = Text_UTILISATEUR.Text;
-					DT.Rows[index]["ID_REGLE"] = Strings.Format(DateTime.Now, "ddMMyyHHmmssfff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text;
-					DT.Rows[index]["ID_CLIENT"] = Button_CLIENT._ID_Button;
-					DT.Rows[index]["CODE_CLIENT"] = Button_CLIENT._CODE_Button;
-					DT.Rows[index]["CLIENT"] = ((ButtonBase)Button_CLIENT).Text;
-					DT.Rows[index]["MONTANT"] = TextBox_MONTANT.Text;
-					DT.Rows[index]["MODE_P"] = Combo_MODE_P.Text;
-					DT.Rows[index]["NOTES"] = TextBox_NOTES.Text;
-					DT.Rows[index]["ETAT"] = "VALIDER";
+					LOGICA.ApplicationLayer.Clients.ClientSettlementRowWriter.Populate(new SettlementRowContext(this, DT.Rows[index], num));
 					MySqlCommandBuilder val2 = new MySqlCommandBuilder(DA);
 					((DbDataAdapter)(object)DA).Update(DT);
 					DT.AcceptChanges();
