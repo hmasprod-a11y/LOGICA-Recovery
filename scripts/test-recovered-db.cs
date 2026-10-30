@@ -25,7 +25,10 @@ class RecoveredCheck {
   }
   // Fresh imported database: insert only a disposable pending test document.
   using(var c=conn.CreateCommand()) {
-   c.CommandText="INSERT INTO "+header+" ("+key+",Dates,UTILISATEUR,ETAT) VALUES ('"+marker+"','2026-10-30','CI','EN_COURS')";
+   if(kind=="R")
+    c.CommandText="INSERT INTO "+header+" (ID_BR,Dates,UTILISATEUR,ID_FOURNISSEUR,CODE_FOURNISSEUR,FOURNISSEUR,N_BON_FOURNISSEUR,TOTAL_NET_ACHATS,TOTAL_NET_VENTES,NOTES,ETAT) VALUES ('"+marker+"','2026-10-30','CI','CI-SUP','CI-SUP','CI Supplier','CI-BON',20,24,'CI-only','EN_COURS')";
+   else
+    c.CommandText="INSERT INTO "+header+" (ID_INV,Dates,UTILISATEUR,TOTAL_VALEUR,NOTES,ETAT) VALUES ('"+marker+"','2026-10-30','CI',20,'CI-only','EN_COURS')";
    c.ExecuteNonQuery();
    if(kind=="R")c.CommandText="INSERT INTO "+details+" (ID_BR,ID_ARTICLE,Code,Article,Prix_A,Prix_V,`Qté`,TOTAL_NET_ACHATS,TOTAL_NET_VENTES,DATE_PEREMPTION,N_LOT,ETAT) VALUES ('"+marker+"','"+article+"','CI','CI Product',10,12,2,20,24,'2027-10-30','LOT-CI','EN_COURS')";
    else c.CommandText="INSERT INTO "+details+" (ID_INV,ID_ARTICLE,Code,Article,Prix_A,STOCK_LOGIQUE,STOCK_PHYSIQUE,ECART,VALEUR,ETAT) VALUES ('"+marker+"','"+article+"','CI','CI Product',10,5,7,2,20,'EN_COURS')";
@@ -51,8 +54,11 @@ class RecoveredCheck {
     grid.CurrentCell=grid.Rows[0].Cells[key];
     form.GetType().GetMethod("DataGridView1_CellClick",BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public).Invoke(form,new object[]{grid,new DataGridViewCellEventArgs(grid.Columns["cons"].Index,0)});
     var body=(DataGridView)Get(form,"DataGrid_BODY");
-    if(body.Rows.Count<1 || Convert.ToString(body.Rows[0].Cells["ID_ARTICLE"].Value)!=article)
-     throw new Exception("Original consultation did not load detail product: "+formName+" rows="+body.Rows.Count);
+    if(body.Rows.Count<1 || Convert.ToString(body.Rows[0].Cells["ID_ARTICLE"].Value)!=article) {
+     string observed;
+     lock(errors){observed=string.Join(" | ",errors.ToArray());}
+     throw new Exception("Original consultation did not load detail product: "+formName+" rows="+body.Rows.Count+" cons="+grid.Columns["cons"].Index+" totalColumns="+grid.ColumnCount+" modalErrors="+observed);
+    }
     Console.WriteLine("PASS original "+formName+" consultation loads pending product from isolated recovered tables");
    }
   } finally {
