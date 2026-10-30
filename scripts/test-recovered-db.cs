@@ -52,7 +52,7 @@ class RecoveredCheck {
     var handle=form.Handle;
     if(grid.Columns["cons"]==null)throw new Exception("Original consultation column missing: "+formName);
     grid.CurrentCell=grid.Rows[0].Cells[key];
-    form.GetType().GetMethod("DataGridView1_CellClick",BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public).Invoke(form,new object[]{grid,new DataGridViewCellEventArgs(grid.Columns["cons"].Index,0)});
+    form.GetType().GetMethod("DataGridView1_CellClick",BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public).Invoke(form,new object[]{grid,new DataGridViewCellEventArgs(grid.ColumnCount-1,0)});
     var body=(DataGridView)Get(form,"DataGrid_BODY");
     if(body.Rows.Count<1 || Convert.ToString(body.Rows[0].Cells["ID_ARTICLE"].Value)!=article) {
      string observed;
