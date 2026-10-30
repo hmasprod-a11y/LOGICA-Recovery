@@ -1228,7 +1228,16 @@ class PosSmoke {
     if(rejectInsert) {
      if(unexpected==0)throw new Exception("Original settlement failure dialog was not observed");
      if(observed!=0)throw new Exception("Unexpected settlement success dialog on rejected insert");
-     if(table.GetChanges()==null)throw new Exception("Rejected settlement lost pending DataTable changes");
+     // Preserve the legacy in-memory state as well as the persisted sentinel.
+     // A generic error modal is not sufficient if the rejected row was discarded.
+     if(table.Rows.Count!=2 || table.Rows[0].RowState!=DataRowState.Unchanged ||
+        table.Rows[1].RowState!=DataRowState.Added)
+      throw new Exception("Rejected settlement changed the expected DataTable row count/states");
+     if(Convert.ToDecimal(table.Rows[1]["ID"])!=8m ||
+        Convert.ToString(table.Rows[1]["ID_CLIENT"])!="C123" ||
+        Convert.ToDecimal(table.Rows[1]["MONTANT"])!=12.75m)
+      throw new Exception("Rejected settlement lost the pending row identity, client or amount");
+     Console.WriteLine("CI original settlement rejection dialog: "+unexpectedDialog);
     } else {
      if(unexpected>0)throw new Exception(unexpectedDialog+" (count="+unexpected+")");
      if(observed==0)throw new Exception("Original settlement success dialog was not observed");
