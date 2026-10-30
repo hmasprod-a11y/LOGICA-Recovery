@@ -47,6 +47,54 @@ class PosSmoke {
    }
   }
  }
+ static void InventoryTransactionPreflight(Assembly assembly) {
+  // Preflight only: checks isolated DB transaction support and actual module table engines.
+  // It does not claim to invoke the original receipt/inventory validation handler.
+  var module=assembly.GetType("LOGICA.Module1",true);
+  using(var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null)) {
+   if(!connection.ConnectionString.Contains("127.0.0.1") || !connection.ConnectionString.Contains("logica_ci"))
+    throw new Exception("Transaction preflight requires isolated logica_ci database");
+   connection.Open();
+   string[] tables={"TABLE_ARTICLES","TABLE_MOUVEMENTS_STOCK","TABLE_RECEPTIONS_ENTETE",
+     "TABLE_RECEPTIONS_DETAILS","TABLE_INVENTAIRES_ENTETE","TABLE_INVENTAIRES_DETAILS"};
+   foreach(string table in tables) {
+    using(var c=connection.CreateCommand()) {
+     c.CommandText="SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@name";
+     var p=c.CreateParameter();p.ParameterName="@name";p.Value=table;c.Parameters.Add(p);
+     object engine=c.ExecuteScalar();
+     if(engine==null || engine==DBNull.Value)throw new Exception("Missing transaction table: "+table);
+     Console.WriteLine("OBSERVED "+table+" ENGINE="+engine);
+     if(!string.Equals(Convert.ToString(engine),"InnoDB",StringComparison.OrdinalIgnoreCase))
+      throw new Exception("Transactional table required for rollback acceptance: "+table+" engine="+engine);
+    }
+   }
+   Sql(connection,"DROP TABLE IF EXISTS TABLE_CI_TX_HEADER");
+   Sql(connection,"DROP TABLE IF EXISTS TABLE_CI_TX_MOVEMENT");
+   Sql(connection,"CREATE TABLE TABLE_CI_TX_HEADER (ID INT PRIMARY KEY, ETAT VARCHAR(20)) ENGINE=InnoDB");
+   Sql(connection,"CREATE TABLE TABLE_CI_TX_MOVEMENT (ID INT PRIMARY KEY, QTY DECIMAL(12,2)) ENGINE=InnoDB");
+   try {
+    Sql(connection,"INSERT INTO TABLE_CI_TX_HEADER VALUES (1,'EN_COURS')");
+    using(var tx=connection.BeginTransaction()) {
+     using(var c=connection.CreateCommand()) {
+      c.Transaction=tx;
+      c.CommandText="UPDATE TABLE_CI_TX_HEADER SET ETAT='VALIDER' WHERE ID=1";c.ExecuteNonQuery();
+      c.CommandText="INSERT INTO TABLE_CI_TX_MOVEMENT VALUES (1,2.50)";c.ExecuteNonQuery();
+      c.CommandText="INSERT INTO TABLE_CI_TX_MOVEMENT VALUES (1,9.99)";
+      bool failed=false;
+      try{c.ExecuteNonQuery();}catch(System.Data.Common.DbException){failed=true;}
+      if(!failed)throw new Exception("Duplicate movement failure did not trigger");
+     }
+     tx.Rollback();
+    }
+    Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CI_TX_MOVEMENT"),0m,"isolated movement rollback");
+    Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CI_TX_HEADER WHERE ETAT='EN_COURS'"),1m,"isolated header rollback");
+    Console.WriteLine("PASS isolated MySQL transaction rollback preflight (not original WinForms handler)");
+   } finally {
+    Sql(connection,"DROP TABLE IF EXISTS TABLE_CI_TX_MOVEMENT");
+    Sql(connection,"DROP TABLE IF EXISTS TABLE_CI_TX_HEADER");
+   }
+  }
+ }
  static void Sql(IDbConnection connection,string sql) {using(var c=connection.CreateCommand()){c.CommandText=sql;c.ExecuteNonQuery();}}
  static decimal Scalar(IDbConnection connection,string sql) {using(var c=connection.CreateCommand()){c.CommandText=sql;return Convert.ToDecimal(c.ExecuteScalar());}}
  static void SetText(object form,string name,string value){((Control)Get(form,name)).Text=value;}
@@ -315,7 +363,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
