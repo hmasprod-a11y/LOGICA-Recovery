@@ -21,6 +21,18 @@ class RecoveredCheck {
    var p=c.CreateParameter();p.ParameterName="@article";p.Value=articleId;c.Parameters.Add(p);
    originalStock=c.ExecuteScalar();
   }
+  // Exercise a second article as well: a late failure must roll back every
+  // preceding stock change and movement, not only the first row.
+  string secondId;object secondStock;
+  using(var c=conn.CreateCommand()) {
+   c.CommandText="SELECT ID_ARTICLE FROM TABLE_ARTICLES WHERE ID_ARTICLE<>@first ORDER BY ID LIMIT 1";
+   var p=c.CreateParameter();p.ParameterName="@first";p.Value=articleId;c.Parameters.Add(p);
+   secondId=Convert.ToString(c.ExecuteScalar());
+   if(string.IsNullOrEmpty(secondId))throw new Exception("Missing second recovered article");
+   c.Parameters.Clear();c.CommandText="SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=@second LIMIT 1";
+   p=c.CreateParameter();p.ParameterName="@second";p.Value=secondId;c.Parameters.Add(p);
+   secondStock=c.ExecuteScalar();
+  }
   const string receipt="CI_RECOVERED_TX_ROLLBACK_BR";
   const string count="CI_RECOVERED_TX_ROLLBACK_INV";
   using(var check=conn.CreateCommand()) {
@@ -44,6 +56,13 @@ class RecoveredCheck {
      p=c.CreateParameter();p.ParameterName="@article";p.Value=articleId;c.Parameters.Add(p);c.ExecuteNonQuery();c.Parameters.Clear();
      c.CommandText="INSERT INTO TABLE_MOUVEMENTS_STOCK (LIBELLE,ID_ARTICLE,QUANTITE) VALUES ('CI_RECOVERED_ROLLBACK',@article,'1')";
      p=c.CreateParameter();p.ParameterName="@article";p.Value=articleId;c.Parameters.Add(p);c.ExecuteNonQuery();
+     c.Parameters.Clear();
+     c.CommandText="UPDATE TABLE_ARTICLES SET STOCK=COALESCE(STOCK,0)+2 WHERE ID_ARTICLE=@second";
+     p=c.CreateParameter();p.ParameterName="@second";p.Value=secondId;c.Parameters.Add(p);
+     if(c.ExecuteNonQuery()!=1)throw new Exception("Second recovered article update did not affect exactly one row");
+     c.Parameters.Clear();
+     c.CommandText="INSERT INTO TABLE_MOUVEMENTS_STOCK (LIBELLE,ID_ARTICLE,QUANTITE) VALUES ('CI_RECOVERED_ROLLBACK',@second,'2')";
+     p=c.CreateParameter();p.ParameterName="@second";p.Value=secondId;c.Parameters.Add(p);c.ExecuteNonQuery();
      c.Parameters.Clear();c.CommandText="SELECT LAST_INSERT_ID()";var movementId=Convert.ToInt64(c.ExecuteScalar());
      c.CommandText="INSERT INTO TABLE_MOUVEMENTS_STOCK (ID,LIBELLE) VALUES ("+movementId+",'CI_DUPLICATE')";
      try { c.ExecuteNonQuery(); } catch(System.Data.Common.DbException) { injectedFailure=true; }
@@ -57,10 +76,16 @@ class RecoveredCheck {
    object afterStock=c.ExecuteScalar();
    if(!object.Equals(Convert.ToString(originalStock),Convert.ToString(afterStock)))throw new Exception("Original article stock changed despite rollback");
    c.Parameters.Clear();
+   c.CommandText="SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=@second LIMIT 1";
+   p=c.CreateParameter();p.ParameterName="@second";p.Value=secondId;c.Parameters.Add(p);
+   object secondAfter=c.ExecuteScalar();
+   if(!object.Equals(Convert.ToString(secondStock),Convert.ToString(secondAfter)))
+    throw new Exception("Second original article stock changed despite rollback");
+   c.Parameters.Clear();
    c.CommandText="SELECT (SELECT COUNT(*) FROM TABLE_RECEPTIONS_ENTETE WHERE ID_BR='"+receipt+"')+(SELECT COUNT(*) FROM TABLE_RECEPTIONS_DETAILS WHERE ID_BR='"+receipt+"')+(SELECT COUNT(*) FROM TABLE_INVENTAIRES_ENTETE WHERE ID_INV='"+count+"')+(SELECT COUNT(*) FROM TABLE_INVENTAIRES_DETAILS WHERE ID_INV='"+count+"')+(SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE='CI_RECOVERED_ROLLBACK')";
    if(Convert.ToInt32(c.ExecuteScalar())!=0)throw new Exception("Recovered rollback left partial header or movement");
   }
-  Console.WriteLine("PASS recovered original-schema article + receipt/inventory headers/details + movement rollback on injected duplicate key");
+  Console.WriteLine("PASS recovered original-schema TWO articles + receipt/inventory headers/details + TWO movements rollback on late duplicate key");
  }
  static void Watch(){while(!stop){EnumWindows(delegate(IntPtr w,IntPtr x){uint pid;GetWindowThreadProcessId(w,out pid);if(pid!=Process.GetCurrentProcess().Id)return true;var b=new StringBuilder(100);GetClassName(w,b,100);if(b.ToString()!="#32770")return true;var all=new StringBuilder();EnumChildWindows(w,delegate(IntPtr c,IntPtr y){var text=new StringBuilder(600);GetWindowText(c,text,600);if(text.Length>0)all.Append(text+" ");return true;},IntPtr.Zero);lock(errors){errors.Add(all.ToString());}PostMessage(w,0x10,IntPtr.Zero,IntPtr.Zero);return true;},IntPtr.Zero);Thread.Sleep(100);}}
  [STAThread]static int Main(){var watcher=new Thread(Watch);watcher.IsBackground=true;watcher.Start();try{
