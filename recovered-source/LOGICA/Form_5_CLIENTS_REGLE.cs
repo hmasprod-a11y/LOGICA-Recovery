@@ -3328,7 +3328,7 @@ public class Form_5_CLIENTS_REGLE : Form
 						decimal d2 = Conversions.ToDecimal(list[1]);
 						decimal d3 = Conversions.ToDecimal(list[2]);
 						decimal d4 = Conversions.ToDecimal(list[3]);
-						_total_credit = decimal.Subtract(decimal.Add(decimal.Add(d, d2), d3), d4);
+						_total_credit = LOGICA.Domain.ClientCreditBalance.Calculate(d, d2, d3, d4);
 					}
 					else
 					{
