@@ -1228,6 +1228,10 @@ class PosSmoke {
     if(rejectInsert) {
      if(unexpected==0)throw new Exception("Original settlement failure dialog was not observed");
      if(observed!=0)throw new Exception("Unexpected settlement success dialog on rejected insert");
+     // Prove that the modal came from the intended disposable MariaDB CHECK rejection,
+     // not from an unrelated form/connection error that happens to show a dialog.
+     if(unexpectedDialog==null || unexpectedDialog.IndexOf("ci_reject_amount",StringComparison.OrdinalIgnoreCase)<0)
+      throw new Exception("Expected ci_reject_amount database rejection, got: "+unexpectedDialog);
      // Preserve the legacy in-memory state as well as the persisted sentinel.
      // A generic error modal is not sufficient if the rejected row was discarded.
      if(table.Rows.Count!=2 || table.Rows[0].RowState!=DataRowState.Unchanged ||
