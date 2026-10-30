@@ -1191,7 +1191,10 @@ class PosSmoke {
     SetText(form,"Label_TOP","NOUVEAU");
     SetText(form,"Text_UTILISATEUR","CI_CASHIER");
     SetText(form,"TextBox_MONTANT","12.75");
-    SetText(form,"Combo_MODE_P","ESPECES");
+    var mode=(ComboBox)Get(form,"Combo_MODE_P");
+    mode.Items.Add("ESPECES");
+    mode.SelectedItem="ESPECES";
+    if(mode.Text!="ESPECES")throw new Exception("Fixture did not select valid payment mode");
     SetText(form,"TextBox_NOTES","CI_TEST_NOTE");
     ((DateTimePicker)Get(form,"DateTimePicker_DATE")).Value=new DateTime(2026,1,3);
     // Original exception handler writes its diagnostic screenshot here before log_erreur.sni.
