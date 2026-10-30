@@ -62,7 +62,11 @@ class RecoveredCheck {
     Console.WriteLine("PASS original "+formName+" consultation loads pending product from isolated recovered tables");
    }
   } finally {
-   if(conn.State!=ConnectionState.Open)conn.Open();
+   // Original WinForms consultation may leave a MySqlDataReader open on the
+   // shared connection. Reset it before CI fixture cleanup to avoid masking
+   // the actual consultation result with an unrelated cleanup exception.
+   conn.Close();
+   conn.Open();
    using(var c=conn.CreateCommand()){
     c.CommandText="DELETE FROM "+details+" WHERE "+key+"='"+marker+"'";c.ExecuteNonQuery();
     c.CommandText="DELETE FROM "+header+" WHERE "+key+"='"+marker+"'";c.ExecuteNonQuery();
