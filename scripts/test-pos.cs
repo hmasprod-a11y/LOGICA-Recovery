@@ -1273,11 +1273,85 @@ class PosSmoke {
    "PASS original client settlement accepted save: commandbuilder insert, next ID, row data, connection and sentinel");
  }
 
+
+ // Characterization only: two independent cashiers both allocate an ID using the
+ // original NextId helper BEFORE either commits. This is a deterministic
+ // two-connection interleaving, not a claim about real concurrent WinForms timing.
+ static void ClientSettlementSequenceRace(Assembly assembly) {
+  var module=assembly.GetType("LOGICA.Module1",true);
+  var shared=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
+  var builder=new System.Data.Common.DbConnectionStringBuilder { ConnectionString=shared.ConnectionString };
+  if(shared.Database!="logica_ci" || !builder.ContainsKey("server") ||
+     Convert.ToString(builder["server"])!="127.0.0.1" ||
+     !builder.ContainsKey("port") || Convert.ToInt32(builder["port"])!=3307)
+   throw new Exception("Settlement sequence race requires disposable 127.0.0.1:3307/logica_ci");
+  if(shared.State!=ConnectionState.Closed)
+   throw new Exception("Settlement sequence race requires initially closed shared connection");
+  shared.Open();
+  try {
+   Sql(shared,"DROP TABLE IF EXISTS TABLE_CLIENTS_REGLE; "+
+     "CREATE TABLE TABLE_CLIENTS_REGLE (ID INT PRIMARY KEY, ID_CLIENT VARCHAR(50), MONTANT DECIMAL(14,4)) ENGINE=InnoDB; "+
+     "INSERT INTO TABLE_CLIENTS_REGLE (ID,ID_CLIENT,MONTANT) VALUES (7,'SENTINEL',5)");
+  } finally {shared.Close();}
+  var sequence=assembly.GetType("LOGICA.Domain.ClientSettlementSequence",true).GetMethod("NextId",Flags);
+  if(sequence==null)throw new Exception("Original extracted settlement sequence helper missing");
+  int ready=0,accepted=0,duplicate=0;
+  var ids=new int[2];var errors=new string[2];
+  using(var release=new ManualResetEvent(false)) {
+   Action<int> worker=delegate(int slot) {
+    IDbConnection local=null;
+    try {
+     local=(IDbConnection)Activator.CreateInstance(shared.GetType(),new object[]{shared.ConnectionString});
+     local.Open();
+     Func<object> readMaximum=delegate() {
+      using(var command=local.CreateCommand()) {
+       command.CommandText="SELECT MAX(ID) FROM TABLE_CLIENTS_REGLE";
+       return command.ExecuteScalar();
+      }
+     };
+     // NextId deliberately preserves the legacy double SELECT MAX(ID) read.
+     ids[slot]=Convert.ToInt32(sequence.Invoke(null,new object[]{readMaximum}));
+     if(Interlocked.Increment(ref ready)==2)release.Set();
+     if(!release.WaitOne(15000))throw new Exception("Timed out awaiting second cashier allocation");
+     using(var command=local.CreateCommand()) {
+      command.CommandText="INSERT INTO TABLE_CLIENTS_REGLE (ID,ID_CLIENT,MONTANT) VALUES ("+
+        ids[slot]+",'CI_CASHIER_"+slot+"',12.75)";
+      command.ExecuteNonQuery();
+      Interlocked.Increment(ref accepted);
+     }
+    } catch(Exception ex) {
+     var cause=(ex is TargetInvocationException && ex.InnerException!=null)?ex.InnerException:ex;
+     var number=cause.GetType().GetProperty("Number");
+     if(number!=null && Convert.ToInt32(number.GetValue(cause,null))==1062)
+      Interlocked.Increment(ref duplicate);
+     else errors[slot]=cause.ToString();
+    } finally {if(local!=null){local.Close();local.Dispose();}}
+   };
+   var a=new Thread(delegate(){worker(0);});var b=new Thread(delegate(){worker(1);});
+   a.IsBackground=true;b.IsBackground=true;a.Start();b.Start();
+   if(!a.Join(30000) || !b.Join(30000))throw new Exception("Settlement race worker timed out");
+  }
+  if(errors[0]!=null || errors[1]!=null)
+   throw new Exception("Unexpected settlement race errors: "+errors[0]+" / "+errors[1]);
+  if(ids[0]!=8 || ids[1]!=8)
+   throw new Exception("Expected both legacy allocators to select ID=8, got "+ids[0]+", "+ids[1]);
+  if(accepted!=1 || duplicate!=1)
+   throw new Exception("Expected one insert and one MySQL 1062 duplicate; accepted="+accepted+" duplicate="+duplicate);
+  if(shared.State!=ConnectionState.Closed)throw new Exception("Sequence race left shared connection open");
+  shared.Open();
+  try {
+   Eq(Scalar(shared,"SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE"),2m,"race: only sentinel and one payment persisted");
+   Eq(Scalar(shared,"SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE WHERE ID=7 AND ID_CLIENT='SENTINEL' AND MONTANT=5"),1m,"race: original sentinel untouched");
+   Eq(Scalar(shared,"SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE WHERE ID=8 AND MONTANT=12.75"),1m,"race: one payment committed");
+  } finally {shared.Close();}
+  Console.WriteLine("CHARACTERIZATION PASS legacy NextId concurrent pre-insert reads both returned 8; one insert succeeded, one failed MySQL 1062 (not a UI concurrency test)");
+ }
+
  [STAThread] static int Main(string[] args) {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="client-settlement-repeat-handler") { ClientSettlementSave(assembly,false,true); } else if(args[0]=="client-settlement-insert-failure") { ClientSettlementSave(assembly,true); } else if(args[0]=="client-settlement-save") { ClientSettlementSave(assembly); } else if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="client-settlement-sequence-race") { ClientSettlementSequenceRace(assembly); } else if(args[0]=="client-settlement-repeat-handler") { ClientSettlementSave(assembly,false,true); } else if(args[0]=="client-settlement-insert-failure") { ClientSettlementSave(assembly,true); } else if(args[0]=="client-settlement-save") { ClientSettlementSave(assembly); } else if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
