@@ -6,6 +6,11 @@ on:
       - 'recovered-source/**'
       - 'tests/**'
       - 'scripts/test-domain.ps1'
+      - 'scripts/test-settlement-core.ps1'
+      - 'scripts/test-cash-core.ps1'
+      - 'scripts/test-stock-movement-core.ps1'
+      - 'scripts/test-catalogue-core.ps1'
+      - 'scripts/test-checkout-core.ps1'
       - '.github/workflows/domain-tests.yml'
   push:
     paths:
@@ -24,3 +29,18 @@ jobs:
       - name: Test financial rules without UI or database
         shell: powershell
         run: ./scripts/test-domain.ps1
+      - name: Compile and test settlement core without VB, WinForms or database
+        shell: powershell
+        run: ./scripts/test-settlement-core.ps1
+      - name: Compile and test cash core without VB, WinForms or database
+        shell: powershell
+        run: ./scripts/test-cash-core.ps1
+      - name: Compile and test stock movement core without VB or database
+        shell: powershell
+        run: ./scripts/test-stock-movement-core.ps1
+      - name: Compile and test catalogue creation without VB or database
+        shell: powershell
+        run: ./scripts/test-catalogue-core.ps1
+      - name: Compile and test checkout pricing/stock without VB or database
+        shell: powershell
+        run: ./scripts/test-checkout-core.ps1

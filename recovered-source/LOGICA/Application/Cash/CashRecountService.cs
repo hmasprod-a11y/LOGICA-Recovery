@@ -1,22 +1,21 @@
 using LOGICA.Domain;
-using Microsoft.VisualBasic.CompilerServices;
 
 namespace LOGICA.ApplicationLayer.Cash
 {
     internal static class CashRecountService
     {
-        public static void Recount(ICashRecountContext context)
+        public static void Recount(ICashRecountContext context, ILegacyCashSemantics semantics)
         {
             context.ResetBackground();
-            if (CashCountInputRules.ShouldReset(context.ReadSenderText))
+            if (CashCountInputRules.ShouldReset(context.ReadSenderText, semantics))
                 context.ResetSender();
-            decimal total = CashDenominationTotal.Calculate(context.ReadDenomination);
+            decimal total = CashDenominationTotal.Calculate(context.ReadDenomination, semantics);
             context.DisplayTotal(total);
             checked
             {
                 int last = context.LastPaymentIndex;
                 for (int index = 0; index <= last; index++)
-                    if (Operators.ConditionalCompareObjectEqual(context.ReadPaymentMode(index), "ESPECES", false))
+                    if (semantics.IsCashPaymentMode(context.ReadPaymentMode(index)))
                         context.DisplayCashRow(index, total);
             }
         }

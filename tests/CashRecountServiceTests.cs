@@ -1,3 +1,4 @@
+using LOGICA.Infrastructure.Compatibility;
 using System;
 using System.Collections.Generic;
 using LOGICA.ApplicationLayer.Cash;
@@ -28,7 +29,7 @@ internal static class CashRecountServiceTests
         int assertions=0;
         try
         {
-            var full=new Context();CashRecountService.Recount(full);
+            var full=new Context();CashRecountService.Recount(full, VisualBasicCashSemantics.Instance);
             var expected=new List<string>{"background","sender","sender"};
             for(int index=0;index<11;index++)expected.Add("count"+index);
             expected.AddRange(new[]{"total","last","mode0","row0","mode1","mode2","row2","mode3"});
@@ -36,17 +37,17 @@ internal static class CashRecountServiceTests
             if(String.Join(",",full.Calls.ToArray())!=String.Join(",",expected.ToArray()) ||
                full.Total!=388.8m || full.Rows.Count!=2 || full.Rows[0]!=388.8m || full.Rows[2]!=388.8m)
                 throw new Exception("Recount ordering or cash-row matching changed");
-            var invalid=new Context{SenderText=""};CashRecountService.Recount(invalid);
+            var invalid=new Context{SenderText=""};CashRecountService.Recount(invalid, VisualBasicCashSemantics.Instance);
             assertions+=3;
             if(invalid.Total!=188.8m || invalid.Calls[3]!="reset" || invalid.SenderText!="0")
                 throw new Exception("Reset happened after denomination reads");
-            var empty=new Context{Modes=new object[0]};CashRecountService.Recount(empty);
+            var empty=new Context{Modes=new object[0]};CashRecountService.Recount(empty, VisualBasicCashSemantics.Instance);
             assertions+=2;
             if(empty.Rows.Count!=0 || empty.Calls[empty.Calls.Count-1]!="last")throw new Exception("Empty payment grid read rows");
             foreach(string stage in new[]{"background","sender","count0","count10","total","last","mode0","row0","mode1","mode2","row2","mode3"})
             {
                 var context=new Context{FailAt=stage};Exception caught=null;
-                try{CashRecountService.Recount(context);}catch(Exception error){caught=error;}
+                try{CashRecountService.Recount(context, VisualBasicCashSemantics.Instance);}catch(Exception error){caught=error;}
                 int count=expected.IndexOf(stage)+1;
                 assertions+=2;
                 if(!Object.ReferenceEquals(caught,context.Failure) || context.Calls.Count!=count)
