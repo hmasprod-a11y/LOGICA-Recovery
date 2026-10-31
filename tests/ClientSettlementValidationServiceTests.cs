@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using LOGICA.ApplicationLayer.Clients;
+using LOGICA.Infrastructure.Compatibility;
 
 internal static class ClientSettlementValidationServiceTests
 {
@@ -19,7 +20,7 @@ internal static class ClientSettlementValidationServiceTests
     }
     static void Check(Context c, string expected, string calls)
     {
-        string warning=ClientSettlementValidationService.FirstWarning(c);
+        string warning=ClientSettlementValidationService.FirstWarning(c, VisualBasicSettlementSemantics.Instance);
         if(warning!=expected)throw new Exception("warning mismatch: "+warning+" vs "+expected);
         if(String.Join(",",c.Calls.ToArray())!=calls)
             throw new Exception("read order mismatch: "+String.Join(",",c.Calls.ToArray())+" vs "+calls);
