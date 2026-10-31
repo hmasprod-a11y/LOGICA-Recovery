@@ -8,6 +8,8 @@ try {
     $application = Join-Path $root 'recovered-source/LOGICA/Application/Inventory'
     $sources = @(
         $domain,
+        (Join-Path $root 'recovered-source/LOGICA/Domain/ILegacyStockMovementQuerySemantics.cs'),
+        (Join-Path $root 'recovered-source/LOGICA/Infrastructure/Inventory/StockMovementQueryText.cs'),
         (Join-Path $application 'IStockMovementSearchContext.cs'),
         (Join-Path $application 'StockMovementSearchService.cs'),
         (Join-Path $application 'IStockMovementRefreshContext.cs'),
