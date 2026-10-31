@@ -17,6 +17,7 @@ internal static class PortableCatalogueSmoke
             return String.Equals(left ?? "", right ?? "", StringComparison.Ordinal);
         }
         public decimal ToDecimal(string value) { DecimalReads++; return decimal.Parse(value, System.Globalization.CultureInfo.InvariantCulture); }
+        public int ToDigit(string value) { return int.Parse(value, System.Globalization.CultureInfo.InvariantCulture); }
     }
 
     private sealed class Input : ICatalogueRowInput
@@ -133,6 +134,9 @@ internal static class PortableCatalogueSmoke
                 partial.Table.Rows[0].RowState != DataRowState.Added || partial.Table.Rows[0]["Prix_A"] != DBNull.Value)
                 throw new Exception("Mapping failure did not preserve partial row and stop persistence");
             var semantics = new Semantics();
+            if (CatalogueBarcodeChecksum.CompleteTwelveDigitPayload("400638133393", semantics)[12] != 1 ||
+                CatalogueBarcodeChecksum.GetElevenDigitPayloadSuffix("03600029145") != "2")
+                throw new Exception("Portable barcode checksum changed");
             if (!CatalogueRequiredFields.IsMissingIdentifier("  ", semantics) ||
                 CatalogueRequiredFields.IsMissingIdentifier("  SKU  ", semantics))
                 throw new Exception("Portable required fields changed");

@@ -14502,7 +14502,7 @@ public class Form_2_ARTICLES : Form
 			}
 			if ((Text_CODE.Text.Length == 12) & (num == 12))
 			{
-				byte[] array = LOGICA.Domain.CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(Text_CODE.Text);
+				byte[] array = LOGICA.Domain.CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(Text_CODE.Text, LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance);
 				byte[] bits = Module1.getBits(array);
 				Text_CODE.Text += Conversions.ToString(array[12]);
 			}
@@ -17149,7 +17149,7 @@ public class Form_2_ARTICLES : Form
 				string text3 = Conversions.ToString(DataGridView_TAILLES.Rows[((DataGridViewBand)DataGridView_TAILLES.CurrentRow).Index].Cells["TAILLE"].Value);
 				string text4 = Conversions.ToString(DataGridView_COULEURS.Rows[((DataGridViewBand)DataGridView_COULEURS.CurrentRow).Index].Cells["COULEUR"].Value);
 				decimal num = Conversions.ToDecimal(Text_QTE_COLLECTION.Text);
-				byte[] array = LOGICA.Domain.CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(text);
+				byte[] array = LOGICA.Domain.CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(text, LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance);
                 int num4;
                 int num6;
                 byte[] bits = Module1.getBits(array);

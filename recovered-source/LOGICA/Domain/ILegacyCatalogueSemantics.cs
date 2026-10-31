@@ -8,5 +8,6 @@ namespace LOGICA.Domain
         double ToMinimumQuantity(string value);
         bool EqualsText(string left, string right);
         decimal ToDecimal(string value);
+        int ToDigit(string value);
     }
 }

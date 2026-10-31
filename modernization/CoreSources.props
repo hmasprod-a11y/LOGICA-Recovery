@@ -22,6 +22,7 @@
     <Compile Include="../recovered-source/LOGICA/Domain/ILegacyCatalogueSemantics.cs" Link="Domain/ILegacyCatalogueSemantics.cs" />
     <Compile Include="../recovered-source/LOGICA/Domain/CatalogueRequiredFields.cs" Link="Domain/CatalogueRequiredFields.cs" />
     <Compile Include="../recovered-source/LOGICA/Domain/CataloguePromotionRules.cs" Link="Domain/CataloguePromotionRules.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/CatalogueBarcodeChecksum.cs" Link="Domain/CatalogueBarcodeChecksum.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Catalogue/ICatalogueRowInput.cs" Link="Application/Catalogue/ICatalogueRowInput.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Catalogue/ICatalogueCreationStore.cs" Link="Application/Catalogue/ICatalogueCreationStore.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Catalogue/CatalogueRowMapper.cs" Link="Application/Catalogue/CatalogueRowMapper.cs" />

@@ -13,5 +13,6 @@ namespace LOGICA.Infrastructure.Compatibility
         public double ToMinimumQuantity(string value) { return Conversion.Val(value); }
         public bool EqualsText(string left, string right) { return Operators.CompareString(left, right, false) == 0; }
         public decimal ToDecimal(string value) { return Conversions.ToDecimal(value); }
+        public int ToDigit(string value) { return Conversions.ToInteger(value); }
     }
 }
