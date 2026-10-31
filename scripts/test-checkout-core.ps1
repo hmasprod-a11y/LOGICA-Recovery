@@ -7,7 +7,9 @@ try {
     $sources = @(
         'recovered-source/LOGICA/Domain/ILegacyCheckoutSemantics.cs',
         'recovered-source/LOGICA/Domain/ILegacyCheckoutCompletionSemantics.cs',
+        'recovered-source/LOGICA/Domain/ILegacyCheckoutTicketSequenceSemantics.cs',
         'recovered-source/LOGICA/Infrastructure/Checkout/CheckoutCompletionSql.cs',
+        'recovered-source/LOGICA/Infrastructure/Checkout/CheckoutTicketSequenceSql.cs',
         'recovered-source/LOGICA/Domain/CheckoutAmountGuards.cs',
         'recovered-source/LOGICA/Domain/CheckoutSelectionRules.cs',
         'recovered-source/LOGICA/Domain/BasketTotalConsistency.cs',
@@ -22,9 +24,11 @@ try {
         'recovered-source/LOGICA/Application/Checkout/CheckoutPaymentPostingService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutTransactionFinalizationService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutTransactionBoundaryService.cs',
+        'recovered-source/LOGICA/Application/Checkout/CheckoutTicketSequenceService.cs',
         'modernization/PortableCheckoutSmoke.cs',
         'modernization/PortablePostingSmoke.cs',
         'modernization/PortableTransactionSmoke.cs',
+        'modernization/PortableTicketSequenceSmoke.cs',
         'tests/CheckoutCoreIsolationEntry.cs'
     ) | ForEach-Object { Join-Path $root $_ }
     foreach ($source in $sources) {
