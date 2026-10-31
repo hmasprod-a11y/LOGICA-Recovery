@@ -36,6 +36,12 @@ try {
     [IO.File]::WriteAllText((Join-Path $src 'Dependency.dll'), 'isolated dummy dependency')
     [IO.File]::WriteAllText((Join-Path $src 'Launch-LOGICA.ps1'), 'dummy launcher')
     [IO.File]::WriteAllText((Join-Path $src 'Start-LOGICA.cmd'), 'dummy launcher')
+    [IO.File]::WriteAllText((Join-Path $src 'LOGICA.exe.config'), '<configuration />')
+    [IO.File]::WriteAllText((Join-Path $src 'CHEMIN_FOLDER.sni'), 'Application.StartupPath')
+    [IO.File]::WriteAllText((Join-Path $src 'log_erreur.sni'), '')
+    foreach ($printer in @('CL','ADD','RAPPORT','C1','C2','C3','C4','C5','C6','C7')) {
+        [IO.File]::WriteAllText((Join-Path $src ("PRINTER_$printer.sni")), '0')
+    }
     [IO.File]::WriteAllText((Join-Path $src 'RUNNING.md'), 'dummy instructions')
     [IO.File]::WriteAllText((Join-Path $src 'hash_licence.sni'), '')
     [IO.File]::WriteAllText((Join-Path $src 'CHEMIN_DB.sni'), '127.0.0.1')
@@ -60,6 +66,18 @@ try {
     $entries | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding UTF8
     Assert-Rejected 'manifest path traversal'
     [IO.File]::WriteAllText($manifest, $originalManifest)
+    foreach ($invalidName in @('CON.txt','folder/trailing.','folder/trailing ','LPT1/config.txt')) {
+        $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
+        $entries[0].path = $invalidName
+        $entries | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding UTF8
+        Assert-Rejected "unsafe Windows filename $invalidName"
+        [IO.File]::WriteAllText($manifest, $originalManifest)
+    }
+    $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
+    $entries[1].path = ([string]$entries[0].path).ToUpperInvariant()
+    $entries | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding UTF8
+    Assert-Rejected 'case-colliding manifest entries'
+    [IO.File]::WriteAllText($manifest, $originalManifest)
     $rejected = $false
     try { & $verifier -ZipPath $zip -ManifestPath $manifest -SumsPath $sums -ExpectedCommit ('b' * 40) | Out-Null }
     catch { $rejected = $true }
@@ -79,6 +97,32 @@ try {
     Write-FixtureManifest
     Write-FixtureZip
     Assert-Rejected 'nonlocal database host'
+    [IO.File]::WriteAllText((Join-Path $src 'CHEMIN_DB.sni'), '127.0.0.1')
+    foreach ($case in @(
+        @{ name='PRINTER_CL.sni'; value='POS-80'; label='inherited shop printer' },
+        @{ name='CHEMIN_FOLDER.sni'; value='C:\\Shop'; label='nonportable startup folder' },
+        @{ name='log_erreur.sni'; value='previous shop exception'; label='previous runtime error log' }
+    )) {
+        $target = Join-Path $src $case.name
+        $original = [IO.File]::ReadAllText($target)
+        [IO.File]::WriteAllText($target, $case.value)
+        Write-FixtureManifest
+        Write-FixtureZip
+        Assert-Rejected $case.label
+        [IO.File]::WriteAllText($target, $original)
+    }
+    Write-FixtureManifest
+    Write-FixtureZip
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
+    try {
+        $entry = $archive.GetEntry('RUNNING.md')
+        if ($null -eq $entry) { throw 'Fixture missing RUNNING.md for symlink probe' }
+        $entry.ExternalAttributes = -1610612736 # Unix symbolic-link type bits (0xA000)
+    } finally { $archive.Dispose() }
+    $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
+    Assert-Rejected 'ZIP symbolic link'
     Write-Host 'PASS: independent verifier positive and adversarial tests'
 } finally {
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
