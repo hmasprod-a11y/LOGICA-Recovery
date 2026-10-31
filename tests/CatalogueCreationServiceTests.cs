@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using LOGICA.ApplicationLayer.Catalogue;
+using LOGICA.Infrastructure.Compatibility;
 
 internal static class CatalogueCreationServiceTests
 {
@@ -88,7 +89,7 @@ internal static class CatalogueCreationServiceTests
                 var store = new Store(); var input = new Input();
                 if (fail < stages.Length) store.FailAt = stages[fail];
                 Exception caught = null;
-                try { new CatalogueCreationService(store).Create(input); } catch (Exception error) { caught = error; }
+                try { new CatalogueCreationService(store, VisualBasicCatalogueSemantics.Instance).Create(input); } catch (Exception error) { caught = error; }
                 int expectedCalls = fail < stages.Length ? fail + 1 : stages.Length;
                 assertions++;
                 if (store.Calls.Count != expectedCalls) throw new Exception("Later store effect ran after failure");
@@ -113,7 +114,7 @@ internal static class CatalogueCreationServiceTests
             }
             var partial = new Store(); var brokenInput = new Input { FailAt = "PurchasePrice" };
             Exception mappingFailure = null;
-            try { new CatalogueCreationService(partial).Create(brokenInput); } catch (Exception error) { mappingFailure = error; }
+            try { new CatalogueCreationService(partial, VisualBasicCatalogueSemantics.Instance).Create(brokenInput); } catch (Exception error) { mappingFailure = error; }
             assertions += 4;
             if (!Object.ReferenceEquals(mappingFailure, brokenInput.Failure) || partial.Calls.Count != 3 ||
                 partial.Table.Rows[0].RowState != DataRowState.Added || partial.Table.Rows[0]["Prix_A"] != DBNull.Value)

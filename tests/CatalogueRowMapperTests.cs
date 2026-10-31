@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
 using LOGICA.ApplicationLayer.Catalogue;
+using LOGICA.Infrastructure.Compatibility;
 
 internal static class CatalogueRowMapperTests
 {
@@ -85,7 +86,7 @@ internal static class CatalogueRowMapperTests
             {
                 CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(culture);
                 var input = MakeInput(); var row = MakeRow();
-                CatalogueRowMapper.PopulateNew(row, 42, "ART000007", input);
+                CatalogueRowMapper.PopulateNew(row, 42, "ART000007", input, VisualBasicCatalogueSemantics.Instance);
                 assertions += 8;
                 if ((int)row["ID"] != 42 || (string)row["Code"] != "CI_CODE" || (string)row["Article"] != "CI article" ||
                     (string)row["PRIX_MP"] != 10.25m.ToString("N2") || (double)row["PRIX_QTE_MIN"] != 3.5 ||
@@ -99,7 +100,7 @@ internal static class CatalogueRowMapperTests
                     input.Reads.FindAll(delegate(string n) { return n == "Stock"; }).Count != 2)
                     throw new Exception("Repeated reads were eagerly cached");
                 input = MakeInput(); row = MakeRow();
-                CatalogueRowMapper.PopulateEdited(row, input);
+                CatalogueRowMapper.PopulateEdited(row, input, VisualBasicCatalogueSemantics.Instance);
                 assertions += 4;
                 if ((string)row["ID"] != "42" || (string)row["PRIX_MP"] != 88.5m.ToString("N2") ||
                     (string)row["DATE_INVENTAIRE"] != input.Values["InventoryDate"] ||
@@ -109,7 +110,7 @@ internal static class CatalogueRowMapperTests
                 {
                     input = MakeInput(); row = MakeRow(); input.FailAt = "SalePrice";
                     Exception caught = null;
-                    try { if (creating) CatalogueRowMapper.PopulateNew(row, 42, "ART000007", input); else CatalogueRowMapper.PopulateEdited(row, input); }
+                    try { if (creating) CatalogueRowMapper.PopulateNew(row, 42, "ART000007", input, VisualBasicCatalogueSemantics.Instance); else CatalogueRowMapper.PopulateEdited(row, input, VisualBasicCatalogueSemantics.Instance); }
                     catch (Exception error) { caught = error; }
                     assertions += 4;
                     if (!Object.ReferenceEquals(caught, input.Failure) || row["PRIX_MP"] == DBNull.Value ||
