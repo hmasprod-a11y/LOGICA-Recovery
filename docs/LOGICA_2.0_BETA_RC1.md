@@ -16,11 +16,14 @@ This is a **candidate for isolated acceptance**, not an automatic upgrade or a p
    - `LOGICA-2.0-Beta-RC1-Windows-x86.zip` — the full Windows runtime directory.
    - `SHA256SUMS.txt` — SHA-256 of that ZIP.
    - `LOGICA-2.0-Beta-RC1-file-manifest.json` — per-file hashes and sizes.
-3. Verify the downloaded ZIP's SHA-256 against `SHA256SUMS.txt`. Do not run a ZIP that fails verification.
+   - `verify-beta-rc.ps1` — offline, read-only verifier for the complete ZIP and manifest.
+3. Keep the four release files together and run `powershell.exe -NoProfile -File .\\verify-beta-rc.ps1` in the downloaded artifact folder. The verifier checks the ZIP SHA-256, every file hash/size, manifest path safety, required runtime files, build provenance, and empty license state **without extracting or executing the application**. Do not run a ZIP that fails verification.
+   - Alternatively, use `pwsh -File .\\verify-beta-rc.ps1` on systems with PowerShell 7.
+   - Hashes detect corruption and mismatches; they **do not independently authenticate the publisher**. Obtain all four files from the same trusted GitHub Actions run and verify its source commit.
 4. Extract into a **new folder**, not over an existing working installation. Follow `RUNNING.md` inside the package.
 5. Keep all DLLs, configuration files, and launcher scripts together. Test using a **copy** of store data, never the original database.
 
-The build includes an automated gate that checks the executable, DLLs, launchers, absence of persisted test DB credentials/data, per-file hashes, ZIP extraction, and rejection of a deliberately modified file. It also checks provenance: commit, net48, x86, and no original shop database.
+The build includes an automated gate that checks the executable, DLLs, launchers, absence of persisted test DB credentials/data, per-file hashes, ZIP extraction, and rejection of a deliberately modified file. An additional independent offline verifier is tested against isolated malformed ZIP, checksum, manifest and license fixtures. It also checks provenance: commit, net48, x86, and no original shop database.
 
 ## Acceptance gates
 
@@ -42,5 +45,6 @@ Keep the original application folder and its original configuration, valid licen
 - Release candidate branch: `release/logica-2.0-beta-rc1`.
 - Review: PR #56, targeting `integration/codex-refactors-20261030`.
 - Release gate: `scripts/test-release-candidate.ps1`.
-- Package and independent ZIP verification: `scripts/package-beta-rc.ps1`.
+- Package and independent ZIP verification: `scripts/package-beta-rc.ps1` and `scripts/verify-beta-rc.ps1`.
+- Isolated negative regression cases: `scripts/test-beta-release-verifier.ps1`.
 - Windows workflow: `.github/workflows/windows-reference-diagnostic.yml`.
