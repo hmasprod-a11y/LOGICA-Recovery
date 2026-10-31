@@ -18,7 +18,7 @@ if (Test-Path -LiteralPath $mysqlData) { throw 'Test database state leaked into 
 $files = @(Get-ChildItem -LiteralPath $dist -Recurse -File)
 if ($files.Count -eq 0) { throw 'Empty release candidate' }
 $manifest = foreach ($file in $files) {
-  [pscustomobject]@{ path = $file.FullName.Substring($dist.Length + 1).Replace('\\','/'); size = $file.Length; sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash }
+  [pscustomobject]@{ path = $file.FullName.Substring($dist.Length + 1).Replace([char]92, '/'); size = $file.Length; sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash }
 }
 New-Item -ItemType Directory -Force results | Out-Null
 $manifest | Sort-Object path | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath results/release-candidate-manifest.json -Encoding UTF8
