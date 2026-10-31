@@ -12669,52 +12669,28 @@ public class Form_3_VENTE : Form
 
 	private System.Collections.Generic.IEnumerable<LOGICA.ApplicationLayer.Checkout.TicketPaymentWrite> ReadCheckoutPayments(DateTime dateTime)
 	{
-		checked
-		{
-			if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 || Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR REMBOURSEMENT", TextCompare: false) == 0)
+		return LOGICA.ApplicationLayer.Checkout.CheckoutPaymentReadService.Read(
+			() => ((ButtonBase)Button_OPERATION).Text,
+			() => new LOGICA.ApplicationLayer.Checkout.TicketPaymentContext
 			{
-				var paymentContext = new LOGICA.ApplicationLayer.Checkout.TicketPaymentContext
-				{
-					TicketId = Text_ID_TICKET.Text,
-					TicketNumber = _N_TICKET_SOLDER,
-					SaleDate = dateTime,
-					Cashier = ((ButtonBase)Button_CAISSIER).Text,
-					ClientId = Button_CLIENT._ID_Button,
-					ClientCode = Button_CLIENT._CODE_Button,
-					ClientName = ((ButtonBase)Button_CLIENT).Text,
-					Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
-					Operation = ((ButtonBase)Button_OPERATION).Text,
-					Remark = MyProject.Forms.FormDialog_calc.Text_REMARQUE.Text
-				};
-				if (!Check_ACCES_MODEP.Checked)
-				{
-					yield return new LOGICA.ApplicationLayer.Checkout.TicketPaymentWrite { Kind = LOGICA.ApplicationLayer.Checkout.TicketPaymentKind.Cash, Context = paymentContext, AmountText = Text_TOTAL_NET.Text };
-				}
-				else if (Check_ACCES_MODEP.Checked)
-				{
-					int num11 = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows.Count - 1;
-					int num12 = 0;
-					while (true)
-					{
-						int num13 = num12;
-						int num4 = num11;
-						if (num13 > num4)
-						{
-							break;
-						}
-						yield return new LOGICA.ApplicationLayer.Checkout.TicketPaymentWrite { Kind = LOGICA.ApplicationLayer.Checkout.TicketPaymentKind.Tendered, Context = paymentContext,
-							Amount = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num12].Cells["PAYER"].Value,
-							Mode = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num12].Cells["MODE_P"].Value };
-						num12++;
-					}
-					if (Conversion.Val(((ButtonBase)MyProject.Forms.FormDialog_calc.Button_RESTE).Text) < 0.0)
-					{
-						yield return new LOGICA.ApplicationLayer.Checkout.TicketPaymentWrite { Kind = LOGICA.ApplicationLayer.Checkout.TicketPaymentKind.Change, Context = paymentContext,
-							AmountText = ((ButtonBase)MyProject.Forms.FormDialog_calc.Button_RESTE).Text };
-					}
-				}
-			}
-		}
+				TicketId = Text_ID_TICKET.Text,
+				TicketNumber = _N_TICKET_SOLDER,
+				SaleDate = dateTime,
+				Cashier = ((ButtonBase)Button_CAISSIER).Text,
+				ClientId = Button_CLIENT._ID_Button,
+				ClientCode = Button_CLIENT._CODE_Button,
+				ClientName = ((ButtonBase)Button_CLIENT).Text,
+				Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
+				Operation = ((ButtonBase)Button_OPERATION).Text,
+				Remark = MyProject.Forms.FormDialog_calc.Text_REMARQUE.Text
+			},
+			() => Check_ACCES_MODEP.Checked,
+			() => MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows.Count,
+			index => MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[index].Cells["PAYER"].Value,
+			index => MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[index].Cells["MODE_P"].Value,
+			() => Text_TOTAL_NET.Text,
+			() => ((ButtonBase)MyProject.Forms.FormDialog_calc.Button_RESTE).Text,
+			LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutPaymentReadSemantics.Instance);
 	}
 
 	private void Button_Click(object sender, EventArgs e)
