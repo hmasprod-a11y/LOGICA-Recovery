@@ -6,6 +6,8 @@ New-Item -ItemType Directory -Path $temporary | Out-Null
 try {
     $sources = @(
         'recovered-source/LOGICA/Domain/ILegacyCheckoutSemantics.cs',
+        'recovered-source/LOGICA/Domain/ILegacyCheckoutCompletionSemantics.cs',
+        'recovered-source/LOGICA/Infrastructure/Checkout/CheckoutCompletionSql.cs',
         'recovered-source/LOGICA/Domain/CheckoutAmountGuards.cs',
         'recovered-source/LOGICA/Domain/CheckoutSelectionRules.cs',
         'recovered-source/LOGICA/Domain/BasketTotalConsistency.cs',
