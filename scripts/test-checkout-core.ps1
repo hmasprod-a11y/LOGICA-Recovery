@@ -19,6 +19,7 @@ try {
         'recovered-source/LOGICA/Application/Checkout/CheckoutTicketPostingService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutPaymentPostingService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutTransactionFinalizationService.cs',
+        'recovered-source/LOGICA/Application/Checkout/CheckoutTransactionBoundaryService.cs',
         'modernization/PortableCheckoutSmoke.cs',
         'modernization/PortablePostingSmoke.cs',
         'modernization/PortableTransactionSmoke.cs',
