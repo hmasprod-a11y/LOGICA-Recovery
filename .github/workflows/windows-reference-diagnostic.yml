@@ -29,6 +29,9 @@ on:
       - 'input/recovered-original.sql'
       - 'input/mysql-compatibility.sql'
       - '.github/workflows/windows-reference-diagnostic.yml'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build-test:
     runs-on: windows-latest
