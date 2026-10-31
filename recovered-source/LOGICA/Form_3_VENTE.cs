@@ -12895,11 +12895,8 @@ public class Form_3_VENTE : Form
 					}
 				}
 				MySqlCommand val4 = new MySqlCommand();
-				if (Module1.cn_SQL.State != ConnectionState.Open)
-				{
-					Module1.cn_SQL.Open();
-				}
-				MySqlTransaction val5 = (val4.Transaction = Module1.cn_SQL.BeginTransaction());
+				var checkoutBoundary = new LOGICA.Infrastructure.Checkout.MySqlCheckoutTransactionBoundary(Module1.cn_SQL, val4);
+				LOGICA.ApplicationLayer.Checkout.CheckoutTransactionBoundaryService.Begin(checkoutBoundary);
 				val4.CommandText = "Select CL from TABLE_NUM  where ID = 0 ";
 				val4.Connection = Module1.cn_SQL;
 				if (val4.ExecuteScalar() == DBNull.Value)
@@ -12960,7 +12957,7 @@ public class Form_3_VENTE : Form
 								Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
 								TicketNumber = _N_TICKET_SOLDER
 							}
-						}, new LOGICA.Infrastructure.Checkout.MySqlCheckoutTransactionFinalizer(val5, Module1.cn_SQL));
+						}, checkoutBoundary);
 				}
 				catch (Exception ex5)
 				{
@@ -12969,7 +12966,7 @@ public class Form_3_VENTE : Form
 					StackTrace stackTrace2 = new StackTrace(ex6, fNeedFileInfo: true);
 					StackFrame frame2 = stackTrace2.GetFrame(stackTrace2.FrameCount - 1);
 					int fileLineNumber2 = frame2.GetFileLineNumber();
-					val5.Rollback();
+					LOGICA.ApplicationLayer.Checkout.CheckoutTransactionBoundaryService.Rollback(checkoutBoundary);
 					Interaction.MsgBox(ex6.Message + "\r\nLigne : " + Conversions.ToString(fileLineNumber2) + "\r\n");
 					try
 					{
@@ -15600,11 +15597,8 @@ public class Form_3_VENTE : Form
 				((Control)Panel_FONCTIONS).Hide();
 				NewLateBinding.LateSet(sender, null, "enabled", new object[1] { false }, null, null);
 				MySqlCommand val = new MySqlCommand();
-				if (Module1.cn_SQL.State != ConnectionState.Open)
-				{
-					Module1.cn_SQL.Open();
-				}
-				MySqlTransaction val2 = (val.Transaction = Module1.cn_SQL.BeginTransaction());
+				var waitingBoundary = new LOGICA.Infrastructure.Checkout.MySqlCheckoutTransactionBoundary(Module1.cn_SQL, val);
+				LOGICA.ApplicationLayer.Checkout.CheckoutTransactionBoundaryService.Begin(waitingBoundary);
 				try
 				{
 					val.CommandText = "INSERT INTO TABLE_ATTENTE      (Dates, Heure,ID_ARTICLE, Code, Article, Famille, PRIX_A, PRIX_MP, Prix_V, Qté,Remise, TOTAL_NET ,Caissier ,TAUX_TVA ,PRINTER,PRINTER_DUPLICATA ,  GROUPE ,        V      ,  POSTE , ID_CLIENT , CODE_CLIENT , CLIENT   )        SELECT         TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Dates,    TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Heure,     TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".ID_ARTICLE,  TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Code,    TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Article,    TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Famille,    TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".PRIX_A,    TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".PRIX_MP,    TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Prix_V,    TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Qté, TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".Remise,    TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".TOTAL_NET  ,    '" + ((ButtonBase)Button_CAISSIER).Text + "' ,   TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".TAUX_TVA ,   TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".PRINTER,   TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".PRINTER_DUPLICATA  ,   TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + ".GROUPE  ,         " + DateTime.Now.ToString("HHmmssfffffff") + "     ,       " + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "  ,       '" + Button_CLIENT._ID_Button + "' ,'" + Button_CLIENT._CODE_Button + "' ,'" + ((ButtonBase)Button_CLIENT).Text + "'         FROM    TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "  ";
@@ -15613,8 +15607,7 @@ public class Form_3_VENTE : Form
 					val.CommandText = "Delete  from    TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "  ";
 					val.Connection = Module1.cn_SQL;
 					val.ExecuteNonQuery();
-					val2.Commit();
-					Module1.cn_SQL.Close();
+					LOGICA.ApplicationLayer.Checkout.CheckoutTransactionBoundaryService.CommitAndClose(waitingBoundary);
 				}
 				catch (Exception ex)
 				{
@@ -15623,7 +15616,7 @@ public class Form_3_VENTE : Form
 					StackTrace stackTrace = new StackTrace(e2, fNeedFileInfo: true);
 					StackFrame frame = stackTrace.GetFrame(stackTrace.FrameCount - 1);
 					int fileLineNumber = frame.GetFileLineNumber();
-					val2.Rollback();
+					LOGICA.ApplicationLayer.Checkout.CheckoutTransactionBoundaryService.Rollback(waitingBoundary);
 					Module1.dt1.Clear();
 					Module1._QUITTER_PATIENTER = true;
 					Interaction.MsgBox("Transaction Erreur :" + Information.Err().Description);
