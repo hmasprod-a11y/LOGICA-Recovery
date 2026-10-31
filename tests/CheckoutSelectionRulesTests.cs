@@ -17,7 +17,7 @@ internal static class CheckoutSelectionRulesTests
                 for (int i = 0; i < inputs.Length; i++)
                 {
                     assertions++;
-                    if (CheckoutSelectionRules.IsMissing(inputs[i]) != (i < 2))
+                    if (CheckoutSelectionRules.IsMissing(inputs[i], LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance) != (i < 2))
                         throw new Exception("Selection-empty behavior changed");
                 }
             }

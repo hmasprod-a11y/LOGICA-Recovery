@@ -1,0 +1,34 @@
+name: Portable core .NET 10 Linux gate
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'modernization/**'
+      - 'recovered-source/LOGICA/Domain/**'
+      - 'recovered-source/LOGICA/Application/Cash/**'
+      - 'recovered-source/LOGICA/Application/Clients/**'
+      - 'recovered-source/LOGICA/Application/Checkout/**'
+      - 'recovered-source/LOGICA/Application/Inventory/**'
+      - 'recovered-source/LOGICA/Application/Catalogue/**'
+      - '.github/workflows/portable-core.yml'
+  push:
+    paths:
+      - 'modernization/**'
+      - 'recovered-source/LOGICA/Application/Inventory/**'
+      - 'recovered-source/LOGICA/Application/Catalogue/**'
+      - '.github/workflows/portable-core.yml'
+permissions:
+  contents: read
+jobs:
+  portable-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build isolated production core as .NET 10 library
+        run: dotnet build modernization/LOGICA.CorePortability.csproj -c Release --nologo
+      - name: Execute Linux smoke tests for cash, settlement, checkout and inventory
+        run: dotnet run --project modernization/LOGICA.CoreSmoke.csproj -c Release

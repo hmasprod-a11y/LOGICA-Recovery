@@ -8,10 +8,10 @@ internal static class CheckoutAmountGuardsTests
     private static void Check(string operation, string amount, bool negativeSale, bool positiveReturn)
     {
         assertions++;
-        if (CheckoutAmountGuards.IsNegativeSale(operation, amount) != negativeSale)
+        if (CheckoutAmountGuards.IsNegativeSale(operation, amount, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance) != negativeSale)
             throw new Exception("Negative-sale guard changed");
         assertions++;
-        if (CheckoutAmountGuards.IsPositiveReturn(operation, amount) != positiveReturn)
+        if (CheckoutAmountGuards.IsPositiveReturn(operation, amount, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance) != positiveReturn)
             throw new Exception("Positive-return guard changed");
     }
     private static void Throws<T>(Action action) where T : Exception
@@ -47,11 +47,11 @@ internal static class CheckoutAmountGuardsTests
                 Check("", positive, false, false);
                 Check("VENTE", null, false, false);
                 // '&' converts even for nonmatching operations; do not change this to '&&'.
-                Throws<InvalidCastException>(delegate { CheckoutAmountGuards.IsNegativeSale("CREDIT", "bad-amount"); });
-                Throws<InvalidCastException>(delegate { CheckoutAmountGuards.IsPositiveReturn("VENTE", "bad-amount"); });
-                Throws<NullReferenceException>(delegate { CheckoutAmountGuards.IsPositiveReturn(null, "bad-amount"); });
+                Throws<InvalidCastException>(delegate { CheckoutAmountGuards.IsNegativeSale("CREDIT", "bad-amount", LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance); });
+                Throws<InvalidCastException>(delegate { CheckoutAmountGuards.IsPositiveReturn("VENTE", "bad-amount", LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance); });
+                Throws<NullReferenceException>(delegate { CheckoutAmountGuards.IsPositiveReturn(null, "bad-amount", LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance); });
                 assertions++;
-                if (CheckoutAmountGuards.IsNegativeSale(null, negative))
+                if (CheckoutAmountGuards.IsNegativeSale(null, negative, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance))
                     throw new Exception("Null operation is not VENTE");
             }
             Console.WriteLine("PASS checkout amount guards: " + assertions + " assertions; signs, cultures and legacy eager failures");
