@@ -21,6 +21,7 @@ try {
         'recovered-source/LOGICA/Application/Checkout/CheckoutTransactionFinalizationService.cs',
         'modernization/PortableCheckoutSmoke.cs',
         'modernization/PortablePostingSmoke.cs',
+        'modernization/PortableTransactionSmoke.cs',
         'tests/CheckoutCoreIsolationEntry.cs'
     ) | ForEach-Object { Join-Path $root $_ }
     foreach ($source in $sources) {
