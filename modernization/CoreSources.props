@@ -27,5 +27,13 @@
     <Compile Include="../recovered-source/LOGICA/Application/Catalogue/ICatalogueCreationStore.cs" Link="Application/Catalogue/ICatalogueCreationStore.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Catalogue/CatalogueRowMapper.cs" Link="Application/Catalogue/CatalogueRowMapper.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Catalogue/CatalogueCreationService.cs" Link="Application/Catalogue/CatalogueCreationService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ILegacyCheckoutSemantics.cs" Link="Domain/ILegacyCheckoutSemantics.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/CheckoutAmountGuards.cs" Link="Domain/CheckoutAmountGuards.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/CheckoutSelectionRules.cs" Link="Domain/CheckoutSelectionRules.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/BasketTotalConsistency.cs" Link="Domain/BasketTotalConsistency.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/SalesLinePricing.cs" Link="Domain/SalesLinePricing.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/StockAvailability.cs" Link="Domain/StockAvailability.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Checkout/StockValidationModels.cs" Link="Application/Checkout/StockValidationModels.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Checkout/StockValidationService.cs" Link="Application/Checkout/StockValidationService.cs" />
   </ItemGroup>
 </Project>

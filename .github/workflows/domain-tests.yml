@@ -10,6 +10,7 @@ on:
       - 'scripts/test-cash-core.ps1'
       - 'scripts/test-stock-movement-core.ps1'
       - 'scripts/test-catalogue-core.ps1'
+      - 'scripts/test-checkout-core.ps1'
       - '.github/workflows/domain-tests.yml'
   push:
     paths:
@@ -40,3 +41,6 @@ jobs:
       - name: Compile and test catalogue creation without VB or database
         shell: powershell
         run: ./scripts/test-catalogue-core.ps1
+      - name: Compile and test checkout pricing/stock without VB or database
+        shell: powershell
+        run: ./scripts/test-checkout-core.ps1
