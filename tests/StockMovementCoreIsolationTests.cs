@@ -14,7 +14,7 @@ internal static class StockMovementCoreIsolationTests
         {
             Calls.Add(right);
             if (FailAt == Calls.Count) throw Failure;
-            return String.Equals(left, right, StringComparison.Ordinal);
+            return String.Equals(left ?? "", right ?? "", StringComparison.Ordinal);
         }
     }
 
