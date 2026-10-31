@@ -75,12 +75,21 @@ try {
                 finally { $reader.Dispose() }
             } finally { $stream.Dispose() }
         }
+        if ($name -eq 'CHEMIN_DB.sni') {
+            $stream = $entry.Open()
+            try {
+                $reader = New-Object System.IO.StreamReader($stream)
+                try { $hostSetting = $reader.ReadToEnd().Trim() }
+                finally { $reader.Dispose() }
+            } finally { $stream.Dispose() }
+            if ($hostSetting -ne '127.0.0.1') { throw 'Beta package contains a nonlocal database host' }
+        }
         if ($name -eq 'hash_licence.sni' -and $entry.Length -ne 0) {
             throw 'Non-empty license state found in beta ZIP'
         }
     }
     if ($seen.Count -ne $byPath.Count) { throw "Missing ZIP files: expected $($byPath.Count), found $($seen.Count)" }
-    foreach ($required in @('LOGICA.exe','Launch-LOGICA.ps1','Start-LOGICA.cmd','RUNNING.md','build-metadata.json')) {
+    foreach ($required in @('LOGICA.exe','Launch-LOGICA.ps1','Start-LOGICA.cmd','RUNNING.md','build-metadata.json','CHEMIN_DB.sni','hash_licence.sni')) {
         if (-not $seen.Contains($required)) { throw "Missing required runtime file: $required" }
     }
     if (@($seen | Where-Object { $_ -like '*.dll' }).Count -lt 1) { throw 'Runtime DLLs missing' }
