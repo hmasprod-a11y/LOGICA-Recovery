@@ -7,6 +7,7 @@ on:
       - 'tests/**'
       - 'scripts/test-domain.ps1'
       - 'scripts/test-settlement-core.ps1'
+      - 'scripts/test-cash-core.ps1'
       - '.github/workflows/domain-tests.yml'
   push:
     paths:
@@ -28,3 +29,6 @@ jobs:
       - name: Compile and test settlement core without VB, WinForms or database
         shell: powershell
         run: ./scripts/test-settlement-core.ps1
+      - name: Compile and test cash core without VB, WinForms or database
+        shell: powershell
+        run: ./scripts/test-cash-core.ps1
