@@ -19,6 +19,9 @@ on:
       - 'recovered-source/LOGICA/Application/Inventory/**'
       - 'recovered-source/LOGICA/Application/Catalogue/**'
       - '.github/workflows/portable-core.yml'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
