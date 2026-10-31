@@ -38,6 +38,7 @@ try {
     [IO.File]::WriteAllText((Join-Path $src 'Start-LOGICA.cmd'), 'dummy launcher')
     [IO.File]::WriteAllText((Join-Path $src 'RUNNING.md'), 'dummy instructions')
     [IO.File]::WriteAllText((Join-Path $src 'hash_licence.sni'), '')
+    [IO.File]::WriteAllText((Join-Path $src 'CHEMIN_DB.sni'), '127.0.0.1')
     @{sourceCommit=$commit;target='net48';architecture='x86';originalShopDatabaseIncluded=$false} |
         ConvertTo-Json | Set-Content -LiteralPath (Join-Path $src 'build-metadata.json') -Encoding UTF8
     Write-FixtureManifest
@@ -73,6 +74,11 @@ try {
     Write-FixtureManifest
     Write-FixtureZip
     Assert-Rejected 'nonempty license state'
+    [IO.File]::WriteAllText((Join-Path $src 'hash_licence.sni'), '')
+    [IO.File]::WriteAllText((Join-Path $src 'CHEMIN_DB.sni'), '192.0.2.1')
+    Write-FixtureManifest
+    Write-FixtureZip
+    Assert-Rejected 'nonlocal database host'
     Write-Host 'PASS: independent verifier positive and adversarial tests'
 } finally {
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
