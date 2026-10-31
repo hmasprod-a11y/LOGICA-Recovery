@@ -85,6 +85,18 @@ internal static class PortableCoreSmoke
         public void ReloadAll() { Calls.Add("reload"); }
         public void BindResults() { Calls.Add("bind"); }
     }
+    private sealed class InventoryFilter : IStockMovementFilterLayoutContext
+    {
+        public readonly List<string> Calls = new List<string>();
+        public bool Checked;
+        public string Column = "ARTICLE";
+        public bool DateFilterChecked { get { Calls.Add("checked"); return Checked; } }
+        public string SelectedColumn { get { Calls.Add("column"); return Column; } }
+        public void SetDatePanelVisible(bool visible) { Calls.Add("visible:" + visible); }
+        public void SetDatePanelLeft(int left) { Calls.Add("left:" + left); }
+        public void SetDatePanelWidth(int width) { Calls.Add("width:" + width); }
+        public void SetSearchText(string value) { Calls.Add("text:" + value); }
+    }
     private static void Require(bool condition, string description)
     {
         if (!condition) throw new Exception(description);
@@ -129,6 +141,18 @@ internal static class PortableCoreSmoke
         StockMovementRefreshService.Refresh(refresh);
         Require(String.Join(",", refresh.Calls.ToArray()) == "sender,clear,focus,reload,bind",
             "Inventory refresh order changed");
+        var dateFilter = new InventoryFilter { Checked = true };
+        StockMovementFilterLayoutService.DateCheckboxChanged(dateFilter);
+        Require(String.Join(",", dateFilter.Calls.ToArray()) == "checked,visible:True",
+            "Inventory date checkbox layout changed");
+        var columnFilter = new InventoryFilter { Column = "DATES" };
+        StockMovementFilterLayoutService.ColumnChanged(columnFilter, inventorySemantics);
+        Require(String.Join(",", columnFilter.Calls.ToArray()) == "column,visible:True,left:127,width:713,text:*",
+            "Inventory date-column layout changed");
+        var textFilter = new InventoryFilter();
+        StockMovementFilterLayoutService.ColumnChanged(textFilter, inventorySemantics);
+        Require(String.Join(",", textFilter.Calls.ToArray()) == "column,visible:False,left:564,width:276,text:",
+            "Inventory text-column layout changed");
 
         var catalogue = new DataTable();
         catalogue.Columns.Add("Code", typeof(string));
