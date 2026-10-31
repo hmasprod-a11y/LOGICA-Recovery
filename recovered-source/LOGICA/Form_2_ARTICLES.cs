@@ -14290,12 +14290,12 @@ public class Form_2_ARTICLES : Form
 		{
 			try
 			{
-				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_CODE.Text))
+				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_CODE.Text, LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance))
 				{
 					MessageBox.Show("Veuillez remplir le champ -Code- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_ARTICLE.Text))
+				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_ARTICLE.Text, LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance))
 				{
 					MessageBox.Show("Veuillez remplir le champ -Article- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
@@ -14360,7 +14360,7 @@ public class Form_2_ARTICLES : Form
 					MessageBox.Show("Veuillez remplir le champ -TAUX_TVA- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (LOGICA.Domain.CataloguePromotionRules.IsRejected(Text_PROMOTION.Text))
+				if (LOGICA.Domain.CataloguePromotionRules.IsRejected(Text_PROMOTION.Text, LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance))
 				{
 					MessageBox.Show("Veuillez remplir le champ -PROMOTION- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
@@ -14412,7 +14412,8 @@ public class Form_2_ARTICLES : Form
 						return;
 					}
 					new LOGICA.ApplicationLayer.Catalogue.CatalogueCreationService(
-                        new LOGICA.Infrastructure.Catalogue.MySqlCatalogueCreationStore(Module1.cn_SQL, DA, DT))
+                        new LOGICA.Infrastructure.Catalogue.MySqlCatalogueCreationStore(Module1.cn_SQL, DA, DT),
+                        LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance)
                         .Create(new LOGICA.Presentation.Catalogue.CatalogueFormRowInput(this));
                     MessageBox.Show("Enregistré avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
 				}
@@ -14437,7 +14438,8 @@ public class Form_2_ARTICLES : Form
 					}
 					int position = ((ContainerControl)this).BindingContext[(object)DT].Position;
 					LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.PopulateEdited(DT.Rows[position],
-                        new LOGICA.Presentation.Catalogue.CatalogueFormRowInput(this));
+                        new LOGICA.Presentation.Catalogue.CatalogueFormRowInput(this),
+                        LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance);
                     LOGICA.Infrastructure.Catalogue.CatalogueRowPersistence.UpdateAndAccept(DA, DT);
 					MessageBox.Show("Modifié avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
 					string right = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("MODIFICATION | ", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_ARTICLE"].Value), DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ARTICLE"].Value));
@@ -14500,7 +14502,7 @@ public class Form_2_ARTICLES : Form
 			}
 			if ((Text_CODE.Text.Length == 12) & (num == 12))
 			{
-				byte[] array = LOGICA.Domain.CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(Text_CODE.Text);
+				byte[] array = LOGICA.Domain.CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(Text_CODE.Text, LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance);
 				byte[] bits = Module1.getBits(array);
 				Text_CODE.Text += Conversions.ToString(array[12]);
 			}
@@ -17147,7 +17149,7 @@ public class Form_2_ARTICLES : Form
 				string text3 = Conversions.ToString(DataGridView_TAILLES.Rows[((DataGridViewBand)DataGridView_TAILLES.CurrentRow).Index].Cells["TAILLE"].Value);
 				string text4 = Conversions.ToString(DataGridView_COULEURS.Rows[((DataGridViewBand)DataGridView_COULEURS.CurrentRow).Index].Cells["COULEUR"].Value);
 				decimal num = Conversions.ToDecimal(Text_QTE_COLLECTION.Text);
-				byte[] array = LOGICA.Domain.CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(text);
+				byte[] array = LOGICA.Domain.CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(text, LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance);
                 int num4;
                 int num6;
                 byte[] bits = Module1.getBits(array);
@@ -17408,12 +17410,12 @@ public class Form_2_ARTICLES : Form
 		{
 			try
 			{
-				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_CODE_COLLECTION.Text))
+				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_CODE_COLLECTION.Text, LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance))
 				{
 					MessageBox.Show("Veuillez remplir le champ -Code- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_ARTICLE_COLLECTION.Text))
+				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_ARTICLE_COLLECTION.Text, LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance))
 				{
 					MessageBox.Show("Veuillez remplir le champ -Article- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;

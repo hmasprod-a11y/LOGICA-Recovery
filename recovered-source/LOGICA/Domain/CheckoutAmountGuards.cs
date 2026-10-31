@@ -1,20 +1,17 @@
-using Microsoft.VisualBasic.CompilerServices;
-
 namespace LOGICA.Domain
 {
     internal static class CheckoutAmountGuards
     {
-        public static bool IsNegativeSale(string operation, string displayedTotal)
+        public static bool IsNegativeSale(string operation, string displayedTotal, ILegacyCheckoutSemantics legacy)
         {
-            // Keep eager evaluation and the existing culture-sensitive VB conversion.
-            return (Operators.CompareString(operation, "VENTE", false) == 0)
-                & (Conversions.ToDouble(displayedTotal) < 0.0);
+            // '&' intentionally evaluates the numeric conversion even for non-sale operations.
+            return legacy.EqualsText(operation, "VENTE") & (legacy.ToDouble(displayedTotal) < 0.0);
         }
 
-        public static bool IsPositiveReturn(string operation, string displayedTotal)
+        public static bool IsPositiveReturn(string operation, string displayedTotal, ILegacyCheckoutSemantics legacy)
         {
-            return operation.Contains("RETOUR")
-                & (Conversions.ToDouble(displayedTotal) > 0.0);
+            // Contains executes before ToDouble; preserve null exception timing and eager '&'.
+            return operation.Contains("RETOUR") & (legacy.ToDouble(displayedTotal) > 0.0);
         }
     }
 }
