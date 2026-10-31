@@ -11,6 +11,10 @@ if(Test-Path input/original-startup.json){
  foreach($p in $original.PSObject.Properties){$defaults[$p.Name]=[string]$p.Value}
 }
 $defaults['CHEMIN_FOLDER.sni']='Application.StartupPath'
+# Never distribute a developer/store connection host or license hash from startup fixtures.
+# Real installations keep their own settings; this affects the candidate package only.
+$defaults['CHEMIN_DB.sni']='127.0.0.1'
+$defaults['hash_licence.sni']=''
 $defaults['log_erreur.sni']=''
 foreach($entry in $defaults.GetEnumerator()){[IO.File]::WriteAllText((Join-Path $dist $entry.Key),$entry.Value)}
 Copy-Item docs/RUNNING.md dist/RUNNING.md -Force
