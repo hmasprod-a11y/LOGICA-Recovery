@@ -4,7 +4,7 @@ from pathlib import Path
 source = (Path(__file__).resolve().parents[1] /
           "recovered-source/LOGICA/Form_0_TEMPLATE.cs").read_text(encoding="utf-8")
 start = source.index("private void Form_0_TEMPLATE_Load(")
-end = source.index("\n\tprivate void _DEMO(", start)
+end = source.index("\n\tpublic void _Tentative_Connect_Database(", start)
 startup = source[start:end]
 checks = {
     "database check preserved": "_Tentative_Connect_Database();" in startup,
