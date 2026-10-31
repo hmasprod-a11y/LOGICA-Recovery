@@ -1653,7 +1653,7 @@ public class Form_6_MOUVEMENTS_STOCK : Form
 		//IL_02e7: Expected Obj, but got Unknown
 		try
 		{
-			LOGICA.ApplicationLayer.Inventory.StockMovementSearchService.Search(new MovementSearchContext(this));
+			LOGICA.ApplicationLayer.Inventory.StockMovementSearchService.Search(new MovementSearchContext(this), LOGICA.Infrastructure.Compatibility.VisualBasicStockMovementSemantics.Instance);
 		}
 		catch (Exception ex)
 		{

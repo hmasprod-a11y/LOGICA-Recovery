@@ -1,39 +1,39 @@
 using System.Data;
-using Microsoft.VisualBasic;
+using LOGICA.Domain;
 
 namespace LOGICA.ApplicationLayer.Catalogue
 {
     internal static class CatalogueRowMapper
     {
-        public static void PopulateNew(DataRow row, int id, string articleId, ICatalogueRowInput input)
+        public static void PopulateNew(DataRow row, int id, string articleId, ICatalogueRowInput input, ILegacyCatalogueSemantics semantics)
         {
             row["ID"] = id;
             row["ID_ARTICLE"] = articleId;
-            PopulateFields(row, input, true);
+            PopulateFields(row, input, true, semantics);
         }
 
-        public static void PopulateEdited(DataRow row, ICatalogueRowInput input)
+        public static void PopulateEdited(DataRow row, ICatalogueRowInput input, ILegacyCatalogueSemantics semantics)
         {
             row["ID"] = input.Id;
             row["ID_ARTICLE"] = input.ArticleId;
-            PopulateFields(row, input, false);
+            PopulateFields(row, input, false, semantics);
         }
 
-        private static void PopulateFields(DataRow row, ICatalogueRowInput input, bool creating)
+        private static void PopulateFields(DataRow row, ICatalogueRowInput input, bool creating, ILegacyCatalogueSemantics semantics)
         {
             // Read each value at its original assignment, preserving partial writes on failure.
-            row["Code"] = Strings.Trim(input.Code);
-            row["Article"] = Strings.Trim(input.Article);
+            row["Code"] = semantics.Trim(input.Code);
+            row["Article"] = semantics.Trim(input.Article);
             row["Famille"] = input.Family;
             row["Sous_Famille"] = input.Subfamily;
             row["GROUPE"] = input.Group;
             row["Description"] = input.Description;
-            row["Prix_A"] = Strings.FormatNumber(input.PurchasePrice);
-            row["PRIX_MP"] = Strings.FormatNumber(creating ? input.PurchasePrice : input.AveragePrice);
-            row["PRIX_V_1"] = Strings.FormatNumber(input.SalePrice);
-            row["PRIX_V_2"] = Strings.FormatNumber(input.SecondSalePrice);
-            row["PRIX_QTE"] = Strings.FormatNumber(input.QuantityPrice);
-            row["PRIX_QTE_MIN"] = Conversion.Val(input.MinimumQuantity);
+            row["Prix_A"] = semantics.FormatNumber(input.PurchasePrice);
+            row["PRIX_MP"] = semantics.FormatNumber(creating ? input.PurchasePrice : input.AveragePrice);
+            row["PRIX_V_1"] = semantics.FormatNumber(input.SalePrice);
+            row["PRIX_V_2"] = semantics.FormatNumber(input.SecondSalePrice);
+            row["PRIX_QTE"] = semantics.FormatNumber(input.QuantityPrice);
+            row["PRIX_QTE_MIN"] = semantics.ToMinimumQuantity(input.MinimumQuantity);
             row["STOCK"] = input.Stock;
             row["Alert"] = input.Alert;
             row["DATES"] = input.CreationDate;
@@ -50,7 +50,7 @@ namespace LOGICA.ApplicationLayer.Catalogue
             row["Taille"] = input.Size;
             row["Couleur"] = input.Color;
             row["Emplacement"] = input.Location;
-            row["PROMOTION"] = Strings.FormatNumber(input.Promotion);
+            row["PROMOTION"] = semantics.FormatNumber(input.Promotion);
             row["FENETRE_PESAGE"] = input.WeighingWindow;
             row["BALANCE"] = input.Balance;
         }

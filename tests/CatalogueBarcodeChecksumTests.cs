@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using LOGICA.Domain;
+using LOGICA.Infrastructure.Compatibility;
 
 internal static class CatalogueBarcodeChecksumTests
 {
@@ -35,7 +36,7 @@ internal static class CatalogueBarcodeChecksumTests
                         int expected = Oracle(payload);
                         if (length == 12)
                         {
-                            byte[] digits = CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(payload);
+                            byte[] digits = CatalogueBarcodeChecksum.CompleteTwelveDigitPayload(payload, VisualBasicCatalogueSemantics.Instance);
                             assertions++;
                             if (digits.Length != 13 || digits[12] != expected) throw new Exception("Twelve-digit checksum changed");
                             for (int index = 0; index < length; index++)
@@ -54,7 +55,7 @@ internal static class CatalogueBarcodeChecksumTests
                 }
                 assertions += 2;
                 if (CatalogueBarcodeChecksum.GetElevenDigitPayloadSuffix("03600029145") != "2" ||
-                    CatalogueBarcodeChecksum.CompleteTwelveDigitPayload("400638133393")[12] != 1)
+                    CatalogueBarcodeChecksum.CompleteTwelveDigitPayload("400638133393", VisualBasicCatalogueSemantics.Instance)[12] != 1)
                     throw new Exception("Known barcode vectors changed");
             }
             Console.WriteLine("PASS catalogue barcode checksum: " + assertions + " assertions; vectors, payload preservation, zero/nine and seeded inputs");

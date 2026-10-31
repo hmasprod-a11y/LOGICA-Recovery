@@ -51,7 +51,7 @@ internal static class StockValidationServiceTests
         var probe = new Probe { Specs = specs, FailureAt = failureAt };
         StockShortage shortage = null;
         Exception caught = null;
-        try { shortage = StockValidationService.FindFirstShortage(probe, probe.Rows()); }
+        try { shortage = StockValidationService.FindFirstShortage(probe, probe.Rows(), LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance); }
         catch (Exception error) { caught = error; }
         assertions++;
         if (failureAt == null ? caught != null : !object.ReferenceEquals(caught, probe.Failure))

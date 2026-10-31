@@ -3148,7 +3148,7 @@ public class FormDialog_COMPTER_CAISSE : Form
 
     private void TextBox_LostFocus(object sender, EventArgs e)
     {
-        LOGICA.ApplicationLayer.Cash.CashRecountService.Recount(new CashRecountContext(this, sender));
+        LOGICA.ApplicationLayer.Cash.CashRecountService.Recount(new CashRecountContext(this, sender), LOGICA.Infrastructure.Compatibility.VisualBasicCashSemantics.Instance);
     }
 
 	private void Butt_Click(object sender, EventArgs e)

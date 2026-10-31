@@ -1,19 +1,20 @@
-using Microsoft.VisualBasic;
-using Microsoft.VisualBasic.CompilerServices;
+using LOGICA.Infrastructure.Compatibility;
 using MySql.Data.MySqlClient;
 
 namespace LOGICA.Infrastructure.Checkout
 {
     internal static class CheckoutCompletionWriter
     {
-        // Completes the existing writes only; the caller still commits or rolls back.
+        // Executes the original DELETE before converting/formatting the next ticket ID.
+        // Transaction ownership, command reuse and failure behavior remain unchanged.
         public static void Complete(MySqlCommand command, MySqlConnection connection,
             string workstation, string ticketNumber)
         {
-            command.CommandText = "Delete  from TABLE_" + workstation + "";
+            command.CommandText = CheckoutCompletionSql.DeleteWorkstation(workstation);
             command.Connection = connection;
             command.ExecuteNonQuery();
-            command.CommandText = "UPDATE     TABLE_NUM    SET CL =  " + Strings.Format(Conversions.ToDouble(ticketNumber) + 1.0, "000000") + "  ";
+            command.CommandText = CheckoutCompletionSql.AdvanceSequence(
+                ticketNumber, VisualBasicCheckoutCompletionSemantics.Instance);
             command.Connection = connection;
             command.ExecuteNonQuery();
         }

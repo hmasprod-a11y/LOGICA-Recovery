@@ -8,13 +8,13 @@ internal static class BasketTotalConsistencyTests
     private static void Check(decimal basket, decimal displayed, bool different)
     {
         assertions++;
-        if (BasketTotalConsistency.AreDifferent(basket, displayed.ToString("N2")) != different)
+        if (BasketTotalConsistency.AreDifferent(basket, displayed.ToString("N2"), LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance) != different)
             throw new Exception("Rounded consistency behavior changed");
     }
     private static void Bad(string displayed)
     {
         assertions++;
-        try { BasketTotalConsistency.AreDifferent(25m, displayed); }
+        try { BasketTotalConsistency.AreDifferent(25m, displayed, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance); }
         catch (InvalidCastException) { return; }
         throw new Exception("Expected legacy conversion failure");
     }
@@ -44,9 +44,9 @@ internal static class BasketTotalConsistencyTests
                 Check(decimal.MaxValue-1m,decimal.MaxValue,false);
                 Check(decimal.MaxValue,decimal.MinValue,true);
                 assertions++;
-                if (BasketTotalConsistency.AreDifferent(0m,null)) throw new Exception("Null converts to zero");
+                if (BasketTotalConsistency.AreDifferent(0m,null, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance)) throw new Exception("Null converts to zero");
                 assertions++;
-                if (!BasketTotalConsistency.AreDifferent(1m,null)) throw new Exception("Nonzero versus null must differ");
+                if (!BasketTotalConsistency.AreDifferent(1m,null, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance)) throw new Exception("Nonzero versus null must differ");
                 Bad("bad-amount");
                 Bad("");
             }
