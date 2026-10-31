@@ -7,6 +7,7 @@ on:
       - 'tests/**'
       - 'scripts/test-domain.ps1'
       - 'scripts/test-pos*'
+      - 'scripts/test-release-candidate.ps1'
       - '.github/workflows/windows-reference-diagnostic.yml'
   push:
     paths:
@@ -14,6 +15,7 @@ on:
       - 'scripts/repair-source.py'
       - 'scripts/test-pos*'
       - 'scripts/test-recovered*'
+      - 'scripts/test-release-candidate.ps1'
       - 'input/recovered-original.sql'
       - 'input/mysql-compatibility.sql'
       - '.github/workflows/windows-reference-diagnostic.yml'
@@ -76,6 +78,9 @@ jobs:
         if: always()
         shell: pwsh
         run: ./scripts/package-runtime.ps1
+      - name: Gate unified beta candidate and generate file hashes
+        shell: pwsh
+        run: ./scripts/test-release-candidate.ps1
       - name: Inspect original dependency types
         if: always()
         shell: powershell
