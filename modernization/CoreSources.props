@@ -1,0 +1,18 @@
+<Project>
+  <ItemGroup>
+    <Compile Include="../recovered-source/LOGICA/Domain/ILegacyCashSemantics.cs" Link="Domain/ILegacyCashSemantics.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/CashCountInputRules.cs" Link="Domain/CashCountInputRules.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/CashDenominationTotal.cs" Link="Domain/CashDenominationTotal.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ILegacySettlementSemantics.cs" Link="Domain/ILegacySettlementSemantics.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ClientSettlementAmountRule.cs" Link="Domain/ClientSettlementAmountRule.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ClientSettlementSequence.cs" Link="Domain/ClientSettlementSequence.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ClientCreditBalance.cs" Link="Domain/ClientCreditBalance.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Cash/ICashRecountContext.cs" Link="Application/Cash/ICashRecountContext.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Cash/CashRecountService.cs" Link="Application/Cash/CashRecountService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Clients/ClientSettlementValidationService.cs" Link="Application/Clients/ClientSettlementValidationService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Clients/ClientSettlementRowWriter.cs" Link="Application/Clients/ClientSettlementRowWriter.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutPostingModels.cs" Link="Application/Checkout/CheckoutPostingModels.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutPostingService.cs" Link="Application/Checkout/CheckoutPostingService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Catalogue/CollectionDuplicatePrecheck.cs" Link="Application/Catalogue/CollectionDuplicatePrecheck.cs" />
+  </ItemGroup>
+</Project>
