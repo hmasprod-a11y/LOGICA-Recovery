@@ -19,6 +19,10 @@
     <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutTransactionFinalizationService.cs" Link="Application/Checkout/CheckoutTransactionFinalizationService.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutTransactionBoundaryService.cs" Link="Application/Checkout/CheckoutTransactionBoundaryService.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Catalogue/CollectionDuplicatePrecheck.cs" Link="Application/Catalogue/CollectionDuplicatePrecheck.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ILegacyStockMovementQuerySemantics.cs" Link="Domain/ILegacyStockMovementQuerySemantics.cs" />
+    <Compile Include="../recovered-source/LOGICA/Infrastructure/Inventory/StockMovementQueryText.cs" Link="Infrastructure/Inventory/StockMovementQueryText.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ILegacyCheckoutCompletionSemantics.cs" Link="Domain/ILegacyCheckoutCompletionSemantics.cs" />
+    <Compile Include="../recovered-source/LOGICA/Infrastructure/Checkout/CheckoutCompletionSql.cs" Link="Infrastructure/Checkout/CheckoutCompletionSql.cs" />
     <Compile Include="../recovered-source/LOGICA/Domain/ILegacyStockMovementSemantics.cs" Link="Domain/ILegacyStockMovementSemantics.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Inventory/IStockMovementSearchContext.cs" Link="Application/Inventory/IStockMovementSearchContext.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Inventory/IStockMovementRefreshContext.cs" Link="Application/Inventory/IStockMovementRefreshContext.cs" />
