@@ -50,6 +50,19 @@ try {
  try { & (Join-Path $PSScriptRoot 'package-safe-update.ps1') -DistPath $source -OutputPath $occupied } catch { $rejected=$true }
  if(-not $rejected){throw 'Packaging accepted pre-populated update directory'}
  if((Get-Content -LiteralPath (Join-Path $occupied 'existing.txt') -Raw) -ne 'KEEP'){throw 'Packaging altered occupied update directory'}
+ # Missing executable and missing DLLs must fail closed (disposable fixtures only).
+ $missingExe=Join-Path $root 'missing-exe'
+ New-Item -ItemType Directory -Path $missingExe -Force | Out-Null
+ [IO.File]::WriteAllText((Join-Path $missingExe 'dependency.dll'),'DLL_ONLY')
+ $rejected=$false
+ try { & (Join-Path $PSScriptRoot 'package-safe-update.ps1') -DistPath $missingExe -OutputPath (Join-Path $root 'missing-exe-out') } catch { $rejected=$true }
+ if(-not $rejected){throw 'Packaging accepted runtime without LOGICA.exe'}
+ $missingDll=Join-Path $root 'missing-dll'
+ New-Item -ItemType Directory -Path $missingDll -Force | Out-Null
+ [IO.File]::WriteAllText((Join-Path $missingDll 'LOGICA.exe'),'EXE_ONLY')
+ $rejected=$false
+ try { & (Join-Path $PSScriptRoot 'package-safe-update.ps1') -DistPath $missingDll -OutputPath (Join-Path $root 'missing-dll-out') } catch { $rejected=$true }
+ if(-not $rejected){throw 'Packaging accepted runtime without DLL dependencies'}
  Write-Host 'PASS isolated binaries-only overlay preserves existing shop settings, license, config and bd'
 } finally {
  Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
