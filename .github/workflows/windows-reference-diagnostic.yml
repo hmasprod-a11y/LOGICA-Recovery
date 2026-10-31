@@ -5,36 +5,46 @@ on:
     paths:
       - 'recovered-source/**'
       - 'scripts/repair-source.py'
+      - 'scripts/package-runtime.ps1'
+      - 'scripts/test-package-settings.ps1'
+      - 'scripts/package-safe-update.ps1'
+      - 'scripts/test-package-safe-update.ps1'
+      - 'scripts/test-workflow-readonly.py'
       - 'scripts/test-pos*'
       - 'scripts/test-recovered*'
       - 'input/recovered-original.sql'
       - 'input/mysql-compatibility.sql'
       - '.github/workflows/windows-reference-diagnostic.yml'
 jobs:
+  workflow-static:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify CI source-write protection
+        run: python3 scripts/test-workflow-readonly.py
   build-test:
     runs-on: windows-latest
     timeout-minutes: 25
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Repair and persist original source
+      - name: Verify CI cannot auto-push source changes
+        shell: pwsh
+        run: python scripts/test-workflow-readonly.py
+      - name: Repair original source in disposable CI workspace only
         shell: pwsh
         run: |
           python scripts/repair-source.py
           if ($LASTEXITCODE -ne 0) { throw 'Source repair failed' }
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -f recovered-source
-          git reset -- recovered-source/obj recovered-source/bin
-          git diff --cached --quiet
-          if ($LASTEXITCODE -ne 0) {
-            git commit -m 'Persist repaired original C# source and portable project'
-            git push
-            if ($LASTEXITCODE -ne 0) { throw 'Source persistence failed' }
+          $changes = git status --porcelain -- recovered-source
+          if ($changes) {
+            Write-Host 'NOTICE: Source repair modified only this temporary CI checkout. Open a reviewed PR to persist source changes.'
           }
       - name: Restore original runtime dependencies
         shell: pwsh
@@ -74,10 +84,19 @@ jobs:
           } finally {
             Remove-Item dist/bd/mysql-data,dist/bd/mysql-credential.xml,dist/bd/mysql-import-complete.txt -Recurse -Force -ErrorAction SilentlyContinue
           }
+      - name: Verify packaging preserves license and database settings
+        shell: pwsh
+        run: ./scripts/test-package-settings.ps1
       - name: Finalize portable runtime package
-        if: always()
+        if: success()
         shell: pwsh
         run: ./scripts/package-runtime.ps1
+      - name: Verify binaries-only update preserves existing shop files
+        shell: pwsh
+        run: ./scripts/test-package-safe-update.ps1
+      - name: Prepare settings-excluding binaries-only update candidate
+        shell: pwsh
+        run: ./scripts/package-safe-update.ps1
       - name: Inspect original dependency types
         if: always()
         shell: powershell
@@ -96,9 +115,16 @@ jobs:
           path: results/
           retention-days: 30
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: success()
         with:
           name: LOGICA-Windows-complete
           path: dist/
           if-no-files-found: warn
+          retention-days: 90
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: LOGICA-Windows-binaries-only-update
+          path: update-binaries/
+          if-no-files-found: error
           retention-days: 90
