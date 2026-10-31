@@ -18,6 +18,9 @@ on:
       - 'tests/**'
       - 'scripts/test-domain.ps1'
       - '.github/workflows/domain-tests.yml'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
