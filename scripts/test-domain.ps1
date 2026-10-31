@@ -16,6 +16,9 @@ try {
     $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Presentation/Formatting') -Filter '*.cs' | ForEach-Object { $_.FullName })
     $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Application/Clients') -Filter '*.cs' | ForEach-Object { $_.FullName })
     $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Infrastructure/Compatibility') -Filter '*.cs' | ForEach-Object { $_.FullName })
+    # Portable SQL text builders have no database or Visual Basic dependency.
+    $sources += @(Join-Path $root 'recovered-source/LOGICA/Infrastructure/Inventory/StockMovementQueryText.cs')
+    $sources += @(Join-Path $root 'recovered-source/LOGICA/Infrastructure/Checkout/CheckoutCompletionSql.cs')
     $tests = @(Get-ChildItem -LiteralPath (Join-Path $root 'tests') -Filter '*Tests.cs' | Sort-Object Name)
     if ($sources.Count -eq 0 -or $tests.Count -eq 0) { throw 'Domain sources or tests missing' }
     foreach ($test in $tests) {
