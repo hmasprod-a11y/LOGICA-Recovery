@@ -43,6 +43,27 @@ internal static class ClientSettlementSequenceTests
         Check("invalid conversion",10,"not a number");
         Check("negative fractional",-2.5,-2.5);
         Check("fractional double",3.49,3.49);
+        // Characterize the original two-read allocator and legacy VB conversions.
+        Check("second read changed to zero",19,0);
+        Check("first DBNull skips second read",DBNull.Value,999);
+        Check("first value changed from string to integer","3",4);
+        Check("second empty string",5,"");
+        Check("second whitespace",5,"   ");
+        Check("second numeric prefix",5,"12abc");
+        Check("second decimal string",5,"3.5");
+        Check("second negative decimal",5,-3.5);
+        Check("negative midpoint",-1.5,-1.5);
+        Check("positive midpoint",2.5,2.5);
+        Check("decimal midpoint",2.5m,2.5m);
+        Check("decimal large",1000000m,1000000m);
+        Check("second null",5,null);
+        Check("second boolean",5,true);
+        Check("second false",5,false);
+        Check("first boolean",true,3);
+        Check("second DateTime",5,new DateTime(2020,1,1));
+        Check("double NaN",5,double.NaN);
+        Check("double positive infinity",5,double.PositiveInfinity);
+        Check("double negative infinity",5,double.NegativeInfinity);
         Console.WriteLine("PASS original settlement sequence id parity and 1-vs-2 read ordering");
         return 0;
     }
