@@ -12659,34 +12659,12 @@ public class Form_3_VENTE : Form
 
 	private string ReadCheckoutPaymentModes()
 	{
-		checked
-		{
-			string text2 = "";
-			if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 || Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "RETOUR REMBOURSEMENT", TextCompare: false) == 0)
-			{
-				if (!Check_ACCES_MODEP.Checked)
-				{
-					text2 = "ESPECES;";
-				}
-				else if (Check_ACCES_MODEP.Checked)
-				{
-					int num8 = MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows.Count - 1;
-					int num9 = 0;
-					while (true)
-					{
-						int num10 = num9;
-						int num4 = num8;
-						if (num10 > num4)
-						{
-							break;
-						}
-						text2 = Conversions.ToString(Operators.AddObject(text2, Operators.ConcatenateObject(MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[num9].Cells["MODE_P"].Value, ";")));
-						num9++;
-					}
-				}
-			}
-			return text2;
-		}
+		return LOGICA.ApplicationLayer.Checkout.CheckoutPaymentModeService.Read(
+			() => ((ButtonBase)Button_OPERATION).Text,
+			() => Check_ACCES_MODEP.Checked,
+			() => MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows.Count,
+			index => MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[index].Cells["MODE_P"].Value,
+			LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutPaymentModeSemantics.Instance);
 	}
 
 	private System.Collections.Generic.IEnumerable<LOGICA.ApplicationLayer.Checkout.TicketPaymentWrite> ReadCheckoutPayments(DateTime dateTime)
