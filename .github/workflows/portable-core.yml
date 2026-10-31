@@ -8,11 +8,13 @@ on:
       - 'recovered-source/LOGICA/Application/Cash/**'
       - 'recovered-source/LOGICA/Application/Clients/**'
       - 'recovered-source/LOGICA/Application/Checkout/**'
+      - 'recovered-source/LOGICA/Application/Inventory/**'
       - 'recovered-source/LOGICA/Application/Catalogue/CollectionDuplicatePrecheck.cs'
       - '.github/workflows/portable-core.yml'
   push:
     paths:
       - 'modernization/**'
+      - 'recovered-source/LOGICA/Application/Inventory/**'
       - '.github/workflows/portable-core.yml'
 permissions:
   contents: read
@@ -27,5 +29,5 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Build isolated production core as .NET 10 library
         run: dotnet build modernization/LOGICA.CorePortability.csproj -c Release --nologo
-      - name: Execute Linux smoke tests for cash, settlement and checkout
+      - name: Execute Linux smoke tests for cash, settlement, checkout and inventory
         run: dotnet run --project modernization/LOGICA.CoreSmoke.csproj -c Release
