@@ -8,6 +8,7 @@ try {
         'recovered-source/LOGICA/Domain/ILegacyCatalogueSemantics.cs',
         'recovered-source/LOGICA/Domain/CatalogueRequiredFields.cs',
         'recovered-source/LOGICA/Domain/CataloguePromotionRules.cs',
+        'recovered-source/LOGICA/Domain/CatalogueBarcodeChecksum.cs',
         'recovered-source/LOGICA/Application/Catalogue/ICatalogueRowInput.cs',
         'recovered-source/LOGICA/Application/Catalogue/ICatalogueCreationStore.cs',
         'recovered-source/LOGICA/Application/Catalogue/CatalogueRowMapper.cs',
