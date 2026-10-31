@@ -8,7 +8,13 @@ $defaults=@{
 foreach($n in @('CL','C1','C2','C3','C4','C5','C6','C7','ADD','RAPPORT')){$defaults["PRINTER_$n.sni"]='0'}
 if(Test-Path input/original-startup.json){
  $original=Get-Content input/original-startup.json -Raw | ConvertFrom-Json
- foreach($p in $original.PSObject.Properties){$defaults[$p.Name]=[string]$p.Value}
+ foreach($p in $original.PSObject.Properties){
+  # Only the known visual/layout settings may extend the portable defaults.
+  # Never copy arbitrary shop-specific files from the recovered startup fixture.
+  if($defaults.ContainsKey($p.Name) -or $p.Name -in @('interfaces_a.sni','interfaces_f.sni','splitterdistance.sni')){
+   $defaults[$p.Name]=[string]$p.Value
+  }
+ }
 }
 $defaults['CHEMIN_FOLDER.sni']='Application.StartupPath'
 # Never distribute a developer/store connection host or license hash from startup fixtures.
@@ -16,6 +22,11 @@ $defaults['CHEMIN_FOLDER.sni']='Application.StartupPath'
 $defaults['CHEMIN_DB.sni']='127.0.0.1'
 $defaults['hash_licence.sni']=''
 $defaults['log_erreur.sni']=''
+# RC1 must not inherit the original shop's printer names or enable devices.
+# Real installations keep their own printer configuration; this changes only dist/.
+foreach($key in @($defaults.Keys)){
+ if($key -like 'PRINTER_*.sni'){$defaults[$key]='0'}
+}
 foreach($entry in $defaults.GetEnumerator()){[IO.File]::WriteAllText((Join-Path $dist $entry.Key),$entry.Value)}
 Copy-Item docs/RUNNING.md dist/RUNNING.md -Force
 Copy-Item scripts/Launch-LOGICA.ps1,scripts/Start-LOGICA.cmd dist -Force
