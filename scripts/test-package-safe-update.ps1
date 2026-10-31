@@ -38,6 +38,18 @@ try {
  if((Get-Content -LiteralPath (Join-Path $shop 'bd/configue.sni') -Raw) -ne 'SHOP_DATABASE'){throw 'Changed shop database'}
  if((Get-Content -LiteralPath (Join-Path $shop 'LOGICA.exe') -Raw) -ne 'NEW_EXE'){throw 'EXE not updated'}
  if((Get-Content -LiteralPath (Join-Path $shop 'dependency.dll') -Raw) -ne 'NEW_DLL'){throw 'DLL not updated'}
+ # Reject unsafe output paths or pre-populated update folders; no source/shop writes.
+ $nested=Join-Path $source 'inside-source'
+ $rejected=$false
+ try { & (Join-Path $PSScriptRoot 'package-safe-update.ps1') -DistPath $source -OutputPath $nested } catch { $rejected=$true }
+ if(-not $rejected){throw 'Packaging accepted output nested inside original runtime'}
+ $occupied=Join-Path $root 'occupied-output'
+ New-Item -ItemType Directory -Path $occupied -Force | Out-Null
+ [IO.File]::WriteAllText((Join-Path $occupied 'existing.txt'),'KEEP')
+ $rejected=$false
+ try { & (Join-Path $PSScriptRoot 'package-safe-update.ps1') -DistPath $source -OutputPath $occupied } catch { $rejected=$true }
+ if(-not $rejected){throw 'Packaging accepted pre-populated update directory'}
+ if((Get-Content -LiteralPath (Join-Path $occupied 'existing.txt') -Raw) -ne 'KEEP'){throw 'Packaging altered occupied update directory'}
  Write-Host 'PASS isolated binaries-only overlay preserves existing shop settings, license, config and bd'
 } finally {
  Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
