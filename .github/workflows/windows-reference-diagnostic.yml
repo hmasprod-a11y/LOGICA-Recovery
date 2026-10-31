@@ -9,6 +9,7 @@ on:
       - 'scripts/test-pos*'
       - 'scripts/test-release-candidate.ps1'
       - 'scripts/package-beta-rc.ps1'
+      - 'scripts/package-runtime.ps1'
       - 'scripts/verify-beta-rc.ps1'
       - 'scripts/test-beta-release-verifier.ps1'
       - '.github/workflows/windows-reference-diagnostic.yml'
