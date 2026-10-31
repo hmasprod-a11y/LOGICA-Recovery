@@ -38,7 +38,7 @@ internal static class ClientSettlementValidationServiceTests
         {
             var c=new Context{FailAt=step};
             Exception e=null;
-            try { ClientSettlementValidationService.FirstWarning(c); } catch(Exception x) {e=x;}
+            try { ClientSettlementValidationService.FirstWarning(c, VisualBasicSettlementSemantics.Instance); } catch(Exception x) {e=x;}
             if(!Object.ReferenceEquals(e,c.Failure))throw new Exception("exception identity changed: "+step);
         }
         Console.WriteLine("PASS original client settlement warning precedence, read order and failure propagation");
