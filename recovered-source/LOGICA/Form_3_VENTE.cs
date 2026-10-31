@@ -12778,32 +12778,32 @@ public class Form_3_VENTE : Form
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if (LOGICA.Domain.CheckoutAmountGuards.IsNegativeSale(((ButtonBase)Button_OPERATION).Text, Text_TOTAL_NET.Text))
+				if (LOGICA.Domain.CheckoutAmountGuards.IsNegativeSale(((ButtonBase)Button_OPERATION).Text, Text_TOTAL_NET.Text, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance))
 				{
 					MessageBox.Show("Si le Type d'opération (VENTE), le total doit étre Positif", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if (LOGICA.Domain.CheckoutAmountGuards.IsPositiveReturn(((ButtonBase)Button_OPERATION).Text, Text_TOTAL_NET.Text))
+				if (LOGICA.Domain.CheckoutAmountGuards.IsPositiveReturn(((ButtonBase)Button_OPERATION).Text, Text_TOTAL_NET.Text, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance))
 				{
 					MessageBox.Show("Si le Type d'opération (RETOUR), le total doit étre Négatif", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if (Check_CHOIX_VENDEUR.Checked && LOGICA.Domain.CheckoutSelectionRules.IsMissing(((ButtonBase)Button_VENDEUR).Text))
+				if (Check_CHOIX_VENDEUR.Checked && LOGICA.Domain.CheckoutSelectionRules.IsMissing(((ButtonBase)Button_VENDEUR).Text, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance))
 				{
 					((Form)MyProject.Forms.Form_5_VENDEURS_LISTE).ShowDialog();
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if (Check_CHOIX_CLIENT.Checked && LOGICA.Domain.CheckoutSelectionRules.IsMissing(((ButtonBase)Button_CLIENT).Text))
+				if (Check_CHOIX_CLIENT.Checked && LOGICA.Domain.CheckoutSelectionRules.IsMissing(((ButtonBase)Button_CLIENT).Text, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance))
 				{
 					MyProject.Forms.Form_5_CLIENTS_LISTE.Label1.Text = ((Control)this).Name;
 					((Form)MyProject.Forms.Form_5_CLIENTS_LISTE).ShowDialog();
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if (Operators.ConditionalCompareObjectEqual(NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null), "Button_SOLDER_CREDIT", TextCompare: false) && LOGICA.Domain.CheckoutSelectionRules.IsMissing(((ButtonBase)Button_CLIENT).Text))
+				if (Operators.ConditionalCompareObjectEqual(NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null), "Button_SOLDER_CREDIT", TextCompare: false) && LOGICA.Domain.CheckoutSelectionRules.IsMissing(((ButtonBase)Button_CLIENT).Text, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance))
 				{
 					MyProject.Forms.Form_5_CLIENTS_LISTE.Label1.Text = ((Control)this).Name;
 					((Form)MyProject.Forms.Form_5_CLIENTS_LISTE).ShowDialog();
@@ -12845,7 +12845,7 @@ public class Form_3_VENTE : Form
 					return;
 				}
 				Text_TOTAL_NET_Click(RuntimeHelpers.GetObjectValue(sender), e);
-				if (LOGICA.Domain.BasketTotalConsistency.AreDifferent(((IEnumerable)DataGridView1.Rows).Cast<DataGridViewRow>().Sum([SpecialName] (DataGridViewRow t) => Convert.ToDecimal(RuntimeHelpers.GetObjectValue(t.Cells["TOTAL_NET"].Value))), Text_TOTAL_NET.Text))
+				if (LOGICA.Domain.BasketTotalConsistency.AreDifferent(((IEnumerable)DataGridView1.Rows).Cast<DataGridViewRow>().Sum([SpecialName] (DataGridViewRow t) => Convert.ToDecimal(RuntimeHelpers.GetObjectValue(t.Cells["TOTAL_NET"].Value))), Text_TOTAL_NET.Text, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance))
 				{
 					MessageBox.Show("il y a une erreur critique\r\nLe Total Net est différent avec le total des lignes de commande\r\nmerci d'Actualiser le panier ou redémarrer l'application", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
@@ -12854,7 +12854,7 @@ public class Form_3_VENTE : Form
 				if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 && Operators.CompareString(MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("BLOCAGE_STOCK_INSUFFISANT", false, 0).Index].SubItems[1].Text, "True", TextCompare: false) == 0)
 				{
 					var shortage = LOGICA.ApplicationLayer.Checkout.StockValidationService.FindFirstShortage(
-						new LOGICA.Infrastructure.Checkout.MySqlStockAvailabilityLookup(Module1.cn_SQL), ReadStockValidationRows());
+						new LOGICA.Infrastructure.Checkout.MySqlStockAvailabilityLookup(Module1.cn_SQL), ReadStockValidationRows(), LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance);
 					if (shortage != null)
 					{
 						MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("stock insuffisant de l'article -", shortage.ArticleName), "-")), "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
@@ -12915,7 +12915,7 @@ public class Form_3_VENTE : Form
 				{
 					string text2 = "";
 					DateTime dateTime = default(DateTime);
-					LOGICA.ApplicationLayer.Checkout.CheckoutPostingService.Post(
+					LOGICA.ApplicationLayer.Checkout.CheckoutTransactionFinalizationService.PostAndFinalize(
 						new LOGICA.Infrastructure.Checkout.MySqlCheckoutPostingStore(val4, Module1.cn_SQL),
 						new LOGICA.ApplicationLayer.Checkout.CheckoutPostingInput
 						{
@@ -12960,9 +12960,7 @@ public class Form_3_VENTE : Form
 								Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
 								TicketNumber = _N_TICKET_SOLDER
 							}
-						});
-					val5.Commit();
-					Module1.cn_SQL.Close();
+						}, new LOGICA.Infrastructure.Checkout.MySqlCheckoutTransactionFinalizer(val5, Module1.cn_SQL));
 				}
 				catch (Exception ex5)
 				{
@@ -16114,7 +16112,7 @@ public class Form_3_VENTE : Form
 				((IDisposable)val2)?.Dispose();
 			}
 			Module1.cn_SQL.Close();
-			decimal? quantityPrice = LOGICA.Domain.SalesLinePricing.SelectQuantityPrice(num, num2, num3, num4);
+			decimal? quantityPrice = LOGICA.Domain.SalesLinePricing.SelectQuantityPrice(num, num2, num3, num4, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance);
 			if (quantityPrice.HasValue)
 			{
 				decimal selectedUnitPrice = quantityPrice.Value;

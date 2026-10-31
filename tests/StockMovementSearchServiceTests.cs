@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using LOGICA.ApplicationLayer.Inventory;
+using LOGICA.Infrastructure.Compatibility;
 
 internal static class StockMovementSearchServiceTests
 {
@@ -25,7 +26,7 @@ internal static class StockMovementSearchServiceTests
     }
     private static int Check(Context context, string expected)
     {
-        StockMovementSearchService.Search(context);
+        StockMovementSearchService.Search(context, VisualBasicStockMovementSemantics.Instance);
         if (String.Join(",", context.Calls.ToArray()) != expected)
             throw new Exception("Search lazy order changed: " + String.Join(",", context.Calls.ToArray()));
         return context.Calls.Count;
@@ -48,7 +49,7 @@ internal static class StockMovementSearchServiceTests
             {
                 var context=new Context { ColumnValue="ARTICLE",TextValue="x",Dates=true,FirstExact=true,SecondExact=true,FailAt=failAt };
                 Exception caught=null;
-                try { StockMovementSearchService.Search(context); } catch(Exception error) { caught=error; }
+                try { StockMovementSearchService.Search(context, VisualBasicStockMovementSemantics.Instance); } catch(Exception error) { caught=error; }
                 assertions += 2;
                 int count=Array.IndexOf(normal,failAt)+1;
                 if(!Object.ReferenceEquals(caught,context.Failure) || context.Calls.Count!=count)

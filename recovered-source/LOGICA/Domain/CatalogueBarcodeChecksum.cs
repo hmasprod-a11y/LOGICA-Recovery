@@ -1,11 +1,10 @@
 using System;
-using Microsoft.VisualBasic.CompilerServices;
 
 namespace LOGICA.Domain
 {
     internal static class CatalogueBarcodeChecksum
     {
-        public static byte[] CompleteTwelveDigitPayload(string payload)
+        public static byte[] CompleteTwelveDigitPayload(string payload, ILegacyCatalogueSemantics semantics)
         {
             checked
             {
@@ -13,7 +12,7 @@ namespace LOGICA.Domain
                 byte[] digits = new byte[13];
                 for (int index = 0; index <= 11; index++)
                 {
-                    digits[index] = (byte)Conversions.ToInteger(payload.Substring(index, 1));
+                    digits[index] = (byte)semantics.ToDigit(payload.Substring(index, 1));
                     if (index % 2 == 1) odd += digits[index];
                     else even += digits[index];
                 }

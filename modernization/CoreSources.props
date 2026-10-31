@@ -1,0 +1,43 @@
+<Project>
+  <ItemGroup>
+    <Compile Include="../recovered-source/LOGICA/Domain/ILegacyCashSemantics.cs" Link="Domain/ILegacyCashSemantics.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/CashCountInputRules.cs" Link="Domain/CashCountInputRules.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/CashDenominationTotal.cs" Link="Domain/CashDenominationTotal.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ILegacySettlementSemantics.cs" Link="Domain/ILegacySettlementSemantics.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ClientSettlementAmountRule.cs" Link="Domain/ClientSettlementAmountRule.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ClientSettlementSequence.cs" Link="Domain/ClientSettlementSequence.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ClientCreditBalance.cs" Link="Domain/ClientCreditBalance.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Cash/ICashRecountContext.cs" Link="Application/Cash/ICashRecountContext.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Cash/CashRecountService.cs" Link="Application/Cash/CashRecountService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Clients/ClientSettlementValidationService.cs" Link="Application/Clients/ClientSettlementValidationService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Clients/ClientSettlementRowWriter.cs" Link="Application/Clients/ClientSettlementRowWriter.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutPostingModels.cs" Link="Application/Checkout/CheckoutPostingModels.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutPostingService.cs" Link="Application/Checkout/CheckoutPostingService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutStockPostingService.cs" Link="Application/Checkout/CheckoutStockPostingService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutTicketPostingService.cs" Link="Application/Checkout/CheckoutTicketPostingService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutPaymentPostingService.cs" Link="Application/Checkout/CheckoutPaymentPostingService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutTransactionFinalizationService.cs" Link="Application/Checkout/CheckoutTransactionFinalizationService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Catalogue/CollectionDuplicatePrecheck.cs" Link="Application/Catalogue/CollectionDuplicatePrecheck.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ILegacyStockMovementSemantics.cs" Link="Domain/ILegacyStockMovementSemantics.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/IStockMovementSearchContext.cs" Link="Application/Inventory/IStockMovementSearchContext.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/IStockMovementRefreshContext.cs" Link="Application/Inventory/IStockMovementRefreshContext.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockMovementSearchService.cs" Link="Application/Inventory/StockMovementSearchService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockMovementRefreshService.cs" Link="Application/Inventory/StockMovementRefreshService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ILegacyCatalogueSemantics.cs" Link="Domain/ILegacyCatalogueSemantics.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/CatalogueRequiredFields.cs" Link="Domain/CatalogueRequiredFields.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/CataloguePromotionRules.cs" Link="Domain/CataloguePromotionRules.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/CatalogueBarcodeChecksum.cs" Link="Domain/CatalogueBarcodeChecksum.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Catalogue/ICatalogueRowInput.cs" Link="Application/Catalogue/ICatalogueRowInput.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Catalogue/ICatalogueCreationStore.cs" Link="Application/Catalogue/ICatalogueCreationStore.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Catalogue/CatalogueRowMapper.cs" Link="Application/Catalogue/CatalogueRowMapper.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Catalogue/CatalogueCreationService.cs" Link="Application/Catalogue/CatalogueCreationService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ILegacyCheckoutSemantics.cs" Link="Domain/ILegacyCheckoutSemantics.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/CheckoutAmountGuards.cs" Link="Domain/CheckoutAmountGuards.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/CheckoutSelectionRules.cs" Link="Domain/CheckoutSelectionRules.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/BasketTotalConsistency.cs" Link="Domain/BasketTotalConsistency.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/SalesLinePricing.cs" Link="Domain/SalesLinePricing.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/StockAvailability.cs" Link="Domain/StockAvailability.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Checkout/StockValidationModels.cs" Link="Application/Checkout/StockValidationModels.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Checkout/StockValidationService.cs" Link="Application/Checkout/StockValidationService.cs" />
+  </ItemGroup>
+</Project>

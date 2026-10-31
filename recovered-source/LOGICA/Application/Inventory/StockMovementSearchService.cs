@@ -1,14 +1,14 @@
-using Microsoft.VisualBasic.CompilerServices;
+using LOGICA.Domain;
 
 namespace LOGICA.ApplicationLayer.Inventory
 {
     internal static class StockMovementSearchService
     {
-        public static void Search(IStockMovementSearchContext context)
+        public static void Search(IStockMovementSearchContext context, ILegacyStockMovementSemantics semantics)
         {
-            if (Operators.CompareString(context.Column, "DATES", false) == 0)
+            if (semantics.EqualsText(context.Column, "DATES"))
                 context.LoadDateRange();
-            else if (Operators.CompareString(context.Text, "", false) != 0)
+            else if (!semantics.EqualsText(context.Text, ""))
             {
                 if (context.UseDates) context.SetDatePrefix();
                 else context.ClearDatePrefix();
