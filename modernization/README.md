@@ -8,7 +8,7 @@ with test-only implementations of the cash and settlement compatibility ports.
 No production data or configuration is loaded.
 
 Modules covered: cash recount, client settlement, checkout posting, and the
-catalogue duplicate precheck. Legacy adapters and UI remain in the original
+catalogue duplicate precheck, and stock movement search/refresh. Legacy adapters and UI remain in the original
 Windows project; all existing behavioral tests and Windows CI still apply.
 
 Run locally with the .NET 10 SDK:

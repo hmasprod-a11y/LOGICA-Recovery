@@ -14,5 +14,10 @@
     <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutPostingModels.cs" Link="Application/Checkout/CheckoutPostingModels.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutPostingService.cs" Link="Application/Checkout/CheckoutPostingService.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Catalogue/CollectionDuplicatePrecheck.cs" Link="Application/Catalogue/CollectionDuplicatePrecheck.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ILegacyStockMovementSemantics.cs" Link="Domain/ILegacyStockMovementSemantics.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/IStockMovementSearchContext.cs" Link="Application/Inventory/IStockMovementSearchContext.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/IStockMovementRefreshContext.cs" Link="Application/Inventory/IStockMovementRefreshContext.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockMovementSearchService.cs" Link="Application/Inventory/StockMovementSearchService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockMovementRefreshService.cs" Link="Application/Inventory/StockMovementRefreshService.cs" />
   </ItemGroup>
 </Project>
