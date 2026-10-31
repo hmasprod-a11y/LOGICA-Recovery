@@ -8,7 +8,7 @@ $expected = @(Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json)
 if ($expected.Count -lt 3) { throw 'Release gate manifest is incomplete' }
 
 function Assert-PackageContents([string]$directory, [array]$entries) {
-  $directory = (Resolve-Path -LiteralPath $directory).Path.TrimEnd([char]92, [char]47)
+  $directory = (Resolve-Path -LiteralPath $directory).Path.TrimEnd([char[]]@([char]92, [char]47))
   $byPath = @{}
   foreach ($entry in $entries) {
     $name = [string]$entry.path
