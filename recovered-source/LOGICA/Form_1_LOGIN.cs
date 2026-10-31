@@ -2106,7 +2106,8 @@ public class Form_1_LOGIN : Form
 			if (dataTable.Rows.Count != 0)
 			{
 				Module1._USERNAME = Conversions.ToString(dataTable.Rows[0]["ListUser"]);
-				Module1._USERCATEGORIE = Conversions.ToString(dataTable.Rows[0]["Catégorie"]);
+				// Use the second selected field by ordinal: legacy MySQL imports can alter the accented column label.
+				Module1._USERCATEGORIE = Conversions.ToString(dataTable.Rows[0][1]);
 				((Control)Panel_login).Visible = false;
 				if ((Operators.CompareString(Module1._USERCATEGORIE, "ADMIN", TextCompare: false) == 0) | (Operators.CompareString(Module1._USERCATEGORIE, "MANAGER", TextCompare: false) == 0))
 				{
