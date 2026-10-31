@@ -8,8 +8,10 @@ try {
         'recovered-source/LOGICA/Domain/ILegacyCheckoutSemantics.cs',
         'recovered-source/LOGICA/Domain/ILegacyCheckoutCompletionSemantics.cs',
         'recovered-source/LOGICA/Domain/ILegacyCheckoutTicketSequenceSemantics.cs',
+        'recovered-source/LOGICA/Domain/ILegacyTicketPostingSemantics.cs',
         'recovered-source/LOGICA/Infrastructure/Checkout/CheckoutCompletionSql.cs',
         'recovered-source/LOGICA/Infrastructure/Checkout/CheckoutTicketSequenceSql.cs',
+        'recovered-source/LOGICA/Infrastructure/Checkout/CheckoutTicketPostingSql.cs',
         'recovered-source/LOGICA/Domain/CheckoutAmountGuards.cs',
         'recovered-source/LOGICA/Domain/CheckoutSelectionRules.cs',
         'recovered-source/LOGICA/Domain/BasketTotalConsistency.cs',
@@ -29,6 +31,7 @@ try {
         'modernization/PortablePostingSmoke.cs',
         'modernization/PortableTransactionSmoke.cs',
         'modernization/PortableTicketSequenceSmoke.cs',
+        'modernization/PortableTicketPostingSmoke.cs',
         'tests/CheckoutCoreIsolationEntry.cs'
     ) | ForEach-Object { Join-Path $root $_ }
     foreach ($source in $sources) {

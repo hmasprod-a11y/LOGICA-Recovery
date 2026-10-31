@@ -16,5 +16,6 @@
     <Compile Include="PortableTransactionSmoke.cs" />
     <Compile Include="PortableSqlSmoke.cs" />
     <Compile Include="PortableTicketSequenceSmoke.cs" />
+    <Compile Include="PortableTicketPostingSmoke.cs" />
   </ItemGroup>
 </Project>
