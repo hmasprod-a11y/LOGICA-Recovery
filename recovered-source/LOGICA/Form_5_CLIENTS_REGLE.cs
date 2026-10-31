@@ -3328,7 +3328,7 @@ public class Form_5_CLIENTS_REGLE : Form
 						decimal d2 = Conversions.ToDecimal(list[1]);
 						decimal d3 = Conversions.ToDecimal(list[2]);
 						decimal d4 = Conversions.ToDecimal(list[3]);
-						_total_credit = decimal.Subtract(decimal.Add(decimal.Add(d, d2), d3), d4);
+						_total_credit = LOGICA.Domain.ClientCreditBalance.Calculate(d, d2, d3, d4);
 					}
 					else
 					{
@@ -3404,6 +3404,38 @@ public class Form_5_CLIENTS_REGLE : Form
 		}
 	}
 
+	private sealed class SettlementRowContext : LOGICA.ApplicationLayer.Clients.IClientSettlementRowContext
+	{
+		private readonly Form_5_CLIENTS_REGLE form;
+		private readonly DataRow row;
+		private readonly int id;
+		public SettlementRowContext(Form_5_CLIENTS_REGLE form, DataRow row, int id)
+		{
+			this.form = form; this.row = row; this.id = id;
+		}
+		public object ReadId() { return id; }
+		public object ReadDate() { return form.DateTimePicker_DATE.Value; }
+		public object ReadUser() { return form.Text_UTILISATEUR.Text; }
+		public object ReadDocumentId() { return Strings.Format(DateTime.Now, "ddMMyyHHmmssfff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text; }
+		public object ReadClientId() { return form.Button_CLIENT._ID_Button; }
+		public object ReadClientCode() { return form.Button_CLIENT._CODE_Button; }
+		public object ReadClientName() { return ((ButtonBase)form.Button_CLIENT).Text; }
+		public object ReadAmount() { return form.TextBox_MONTANT.Text; }
+		public object ReadPaymentMode() { return form.Combo_MODE_P.Text; }
+		public object ReadNotes() { return form.TextBox_NOTES.Text; }
+		public void Set(string column, object value) { row[column] = value; }
+	}
+
+	private sealed class SettlementValidationContext : LOGICA.ApplicationLayer.Clients.IClientSettlementValidationContext
+	{
+		private readonly Form_5_CLIENTS_REGLE form;
+		public SettlementValidationContext(Form_5_CLIENTS_REGLE form) { this.form=form; }
+		public string ClientId { get { return form.Button_CLIENT._ID_Button; } }
+		public string ClientName { get { return ((ButtonBase)form.Button_CLIENT).Text; } }
+		public string Amount { get { return form.TextBox_MONTANT.Text; } }
+		public string PaymentMode { get { return form.Combo_MODE_P.Text; } }
+	}
+
 	private void Button12_Click(object sender, EventArgs e)
 	{
 		//IL_04a0: Unknown result type (might be due to invalid IL or missing references)
@@ -3422,29 +3454,10 @@ public class Form_5_CLIENTS_REGLE : Form
 		{
 			try
 			{
-				if (Operators.CompareString(Button_CLIENT._ID_Button, "", TextCompare: false) == 0)
+				string warning = LOGICA.ApplicationLayer.Clients.ClientSettlementValidationService.FirstWarning(new SettlementValidationContext(this));
+				if (warning != null)
 				{
-					MessageBox.Show("Veuillez remplir le champ -ID_CLIENT- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
-				if (Operators.CompareString(((ButtonBase)Button_CLIENT).Text, "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -CLIENT- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
-				if (Operators.CompareString(TextBox_MONTANT.Text, "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -MONTANT- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
-				if (Conversion.Val(TextBox_MONTANT.Text) <= 0.0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -MONTANT- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
-				if (Operators.CompareString(Combo_MODE_P.Text, "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -MODE_P- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					MessageBox.Show(warning, "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
 				if (Operators.CompareString(Label_TOP.Text, "NOUVEAU", TextCompare: false) == 0)
@@ -3457,21 +3470,11 @@ public class Form_5_CLIENTS_REGLE : Form
 					{
 						Module1.cn_SQL.Open();
 					}
-					int num = ((val.ExecuteScalar() == DBNull.Value) ? 1 : ((int)Math.Round(Conversions.ToDouble(val.ExecuteScalar()) + 1.0)));
+					int num = LOGICA.Domain.ClientSettlementSequence.NextId(() => val.ExecuteScalar());
 					Module1.cn_SQL.Close();
 					DT.Rows.Add();
 					int index = DT.Rows.Count - 1;
-					DT.Rows[index]["ID"] = num;
-					DT.Rows[index]["DATES"] = DateTimePicker_DATE.Value;
-					DT.Rows[index]["UTILISATEUR"] = Text_UTILISATEUR.Text;
-					DT.Rows[index]["ID_REGLE"] = Strings.Format(DateTime.Now, "ddMMyyHHmmssfff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text;
-					DT.Rows[index]["ID_CLIENT"] = Button_CLIENT._ID_Button;
-					DT.Rows[index]["CODE_CLIENT"] = Button_CLIENT._CODE_Button;
-					DT.Rows[index]["CLIENT"] = ((ButtonBase)Button_CLIENT).Text;
-					DT.Rows[index]["MONTANT"] = TextBox_MONTANT.Text;
-					DT.Rows[index]["MODE_P"] = Combo_MODE_P.Text;
-					DT.Rows[index]["NOTES"] = TextBox_NOTES.Text;
-					DT.Rows[index]["ETAT"] = "VALIDER";
+					LOGICA.ApplicationLayer.Clients.ClientSettlementRowWriter.Populate(new SettlementRowContext(this, DT.Rows[index], num));
 					MySqlCommandBuilder val2 = new MySqlCommandBuilder(DA);
 					((DbDataAdapter)(object)DA).Update(DT);
 					DT.AcceptChanges();
@@ -3726,7 +3729,7 @@ public class Form_5_CLIENTS_REGLE : Form
 			decimal num4 = 0m;
 			num4 = ((dataTable.Rows[0]["N"] != DBNull.Value) ? Conversions.ToDecimal(Strings.FormatNumber(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"]))) : Conversions.ToDecimal(Strings.FormatNumber(0)));
 			Label_REGLE_CLIENT.Text = Conversions.ToString(num4);
-			Text_CREDIT.Text = Conversions.ToString(decimal.Subtract(decimal.Add(decimal.Add(num, num2), num3), num4)) + " DH";
+			Text_CREDIT.Text = Conversions.ToString(LOGICA.Domain.ClientCreditBalance.Calculate(num, num2, num3, num4)) + " DH";
 		}
 	}
 
