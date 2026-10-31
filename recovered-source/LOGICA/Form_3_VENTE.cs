@@ -12897,16 +12897,9 @@ public class Form_3_VENTE : Form
 				MySqlCommand val4 = new MySqlCommand();
 				var checkoutBoundary = new LOGICA.Infrastructure.Checkout.MySqlCheckoutTransactionBoundary(Module1.cn_SQL, val4);
 				LOGICA.ApplicationLayer.Checkout.CheckoutTransactionBoundaryService.Begin(checkoutBoundary);
-				val4.CommandText = "Select CL from TABLE_NUM  where ID = 0 ";
-				val4.Connection = Module1.cn_SQL;
-				if (val4.ExecuteScalar() == DBNull.Value)
-				{
-					_N_TICKET_SOLDER = Conversions.ToString(0);
-				}
-				else
-				{
-					_N_TICKET_SOLDER = Strings.Format(Conversions.ToDouble(val4.ExecuteScalar()), "000000");
-				}
+				_N_TICKET_SOLDER = LOGICA.ApplicationLayer.Checkout.CheckoutTicketSequenceService.ReadCurrent(
+					new LOGICA.Infrastructure.Checkout.MySqlCheckoutTicketSequenceReader(val4, Module1.cn_SQL),
+					LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutTicketSequenceSemantics.Instance);
 				Text_ID_TICKET.Text = Strings.Format(DateTime.Now, "ddMMyyHHmmssfff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text;
 				try
 				{
