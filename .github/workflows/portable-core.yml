@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'modernization/**'
+      - 'scripts/verify-beta-rc.ps1'
+      - 'scripts/test-beta-release-verifier.ps1'
       - 'recovered-source/LOGICA/Domain/**'
       - 'recovered-source/LOGICA/Application/Cash/**'
       - 'recovered-source/LOGICA/Application/Clients/**'
@@ -32,3 +34,6 @@ jobs:
         run: dotnet build modernization/LOGICA.CorePortability.csproj -c Release --nologo
       - name: Execute Linux smoke tests for cash, settlement, checkout and inventory
         run: dotnet run --project modernization/LOGICA.CoreSmoke.csproj -c Release
+      - name: Cross-platform offline beta verifier regression tests
+        shell: pwsh
+        run: ./scripts/test-beta-release-verifier.ps1
