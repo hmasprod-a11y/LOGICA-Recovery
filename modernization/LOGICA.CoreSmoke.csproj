@@ -10,5 +10,6 @@
   <Import Project="CoreSources.props" />
   <ItemGroup>
     <Compile Include="PortableCoreSmoke.cs" />
+    <Compile Include="PortableCatalogueSmoke.cs" />
   </ItemGroup>
 </Project>

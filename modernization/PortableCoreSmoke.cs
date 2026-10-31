@@ -140,7 +140,8 @@ internal static class PortableCoreSmoke
             delegate { missedRows++; });
         Require(Object.ReferenceEquals(duplicate, catalogue.Rows[0]) && checkedRows == 2 && missedRows == 1,
             "Catalogue duplicate precheck changed");
-        Console.WriteLine("PASS .NET 10 Linux core: cash, client settlement, checkout, stock movement and catalogue duplicate precheck");
+        Require(PortableCatalogueSmoke.Run() == 0, "Catalogue creation portable smoke failed");
+        Console.WriteLine("PASS .NET 10 Linux core: cash, client settlement, checkout, stock movement, catalogue creation and duplicate precheck");
         return 0;
     }
 }

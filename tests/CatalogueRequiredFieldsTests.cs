@@ -3,6 +3,7 @@ using System.Globalization;
 using Microsoft.VisualBasic;
 using Microsoft.VisualBasic.CompilerServices;
 using LOGICA.Domain;
+using LOGICA.Infrastructure.Compatibility;
 
 internal static class CatalogueRequiredFieldsTests
 {
@@ -23,12 +24,12 @@ internal static class CatalogueRequiredFieldsTests
                 foreach (string value in new[] { null, "", " ", "   " })
                 {
                     assertions++;
-                    if (!CatalogueRequiredFields.IsMissingIdentifier(value)) throw new Exception("Required identifier baseline changed");
+                    if (!CatalogueRequiredFields.IsMissingIdentifier(value, VisualBasicCatalogueSemantics.Instance)) throw new Exception("Required identifier baseline changed");
                 }
                 foreach (string value in new[] { "0", "False", " CI ", "CI's article", "\0" })
                 {
                     assertions++;
-                    if (CatalogueRequiredFields.IsMissingIdentifier(value)) throw new Exception("Nonempty identifier baseline changed");
+                    if (CatalogueRequiredFields.IsMissingIdentifier(value, VisualBasicCatalogueSemantics.Instance)) throw new Exception("Nonempty identifier baseline changed");
                 }
                 // Include all single UTF-16 code units, both alone and space-padded.
                 // VB Trim has its own whitespace semantics: retain the legacy oracle.
@@ -38,7 +39,7 @@ internal static class CatalogueRequiredFieldsTests
                     foreach (string input in new[] { value, " " + value + " " })
                     {
                         assertions++;
-                        if (CatalogueRequiredFields.IsMissingIdentifier(input) != Legacy(input))
+                        if (CatalogueRequiredFields.IsMissingIdentifier(input, VisualBasicCatalogueSemantics.Instance) != Legacy(input))
                             throw new Exception("Identifier predicate differs at U+" + code.ToString("X4"));
                     }
                 }

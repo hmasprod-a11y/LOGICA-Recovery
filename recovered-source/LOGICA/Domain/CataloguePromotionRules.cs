@@ -1,14 +1,12 @@
-using Microsoft.VisualBasic.CompilerServices;
-
 namespace LOGICA.Domain
 {
     internal static class CataloguePromotionRules
     {
-        public static bool IsRejected(string text)
+        public static bool IsRejected(string text, ILegacyCatalogueSemantics semantics)
         {
-            // Keep short-circuiting, VB conversion and the legacy upper bound only.
-            return Operators.CompareString(text, "", false) == 0 ||
-                decimal.Compare(Conversions.ToDecimal(text), 100m) > 0;
+            // Preserve short-circuiting before the original decimal conversion.
+            return semantics.EqualsText(text, "") ||
+                decimal.Compare(semantics.ToDecimal(text), 100m) > 0;
         }
     }
 }

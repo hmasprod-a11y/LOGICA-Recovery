@@ -17,3 +17,7 @@ Run locally with the .NET 10 SDK:
 
 This proves source portability for the selected subset only. It is not evidence
 that Bunifu, device drivers, printing, or the full POS run on modern .NET.
+
+Catalogue creation, row mapping, promotion and required-field validation are now linked from the original production files. Legacy VB formatting, Trim, Val and decimal conversion remain in the Windows-only compatibility adapter. Portable smoke exercises the ordered creation workflow, partial writes, failure boundaries and validation; no production database is used.
+
+The original EAN-13 twelve-digit checksum now uses the same catalogue compatibility port for VB per-character conversion; the eleven-digit suffix remains portable and unchanged. Both barcode paths are exercised in the Linux smoke and Windows characterization suite.

@@ -9,12 +9,13 @@ on:
       - 'recovered-source/LOGICA/Application/Clients/**'
       - 'recovered-source/LOGICA/Application/Checkout/**'
       - 'recovered-source/LOGICA/Application/Inventory/**'
-      - 'recovered-source/LOGICA/Application/Catalogue/CollectionDuplicatePrecheck.cs'
+      - 'recovered-source/LOGICA/Application/Catalogue/**'
       - '.github/workflows/portable-core.yml'
   push:
     paths:
       - 'modernization/**'
       - 'recovered-source/LOGICA/Application/Inventory/**'
+      - 'recovered-source/LOGICA/Application/Catalogue/**'
       - '.github/workflows/portable-core.yml'
 permissions:
   contents: read
