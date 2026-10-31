@@ -30,7 +30,12 @@ function Assert-SafePath([string]$name) {
     }
     foreach ($segment in $name.Split('/')) {
         # Reject Windows filename aliases, control characters and trailing-dot/space collisions.
-        if ($segment -match '[\x00-\x1F]' -or $segment -match '[. ]
+        if ($segment -match '[\x00-\x1F]' -or $segment -match '[. ]$' -or
+            $segment -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)') {
+            throw "Unsafe Windows archive or manifest path: $name"
+        }
+    }
+}
 $expected = @((Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json))
 if ($expected.Count -lt 5 -or $expected.Count -gt 10000) { throw 'Invalid release manifest entry count' }
 $byPath = [System.Collections.Generic.Dictionary[string,object]]::new([System.StringComparer]::OrdinalIgnoreCase)
