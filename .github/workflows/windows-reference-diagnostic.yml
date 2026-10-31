@@ -1,6 +1,13 @@
 name: LOGICA Windows build and POS verification
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'recovered-source/**'
+      - 'tests/**'
+      - 'scripts/test-domain.ps1'
+      - 'scripts/test-pos*'
+      - '.github/workflows/windows-reference-diagnostic.yml'
   push:
     paths:
       - 'recovered-source/**'
