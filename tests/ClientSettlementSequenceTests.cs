@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.VisualBasic.CompilerServices;
 using LOGICA.Domain;
+using LOGICA.Infrastructure.Compatibility;
 
 internal static class ClientSettlementSequenceTests
 {
@@ -14,7 +15,7 @@ internal static class ClientSettlementSequenceTests
     {
         int count=0;
         Func<object> counted=delegate { count++; return read(); };
-        try { int id=useNew ? ClientSettlementSequence.NextId(counted) : Original(counted); calls=count; return "ok:"+id; }
+        try { int id=useNew ? ClientSettlementSequence.NextId(counted, VisualBasicSettlementSemantics.Instance) : Original(counted); calls=count; return "ok:"+id; }
         catch(Exception e) { calls=count; return "error:"+e.GetType().FullName; }
     }
 

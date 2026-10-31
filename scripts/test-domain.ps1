@@ -15,6 +15,7 @@ try {
     $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Presentation/Input') -Filter '*.cs' | ForEach-Object { $_.FullName })
     $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Presentation/Formatting') -Filter '*.cs' | ForEach-Object { $_.FullName })
     $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Application/Clients') -Filter '*.cs' | ForEach-Object { $_.FullName })
+    $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Infrastructure/Compatibility') -Filter '*.cs' | ForEach-Object { $_.FullName })
     $tests = @(Get-ChildItem -LiteralPath (Join-Path $root 'tests') -Filter '*Tests.cs' | Sort-Object Name)
     if ($sources.Count -eq 0 -or $tests.Count -eq 0) { throw 'Domain sources or tests missing' }
     foreach ($test in $tests) {

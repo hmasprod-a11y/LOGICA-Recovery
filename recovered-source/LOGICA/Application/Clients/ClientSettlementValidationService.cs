@@ -1,4 +1,3 @@
-using Microsoft.VisualBasic.CompilerServices;
 using LOGICA.Domain;
 
 namespace LOGICA.ApplicationLayer.Clients
@@ -15,17 +14,17 @@ namespace LOGICA.ApplicationLayer.Clients
     // Re-read Amount for the numeric guard just as the original form does.
     internal static class ClientSettlementValidationService
     {
-        internal static string FirstWarning(IClientSettlementValidationContext context)
+        internal static string FirstWarning(IClientSettlementValidationContext context, ILegacySettlementSemantics legacy)
         {
-            if (Operators.CompareString(context.ClientId, "", false) == 0)
+            if (legacy.IsEmpty(context.ClientId))
                 return "Veuillez remplir le champ -ID_CLIENT- ";
-            if (Operators.CompareString(context.ClientName, "", false) == 0)
+            if (legacy.IsEmpty(context.ClientName))
                 return "Veuillez remplir le champ -CLIENT- ";
-            if (Operators.CompareString(context.Amount, "", false) == 0)
+            if (legacy.IsEmpty(context.Amount))
                 return "Veuillez remplir le champ -MONTANT- ";
-            if (ClientSettlementAmountRule.IsRejected(context.Amount))
+            if (ClientSettlementAmountRule.IsRejected(context.Amount, legacy))
                 return "Veuillez remplir le champ -MONTANT- ";
-            if (Operators.CompareString(context.PaymentMode, "", false) == 0)
+            if (legacy.IsEmpty(context.PaymentMode))
                 return "Veuillez remplir le champ -MODE_P- ";
             return null;
         }

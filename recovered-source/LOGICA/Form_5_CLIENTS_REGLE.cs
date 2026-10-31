@@ -3454,7 +3454,7 @@ public class Form_5_CLIENTS_REGLE : Form
 		{
 			try
 			{
-				string warning = LOGICA.ApplicationLayer.Clients.ClientSettlementValidationService.FirstWarning(new SettlementValidationContext(this));
+				string warning = LOGICA.ApplicationLayer.Clients.ClientSettlementValidationService.FirstWarning(new SettlementValidationContext(this), LOGICA.Infrastructure.Compatibility.VisualBasicSettlementSemantics.Instance);
 				if (warning != null)
 				{
 					MessageBox.Show(warning, "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
@@ -3470,7 +3470,7 @@ public class Form_5_CLIENTS_REGLE : Form
 					{
 						Module1.cn_SQL.Open();
 					}
-					int num = LOGICA.Domain.ClientSettlementSequence.NextId(() => val.ExecuteScalar());
+					int num = LOGICA.Domain.ClientSettlementSequence.NextId(() => val.ExecuteScalar(), LOGICA.Infrastructure.Compatibility.VisualBasicSettlementSemantics.Instance);
 					Module1.cn_SQL.Close();
 					DT.Rows.Add();
 					int index = DT.Rows.Count - 1;

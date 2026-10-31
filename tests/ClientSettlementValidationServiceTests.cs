@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using LOGICA.ApplicationLayer.Clients;
+using LOGICA.Infrastructure.Compatibility;
 
 internal static class ClientSettlementValidationServiceTests
 {
@@ -19,7 +20,7 @@ internal static class ClientSettlementValidationServiceTests
     }
     static void Check(Context c, string expected, string calls)
     {
-        string warning=ClientSettlementValidationService.FirstWarning(c);
+        string warning=ClientSettlementValidationService.FirstWarning(c, VisualBasicSettlementSemantics.Instance);
         if(warning!=expected)throw new Exception("warning mismatch: "+warning+" vs "+expected);
         if(String.Join(",",c.Calls.ToArray())!=calls)
             throw new Exception("read order mismatch: "+String.Join(",",c.Calls.ToArray())+" vs "+calls);
@@ -37,7 +38,7 @@ internal static class ClientSettlementValidationServiceTests
         {
             var c=new Context{FailAt=step};
             Exception e=null;
-            try { ClientSettlementValidationService.FirstWarning(c); } catch(Exception x) {e=x;}
+            try { ClientSettlementValidationService.FirstWarning(c, VisualBasicSettlementSemantics.Instance); } catch(Exception x) {e=x;}
             if(!Object.ReferenceEquals(e,c.Failure))throw new Exception("exception identity changed: "+step);
         }
         Console.WriteLine("PASS original client settlement warning precedence, read order and failure propagation");

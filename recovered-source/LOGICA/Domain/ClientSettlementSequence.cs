@@ -1,5 +1,4 @@
 using System;
-using Microsoft.VisualBasic.CompilerServices;
 
 namespace LOGICA.Domain
 {
@@ -7,10 +6,10 @@ namespace LOGICA.Domain
     // ExecuteScalar only when the first read is not DBNull. Not an ID allocator redesign.
     internal static class ClientSettlementSequence
     {
-        internal static int NextId(Func<object> readMaximum)
+        internal static int NextId(Func<object> readMaximum, ILegacySettlementSemantics legacy)
         {
             if (readMaximum() == DBNull.Value) return 1;
-            return checked((int)Math.Round(Conversions.ToDouble(readMaximum()) + 1.0));
+            return checked((int)Math.Round(legacy.ToDouble(readMaximum()) + 1.0));
         }
     }
 }
