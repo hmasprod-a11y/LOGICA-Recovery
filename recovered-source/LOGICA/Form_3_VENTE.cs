@@ -12915,7 +12915,7 @@ public class Form_3_VENTE : Form
 				{
 					string text2 = "";
 					DateTime dateTime = default(DateTime);
-					LOGICA.ApplicationLayer.Checkout.CheckoutPostingService.Post(
+					LOGICA.ApplicationLayer.Checkout.CheckoutTransactionFinalizationService.PostAndFinalize(
 						new LOGICA.Infrastructure.Checkout.MySqlCheckoutPostingStore(val4, Module1.cn_SQL),
 						new LOGICA.ApplicationLayer.Checkout.CheckoutPostingInput
 						{
@@ -12960,9 +12960,7 @@ public class Form_3_VENTE : Form
 								Workstation = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text,
 								TicketNumber = _N_TICKET_SOLDER
 							}
-						});
-					val5.Commit();
-					Module1.cn_SQL.Close();
+						}, new LOGICA.Infrastructure.Checkout.MySqlCheckoutTransactionFinalizer(val5, Module1.cn_SQL));
 				}
 				catch (Exception ex5)
 				{
