@@ -7,7 +7,7 @@ This is a **candidate for isolated acceptance**, not an automatic upgrade or a p
 - The recovered Windows Forms POS targeting **.NET Framework 4.8, x86**, with original runtime DLLs and launcher scripts.
 - The integrated, behavior-preserving Domain/Application/Infrastructure refactors and compatibility adapters.
 - A separate **.NET 10 portability test core** for selected logic. The Windows POS itself has **not** been migrated to .NET 10, the web, or Microsoft Store.
-- No production shop database, store credentials, or original license.
+- No production shop database, store credentials, or original license. The release packaging step forces `CHEMIN_DB.sni` to `127.0.0.1` and `hash_licence.sni` to empty; this does not change an existing shop installation.
 
 ## Download and verification
 
@@ -17,7 +17,7 @@ This is a **candidate for isolated acceptance**, not an automatic upgrade or a p
    - `SHA256SUMS.txt` — SHA-256 of that ZIP.
    - `LOGICA-2.0-Beta-RC1-file-manifest.json` — per-file hashes and sizes.
    - `verify-beta-rc.ps1` — offline, read-only verifier for the complete ZIP and manifest.
-3. Keep the four release files together and run `powershell.exe -NoProfile -File .\\verify-beta-rc.ps1` in the downloaded artifact folder. The verifier checks the ZIP SHA-256, every file hash/size, manifest path safety, required runtime files, build provenance, and empty license state **without extracting or executing the application**. Do not run a ZIP that fails verification.
+3. Keep the four release files together and run `powershell.exe -NoProfile -File .\\verify-beta-rc.ps1` in the downloaded artifact folder. The verifier checks the ZIP SHA-256, every file hash/size, manifest path safety, required runtime files, build provenance, and empty license state and localhost-only packaged DB defaults **without extracting or executing the application**. Do not run a ZIP that fails verification.
    - Alternatively, use `pwsh -File .\\verify-beta-rc.ps1` on systems with PowerShell 7.
    - Hashes detect corruption and mismatches; they **do not independently authenticate the publisher**. Obtain all four files from the same trusted GitHub Actions run and verify its source commit.
 4. Extract into a **new folder**, not over an existing working installation. Follow `RUNNING.md` inside the package.
