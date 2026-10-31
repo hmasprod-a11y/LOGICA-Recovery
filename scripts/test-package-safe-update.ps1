@@ -63,6 +63,12 @@ try {
  $rejected=$false
  try { & (Join-Path $PSScriptRoot 'package-safe-update.ps1') -DistPath $missingDll -OutputPath (Join-Path $root 'missing-dll-out') } catch { $rejected=$true }
  if(-not $rejected){throw 'Packaging accepted runtime without DLL dependencies'}
+ # Compare binary payload bytes with source to prevent silent truncation.
+ foreach($name in @('LOGICA.exe','dependency.dll')){
+  $sourceHash=(Get-FileHash -LiteralPath (Join-Path $source $name) -Algorithm SHA256).Hash
+  $updateHash=(Get-FileHash -LiteralPath (Join-Path $output $name) -Algorithm SHA256).Hash
+  if($sourceHash -ne $updateHash){throw "Payload differs from built source: $name"}
+ }
  Write-Host 'PASS isolated binaries-only overlay preserves existing shop settings, license, config and bd'
 } finally {
  Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
