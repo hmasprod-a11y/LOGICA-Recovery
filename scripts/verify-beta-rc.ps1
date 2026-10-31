@@ -17,9 +17,9 @@ foreach ($path in @($ZipPath, $ManifestPath, $SumsPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing release verification input: $path" }
 }
 $sumLines = @(Get-Content -LiteralPath $SumsPath | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-if ($sumLines.Count -ne 1 -or $sumLines[0] -cnotmatch '^([a-fA-F0-9]{64})  LOGICA-2\.0-Beta-RC1-Windows-x86\.zip$') {
-    throw 'Invalid SHA256SUMS.txt: expected exactly one ZIP digest'
-}
+if ($sumLines.Count -ne 1) { throw 'Invalid SHA256SUMS.txt: expected exactly one ZIP digest' }
+$sumMatch = [regex]::Match($sumLines[0], '^([a-fA-F0-9]{64})  LOGICA-2\.0-Beta-RC1-Windows-x86\.zip$')
+if (-not $sumMatch.Success) { throw 'Invalid SHA256SUMS.txt: expected ZIP digest and exact filename' }
 $zipHash = (Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256).Hash
 if ($zipHash -ine $sumMatch.Groups[1].Value) { throw 'Release ZIP SHA256 mismatch' }
 function Assert-SafePath([string]$name) {
