@@ -5295,70 +5295,18 @@ public class Form_0_TEMPLATE : Form
 					SetLocaleInfo(1024u, 14u, ".");
 					SetLocaleInfo(1024u, 22u, ".");
 				}
-				Text_ara_disk.Text = GetVolumeSerial().ToString() + GetMotherbaordID().ToString().PadRight(10, '0').Replace(" ", "0")
-					.Substring(0, 10);
-				RichText_insc.Text = Module1.XOR_Encrypt(Text_ara_disk.Text, "siper");
-				RegistryKey registryKey = Registry.CurrentUser.CreateSubKey("svchost");
-				Text_ara_reg.Text = Conversions.ToString(registryKey.GetValue("screenColorsF"));
-				if (Operators.CompareString(Text_ara_reg.Text, "", TextCompare: false) == 0)
-				{
-					Text_ara_reg.Text = "vide";
-				}
-				if (Operators.CompareString(Text_ara_reg.Text, Text_ara_disk.Text, TextCompare: false) == 0)
-				{
-					((Control)Panel_clé).Visible = false;
-					((Control)Panel_clé).SendToBack();
-					((Form)MyProject.Forms.Form_1_LOGIN).Close();
-					((Form)MyProject.Forms.Form_1_LOGIN).TopLevel = false;
-					((Control)Panel_HOME).Controls.Clear();
-					((Control)Panel_HOME).Controls.Add((Control)(object)MyProject.Forms.Form_1_LOGIN);
-					((Control)MyProject.Forms.Form_1_LOGIN).Show();
-					((Control)MyProject.Forms.Form_1_LOGIN.Panel_login).Visible = true;
-					((Control)MyProject.Forms.Form_1_LOGIN.Panel_login).BringToFront();
-				}
-				else
-				{
-					((Control)Panel_clé).Visible = true;
-					((Control)Panel_clé).BringToFront();
-					((Control)Panel_FICHE).Visible = true;
-					((Control)Panel_FICHE).BringToFront();
-					PictureBox100.Image = MyProject.Forms.Form_1_LOGIN.PictureBox100.Image;
-				}
-				((TextBoxBase)RichText_insc).SelectionStart = 0;
-				RichText_insc.SelectionLength = 4;
-				RichText_insc.SelectionColor = Color.Tomato;
-				((TextBoxBase)RichText_insc).SelectionStart = 4;
-				RichText_insc.SelectionLength = 4;
-				RichText_insc.SelectionColor = Color.Blue;
-				((TextBoxBase)RichText_insc).SelectionStart = 8;
-				RichText_insc.SelectionLength = 4;
-				RichText_insc.SelectionColor = Color.Green;
-				((TextBoxBase)RichText_insc).SelectionStart = 12;
-				RichText_insc.SelectionLength = 4;
-				RichText_insc.SelectionColor = Color.Black;
-				((TextBoxBase)RichText_insc).SelectionStart = 16;
-				RichText_insc.SelectionLength = 4;
-				RichText_insc.SelectionColor = Color.Tomato;
-				((TextBoxBase)RichText_insc).SelectionStart = 20;
-				RichText_insc.SelectionLength = 4;
-				RichText_insc.SelectionColor = Color.Blue;
-				((TextBoxBase)RichText_insc).SelectionStart = 20;
-				RichText_insc.SelectionLength = 4;
-				RichText_insc.SelectionColor = Color.Green;
-				((TextBoxBase)RichText_insc).SelectionStart = 24;
-				RichText_insc.SelectionLength = 4;
-				RichText_insc.SelectionColor = Color.Black;
-				((TextBoxBase)RichText_insc).SelectionStart = 28;
-				RichText_insc.SelectionLength = 4;
-				RichText_insc.SelectionColor = Color.Tomato;
-				((TextBoxBase)RichText_insc).SelectionStart = 32;
-				RichText_insc.SelectionLength = 4;
-				RichText_insc.SelectionColor = Color.Blue;
-				((TextBoxBase)RichText_insc).SelectionStart = 36;
-				RichText_insc.SelectionLength = 4;
-				RichText_insc.SelectionColor = Color.Green;
-				((TextBoxBase)RichText_insc).SelectAll();
-				RichText_insc.SelectionAlignment = (HorizontalAlignment)2;
+				// Owner-maintained build: start directly at the normal POS login.
+				// Hardware registration and activation-key entry are no longer startup requirements.
+				// Database connection checks above and user login remain unchanged.
+				((Control)Panel_clé).Visible = false;
+				((Control)Panel_clé).SendToBack();
+				((Form)MyProject.Forms.Form_1_LOGIN).Close();
+				((Form)MyProject.Forms.Form_1_LOGIN).TopLevel = false;
+				((Control)Panel_HOME).Controls.Clear();
+				((Control)Panel_HOME).Controls.Add((Control)(object)MyProject.Forms.Form_1_LOGIN);
+				((Control)MyProject.Forms.Form_1_LOGIN).Show();
+				((Control)MyProject.Forms.Form_1_LOGIN.Panel_login).Visible = true;
+				((Control)MyProject.Forms.Form_1_LOGIN.Panel_login).BringToFront();
 				if (Conversions.ToBoolean(TextBox_MODE_WINDOWS.Text))
 				{
 					((Form)this).FormBorderStyle = (FormBorderStyle)1;

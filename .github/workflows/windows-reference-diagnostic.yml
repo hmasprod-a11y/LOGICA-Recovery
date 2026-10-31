@@ -10,6 +10,7 @@ on:
       - 'scripts/package-safe-update.ps1'
       - 'scripts/test-package-safe-update.ps1'
       - 'scripts/test-workflow-readonly.py'
+      - 'scripts/test-owner-startup.py'
       - 'scripts/test-pos*'
       - 'scripts/test-recovered*'
       - 'input/recovered-original.sql'
@@ -24,6 +25,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verify CI source-write protection
         run: python3 scripts/test-workflow-readonly.py
+      - name: Verify owner build opens normal login without activation key
+        run: python3 scripts/test-owner-startup.py
   build-test:
     runs-on: windows-latest
     timeout-minutes: 25
