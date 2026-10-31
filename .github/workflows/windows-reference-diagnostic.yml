@@ -8,6 +8,7 @@ on:
       - 'scripts/test-domain.ps1'
       - 'scripts/test-pos*'
       - 'scripts/test-release-candidate.ps1'
+      - 'scripts/package-beta-rc.ps1'
       - '.github/workflows/windows-reference-diagnostic.yml'
   push:
     paths:
@@ -16,6 +17,7 @@ on:
       - 'scripts/test-pos*'
       - 'scripts/test-recovered*'
       - 'scripts/test-release-candidate.ps1'
+      - 'scripts/package-beta-rc.ps1'
       - 'input/recovered-original.sql'
       - 'input/mysql-compatibility.sql'
       - '.github/workflows/windows-reference-diagnostic.yml'
@@ -81,6 +83,9 @@ jobs:
       - name: Gate unified beta candidate and generate file hashes
         shell: pwsh
         run: ./scripts/test-release-candidate.ps1
+      - name: Build and independently verify beta RC ZIP
+        shell: pwsh
+        run: ./scripts/package-beta-rc.ps1
       - name: Inspect original dependency types
         if: always()
         shell: powershell
@@ -98,6 +103,13 @@ jobs:
           name: LOGICA-build-diagnostics
           path: results/
           retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: LOGICA-2.0-Beta-RC1-Windows-x86
+          path: release/
+          if-no-files-found: error
+          retention-days: 90
       - uses: actions/upload-artifact@v4
         if: always()
         with:
