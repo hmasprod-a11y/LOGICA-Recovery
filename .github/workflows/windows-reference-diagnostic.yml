@@ -6,6 +6,7 @@ on:
       - 'recovered-source/**'
       - 'tests/**'
       - 'scripts/test-domain.ps1'
+      - 'docs/RUNNING.md'
       - 'scripts/test-pos*'
       - 'scripts/test-release-candidate.ps1'
       - 'scripts/package-beta-rc.ps1'
@@ -17,6 +18,7 @@ on:
     paths:
       - 'recovered-source/**'
       - 'scripts/repair-source.py'
+      - 'docs/RUNNING.md'
       - 'scripts/test-pos*'
       - 'scripts/test-recovered*'
       - 'scripts/test-release-candidate.ps1'
