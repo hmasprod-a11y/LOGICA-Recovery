@@ -4,7 +4,7 @@ using LOGICA.ApplicationLayer.Checkout;
 
 internal static class PortableTransactionSmoke
 {
-    private sealed class Store : ICheckoutPostingStore, ICheckoutTransactionFinalizer
+    private sealed class Store : ICheckoutPostingStore, ICheckoutTransactionFinalizer, ICheckoutTransactionBoundary
     {
         internal readonly List<string> Events = new List<string>();
         internal string FailAt;
@@ -20,6 +20,10 @@ internal static class PortableTransactionSmoke
         public void Complete(CheckoutCompletionRecord completion) { Mark("complete"); }
         public void Commit() { Mark("commit"); }
         public void Close() { Mark("close"); }
+        public bool IsOpen { get { Mark("state"); return false; } }
+        public void Open() { Mark("open"); }
+        public void BeginAndBind() { Mark("begin.bind"); }
+        public void Rollback() { Mark("rollback"); }
     }
 
     private static CheckoutPostingInput Input(Store store)
@@ -46,6 +50,23 @@ internal static class PortableTransactionSmoke
             throw new Exception("Transaction finalization order: " + actual + " expected " + expected);
     }
 
+    private static void CheckBoundary(string failAt, string expected)
+    {
+        var boundary = new Store { FailAt = failAt };
+        bool failed = false;
+        try
+        {
+            CheckoutTransactionBoundaryService.Begin(boundary);
+            CheckoutTransactionBoundaryService.CommitAndClose(boundary);
+        }
+        catch (InvalidOperationException ex) { failed = ex.Message == failAt; }
+        if (failed != (failAt != null))
+            throw new Exception("Transaction boundary failure propagation: " + failAt);
+        if (String.Join(",", boundary.Events.ToArray()) != expected)
+            throw new Exception("Transaction boundary order: " +
+                String.Join(",", boundary.Events.ToArray()) + " expected " + expected);
+    }
+
     public static int Run()
     {
         Check(null, "header,journal,print,complete,commit,close");
@@ -53,7 +74,12 @@ internal static class PortableTransactionSmoke
         Check("complete", "header,journal,print,complete");
         Check("commit", "header,journal,print,complete,commit");
         Check("close", "header,journal,print,complete,commit,close");
-        Console.WriteLine("PASS .NET 10 portable checkout: commit/close order and failure propagation");
+        CheckBoundary(null, "state,open,begin.bind,commit,close");
+        CheckBoundary("open", "state,open");
+        CheckBoundary("begin.bind", "state,open,begin.bind");
+        CheckBoundary("commit", "state,open,begin.bind,commit");
+        CheckBoundary("close", "state,open,begin.bind,commit,close");
+        Console.WriteLine("PASS .NET 10 portable checkout: transaction boundary and finalization failure propagation");
         return 0;
     }
 }
