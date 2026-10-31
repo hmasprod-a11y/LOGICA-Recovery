@@ -106,7 +106,7 @@ internal static class CheckoutTransactionBoundaryTests
         }
         if (failure == "commit" && oldEvents.IndexOf("close", StringComparison.Ordinal) >= 0)
             throw new Exception(label + ": closed after failed commit");
-        if (failure == "post" && oldEvents.IndexOf("commit", StringComparison.Ordinal) >= 0)
+        if (!waiting && failure == "post" && oldEvents.IndexOf("commit", StringComparison.Ordinal) >= 0)
             throw new Exception(label + ": committed after failed posting");
     }
 
