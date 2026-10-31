@@ -66,4 +66,6 @@ try {
 $zipHash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
 "$zipHash  $zipName" | Set-Content -LiteralPath (Join-Path $releaseDir 'SHA256SUMS.txt') -Encoding ASCII
 Copy-Item -LiteralPath $manifestPath -Destination (Join-Path $releaseDir 'LOGICA-2.0-Beta-RC1-file-manifest.json') -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'verify-beta-rc.ps1') -Destination (Join-Path $releaseDir 'verify-beta-rc.ps1') -Force
+& (Join-Path $releaseDir 'verify-beta-rc.ps1') -ReleaseDirectory $releaseDir -ExpectedCommit $commit
 Write-Host "PASS: $zipName ($((Get-Item $zip).Length) bytes); commit $commit; SHA256 $zipHash"
