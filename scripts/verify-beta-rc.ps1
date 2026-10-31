@@ -21,7 +21,7 @@ if ($sumLines.Count -ne 1 -or $sumLines[0] -cnotmatch '^([a-fA-F0-9]{64})  LOGIC
     throw 'Invalid SHA256SUMS.txt: expected exactly one ZIP digest'
 }
 $zipHash = (Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256).Hash
-if ($zipHash -ine $Matches[1]) { throw 'Release ZIP SHA256 mismatch' }
+if ($zipHash -ine $sumMatch.Groups[1].Value) { throw 'Release ZIP SHA256 mismatch' }
 function Assert-SafePath([string]$name) {
     if ([string]::IsNullOrWhiteSpace($name) -or $name.StartsWith('/') -or
         $name.Contains([char]92) -or $name.Contains(':') -or
