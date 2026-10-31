@@ -98,7 +98,20 @@ try {
         if ($name -eq 'log_erreur.sni' -and $entry.Length -ne 0) {
             throw 'Previous runtime error log found in beta ZIP'
         }
-        if ($name -eq 'CHEMIN_FOLDER.sni' -or $name -match '^PRINTER_(CL|C[1-7]|ADD|RAPPORT)\.sni
+        if ($name -eq 'CHEMIN_FOLDER.sni' -or $name -match '^PRINTER_(CL|C[1-7]|ADD|RAPPORT)\.sni$') {
+            $stream = $entry.Open()
+            try {
+                $reader = New-Object System.IO.StreamReader($stream)
+                try { $setting = $reader.ReadToEnd().Trim() }
+                finally { $reader.Dispose() }
+            } finally { $stream.Dispose() }
+            if ($name -eq 'CHEMIN_FOLDER.sni' -and $setting -ne 'Application.StartupPath') {
+                throw 'Non-portable folder path in beta ZIP'
+            }
+            if ($name -ne 'CHEMIN_FOLDER.sni' -and $setting -ne '0') {
+                throw "Beta package inherited a printer configuration: $name"
+            }
+        }
     }
     if ($seen.Count -ne $byPath.Count) { throw "Missing ZIP files: expected $($byPath.Count), found $($seen.Count)" }
     foreach ($required in @('LOGICA.exe','LOGICA.exe.config','Launch-LOGICA.ps1','Start-LOGICA.cmd','RUNNING.md','build-metadata.json','CHEMIN_DB.sni','CHEMIN_FOLDER.sni','hash_licence.sni','log_erreur.sni','PRINTER_CL.sni','PRINTER_ADD.sni','PRINTER_RAPPORT.sni','PRINTER_C1.sni','PRINTER_C2.sni','PRINTER_C3.sni','PRINTER_C4.sni','PRINTER_C5.sni','PRINTER_C6.sni','PRINTER_C7.sni')) {
