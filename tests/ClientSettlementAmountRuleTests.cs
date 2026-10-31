@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using Microsoft.VisualBasic;
 using LOGICA.Domain;
+using LOGICA.Infrastructure.Compatibility;
 
 internal static class ClientSettlementAmountRuleTests
 {
@@ -17,7 +18,7 @@ internal static class ClientSettlementAmountRuleTests
                 try { expected = (Conversion.Val(input) <= 0.0).ToString(); }
                 catch(Exception ex) { expected = ex.GetType().FullName; }
                 string actual;
-                try { actual = ClientSettlementAmountRule.IsRejected(input).ToString(); }
+                try { actual = ClientSettlementAmountRule.IsRejected(input, VisualBasicSettlementSemantics.Instance).ToString(); }
                 catch(Exception ex) { actual = ex.GetType().FullName; }
                 if (expected != actual)
                     throw new Exception("Settlement amount guard changed under " + culture + " for '" + input + "': expected " + expected + ", actual " + actual);
