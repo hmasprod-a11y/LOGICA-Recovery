@@ -23,3 +23,12 @@ Catalogue creation, row mapping, promotion and required-field validation are now
 The original EAN-13 twelve-digit checksum now uses the same catalogue compatibility port for VB per-character conversion; the eleven-digit suffix remains portable and unchanged. Both barcode paths are exercised in the Linux smoke and Windows characterization suite.
 
 Checkout pricing/stock validation milestone: original production sources for amount guards, selection, basket consistency, tier pricing and stock shortage are now linked into the portable .NET 10 core. VB conversion and object comparison remain behind `ILegacyCheckoutSemantics` in Windows Infrastructure. The portable smoke uses a test-only port and isolated stock lookup; Windows characterization compares the actual VB adapter against original expressions across cultures. This does not change database transactions, the UI or POS licensing.
+
+
+Checkout posting boundary milestone: the original Application orchestration now delegates
+stock, ticket header/journal, and payment streams to three separate production services.
+Each stage retains lazy enumeration and original exception timing. A Windows failure-injection
+matrix checks every read/write/print/completion boundary and verifies that no subsequent
+operation runs after a failure. The same production services are linked into .NET 10 Linux
+and exercised without VB, WinForms, MySQL or Bunifu. Transaction commit/rollback, printing,
+license, and actual shop database ownership remain in the original Windows form.

@@ -1,4 +1,4 @@
 internal static class CheckoutCoreIsolationEntry
 {
-    public static int Main() { return PortableCheckoutSmoke.Run(); }
+    public static int Main() { if (PortableCheckoutSmoke.Run() != 0) return 1; return PortablePostingSmoke.Run(); }
 }

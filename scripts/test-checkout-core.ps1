@@ -15,7 +15,11 @@ try {
         'recovered-source/LOGICA/Application/Checkout/StockValidationService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutPostingModels.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutPostingService.cs',
+        'recovered-source/LOGICA/Application/Checkout/CheckoutStockPostingService.cs',
+        'recovered-source/LOGICA/Application/Checkout/CheckoutTicketPostingService.cs',
+        'recovered-source/LOGICA/Application/Checkout/CheckoutPaymentPostingService.cs',
         'modernization/PortableCheckoutSmoke.cs',
+        'modernization/PortablePostingSmoke.cs',
         'tests/CheckoutCoreIsolationEntry.cs'
     ) | ForEach-Object { Join-Path $root $_ }
     foreach ($source in $sources) {
