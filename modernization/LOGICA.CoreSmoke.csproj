@@ -11,5 +11,6 @@
   <ItemGroup>
     <Compile Include="PortableCoreSmoke.cs" />
     <Compile Include="PortableCatalogueSmoke.cs" />
+    <Compile Include="PortableCheckoutSmoke.cs" />
   </ItemGroup>
 </Project>

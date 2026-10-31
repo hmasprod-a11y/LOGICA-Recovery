@@ -1,16 +1,14 @@
 using System;
-using Microsoft.VisualBasic;
-using Microsoft.VisualBasic.CompilerServices;
 
 namespace LOGICA.Domain
 {
     internal static class BasketTotalConsistency
     {
-        public static bool AreDifferent(decimal basketTotal, string displayedTotal)
+        public static bool AreDifferent(decimal basketTotal, string displayedTotal, ILegacyCheckoutSemantics legacy)
         {
-            // Preserve the original whole-unit rounding and VB culture/conversion path.
-            return Conversion.Val(Math.Round(Conversions.ToDecimal(basketTotal.ToString())))
-                != Conversion.Val(Math.Round(Conversions.ToDecimal(displayedTotal)));
+            // Preserve culture-sensitive ToString, conversion, midpoint rounding, Val and order.
+            return legacy.Val(Math.Round(legacy.ToDecimal(basketTotal.ToString())))
+                != legacy.Val(Math.Round(legacy.ToDecimal(displayedTotal)));
         }
     }
 }

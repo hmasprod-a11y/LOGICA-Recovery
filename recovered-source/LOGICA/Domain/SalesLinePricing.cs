@@ -1,25 +1,23 @@
 using System;
-using Microsoft.VisualBasic;
 
 namespace LOGICA.Domain
 {
     internal static class SalesLinePricing
     {
         public static decimal? SelectQuantityPrice(decimal absoluteQuantity, decimal minimumQuantity,
-            decimal quantityPrice, decimal standardPrice)
+            decimal quantityPrice, decimal standardPrice, ILegacyCheckoutSemantics legacy)
         {
-            // A disabled quantity price leaves the edited row unchanged in the legacy form.
-            if (Conversion.Val(quantityPrice) <= 0.0)
+            // Keep VB Val(double) precision, disabled tier and short-circuit order.
+            if (legacy.Val(quantityPrice) <= 0.0)
                 return null;
 
-            // Preserve the legacy double comparison, including its precision boundaries.
-            return Convert.ToDouble(absoluteQuantity) >= Conversion.Val(minimumQuantity)
+            return Convert.ToDouble(absoluteQuantity) >= legacy.Val(minimumQuantity)
                 ? quantityPrice : standardPrice;
         }
 
         public static decimal CalculateNetAmount(decimal unitPrice, decimal quantity, decimal discountPercent)
         {
-            // Keep the original operation order and intermediate overflow behavior.
+            // Keep original decimal operation order and intermediate overflow behavior.
             return decimal.Subtract(decimal.Multiply(unitPrice, quantity),
                 decimal.Divide(decimal.Multiply(decimal.Multiply(unitPrice, quantity), discountPercent), 100m));
         }

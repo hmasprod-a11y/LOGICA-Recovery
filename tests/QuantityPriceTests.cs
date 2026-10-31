@@ -7,7 +7,7 @@ internal static class QuantityPriceTests
     private static int assertions;
     private static void Check(decimal quantity, decimal minimum, decimal tier, decimal standard, decimal? expected)
     {
-        decimal? actual = SalesLinePricing.SelectQuantityPrice(quantity, minimum, tier, standard);
+        decimal? actual = SalesLinePricing.SelectQuantityPrice(quantity, minimum, tier, standard, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance);
         assertions++;
         if (actual != expected) throw new Exception("Quantity price mismatch");
     }
@@ -34,7 +34,7 @@ internal static class QuantityPriceTests
                 // The original double comparison treats these adjacent integers as equal.
                 Check(9007199254740992m, 9007199254740993m, 8m, 12m, 8m);
                 Check(decimal.MaxValue, decimal.MaxValue, 8m, 12m, 8m);
-                decimal? price = SalesLinePricing.SelectQuantityPrice(2m, 2m, 8m, 12m);
+                decimal? price = SalesLinePricing.SelectQuantityPrice(2m, 2m, 8m, 12m, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance);
                 assertions++;
                 if (!price.HasValue || SalesLinePricing.CalculateNetAmount(price.Value, 2m, 10m) != 14.4m)
                     throw new Exception("Selected tier must feed the existing net calculation");
