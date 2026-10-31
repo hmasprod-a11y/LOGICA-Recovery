@@ -147,6 +147,7 @@ internal static class PortableCoreSmoke
         Require(PortableSqlSmoke.Run() == 0, "Portable SQL boundary smoke failed");
         Require(PortableTicketSequenceSmoke.Run() == 0, "Portable ticket sequence smoke failed");
         Require(PortableTicketPostingSmoke.Run() == 0, "Portable ticket posting smoke failed");
+        Require(PortablePaymentModeSmoke.Run() == 0, "Portable payment modes smoke failed");
         Console.WriteLine("PASS .NET 10 Linux core: cash, client settlement, checkout posting, checkout validation/pricing, stock movement, catalogue creation and duplicate precheck");
         return 0;
     }
