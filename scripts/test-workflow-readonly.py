@@ -12,8 +12,8 @@ checks = {
     "repair still runs": "python scripts/repair-source.py" in workflow,
     "original Windows build remains": "dotnet build recovered-source/LOGICA.csproj" in workflow,
     "original POS checks remain": "./scripts/test-pos.ps1" in workflow,
-    "package only after passing tests": bool(re.search(r"(?m)^      - name: Finalize portable runtime package\\n        if: success\\(\\)", workflow)),
-    "runtime artifact only on success": bool(re.search(r"(?m)^      - uses: actions/upload-artifact@v4\\n        if: success\\(\\)\\n        with:\\n          name: LOGICA-Windows-complete", workflow)),
+    "package only after passing tests": bool(re.search(r"(?m)^      - name: Finalize portable runtime package\n        if: success\(\)", workflow)),
+    "runtime artifact only on success": bool(re.search(r"(?m)^      - uses: actions/upload-artifact@v4\n        if: success\(\)\n        with:\n          name: LOGICA-Windows-complete", workflow)),
 }
 for name, passed in checks.items():
     print(("PASS" if passed else "FAIL") + " " + name)
