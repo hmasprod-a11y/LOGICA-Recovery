@@ -5,6 +5,9 @@ on:
     paths:
       - 'recovered-source/**'
       - 'scripts/repair-source.py'
+      - 'scripts/setup-test-db.ps1'
+      - 'scripts/Launch-LOGICA.ps1'
+      - 'scripts/Start-LOGICA.cmd'
       - 'scripts/package-runtime.ps1'
       - 'scripts/test-package-settings.ps1'
       - 'scripts/package-safe-update.ps1'
@@ -12,6 +15,8 @@ on:
       - 'scripts/test-workflow-readonly.py'
       - 'scripts/test-pos*'
       - 'scripts/test-recovered*'
+      - 'input/LOGICA-dependencies.zip'
+      - 'input/LOGICA-source-complete.tar.gz'
       - 'input/recovered-original.sql'
       - 'input/mysql-compatibility.sql'
       - '.github/workflows/windows-reference-diagnostic.yml'
