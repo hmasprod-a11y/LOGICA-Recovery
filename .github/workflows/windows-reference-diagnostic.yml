@@ -81,7 +81,7 @@ jobs:
             Remove-Item dist/bd/mysql-data,dist/bd/mysql-credential.xml,dist/bd/mysql-import-complete.txt -Recurse -Force -ErrorAction SilentlyContinue
           }
       - name: Finalize portable runtime package
-        if: always()
+        if: success()
         shell: pwsh
         run: ./scripts/package-runtime.ps1
       - name: Inspect original dependency types
@@ -102,7 +102,7 @@ jobs:
           path: results/
           retention-days: 30
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: success()
         with:
           name: LOGICA-Windows-complete
           path: dist/
