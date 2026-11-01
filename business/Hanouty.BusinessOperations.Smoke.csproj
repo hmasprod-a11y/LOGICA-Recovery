@@ -21,6 +21,9 @@
     <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockCountFreshnessService.cs" Link="Inventory/StockCountFreshnessService.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptSupplierValidationService.cs" Link="Purchasing/PurchaseReceiptSupplierValidationService.cs" />
     <Compile Include="../tests/BusinessSnapshotFreshnessSmoke.cs" Link="Tests/BusinessSnapshotFreshnessSmoke.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptFreshnessService.cs" Link="Purchasing/PurchaseReceiptFreshnessService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockCountReconciliationPreviewService.cs" Link="Inventory/StockCountReconciliationPreviewService.cs" />
+    <Compile Include="../tests/BusinessRevalidationSmoke.cs" Link="Tests/BusinessRevalidationSmoke.cs" />
     <Compile Include="BusinessOperationsEntry.cs" />
   </ItemGroup>
 </Project>
