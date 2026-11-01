@@ -1,0 +1,92 @@
+# Exercise the actual extracted customer ZIP, not just the mutable dist/ build tree.
+# Runs only on an isolated Windows Actions runner with its temporary MariaDB fixture.
+$ErrorActionPreference = 'Stop'
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$release = Join-Path $root 'release'
+$zip = Join-Path $release 'LOGICA-2.0-Beta-RC1-Windows-x86.zip'
+$verifier = Join-Path $release 'verify-beta-rc.ps1'
+$results = Join-Path $root 'results'
+$ciDb = [string]$env:LOGICA_DB_CONNECTION_STRING
+if ($ciDb -notmatch '(?i)(?:^|;)\s*Server=127\.0\.0\.1\s*;' -or
+    $ciDb -notmatch '(?i)(?:^|;)\s*Port=3307\s*;' -or
+    $ciDb -notmatch '(?i)(?:^|;)\s*Database=logica_ci\s*;') {
+    throw 'Refusing extracted EXE smoke without the isolated CI database on loopback port 3307'
+}
+if (-not (Test-Path -LiteralPath $zip -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $verifier -PathType Leaf)) {
+    throw 'Signed-off release ZIP or independent verifier missing'
+}
+$commit = (& git -C $root rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$') { throw 'Cannot resolve checked-out source SHA' }
+& $verifier -ReleaseDirectory $release -ExpectedCommit $commit
+
+$server = Get-ChildItem (Join-Path $env:RUNNER_TEMP 'logica-mariadb/server') -Recurse -Filter mariadbd.exe -File |
+    Select-Object -First 1
+if (-not $server) { throw 'Isolated CI MariaDB binary missing: no network fallback permitted' }
+$extract = Join-Path $env:RUNNER_TEMP ('logica-rc1-field-smoke-' + [Guid]::NewGuid().ToString('N'))
+$app = $null
+$started = [Diagnostics.Stopwatch]::StartNew()
+try {
+    Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
+    foreach ($required in @('LOGICA.exe','LOGICA.exe.config','Launch-LOGICA.ps1','Start-LOGICA.cmd',
+                            'RUNNING.md','build-metadata.json','CHEMIN_DB.sni','hash_licence.sni')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $extract $required) -PathType Leaf)) {
+            throw "Extracted release is missing $required"
+        }
+    }
+    foreach ($private in @('bd/mysql-data','bd/mysql-credential.xml','bd/mysql-import-complete.txt')) {
+        if (Test-Path -LiteralPath (Join-Path $extract $private)) {
+            throw "Extracted release includes private database state: $private"
+        }
+    }
+    $metadata = Get-Content -LiteralPath (Join-Path $extract 'build-metadata.json') -Raw | ConvertFrom-Json
+    if ($metadata.sourceCommit -ne $commit -or $metadata.target -ne 'net48' -or
+        $metadata.architecture -ne 'x86' -or $metadata.originalShopDatabaseIncluded -ne $false) {
+        throw 'Extracted release provenance differs from the checked-out source'
+    }
+    # Launch the packaged real Windows executable with the isolated CI database.
+    # A live process alone is not sufficient: require a responsive WinForms main window.
+    $app = Start-Process -FilePath (Join-Path $extract 'LOGICA.exe') -WorkingDirectory $extract -PassThru
+    $windowReady = $false
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        Start-Sleep -Seconds 2
+        $app.Refresh()
+        if ($app.HasExited) { break }
+        if ($app.MainWindowHandle -ne 0 -and $app.Responding) { $windowReady = $true; break }
+    } while ($timer.Elapsed.TotalSeconds -lt 30)
+    if (-not $windowReady) { throw 'Extracted LOGICA.exe did not open a responsive main window' }
+    Write-Host 'PASS: extracted LOGICA.exe opened a responsive WinForms window'
+    if (-not $app.HasExited) { $app.Kill(); $app.WaitForExit(10000) | Out-Null }
+    $app = $null
+
+    # Verify the launcher *inside* the customer ZIP with the already-downloaded
+    # CI MariaDB server, in a fresh isolated data directory (never a shop DB).
+    $log = Join-Path $results 'extracted-release-launcher.log'
+    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $extract 'Launch-LOGICA.ps1') -ServerBin $server.Directory.FullName -Port 3308 -VerifyOnly *> $log
+    $exitCode = $LASTEXITCODE
+    Get-Content -LiteralPath $log | Select-String 'PASS|Base locale|ERREUR' | ForEach-Object { Write-Host $_ }
+    if ($exitCode -ne 0) { throw "Extracted portable launcher failed (exit $exitCode); see extracted-release-launcher.log" }
+    if (-not (Select-String -LiteralPath $log -Pattern 'PASS portable launcher imports original database and preserves row counts' -Quiet)) {
+        throw 'Extracted portable launcher did not report successful isolated database verification'
+    }
+    Write-Host 'PASS: extracted launcher imported original SQL fixture into a fresh loopback MariaDB instance'
+    [pscustomobject]@{
+        sourceCommit = $commit
+        extractedExeResponsive = $true
+        extractedLauncherVerified = $true
+        isolatedMariaDbPort = 3308
+        originalShopDatabaseTouched = $false
+        elapsedSeconds = [math]::Round($started.Elapsed.TotalSeconds, 1)
+    } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $results 'extracted-release-smoke.json') -Encoding UTF8
+} finally {
+    if ($app) {
+        try { $app.Refresh(); if (-not $app.HasExited) { $app.Kill(); $app.WaitForExit(10000) | Out-Null } }
+        catch { Write-Warning "Could not stop temporary extracted application: $_" }
+    }
+    # The extracted launcher creates a temporary DB and local credentials; neither
+    # must survive this CI run or enter any uploaded release artifact.
+    if (Test-Path -LiteralPath $extract) {
+        Remove-Item -LiteralPath $extract -Recurse -Force -ErrorAction Stop
+    }
+}
