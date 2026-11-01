@@ -84,8 +84,12 @@ try {
         $rejected = $false
         try { Assert-RuntimeHashes $probeDir $probeHashes } catch { $rejected = $true }
         if (-not $rejected) { throw 'Runtime integrity regression: modified file was accepted' }
+        Remove-Item -LiteralPath (Join-Path $probeDir 'RUNNING.md') -Force
+        $missingRejected = $false
+        try { Assert-RuntimeHashes $probeDir $probeHashes } catch { $missingRejected = $true }
+        if (-not $missingRejected) { throw 'Runtime integrity regression: deleted file was accepted' }
     } finally { Remove-Item -LiteralPath $probeDir -Recurse -Force -ErrorAction Stop }
-    Write-Host 'PASS: immutable runtime tamper probe rejected in isolated fixture'
+    Write-Host 'PASS: immutable runtime modification and deletion rejected in isolated fixture'
     # Launch the packaged real Windows executable with the isolated CI database.
     # A live process alone is not sufficient: require a responsive WinForms main window.
     $app = Start-Process -FilePath (Join-Path $extract 'LOGICA.exe') -WorkingDirectory $extract -PassThru
@@ -134,8 +138,9 @@ try {
         extractedLauncherVerified = $true
         immutableRuntimeFilesVerified = $baseline.Count
         immutableTamperProbeRejected = $true
+        immutableDeletionProbeRejected = $true
         temporaryMariaDbClientCredentialsCleaned = $true
-        offlineServerDownloadNotAttempted = $true
+        offlineServerPackageAbsent = $true
         isolatedMariaDbPort = 3308
         originalShopDatabaseTouched = $false
         elapsedSeconds = [math]::Round($started.Elapsed.TotalSeconds, 1)
