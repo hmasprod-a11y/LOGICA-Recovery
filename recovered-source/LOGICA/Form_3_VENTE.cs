@@ -8749,7 +8749,9 @@ public class Form_3_VENTE : Form
 		DataGridView100.BackgroundColor = Color.White;
 		DataGridView100.CellBorderStyle = (DataGridViewCellBorderStyle)5;
 		DataGridView100.ColumnHeadersBorderStyle = (DataGridViewHeaderBorderStyle)1;
-		DataGridView100.ColumnHeadersHeightSizeMode = (DataGridViewColumnHeadersHeightSizeMode)2;
+		// Product-list captions must remain legible after Windows font/DPI changes.
+		DataGridView100.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.True;
+		DataGridView100.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
 		DataGridView100.Columns.AddRange(new DataGridViewColumn[4]
 		{
 			(DataGridViewColumn)Codeee,
@@ -12337,8 +12339,9 @@ public class Form_3_VENTE : Form
 				DataGridView100.EditMode = (DataGridViewEditMode)4;
 				DataGridView100.ColumnHeadersDefaultCellStyle.Alignment = (DataGridViewContentAlignment)16;
 				DataGridView100.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(34, 34, 34);
-				DataGridView100.ColumnHeadersHeightSizeMode = (DataGridViewColumnHeadersHeightSizeMode)0;
-				DataGridView100.ColumnHeadersHeight = 30;
+				// Do not freeze product-list captions at 30px after binding.
+				DataGridView100.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.True;
+				DataGridView100.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
 				DataGridView100.DefaultCellStyle.ForeColor = Color.FromArgb(34, 34, 34);
 				DataGridView100.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(221, 235, 247);
 				DataGridView100.RowsDefaultCellStyle.SelectionBackColor = Color.FromArgb(171, 185, 211);
