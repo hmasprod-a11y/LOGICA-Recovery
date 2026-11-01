@@ -717,6 +717,120 @@ internal static class PortableCheckoutSmoke
                 delegate { return null; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
                 "Null refresh result fails closed instead of using stale row");
 
+            // Integration contract for Form_3_VENTE's EXISTING DataTable modal.
+            // The dialog still receives the original rows, while all fields
+            // copied to the sale screen must come from the refreshed local row.
+            DataTable legacyLive = reorderedBarcode.Copy();
+            legacyLive.Columns.Add("TAUX_TVA", typeof(decimal));
+            legacyLive.Rows[0]["TAUX_TVA"] = 20m;
+            legacyLive.Rows[1]["TAUX_TVA"] = 7m;
+            int legacyDialogCalls = 0;
+            int legacyLiveReads = 0;
+            CheckoutVariantChoiceResult legacySelected =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                    flowMatches, delegate(DataTable original) {
+                        legacyDialogCalls++;
+                        Require(Object.ReferenceEquals(original, flowMatches) &&
+                            original.Rows[0]["ID_ARTICLE"].ToString() == "A",
+                            "WinForms dialog receives the exact original displayed table");
+                        return 0;
+                    }, delegate { legacyLiveReads++; return legacyLive; });
+            Require(legacyDialogCalls == 1 && legacyLiveReads == 1 &&
+                legacySelected.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(legacySelected.SelectedRow, legacyLive.Rows[1]) &&
+                (decimal)legacySelected.SelectedRow["UnitPrice"] == 8.75m &&
+                (decimal)legacySelected.SelectedRow["Discount"] == 0m &&
+                (decimal)legacySelected.SelectedRow["TAUX_TVA"] == 7m,
+                "Real WinForms chooser resolves LIVE price, discount and tax by article ID");
+            CheckoutBasketPreview legacyReturn = CheckoutSelectionFlowService.Preview(
+                legacySelected, 20m, delegate(DataRow row) {
+                    return SalesLinePricing.CalculateNetAmount(
+                        (decimal)row["UnitPrice"], -2m, (decimal)row["Discount"]);
+                }, "2", port);
+            Require(legacyReturn.LineNet == -17.50m &&
+                legacyReturn.BasketNet == 2.50m &&
+                legacyReturn.DisplayedTotalDiffers == false,
+                "WinForms bridge preserves legacy return sign and rounded total");
+            int noModalReads = 0;
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                flowMatches, delegate(DataTable original) { return -1; },
+                delegate { noModalReads++; throw new Exception("Cancelled checkout queried store"); }).Status ==
+                CheckoutVariantChoiceStatus.Cancelled && noModalReads == 0,
+                "WinForms modal cancellation never refreshes or posts");
+            DataTable legacySingle = flowMatches.Clone();
+            legacySingle.ImportRow(flowMatches.Rows[0]);
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                legacySingle, delegate(DataTable original) { throw new Exception("Single opened modal"); },
+                delegate { noModalReads++; return legacySingle.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.Selected && noModalReads == 1,
+                "Single barcode article refreshes once without a modal");
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                flowEmpty, null, delegate { noModalReads++; return flowMatches; }).Status ==
+                CheckoutVariantChoiceStatus.Missing && noModalReads == 1,
+                "Empty scanner result never refreshes or opens modal");
+            DataTable legacyPendingDeleted = flowMatches.Copy();
+            legacyPendingDeleted.AcceptChanges();
+            legacyPendingDeleted.Rows[0].Delete();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                legacyPendingDeleted, delegate(DataTable original) {
+                    throw new Exception("Deleted row shifted WinForms modal index");
+                }, delegate { noModalReads++; return flowMatches; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && noModalReads == 1,
+                "Pending-deleted displayed rows cannot shift legacy dialog index");
+            DataTable legacyDuplicateId = flowMatches.Copy();
+            legacyDuplicateId.Rows[1]["ID_ARTICLE"] = "A";
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                legacyDuplicateId, delegate(DataTable original) {
+                    throw new Exception("Duplicate identity opened modal");
+                }, delegate { noModalReads++; return flowMatches; }).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous && noModalReads == 1,
+                "Ambiguous displayed article identity cannot enter modal");
+            DataTable legacyBadLive = flowMatches.Copy();
+            legacyBadLive.Rows[1]["Code"] = "REASSIGNED";
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                flowMatches, delegate(DataTable original) { return 1; },
+                delegate { return legacyBadLive; }).Status == CheckoutVariantChoiceStatus.Ambiguous,
+                "WinForms bridge rejects article barcode reassignment before price copy");
+            DataTable legacyMissingLive = flowMatches.Clone();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                flowMatches, delegate(DataTable original) { return 1; },
+                delegate { return legacyMissingLive; }).Status == CheckoutVariantChoiceStatus.Missing,
+                "WinForms bridge rejects article deleted from local catalogue");
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                flowMatches, delegate(DataTable original) { return 1; },
+                delegate { return null; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "WinForms bridge refuses null local-store result");
+            int invalidIndexReads = 0;
+            bool invalidLegacyIndex = false;
+            try {
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                    flowMatches, delegate(DataTable original) { return 9; },
+                    delegate { invalidIndexReads++; return flowMatches; });
+            } catch (ArgumentOutOfRangeException) { invalidLegacyIndex = true; }
+            Require(invalidLegacyIndex && invalidIndexReads == 0,
+                "Out-of-range WinForms dialog index cannot reach local store");
+            bool missingLegacyChooser = false;
+            try {
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                    flowMatches, null, delegate { return flowMatches; });
+            } catch (ArgumentNullException) { missingLegacyChooser = true; }
+            Require(missingLegacyChooser, "Duplicate WinForms barcode requires explicit choice");
+            Exception localStoreFailure = new InvalidOperationException("offline local database unavailable");
+            Exception observedLocalFailure = null;
+            try {
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                    flowMatches, delegate(DataTable original) { return 0; },
+                    delegate { throw localStoreFailure; });
+            } catch (Exception error) { observedLocalFailure = error; }
+            Require(Object.ReferenceEquals(localStoreFailure, observedLocalFailure),
+                "WinForms bridge propagates local-store failure without falling back to stale price");
+            Require(flowMatches.Rows[0].RowState == DataRowState.Unchanged &&
+                flowMatches.Rows[1].RowState == DataRowState.Unchanged &&
+                (decimal)flowMatches.Rows[0]["UnitPrice"] == 12.50m &&
+                (decimal)legacyLive.Rows[1]["TAUX_TVA"] == 7m,
+                "WinForms integration bridge never mutates displayed/live catalogue rows");
+            Console.WriteLine("PASS WinForms DataTable chooser bridge: live price/tax/discount, returns, cancel, stale, deleted, ambiguity and read-only");
+
             int singleReadCalls = 0;
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
                 flowSingle, null, delegate { singleReadCalls++; return flowSingle.Copy(); }).Status ==
