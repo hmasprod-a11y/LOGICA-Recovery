@@ -10385,7 +10385,7 @@ public class Form_6_RECEPTIONS : Form
 			if (dt_ARTICLE_FIND.Rows.Count != 0)
 			{
 				DataView dataView = new DataView(dt_ARTICLE_FIND);
-				dataView.RowFilter = "Article LIKE '%" + Text_ARTICLE_FIND.Text + "%'       or        Code LIKE '%" + Text_ARTICLE_FIND.Text + "%'";
+				dataView.RowFilter = LOGICA.ApplicationLayer.Purchasing.ReceiptArticleSearchFilter.Build(Text_ARTICLE_FIND.Text);
 				DataGridView_ARTICLES.DataSource = dataView;
 			}
 		}
