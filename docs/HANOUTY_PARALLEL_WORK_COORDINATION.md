@@ -32,3 +32,9 @@ Updated: 2026-11-01. Shared coordination reference for four independent developm
 - Track A added `CheckoutVariantSnapshotService.EvaluateChoice(currentMatches, displayed, selectedIndex)` in PR #70. This is a read-only API with `CheckoutVariantChoiceStatus` = Selected, Cancelled, Missing, Ambiguous, InvalidCandidates and a non-null `SelectedRow` only on Selected.
 - Track C may display separate messages for cancelled, stale, duplicate and invalid result sets, but must coordinate before wiring it into WinForms. The legacy `ResolveChosenVariant` and checkout posting flow are intentionally unchanged.
 - Track B continues to own catalogue identity and inventory mutation; Track A's choice result never updates quantity, price, stock or the database. Track D should check Domain isolated Windows, .NET 10 portable and Windows POS gates before integration.
+
+## Modern checkout identity hardening (2026-11-01, Track A)
+- Track A hardens only `CheckoutVariantSnapshotService.Read` and `EvaluateChoice` and their portable smoke assertions. No WinForms, Inventory, Purchasing, MariaDB, shared CI or release files changed.
+- Read-only snapshot excludes `DataRowState.Deleted` rows before accessing columns; a blank `ID_ARTICLE` is invalid, but an empty `Code` remains valid for image-only catalogue articles.
+- Typed choice detects the same `ID_ARTICLE` repeated with different barcode values as Ambiguous; it scans all active rows so any malformed candidate takes precedence as InvalidCandidates even if an earlier duplicate exists. It never mutates stock, price or the live query.
+- Track B owns catalogue identity writes and inventory transactions; Track C owns user-facing choice handling; Track D owns Windows/MariaDB release gates. Please review these outcome semantics before UI integration. No automatic cross-track merge.
