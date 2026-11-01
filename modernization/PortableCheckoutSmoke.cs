@@ -972,7 +972,20 @@ internal static class PortableCheckoutSmoke
                 delegate { rejectedRefreshCalls++; return blankScannerCandidates.Copy(); }).Status ==
                 CheckoutVariantChoiceStatus.InvalidCandidates && rejectedRefreshCalls == 0,
                 "Whitespace barcode is rejected by scanner; image-only products use tile identity");
-            Console.WriteLine("PASS scanner exact-code validation before WinForms modal and local-store refresh");
+            DataTable mixedFreshCandidates = legacyLive.Copy();
+            mixedFreshCandidates.Rows[0]["Code"] = "WRONG-SQL-FILTER";
+            CheckoutVariantChoiceResult mixedFreshResult =
+                CheckoutBarcodeSelectionService.SelectWithRefresh(flowMatches,
+                    delegate(DataTable dialogCandidates) { return 1; },
+                    delegate { return mixedFreshCandidates; });
+            Require(mixedFreshResult.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                mixedFreshResult.SelectedRow == null,
+                "WinForms scanner adapter rejects a live SQL result containing an unrelated barcode");
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh(flowMatches,
+                delegate(DataTable dialogCandidates) { return 1; },
+                delegate { return legacyLive.Copy(); }).Status == CheckoutVariantChoiceStatus.Selected,
+                "Strict scanner filter retains valid duplicate-barcode variant selection");
+            Console.WriteLine("PASS scanner exact-code validation before WinForms modal, local-store refresh and basket copy");
 
             int singleReadCalls = 0;
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
