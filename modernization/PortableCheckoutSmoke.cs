@@ -162,6 +162,57 @@ internal static class PortableCheckoutSmoke
             }
             catch (ArgumentException) { nullOutcomeSelection = true; }
             Require(nullOutcomeSelection, "Typed outcome must reject null displayed entry");
+            // Deleted rows remain in DataRowCollection before AcceptChanges.
+            // A modern snapshot must exclude them rather than throw when
+            // reading the inaccessible original row values.
+            DataTable pendingDeletion = outcomeRows.Copy();
+            pendingDeletion.AcceptChanges();
+            pendingDeletion.Rows[1].Delete();
+            var activeSnapshots = CheckoutVariantSnapshotService.Read(pendingDeletion);
+            Require(activeSnapshots.Count == 1 && activeSnapshots[0].ArticleId == "A",
+                "Snapshot must exclude uncommitted deleted rows");
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(pendingDeletion, snapshots, 1).Status ==
+                CheckoutVariantChoiceStatus.Missing, "Deleted selected row remains unavailable");
+
+            // The catalogue ID is unique even if two rows have different codes.
+            DataTable collidingId = outcomeRows.Clone();
+            collidingId.Rows.Add("ALT", "B");
+            collidingId.Rows.Add("123", "B");
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(collidingId, snapshots, 1).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous,
+                "Same ID with different barcodes must not select either row");
+
+            // Corrupt rows cannot be hidden by an earlier duplicate identity.
+            DataTable mixedInvalid = outcomeRows.Clone();
+            mixedInvalid.Rows.Add("123", "B");
+            mixedInvalid.Rows.Add("123", "B");
+            mixedInvalid.Rows.Add(DBNull.Value, "BROKEN");
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(mixedInvalid, snapshots, 1).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Corrupt candidates must take precedence over ambiguity regardless of row order");
+            DataTable emptyId = outcomeRows.Clone();
+            emptyId.Rows.Add("123", "");
+            bool emptyIdRejected = false;
+            try { CheckoutVariantSnapshotService.Read(emptyId); }
+            catch (InvalidOperationException) { emptyIdRejected = true; }
+            Require(emptyIdRejected, "Empty article ID must not enter a modern snapshot");
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(emptyId, snapshots, 1).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Empty live article ID must fail closed");
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(outcomeRows,
+                new List<CheckoutVariantSnapshot> { new CheckoutVariantSnapshot("123", "") }, 0).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Invalid displayed article ID must fail closed");
+            // Image-only catalogue articles can legitimately have an empty
+            // barcode; never confuse that with a missing ID_ARTICLE.
+            DataTable imageOnly = outcomeRows.Clone();
+            imageOnly.Rows.Add("", "IMAGE-ONLY");
+            Require(CheckoutVariantSnapshotService.Read(imageOnly).Count == 1,
+                "Empty barcode with valid ID must remain selectable");
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(imageOnly,
+                CheckoutVariantSnapshotService.Read(imageOnly), 0).Status ==
+                CheckoutVariantChoiceStatus.Selected, "Image-only article identity is valid");
+            Console.WriteLine("PASS modern checkout snapshot deletion, ID collision and invalid-row precedence");
             Require(outcomeRows.Rows.Count == 2 && outcomeRows.Rows[1]["ID_ARTICLE"].ToString() == "B",
                 "Typed evaluation must not mutate current query");
             Console.WriteLine("PASS typed modern checkout variant outcomes: selected, cancel, missing, ambiguity, invalid and deleted");
