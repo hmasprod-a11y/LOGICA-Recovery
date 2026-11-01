@@ -961,7 +961,7 @@ internal static class PortableCheckoutSmoke
             int rejectedChooserCalls = 0;
             int rejectedRefreshCalls = 0;
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
-                mixedBarcodeCandidates, delegate(DataTable rows) { rejectedChooserCalls++; return 0; },
+                mixedBarcodeCandidates, delegate(DataTable dialogCandidates) { rejectedChooserCalls++; return 0; },
                 delegate { rejectedRefreshCalls++; return mixedBarcodeCandidates.Copy(); }).Status ==
                 CheckoutVariantChoiceStatus.InvalidCandidates && rejectedChooserCalls == 0 && rejectedRefreshCalls == 0,
                 "Mixed-code scanner results cannot open the WinForms modal or query the store");
