@@ -63,5 +63,7 @@
     <Compile Include="../recovered-source/LOGICA/Application/Clients/IClientSettlementFilterLayoutContext.cs" Link="Application/Clients/IClientSettlementFilterLayoutContext.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Clients/ClientSettlementFilterLayoutService.cs" Link="Application/Clients/ClientSettlementFilterLayoutService.cs" />
     <Compile Include="../recovered-source/LOGICA/Infrastructure/Clients/ClientSettlementQueryText.cs" Link="Infrastructure/Clients/ClientSettlementQueryText.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Export/ILegacyGridExportSource.cs" Link="Application/Export/ILegacyGridExportSource.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Export/LegacyGridExportProjectionService.cs" Link="Application/Export/LegacyGridExportProjectionService.cs" />
   </ItemGroup>
 </Project>
