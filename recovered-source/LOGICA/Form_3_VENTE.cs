@@ -15121,6 +15121,9 @@ public class Form_3_VENTE : Form
 		{
 			if ((int)e.KeyCode == 13)
 			{
+				// Quantity Enter returns to barcode scanning, without triggering
+				// a second implicit Enter on the focused sales control.
+				e.SuppressKeyPress = true;
 				((Control)Text_CODE).Focus();
 			}
 		}
