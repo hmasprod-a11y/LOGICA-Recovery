@@ -89,7 +89,7 @@ def trigger_paths(source, event):
         block.append(line)
     if '    paths:' not in block:
         raise ValueError(f'{event}: missing paths filter')
-    return {line.strip()[2:].strip().strip("\\'\\\"")
+    return {line.strip()[2:].strip("'\"")
             for line in block if re.match(r'^      - ', line)}
 
 
@@ -155,8 +155,8 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
 
 
     def test_release_paths_cannot_be_redirected(self):
-        modified = FIXTURE.replace('name: LOGICA-Windows-complete\\n          path: dist/',
-                                   'name: LOGICA-Windows-complete\\n          path: results/')
+        modified = FIXTURE.replace('name: LOGICA-Windows-complete\n          path: dist/',
+                                   'name: LOGICA-Windows-complete\n          path: results/')
         with self.assertRaisesRegex(ValueError, 'LOGICA-Windows-complete: path'):
             assert_release_upload_policy(modified)
 
@@ -165,20 +165,20 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
 
     def test_missing_pr_database_trigger_is_rejected(self):
         source = WORKFLOW.read_text(encoding='utf-8')
-        modified = source.replace("      - 'scripts/setup-test-db.ps1'\\n", '', 1)
+        modified = source.replace("      - 'scripts/setup-test-db.ps1'\n", '', 1)
         with self.assertRaisesRegex(ValueError, 'pull_request: missing Windows CI paths'):
             assert_required_windows_triggers(modified)
 
     def test_missing_push_launcher_trigger_is_rejected(self):
         source = WORKFLOW.read_text(encoding='utf-8')
-        before, after = source.split('  push:\\n', 1)
-        modified = before + '  push:\\n' + after.replace("      - 'scripts/Launch-LOGICA.ps1'\\n", '', 1)
+        before, after = source.split('  push:\n', 1)
+        modified = before + '  push:\n' + after.replace("      - 'scripts/Launch-LOGICA.ps1'\n", '', 1)
         with self.assertRaisesRegex(ValueError, 'push: missing Windows CI paths'):
             assert_required_windows_triggers(modified)
 
     def test_missing_pr_event_is_rejected(self):
         source = WORKFLOW.read_text(encoding='utf-8')
-        modified = source.replace('  pull_request:\\n', '  pull_request_disabled:\\n', 1)
+        modified = source.replace('  pull_request:\n', '  pull_request_disabled:\n', 1)
         with self.assertRaisesRegex(ValueError, 'Missing Windows CI event'):
             assert_required_windows_triggers(modified)
 
