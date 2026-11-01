@@ -82,11 +82,17 @@ try {
         $probeHashes = Get-RuntimeHashes $probeDir @('RUNNING.md')
         Add-Content -LiteralPath (Join-Path $probeDir 'RUNNING.md') -Value 'CI TAMPER PROBE'
         $rejected = $false
-        try { Assert-RuntimeHashes $probeDir $probeHashes } catch { $rejected = $true }
+        try { Assert-RuntimeHashes $probeDir $probeHashes } catch {
+            if ($_.Exception.Message -ne 'Runtime modified immutable file: RUNNING.md') { throw }
+            $rejected = $true
+        }
         if (-not $rejected) { throw 'Runtime integrity regression: modified file was accepted' }
         Remove-Item -LiteralPath (Join-Path $probeDir 'RUNNING.md') -Force
         $missingRejected = $false
-        try { Assert-RuntimeHashes $probeDir $probeHashes } catch { $missingRejected = $true }
+        try { Assert-RuntimeHashes $probeDir $probeHashes } catch {
+            if ($_.Exception.Message -ne 'Runtime removed immutable file: RUNNING.md') { throw }
+            $missingRejected = $true
+        }
         if (-not $missingRejected) { throw 'Runtime integrity regression: deleted file was accepted' }
     } finally { Remove-Item -LiteralPath $probeDir -Recurse -Force -ErrorAction Stop }
     Write-Host 'PASS: immutable runtime modification and deletion rejected in isolated fixture'
