@@ -63,15 +63,18 @@ namespace LOGICA.ApplicationLayer.Purchasing
                 String.Equals(confirmedReceiptId, loadedReceiptId, StringComparison.Ordinal);
         }
 
-        // A receipt already validated (or in an unexpected state) must not
-        // enter the stock-posting transaction, even when its ID still matches.
-        // This is a UI guard, NOT a substitute for an atomic database claim.
+        // Preserve the original confirmation behavior for unvalidated legacy
+        // states (including EN_COURS). Only a now-validated or missing state
+        // must stop posting after the consultation refresh. This UI guard is
+        // NOT a substitute for an atomic database claim across clients.
         internal static bool MayValidate(string confirmedReceiptId, string loadedReceiptId,
             string displayedState, string loadedState)
         {
             return Matches(confirmedReceiptId, loadedReceiptId) &&
-                String.Equals(displayedState, "ENREGISTRER", StringComparison.Ordinal) &&
-                String.Equals(loadedState, "ENREGISTRER", StringComparison.Ordinal);
+                !String.IsNullOrWhiteSpace(displayedState) &&
+                !String.IsNullOrWhiteSpace(loadedState) &&
+                !String.Equals(displayedState, "VALIDER", StringComparison.Ordinal) &&
+                !String.Equals(loadedState, "VALIDER", StringComparison.Ordinal);
         }
     }
 }
