@@ -7692,6 +7692,15 @@ public class Form_3_VENTE : Form
 		da_PIC = new MySqlDataAdapter();
 		_string = "";
 		InitializeComponent();
+		ApplyBasketSelectionContrast();
+	}
+
+	// Keep selected basket quantities and prices readable on the original yellow highlight.
+	// Apply at construction for previews and again after the legacy Load styling.
+	private void ApplyBasketSelectionContrast()
+	{
+		DataGridView1.DefaultCellStyle.SelectionBackColor = Color.Yellow;
+		DataGridView1.DefaultCellStyle.SelectionForeColor = Color.FromArgb(31, 41, 55);
 	}
 
 	[DebuggerNonUserCode]
@@ -12080,8 +12089,7 @@ public class Form_3_VENTE : Form
 				DataGridView1.DataSource = Module1.dt1;
 				DataGridView1.BackgroundColor = Color.White;
 				DataGridView1.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(34, 34, 34);
-				DataGridView1.DefaultCellStyle.SelectionBackColor = Color.Yellow;
-				DataGridView1.DefaultCellStyle.SelectionForeColor = Color.Red;
+				ApplyBasketSelectionContrast();
 				DataGridView1.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(221, 235, 247);
 				DataGridView1.GridColor = Color.FromArgb(231, 231, 231);
 				DataGridView1.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 11f, (FontStyle)1);
