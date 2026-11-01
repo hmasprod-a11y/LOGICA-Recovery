@@ -27,26 +27,37 @@ namespace LOGICA.ApplicationLayer.Checkout
         internal static CheckoutArticleTileReference TagFor(DataRow article)
         {
             if (article == null) throw new ArgumentNullException("article");
+            // A tile must not be created from a pending-deleted article or an
+            // incomplete identity. Blank barcodes remain valid for image tiles.
+            if (article.RowState == DataRowState.Deleted ||
+                article.RowState == DataRowState.Detached ||
+                article.Table == null ||
+                !article.Table.Columns.Contains("Code") ||
+                !article.Table.Columns.Contains("ID_ARTICLE") ||
+                article.IsNull("Code") || article.IsNull("ID_ARTICLE") ||
+                String.IsNullOrEmpty(Convert.ToString(article["ID_ARTICLE"])))
+                throw new InvalidOperationException("Image tile article identity is incomplete.");
             return new CheckoutArticleTileReference(
-                article["Code"].ToString(), article["ID_ARTICLE"].ToString());
+                Convert.ToString(article["Code"]), Convert.ToString(article["ID_ARTICLE"]));
         }
 
-        internal static DataRow FindExact(DataTable candidates, CheckoutArticleTileReference tile)
+        // Typed result for a future UI: distinguish missing, ambiguous and
+        // malformed catalogue results without touching the original WinForms.
+        // Reuse the same candidate validation as barcode variant selection.
+        internal static CheckoutVariantChoiceResult EvaluateExact(
+            DataTable candidates, CheckoutArticleTileReference tile)
         {
             if (candidates == null) throw new ArgumentNullException("candidates");
             if (tile == null) throw new ArgumentNullException("tile");
-            DataRow found = null;
-            foreach (DataRow row in candidates.Rows)
-            {
-                if (String.Equals(row["Code"].ToString(), tile.Code, StringComparison.Ordinal) &&
-                    String.Equals(row["ID_ARTICLE"].ToString(), tile.ArticleId, StringComparison.Ordinal))
-                {
-                    // Corrupt or ambiguous result sets must not silently post a sale.
-                    if (found != null) return null;
-                    found = row;
-                }
-            }
-            return found;
+            return CheckoutVariantSnapshotService.EvaluateChoice(
+                candidates, new[] { new CheckoutVariantSnapshot(tile.Code, tile.ArticleId) }, 0);
+        }
+
+        // Preserve the legacy null-or-row surface, but never return a deleted
+        // row, a reused article ID, or a match from a corrupt result set.
+        internal static DataRow FindExact(DataTable candidates, CheckoutArticleTileReference tile)
+        {
+            return EvaluateExact(candidates, tile).SelectedRow;
         }
     }
 }
