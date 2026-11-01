@@ -10,3 +10,14 @@ This branch is a staging candidate ONLY, not an approved release. Its parent is 
 PR #74 stock movement flow is deliberately NOT added: it is stacked on an older Track B base and overlaps with latest #72 in business entry, smoke project, test-catalogue script and catalogue entry; not needed for the minimum testable legacy-compatible Windows release. Reconcile only after a separate reviewed merge and green combined gates.
 
 **Release gate**: Windows x86 build; isolated MariaDB; POS sale/return/barcode/stock/printing characterization; real EXE startup; Domain regression; .NET 10 portable/dual-target; package integrity, DLLs, offline launcher and manifest. Check all on the exact combined commit. Hardware printer, barcode scanner, cash drawer, licensed field workstation, and production-like shop data remain UNVERIFIED. Do not bypass activation or edit real shop DB. No main/release merge.
+
+## Extracted customer ZIP acceptance gate (2026-11-01)
+
+The original Windows smoke previously exercised `dist/LOGICA.exe` and the `dist/Launch-LOGICA.ps1` launcher before packaging. The ZIP integrity gate extracted the ZIP and checked SHA256, but did not launch its extracted binaries. `scripts/test-extracted-release.ps1` now runs after ZIP creation in the Windows workflow and gates artifact uploads on both:
+
+1. Re-run the packaged independent manifest/SHA/provenance verifier, extract the exact customer ZIP to a fresh Windows runner temporary directory, reject private DB state, and require the **packaged** `LOGICA.exe` to display a responsive WinForms main window against the already-isolated loopback CI database on port 3307.
+2. Execute the **packaged** `Launch-LOGICA.ps1 -ServerBin <existing CI MariaDB> -Port 3308 -VerifyOnly` with a new temporary data directory. This uses no network download and checks the recovered original fixture's 120 products and 11 ticket headers. Temporary credentials and database files are deleted with the extraction; no production database is accessed.
+
+This gate is an additional technical smoke, **not** a hardware/field test. Printer hardware, physical scanner, cash drawer, licensed machine, and representative shop data remain unverified. **Offline-first caveat:** a clean workstation without a local MariaDB server still needs the launcher's initial MariaDB download; the CI test supplies the server offline and does not prove zero-network first-run installation. Do not claim a fully offline cold install. No license bypass, shop data mutation, or merge into `main`/`release`.
+
+The independent QA PR #81 overlaps the same ZIP collision files as this branch; do not merge both sets blindly. The separate PR #79 still fails three regression gates and remains excluded. Newer Track A/B/C heads must be re-evaluated on a combined SHA before inclusion; individual green gates do not authorize a release merge.
