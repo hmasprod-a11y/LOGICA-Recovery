@@ -18,6 +18,7 @@
     <Compile Include="PortableTicketSequenceSmoke.cs" />
     <Compile Include="PortableTicketPostingSmoke.cs" />
     <Compile Include="PortablePaymentModeSmoke.cs" />
+    <Compile Include="PortableArticleSearchSmoke.cs" />
     <Compile Include="PortablePaymentReadSmoke.cs" />
     <Compile Include="PortableClientSearchSmoke.cs" />
     <Compile Include="PortableGridExportSmoke.cs" />
