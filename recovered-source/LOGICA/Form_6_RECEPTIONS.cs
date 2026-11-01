@@ -9287,28 +9287,44 @@ public class Form_6_RECEPTIONS : Form
 		//IL_0279: Expected Obj, but got Unknown
 		try
 		{
+			if (e == null || e.RowIndex < 0 || e.RowIndex >= DataGridView1.Rows.Count ||
+				e.ColumnIndex < 0 || DataGridView1.Rows[e.RowIndex].IsNewRow)
+				return;
+			DataGridViewRow clickedReceiptRow = DataGridView1.Rows[e.RowIndex];
+			DataRow clickedReceiptData = LOGICA.ApplicationLayer.Purchasing.ReceiptDocumentSelectionGuard.ResolveBoundRow(
+				clickedReceiptRow.DataBoundItem as DataRowView,
+				Convert.ToString(clickedReceiptRow.Cells["ID_BR"].Value));
+			if (clickedReceiptData == null)
+				return;
 			if (Operators.ConditionalCompareObjectEqual(e.ColumnIndex, Operators.SubtractObject(NewLateBinding.LateGet(sender, null, "ColumnCount", new object[0], null, null, null), 3), TextCompare: false))
 			{
 				((Control)Panel_INFO).Hide();
-				if (Operators.ConditionalCompareObjectEqual(DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ETAT"].Value, "VALIDER", TextCompare: false))
+				if (Operators.ConditionalCompareObjectEqual(clickedReceiptRow.Cells["ETAT"].Value, "VALIDER", TextCompare: false))
 				{
 					return;
 				}
 				if ((int)MessageBox.Show("Voulez-vous vraiment Supprimer ??", "Annulation", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
 				{
-					string right = Conversions.ToString(Operators.ConcatenateObject("SUPPRESION | ", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells[2].Value));
+					// A modal may change the binding; do not delete another receipt.
+					if (!Object.ReferenceEquals(
+						LOGICA.ApplicationLayer.Purchasing.ReceiptDocumentSelectionGuard.ResolveBoundRow(
+							clickedReceiptRow.DataBoundItem as DataRowView,
+							Convert.ToString(clickedReceiptRow.Cells["ID_BR"].Value)), clickedReceiptData) ||
+						Operators.ConditionalCompareObjectEqual(clickedReceiptRow.Cells["ETAT"].Value, "VALIDER", TextCompare: false))
+						return;
+					string right = Conversions.ToString(Operators.ConcatenateObject("SUPPRESION | ", clickedReceiptRow.Cells[2].Value));
 					File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
 					MySqlCommand val = new MySqlCommand();
 					if (Module1.cn_SQL.State != ConnectionState.Open)
 					{
 						Module1.cn_SQL.Open();
 					}
-					val.CommandText = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("Delete   from     TABLE_RECEPTIONS_DETAILS      WHERE    ID_BR =  '", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_BR"].Value), "'         "));
+					val.CommandText = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("Delete   from     TABLE_RECEPTIONS_DETAILS      WHERE    ID_BR =  '", clickedReceiptRow.Cells["ID_BR"].Value), "'         "));
 					val.Connection = Module1.cn_SQL;
 					val.ExecuteNonQuery();
 					Module1.cn_SQL.Close();
 					int position = ((ContainerControl)this).BindingContext[(object)DT].Position;
-					DT.Rows[position].Delete();
+					clickedReceiptData.Delete();
 					MySqlCommandBuilder val2 = new MySqlCommandBuilder(DA);
 					((DbDataAdapter)(object)DA).Update(DT);
 					DT.AcceptChanges();
@@ -9318,30 +9334,30 @@ public class Form_6_RECEPTIONS : Form
 			}
 			if (Operators.ConditionalCompareObjectEqual(e.ColumnIndex, Operators.SubtractObject(NewLateBinding.LateGet(sender, null, "ColumnCount", new object[0], null, null, null), 2), TextCompare: false))
 			{
-				if (Operators.ConditionalCompareObjectEqual(DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ETAT"].Value, "VALIDER", TextCompare: false))
+				if (Operators.ConditionalCompareObjectEqual(clickedReceiptRow.Cells["ETAT"].Value, "VALIDER", TextCompare: false))
 				{
 					((Control)Panel_INFO).Visible = false;
 					return;
 				}
 				((Control)Panel_INFO).Visible = true;
 				((Control)Panel_INFO).BringToFront();
-				Label_INDEX.Text = Conversions.ToString(((DataGridViewBand)DataGridView1.CurrentRow).Index);
+				Label_INDEX.Text = Conversions.ToString(e.RowIndex);
 				Label_TOP.Text = "MODIFICATION";
 				DataGrid_BODY.Columns["sup"].Visible = true;
 				((Control)Button_SAVE).Visible = true;
 				int position2 = ((ContainerControl)this).BindingContext[(object)DT].Position;
-				Text_ID.Text = DT.Rows[position2]["ID"].ToString();
-				Text_ID_BR.Text = DT.Rows[position2]["ID_BR"].ToString();
-				DateTimePicker_DATE.Text = DT.Rows[position2]["DATES"].ToString();
-				Text_UTILISATEUR.Text = DT.Rows[position2]["UTILISATEUR"].ToString();
-				Button_FOURNISSEUR._ID_Button = DT.Rows[position2]["ID_FOURNISSEUR"].ToString();
-				Button_FOURNISSEUR._CODE_Button = DT.Rows[position2]["CODE_FOURNISSEUR"].ToString();
-				((ButtonBase)Button_FOURNISSEUR).Text = DT.Rows[position2]["FOURNISSEUR"].ToString();
-				Text_N_BON_FOURNISSEUR.Text = DT.Rows[position2]["N_BON_FOURNISSEUR"].ToString();
-				Label_TOTAL_NET_ACHATS_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(DT.Rows[position2]["TOTAL_NET_ACHATS"].ToString())));
-				Label_TOTAL_NET_VENTES_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(DT.Rows[position2]["TOTAL_NET_VENTES"].ToString())));
-				Text_NOTES.Text = DT.Rows[position2]["NOTES"].ToString();
-				Text_ETAT.Text = DT.Rows[position2]["ETAT"].ToString();
+				Text_ID.Text = clickedReceiptData["ID"].ToString();
+				Text_ID_BR.Text = clickedReceiptData["ID_BR"].ToString();
+				DateTimePicker_DATE.Text = clickedReceiptData["DATES"].ToString();
+				Text_UTILISATEUR.Text = clickedReceiptData["UTILISATEUR"].ToString();
+				Button_FOURNISSEUR._ID_Button = clickedReceiptData["ID_FOURNISSEUR"].ToString();
+				Button_FOURNISSEUR._CODE_Button = clickedReceiptData["CODE_FOURNISSEUR"].ToString();
+				((ButtonBase)Button_FOURNISSEUR).Text = clickedReceiptData["FOURNISSEUR"].ToString();
+				Text_N_BON_FOURNISSEUR.Text = clickedReceiptData["N_BON_FOURNISSEUR"].ToString();
+				Label_TOTAL_NET_ACHATS_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(clickedReceiptData["TOTAL_NET_ACHATS"].ToString())));
+				Label_TOTAL_NET_VENTES_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(clickedReceiptData["TOTAL_NET_VENTES"].ToString())));
+				Text_NOTES.Text = clickedReceiptData["NOTES"].ToString();
+				Text_ETAT.Text = clickedReceiptData["ETAT"].ToString();
 				MySqlCommand val3 = new MySqlCommand();
 				if (Module1.cn_SQL.State != ConnectionState.Open)
 				{
@@ -9380,23 +9396,23 @@ public class Form_6_RECEPTIONS : Form
 			}
 			((Control)Panel_INFO).Visible = true;
 			((Control)Panel_INFO).BringToFront();
-			Label_INDEX.Text = Conversions.ToString(((DataGridViewBand)DataGridView1.CurrentRow).Index);
+			Label_INDEX.Text = Conversions.ToString(e.RowIndex);
 			Label_TOP.Text = "CONSULTATION";
 			DataGrid_BODY.Columns["sup"].Visible = false;
 			((Control)Button_SAVE).Visible = false;
 			int position3 = ((ContainerControl)this).BindingContext[(object)DT].Position;
-			Text_ID.Text = DT.Rows[position3]["ID"].ToString();
-			Text_ID_BR.Text = DT.Rows[position3]["ID_BR"].ToString();
-			DateTimePicker_DATE.Text = DT.Rows[position3]["DATES"].ToString();
-			Text_UTILISATEUR.Text = DT.Rows[position3]["UTILISATEUR"].ToString();
-			Button_FOURNISSEUR._ID_Button = DT.Rows[position3]["ID_FOURNISSEUR"].ToString();
-			Button_FOURNISSEUR._CODE_Button = DT.Rows[position3]["CODE_FOURNISSEUR"].ToString();
-			((ButtonBase)Button_FOURNISSEUR).Text = DT.Rows[position3]["FOURNISSEUR"].ToString();
-			Text_N_BON_FOURNISSEUR.Text = DT.Rows[position3]["N_BON_FOURNISSEUR"].ToString();
-			Label_TOTAL_NET_ACHATS_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(DT.Rows[position3]["TOTAL_NET_ACHATS"].ToString())));
-			Label_TOTAL_NET_VENTES_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(DT.Rows[position3]["TOTAL_NET_VENTES"].ToString())));
-			Text_NOTES.Text = DT.Rows[position3]["NOTES"].ToString();
-			Text_ETAT.Text = DT.Rows[position3]["ETAT"].ToString();
+			Text_ID.Text = clickedReceiptData["ID"].ToString();
+			Text_ID_BR.Text = clickedReceiptData["ID_BR"].ToString();
+			DateTimePicker_DATE.Text = clickedReceiptData["DATES"].ToString();
+			Text_UTILISATEUR.Text = clickedReceiptData["UTILISATEUR"].ToString();
+			Button_FOURNISSEUR._ID_Button = clickedReceiptData["ID_FOURNISSEUR"].ToString();
+			Button_FOURNISSEUR._CODE_Button = clickedReceiptData["CODE_FOURNISSEUR"].ToString();
+			((ButtonBase)Button_FOURNISSEUR).Text = clickedReceiptData["FOURNISSEUR"].ToString();
+			Text_N_BON_FOURNISSEUR.Text = clickedReceiptData["N_BON_FOURNISSEUR"].ToString();
+			Label_TOTAL_NET_ACHATS_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(clickedReceiptData["TOTAL_NET_ACHATS"].ToString())));
+			Label_TOTAL_NET_VENTES_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(clickedReceiptData["TOTAL_NET_VENTES"].ToString())));
+			Text_NOTES.Text = clickedReceiptData["NOTES"].ToString();
+			Text_ETAT.Text = clickedReceiptData["ETAT"].ToString();
 			MySqlCommand val5 = new MySqlCommand();
 			if (Module1.cn_SQL.State != ConnectionState.Open)
 			{
