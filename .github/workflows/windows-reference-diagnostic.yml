@@ -76,6 +76,10 @@ jobs:
       - name: Guard release artifact upload policy (including negative fixtures)
         shell: pwsh
         run: python scripts/test-release-upload-policy.py
+      - name: Compile shared modern core for dual targets when available
+        if: ${{ hashFiles('modernization/LOGICA.CoreCompatibility.csproj') != '' }}
+        shell: pwsh
+        run: dotnet build modernization/LOGICA.CoreCompatibility.csproj -c Release --warnaserror
       - name: Exercise business operations .NET 10 smoke when available
         if: ${{ hashFiles('business/Hanouty.BusinessOperations.Smoke.csproj') != '' }}
         shell: pwsh
