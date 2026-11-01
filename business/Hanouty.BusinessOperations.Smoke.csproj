@@ -28,6 +28,8 @@
     <Compile Include="../tests/StockMovementAuditSmoke.cs" Link="Tests/StockMovementAuditSmoke.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Purchasing/PurchaseOrderReceiptReconciliationService.cs" Link="Purchasing/PurchaseOrderReceiptReconciliationService.cs" />
     <Compile Include="../tests/PurchaseOrderReceiptReconciliationSmoke.cs" Link="Tests/PurchaseOrderReceiptReconciliationSmoke.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockMovementFlowReportService.cs" Link="Inventory/StockMovementFlowReportService.cs" />
+    <Compile Include="../tests/StockMovementFlowReportSmoke.cs" Link="Tests/StockMovementFlowReportSmoke.cs" />
     <Compile Include="BusinessOperationsEntry.cs" />
   </ItemGroup>
 </Project>
