@@ -76,6 +76,27 @@ internal static class Program
             "public key identity");
         Check(device == OfflineLicensing.HashDeviceIdentifier("isolated-device-1"),
             "stable fingerprint");
+        var migrationLicense = OfflineLicensing.Issue(perpetual, issuer);
+        var legacyOk = ActivationMigration.Evaluate(true, false, null, publicOnly, now);
+        Check(legacyOk.CanStart && legacyOk.Channel == ActivationChannel.Legacy,
+            "legacy valid preserved without opt-in");
+        var legacyDenied = ActivationMigration.Evaluate(false, false, migrationLicense, publicOnly, now);
+        Check(!legacyDenied.CanStart && legacyDenied.Channel == ActivationChannel.Legacy,
+            "no silent license migration");
+        var migrated = ActivationMigration.Evaluate(false, true, migrationLicense, publicOnly, now);
+        Check(migrated.CanStart && migrated.Channel == ActivationChannel.TodoOffline,
+            "opt-in signed license accepted");
+        var rollback = ActivationMigration.Evaluate(true, true, "tampered", publicOnly, now);
+        Check(rollback.CanStart && rollback.Channel == ActivationChannel.Legacy,
+            "existing valid legacy activation survives invalid TODO license");
+        var rejected = ActivationMigration.Evaluate(false, true, "tampered", publicOnly, now);
+        Check(!rejected.CanStart, "no license bypass on invalid TODO and invalid legacy");
+        var missing = ActivationMigration.Evaluate(true, true, null, publicOnly, now);
+        Check(missing.CanStart && missing.Channel == ActivationChannel.Legacy,
+            "missing optional TODO license preserves legacy");
+        var clock = ActivationMigration.Evaluate(false, true, migrationLicense, publicOnly,
+            now.AddYears(-10));
+        Check(clock.CanStart && clock.ShouldShowWarning, "perpetual CMOS reset is nonblocking");
         Console.WriteLine("PASS: " + assertions + " TODO POS offline licensing assertions (no network or shop data)");
         return 0;
     }
