@@ -10,5 +10,7 @@ internal static class BusinessOperationsEntry
         if (projection != 0) return projection;
         int freshness = BusinessSnapshotFreshnessSmoke.Run();
         if (freshness != 0) return freshness;
-        return BusinessRevalidationSmoke.Run(); }
+        int revalidation = BusinessRevalidationSmoke.Run();
+        if (revalidation != 0) return revalidation;
+        return StockMovementAuditSmoke.Run(); }
 }
