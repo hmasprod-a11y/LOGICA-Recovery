@@ -956,6 +956,24 @@ internal static class PortableCheckoutSmoke
                 "WinForms integration bridge never mutates displayed/live catalogue rows");
             Console.WriteLine("PASS WinForms DataTable chooser bridge: live price/tax/discount, returns, cancel, stale, deleted, ambiguity and read-only");
 
+            DataTable mixedBarcodeCandidates = flowMatches.Copy();
+            mixedBarcodeCandidates.Rows[1]["Code"] = "OTHER-BARCODE";
+            int rejectedChooserCalls = 0;
+            int rejectedRefreshCalls = 0;
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                mixedBarcodeCandidates, delegate(DataTable rows) { rejectedChooserCalls++; return 0; },
+                delegate { rejectedRefreshCalls++; return mixedBarcodeCandidates.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && rejectedChooserCalls == 0 && rejectedRefreshCalls == 0,
+                "Mixed-code scanner results cannot open the WinForms modal or query the store");
+            DataTable blankScannerCandidates = flowSingle.Copy();
+            blankScannerCandidates.Rows[0]["Code"] = "  ";
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                blankScannerCandidates, null,
+                delegate { rejectedRefreshCalls++; return blankScannerCandidates.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && rejectedRefreshCalls == 0,
+                "Whitespace barcode is rejected by scanner; image-only products use tile identity");
+            Console.WriteLine("PASS scanner exact-code validation before WinForms modal and local-store refresh");
+
             int singleReadCalls = 0;
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
                 flowSingle, null, delegate { singleReadCalls++; return flowSingle.Copy(); }).Status ==
