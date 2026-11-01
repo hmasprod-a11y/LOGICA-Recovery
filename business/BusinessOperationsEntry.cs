@@ -12,5 +12,7 @@ internal static class BusinessOperationsEntry
         if (freshness != 0) return freshness;
         int revalidation = BusinessRevalidationSmoke.Run();
         if (revalidation != 0) return revalidation;
-        return StockMovementAuditSmoke.Run(); }
+        int movement = StockMovementAuditSmoke.Run();
+        if (movement != 0) return movement;
+        return PurchaseOrderReceiptReconciliationSmoke.Run(); }
 }
