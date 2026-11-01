@@ -47,7 +47,8 @@ public static class LicenseValidator
             return lastInvoiceUtc.HasValue && nowUtc < lastInvoiceUtc.Value
                 ? new(LicenseStatus.Warning, "Computer clock predates the last invoice; sales remain enabled.")
                 : new(LicenseStatus.Valid, "License valid.");
-        if (nowUtc <= p.ExpiresAt.Value.Add(grace))
+        // Compare elapsed time instead of adding to ExpiresAt: a signed license may expire at DateTimeOffset.MaxValue.
+        if (nowUtc - p.ExpiresAt.Value <= grace)
             return new(LicenseStatus.Grace, "License expired; grace period active.");
         return new(LicenseStatus.Expired, "License expired after grace period.");
     }
