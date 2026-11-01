@@ -55,6 +55,47 @@ namespace LOGICA.ApplicationLayer.Checkout
                 exactBarcodeMatches, read.Snapshots, selectedIndex);
         }
 
+        // Opt-in local-store refresh boundary for the real scanner handler.
+        // The first query supplies the rows the cashier actually saw; a fresh
+        // query AFTER the dialog supplies the rows eligible for the basket.
+        // The callback belongs to the Windows/local DB adapter, never this core.
+        // A single displayed article is refreshed too: its identity may have
+        // changed between the initial barcode lookup and selection.
+        internal static CheckoutVariantChoiceResult ChooseBarcodeWithRefresh(
+            DataTable displayedMatches,
+            Func<IList<CheckoutVariantSnapshot>, int> chooseDuplicate,
+            Func<DataTable> readCurrentMatches)
+        {
+            if (readCurrentMatches == null)
+                throw new ArgumentNullException("readCurrentMatches");
+            CheckoutVariantSnapshotReadResult read =
+                CheckoutVariantSnapshotService.EvaluateSnapshot(displayedMatches);
+            if (read.Status != CheckoutVariantSnapshotReadStatus.Ready)
+                return new CheckoutVariantChoiceResult(
+                    read.Status == CheckoutVariantSnapshotReadStatus.Ambiguous
+                        ? CheckoutVariantChoiceStatus.Ambiguous
+                        : CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            if (read.Snapshots.Count == 0)
+                return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.Missing, null);
+            if (read.Snapshots.Count > 1 && chooseDuplicate == null)
+                throw new ArgumentNullException("chooseDuplicate",
+                    "Duplicate barcodes require an explicit article choice.");
+
+            int index = read.Snapshots.Count == 1 ? 0 : chooseDuplicate(read.Snapshots);
+            if (index == -1)
+                return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.Cancelled, null);
+            if (index < 0 || index >= read.Snapshots.Count)
+                throw new ArgumentOutOfRangeException("index",
+                    "The chosen article is outside the displayed variant list.");
+
+            DataTable live = readCurrentMatches();
+            // A failed/empty refresh is never permission to use the stale
+            // displayed row. DB exceptions still propagate to the UI handler.
+            if (live == null)
+                return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            return CheckoutVariantSnapshotService.EvaluateChoice(live, read.Snapshots, index);
+        }
+
         // Image tiles must be resolved from a live catalogue result by article
         // identity, not from an exact-barcode query: an image-only product can
         // legitimately have Code == "". No query, UI or database work here.
@@ -62,6 +103,21 @@ namespace LOGICA.ApplicationLayer.Checkout
             DataTable currentCatalogue, CheckoutArticleTileReference tile)
         {
             return CheckoutArticleTileSelectionService.EvaluateExact(currentCatalogue, tile);
+        }
+
+        // Opt-in adapter for a click on an image tile. Read the live catalogue
+        // by article identity, NOT by barcode: Code may be blank. A missing or
+        // reused identity fails closed before any price/basket operation.
+        internal static CheckoutVariantChoiceResult ChooseImageWithRefresh(
+            CheckoutArticleTileReference tile, Func<DataTable> readCurrentCatalogue)
+        {
+            if (tile == null) throw new ArgumentNullException("tile");
+            if (readCurrentCatalogue == null)
+                throw new ArgumentNullException("readCurrentCatalogue");
+            DataTable live = readCurrentCatalogue();
+            if (live == null)
+                return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            return CheckoutArticleTileSelectionService.EvaluateExact(live, tile);
         }
 
         // The pricing delegate MUST be the existing caller's legacy net-line
