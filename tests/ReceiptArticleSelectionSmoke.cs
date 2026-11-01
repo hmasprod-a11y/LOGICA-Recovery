@@ -198,6 +198,37 @@ internal static class ReceiptArticleSelectionSmoke
             Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(missingReceiptId.DefaultView[0], "BR-001") == null,
                 "missing receipt ID schema fails closed");
 
+            // The real receipt line grid must honor the clicked/edited row,
+            // not CurrentCell, and must recheck article identity after a modal.
+            Check(ReceiptLineGridGuard.HasExistingRow(0, 2),
+                "first receipt line is selectable");
+            Check(ReceiptLineGridGuard.HasExistingRow(1, 2),
+                "second clicked receipt line is selectable even when CurrentCell is first");
+            Check(!ReceiptLineGridGuard.HasExistingRow(-1, 2),
+                "column-header event is not a receipt line");
+            Check(!ReceiptLineGridGuard.HasExistingRow(2, 2),
+                "row index equal to count is not a receipt line");
+            Check(!ReceiptLineGridGuard.HasExistingRow(0, 0),
+                "empty receipt grid cannot select a line");
+            Check(!ReceiptLineGridGuard.HasExistingRow(int.MaxValue, 2),
+                "out-of-range event index cannot delete a line");
+            Check(ReceiptLineGridGuard.MatchesLine("ARTICLE-2", "DUP",
+                "ARTICLE-2", "DUP"), "clicked line identity survives modal");
+            Check(!ReceiptLineGridGuard.MatchesLine("ARTICLE-2", "DUP",
+                "ARTICLE-1", "DUP"), "same barcode must not delete another article");
+            Check(!ReceiptLineGridGuard.MatchesLine("ARTICLE-2", "DUP",
+                "ARTICLE-2", "NEW"), "changed barcode invalidates modal delete");
+            Check(!ReceiptLineGridGuard.MatchesLine("ARTICLE-2", "DUP",
+                "article-2", "DUP"), "line article identity is ordinal");
+            Check(!ReceiptLineGridGuard.MatchesLine(null, "DUP",
+                "ARTICLE-2", "DUP"), "missing article ID cannot authorize delete");
+            Check(!ReceiptLineGridGuard.MatchesLine("  ", "DUP",
+                "  ", "DUP"), "blank article ID cannot authorize delete");
+            Check(ReceiptLineGridGuard.MatchesLine("IMAGE-ONLY", "",
+                "IMAGE-ONLY", ""), "receipt line with blank barcode retains identity");
+            Check(!ReceiptLineGridGuard.MatchesLine("IMAGE-ONLY", "",
+                "IMAGE-ONLY", "CHANGED"), "blank-to-filled barcode invalidates stale delete");
+
             Console.WriteLine("PASS real receipt article selection: " + assertions +
                 " assertions; duplicate barcodes, exact grid IDs, stale/malformed identities");
             return 0;
