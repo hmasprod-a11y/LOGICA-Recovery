@@ -113,6 +113,25 @@ try {
     "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
     Assert-RejectedWithMessage 'ZIP directory shadowing LOGICA.exe' 'ZIP directory shadows packaged file'
     Write-FixtureZip
+    # An empty nested directory cannot exist under a packaged file on Windows.
+    $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
+    try { $null = $archive.CreateEntry('LOGICA.exe/empty/') }
+    finally { $archive.Dispose() }
+    $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
+    Assert-RejectedWithMessage 'nested ZIP directory under executable' 'ZIP directory shadows packaged file'
+    Write-FixtureZip
+    # Duplicate directory entries with different casing can overwrite each other
+    # on a Windows extraction target even if every file entry is unique.
+    $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
+    try {
+        $null = $archive.CreateEntry('isolated-directory/')
+        $null = $archive.CreateEntry('ISOLATED-DIRECTORY/')
+    } finally { $archive.Dispose() }
+    $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
+    Assert-RejectedWithMessage 'case-duplicate ZIP directories' 'Duplicate ZIP directory'
+    Write-FixtureZip
     [IO.File]::WriteAllText((Join-Path $src 'hash_licence.sni'), 'private-license-value')
     Write-FixtureManifest
     Write-FixtureZip
