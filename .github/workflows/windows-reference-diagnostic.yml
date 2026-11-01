@@ -3,6 +3,9 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - 'business/**'
+      - 'modernization/**'
+      - 'scripts/test-catalogue-core.ps1'
       - 'input/mysql-compatibility.sql'
       - 'input/recovered-original.sql'
       - 'input/LOGICA-dependencies.zip'
@@ -27,9 +30,14 @@ on:
       - '.github/workflows/windows-reference-diagnostic.yml'
   push:
     paths:
+      - 'business/**'
+      - 'modernization/**'
+      - 'scripts/test-catalogue-core.ps1'
       - 'input/LOGICA-dependencies.zip'
       - 'input/original-startup.json'
       - 'scripts/test-checkout-core.ps1'
+      - 'scripts/test-domain.ps1'
+      - 'tests/**'
       - 'scripts/Start-LOGICA.cmd'
       - 'scripts/Launch-LOGICA.ps1'
       - 'scripts/test-recovered-db.ps1'
@@ -68,6 +76,10 @@ jobs:
       - name: Guard release artifact upload policy (including negative fixtures)
         shell: pwsh
         run: python scripts/test-release-upload-policy.py
+      - name: Exercise business operations .NET 10 smoke when available
+        if: ${{ hashFiles('business/Hanouty.BusinessOperations.Smoke.csproj') != '' }}
+        shell: pwsh
+        run: dotnet run --project business/Hanouty.BusinessOperations.Smoke.csproj -c Release
       - name: Verify committed source is present
         shell: pwsh
         run: |
