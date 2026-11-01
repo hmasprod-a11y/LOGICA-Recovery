@@ -25,6 +25,8 @@ try {
         'tests/BusinessRevalidationSmoke.cs',
         'recovered-source/LOGICA/Application/Inventory/StockMovementAuditService.cs',
         'tests/StockMovementAuditSmoke.cs',
+        'recovered-source/LOGICA/Application/Inventory/StockMovementFlowReportService.cs',
+        'tests/StockMovementFlowReportSmoke.cs',
         'recovered-source/LOGICA/Application/Purchasing/PurchaseOrderReceiptReconciliationService.cs',
         'tests/PurchaseOrderReceiptReconciliationSmoke.cs',
         'recovered-source/LOGICA/Application/Inventory/StockCountVarianceService.cs',
