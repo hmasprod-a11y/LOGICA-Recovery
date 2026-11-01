@@ -15603,22 +15603,76 @@ public class Form_3_VENTE : Form
 	{
 	}
 
+	// Resolve the selected bound row, not a possibly stale currency-manager index.
+	// An empty/header-only list must never rescan the previously selected barcode.
+	private DataRow SelectedProductListRow()
+	{
+		DataGridViewRow gridRow = DataGridView100.CurrentRow;
+		DataRowView view = gridRow == null || gridRow.IsNewRow ? null : gridRow.DataBoundItem as DataRowView;
+		if (view == null || view.Row == null || view.Row.RowState == DataRowState.Deleted || view.Row.RowState == DataRowState.Detached)
+		{
+			return null;
+		}
+		return view.Row;
+	}
+
+	// List mode includes articles without a barcode or image. Resolve those by
+	// immutable article identity, exactly as an image tile does; scanner lookup
+	// and the legacy duplicate-barcode chooser remain unchanged.
+	private static LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference BlankBarcodeListArticleReference(DataRow row)
+	{
+		if (row == null || row.Table == null || row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached
+			|| !row.Table.Columns.Contains("ID_ARTICLE") || !row.Table.Columns.Contains("Code")
+			|| !string.IsNullOrWhiteSpace(row["Code"].ToString()) || string.IsNullOrWhiteSpace(row["ID_ARTICLE"].ToString()))
+		{
+			return null;
+		}
+		return LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(row);
+	}
+
 	private void DataGridView100_DoubleClick(object sender, EventArgs e)
 	{
-		Button_FIND.PerformClick();
+		DataRow row = SelectedProductListRow();
+		if (row == null || !row.Table.Columns.Contains("Code"))
+		{
+			return;
+		}
+		LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference identity = BlankBarcodeListArticleReference(row);
+		if (identity == null)
+		{
+			// Preserve the original exact-barcode lookup and duplicate chooser.
+			if (string.IsNullOrWhiteSpace(row["Code"].ToString()))
+			{
+				return;
+			}
+			Text_CODE.Text = row["Code"].ToString();
+			Button_FIND.PerformClick();
+			return;
+		}
+		// Reuse the proven image-tile identity lookup without leaving Tag changed.
+		object originalTag = Button_FIND.Tag;
+		try
+		{
+			Button_FIND.Tag = identity;
+			Button_FIND_Click(Button_FIND, e);
+		}
+		finally
+		{
+			Button_FIND.Tag = originalTag;
+		}
 	}
 
 	private void DataGridView100_Click(object sender, EventArgs e)
 	{
 		try
 		{
-			if (DataGridView100.Rows.Count == 0)
+			DataRow selected = SelectedProductListRow();
+			if (selected == null || !selected.Table.Columns.Contains("Code"))
 			{
 				((Control)Text_CODE).Focus();
 				return;
 			}
-			int position = ((ContainerControl)this).BindingContext[(object)dt_LA].Position;
-			Text_CODE.Text = dt_LA.Rows[position]["Code"].ToString();
+			Text_CODE.Text = selected["Code"].ToString();
 			((Control)Text_CODE).Focus();
 		}
 		catch (Exception ex)
