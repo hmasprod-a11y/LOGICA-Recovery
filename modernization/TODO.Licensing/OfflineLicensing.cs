@@ -39,7 +39,8 @@ public static class OfflineLicensing
     }
 
     public static LicenseValidationResult Verify(
-        string licenseJson, ECDsa publicKey, DateTimeOffset nowUtc, string? deviceHash = null)
+        string licenseJson, ECDsa publicKey, DateTimeOffset nowUtc, string? deviceHash = null,
+        DateTimeOffset? lastInvoiceUtc = null)
     {
         if (publicKey.KeySize != 256) return new(false, "invalid-public-key");
         if (string.IsNullOrEmpty(licenseJson) || licenseJson.Length > 32768)
@@ -59,12 +60,26 @@ public static class OfflineLicensing
                 return new(false, "invalid-signature");
             LicenseClaims? claims = JsonSerializer.Deserialize<LicenseClaims>(payload, JsonOptions);
             if (!ValidShape(claims)) return new(false, "invalid-claims");
-            if (nowUtc < claims!.NotBeforeUtc) return new(false, "not-yet-valid");
-            if (claims.ExpiresUtc is { } expiry && nowUtc > expiry)
-                return new(false, "expired");
+            
             if (claims.DeviceHash is not null &&
                 !string.Equals(claims.DeviceHash, deviceHash, StringComparison.OrdinalIgnoreCase))
                 return new(false, "device-mismatch");
+            // Clock resets must not disable checkout on a perpetual license.
+            // Invoice timestamps are advisory, never a trusted clock or blocking condition.
+            if (claims!.ExpiresUtc is null)
+                return new(true, nowUtc < claims.NotBeforeUtc ||
+                    (lastInvoiceUtc.HasValue && nowUtc < lastInvoiceUtc.Value)
+                    ? "clock-warning" : "valid", claims);
+            if (nowUtc < claims.NotBeforeUtc ||
+                (lastInvoiceUtc.HasValue && nowUtc < lastInvoiceUtc.Value))
+                return new(true, "clock-warning", claims);
+            if (nowUtc > claims.ExpiresUtc.Value)
+            {
+                // Fixed offline grace avoids an abrupt checkout stop after an expiry.
+                if (nowUtc <= claims.ExpiresUtc.Value.AddHours(72))
+                    return new(true, "grace-period", claims);
+                return new(false, "expired", claims);
+            }
             return new(true, "valid", claims);
         }
         catch (Exception e) when (e is JsonException or FormatException or CryptographicException or ArgumentException or OverflowException)
