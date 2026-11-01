@@ -30,6 +30,8 @@ try {
     (Get-Content -LiteralPath $license -Raw).Replace('"Payload"', '"PayloaX"') |
         Set-Content -LiteralPath $tampered -Encoding UTF8
     Invoke-License 2 @('verify', $public, $tampered, $device)
+    # A deliberate negative CLI case exits 2; reset the external-process status on success.
+    $global:LASTEXITCODE = 0
     Write-Host 'PASS: TODO POS offline issuer CLI, device binding, perpetual license and tamper rejection'
 } finally {
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
