@@ -76,8 +76,8 @@ class ExactHeadWorkflowTests(unittest.TestCase):
             "no_assertion": source.replace(
                 "- name: Assert exact candidate source SHA", "- name: Skip provenance", 1),
             "ignored_assertion": source.replace(
-                "- name: Assert exact candidate source SHA",
-                "- name: Assert exact candidate source SHA\n        continue-on-error: true", 1),
+                "- name: Assert exact candidate source SHA before build",
+                "- name: Assert exact candidate source SHA before build\n        continue-on-error: true", 1),
         }
         for label, mutated in mutations.items():
             with self.subTest(mutation=label):
