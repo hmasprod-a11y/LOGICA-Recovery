@@ -112,6 +112,59 @@ internal static class PortableCheckoutSmoke
                 "Stale variant must fail closed");
             Require(CheckoutVariantSnapshotService.ResolveChosenVariant(variants, snapshots, 1) == null,
                 "Stale explicit choice must fail closed");
+            // Typed modern UI outcomes are read-only and never equate cancel
+            // with missing, corrupt or ambiguous inventory identities.
+            DataTable outcomeRows = variants.Clone();
+            outcomeRows.Rows.Add("123", "A");
+            outcomeRows.Rows.Add("123", "B");
+            var selectedOutcome = CheckoutVariantSnapshotService.EvaluateChoice(outcomeRows, snapshots, 1);
+            Require(selectedOutcome.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(selectedOutcome.SelectedRow, outcomeRows.Rows[1]),
+                "Typed outcome must preserve selected article identity");
+            var cancelledOutcome = CheckoutVariantSnapshotService.EvaluateChoice(outcomeRows, snapshots, -1);
+            Require(cancelledOutcome.Status == CheckoutVariantChoiceStatus.Cancelled &&
+                cancelledOutcome.SelectedRow == null, "Explicit cancellation outcome");
+            var absentRows = outcomeRows.Clone();
+            absentRows.Rows.Add("123", "A");
+            var missingOutcome = CheckoutVariantSnapshotService.EvaluateChoice(absentRows, snapshots, 1);
+            Require(missingOutcome.Status == CheckoutVariantChoiceStatus.Missing &&
+                missingOutcome.SelectedRow == null, "Stale variant is missing, not cancelled");
+            var duplicatedRows = outcomeRows.Clone();
+            duplicatedRows.Rows.Add("123", "B");
+            duplicatedRows.Rows.Add("123", "B");
+            var ambiguousOutcome = CheckoutVariantSnapshotService.EvaluateChoice(duplicatedRows, snapshots, 1);
+            Require(ambiguousOutcome.Status == CheckoutVariantChoiceStatus.Ambiguous &&
+                ambiguousOutcome.SelectedRow == null, "Ambiguous duplicate identity must fail closed");
+            var invalidRows = outcomeRows.Clone();
+            invalidRows.Rows.Add(DBNull.Value, "Z");
+            invalidRows.Rows.Add("123", "B");
+            var invalidOutcome = CheckoutVariantSnapshotService.EvaluateChoice(invalidRows, snapshots, 1);
+            Require(invalidOutcome.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                invalidOutcome.SelectedRow == null, "Corrupt live candidates must fail closed");
+            var deletedRows = outcomeRows.Copy();
+            deletedRows.AcceptChanges();
+            deletedRows.Rows[1].Delete();
+            var deletedOutcome = CheckoutVariantSnapshotService.EvaluateChoice(deletedRows, snapshots, 1);
+            Require(deletedOutcome.Status == CheckoutVariantChoiceStatus.Missing &&
+                deletedOutcome.SelectedRow == null, "Deleted but uncommitted article must not be selected");
+            var reorderedOutcome = CheckoutVariantSnapshotService.EvaluateChoice(reordered, snapshots, 0);
+            Require(reorderedOutcome.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(reorderedOutcome.SelectedRow, reordered.Rows[1]),
+                "Typed outcome must resolve reorder by identity");
+            bool invalidOutcomeIndex = false;
+            try { CheckoutVariantSnapshotService.EvaluateChoice(outcomeRows, snapshots, 5); }
+            catch (ArgumentOutOfRangeException) { invalidOutcomeIndex = true; }
+            Require(invalidOutcomeIndex, "Typed outcome must reject out-of-range index");
+            bool nullOutcomeSelection = false;
+            try {
+                CheckoutVariantSnapshotService.EvaluateChoice(outcomeRows,
+                    new List<CheckoutVariantSnapshot> { null }, 0);
+            }
+            catch (ArgumentException) { nullOutcomeSelection = true; }
+            Require(nullOutcomeSelection, "Typed outcome must reject null displayed entry");
+            Require(outcomeRows.Rows.Count == 2 && outcomeRows.Rows[1]["ID_ARTICLE"].ToString() == "B",
+                "Typed evaluation must not mutate current query");
+            Console.WriteLine("PASS typed modern checkout variant outcomes: selected, cancel, missing, ambiguity, invalid and deleted");
             Console.WriteLine("PASS portable checkout modern variant selection: cancellation, index, identity, reorder, ambiguity and stale rows");
             var port = new Semantics();
             Require(CheckoutAmountGuards.IsNegativeSale("VENTE", "-1", port), "Negative sale");
