@@ -15616,6 +15616,37 @@ public class Form_3_VENTE : Form
 		return view.Row;
 	}
 
+	// Mouse clicks must resolve the cell actually under the pointer. CurrentRow can
+	// still refer to a previous article when a header, scrollbar or another row is
+	// double-clicked, which could otherwise add the wrong product to the basket.
+	private DataRow SelectedProductListRowForPointer(EventArgs e)
+	{
+		MouseEventArgs mouse = e as MouseEventArgs;
+		if (mouse == null)
+		{
+			// Preserve the legacy programmatic/keyboard invocation path.
+			return SelectedProductListRow();
+		}
+		if (mouse.Button != MouseButtons.Left)
+		{
+			return null;
+		}
+		DataGridView.HitTestInfo hit = DataGridView100.HitTest(mouse.X, mouse.Y);
+		if (hit.Type != DataGridViewHitTestType.Cell || hit.RowIndex < 0
+			|| hit.RowIndex >= DataGridView100.Rows.Count || hit.ColumnIndex < 0)
+		{
+			return null;
+		}
+		DataGridViewRow gridRow = DataGridView100.Rows[hit.RowIndex];
+		DataRowView view = gridRow == null || gridRow.IsNewRow ? null : gridRow.DataBoundItem as DataRowView;
+		if (view == null || view.Row == null || view.Row.RowState == DataRowState.Deleted
+			|| view.Row.RowState == DataRowState.Detached)
+		{
+			return null;
+		}
+		return view.Row;
+	}
+
 	// List mode includes articles without a barcode or image. Resolve those by
 	// immutable article identity, exactly as an image tile does; scanner lookup
 	// and the legacy duplicate-barcode chooser remain unchanged.
@@ -15637,7 +15668,7 @@ public class Form_3_VENTE : Form
 		{
 			return;
 		}
-		DataRow row = SelectedProductListRow();
+		DataRow row = SelectedProductListRowForPointer(e);
 		if (row == null || !row.Table.Columns.Contains("Code"))
 		{
 			return;
@@ -15671,7 +15702,7 @@ public class Form_3_VENTE : Form
 	{
 		try
 		{
-			DataRow selected = SelectedProductListRow();
+			DataRow selected = SelectedProductListRowForPointer(e);
 			if (selected == null || !selected.Table.Columns.Contains("Code"))
 			{
 				((Control)Text_CODE).Focus();
