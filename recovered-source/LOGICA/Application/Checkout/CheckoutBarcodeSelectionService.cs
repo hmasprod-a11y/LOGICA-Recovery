@@ -32,6 +32,33 @@ namespace LOGICA.ApplicationLayer.Checkout
                 matches, chooseDuplicate, delegate { return matches; }).SelectedRow;
         }
 
+        // Scanner-owned overload: the barcode captured from Text_CODE BEFORE
+        // opening the modal is authoritative. A different barcode in the
+        // displayed SQL result must not become the sale's selected identity,
+        // even if every returned row agrees with each other. The original
+        // overload remains for callers that only have the displayed table.
+        internal static CheckoutVariantChoiceResult SelectWithRefresh(
+            string scannedBarcode, DataTable displayedMatches,
+            Func<DataTable, int> chooseDuplicate, Func<DataTable> readCurrentMatches)
+        {
+            if (displayedMatches == null)
+                throw new ArgumentNullException("displayedMatches");
+            if (readCurrentMatches == null)
+                throw new ArgumentNullException("readCurrentMatches");
+            if (String.IsNullOrWhiteSpace(scannedBarcode))
+                return new CheckoutVariantChoiceResult(
+                    CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            CheckoutVariantSnapshotReadResult initial =
+                CheckoutVariantSnapshotService.EvaluateSnapshot(displayedMatches);
+            if (initial.Status == CheckoutVariantSnapshotReadStatus.Ready)
+                foreach (CheckoutVariantSnapshot candidate in initial.Snapshots)
+                    if (!String.Equals(candidate.Code, scannedBarcode,
+                        StringComparison.Ordinal))
+                        return new CheckoutVariantChoiceResult(
+                            CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            return SelectWithRefresh(displayedMatches, chooseDuplicate, readCurrentMatches);
+        }
+
         // Drop-in bridge for the Windows barcode handler once its local SQL
         // reader is available: show the existing modal over the displayed
         // table, then requery by exact barcode BEFORE copying current price,
