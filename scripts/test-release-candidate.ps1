@@ -46,7 +46,7 @@ foreach ($file in $files) {
   if (-not $seen.Add($relative)) { throw "Case-colliding release file: $relative" }
   foreach ($segment in $relative.Split('/')) {
     if ($segment -match '[\x00-\x1F]' -or $segment -match '[. ]$' -or
-        $segment -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)') {
+        $segment -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)' ) {
       throw "Unsafe Windows release filename: $relative"
     }
   }
