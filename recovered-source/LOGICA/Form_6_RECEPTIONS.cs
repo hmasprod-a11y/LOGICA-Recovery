@@ -679,6 +679,9 @@ public class Form_6_RECEPTIONS : Form
 
 	private object _sql;
 
+	// Only set during an explicit purchase article-grid choice.
+	private string _receiptSelectedArticleId;
+
 	internal virtual Button Button_ADD
 	{
 		[DebuggerNonUserCode]
@@ -9694,15 +9697,33 @@ public class Form_6_RECEPTIONS : Form
 				dataTable.Clear();
 				val = new MySqlDataAdapter("select       ID_ARTICLE,Code,Article,STOCK,Prix_A,Prix_V_1,UNITE         from TABLE_ARTICLES WHERE Code =  '" + Text_CODE_FIND.Text + "'    ", Module1.cn_SQL);
 				((DbDataAdapter)(object)val).Fill(dataTable);
-				if (dataTable.Rows.Count != 0)
+				DataRow receiptArticle = LOGICA.ApplicationLayer.Purchasing.ReceiptArticleSelectionService.Resolve(
+					dataTable, _receiptSelectedArticleId);
+				if (dataTable.Rows.Count != 0 && receiptArticle == null)
 				{
-					Text_ID_ARTICLE.Text = dataTable.Rows[0]["ID_ARTICLE"].ToString();
-					Text_CODE.Text = dataTable.Rows[0]["Code"].ToString();
-					Text_ARTICLE.Text = dataTable.Rows[0]["Article"].ToString();
-					Text_STOCK_ACTUEL.Text = dataTable.Rows[0]["STOCK"].ToString();
-					Text_PRIX_A.Text = dataTable.Rows[0]["Prix_A"].ToString();
-					Text_PRIX_V.Text = dataTable.Rows[0]["Prix_V_1"].ToString();
-					Text_UNITE.Text = dataTable.Rows[0]["UNITE"].ToString();
+					// Never silently receive stock against the first duplicate barcode variant.
+					// Clear any prior choice so a stale article cannot be added.
+					Text_ID_ARTICLE.Text = "";
+					Text_CODE.Text = "";
+					Text_ARTICLE.Text = "";
+					Text_STOCK_ACTUEL.Text = "";
+					Text_PRIX_A.Text = "";
+					Text_PRIX_V.Text = "";
+					Text_UNITE.Text = "";
+					Text_QTE.Text = "";
+					MessageBox.Show("Plusieurs articles partagent ce code ou l'article choisi a changé. Sélectionnez l'article exact dans la liste.", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					((Control)Text_ARTICLE_FIND).Focus();
+					return;
+				}
+				if (receiptArticle != null)
+				{
+					Text_ID_ARTICLE.Text = receiptArticle["ID_ARTICLE"].ToString();
+					Text_CODE.Text = receiptArticle["Code"].ToString();
+					Text_ARTICLE.Text = receiptArticle["Article"].ToString();
+					Text_STOCK_ACTUEL.Text = receiptArticle["STOCK"].ToString();
+					Text_PRIX_A.Text = receiptArticle["Prix_A"].ToString();
+					Text_PRIX_V.Text = receiptArticle["Prix_V_1"].ToString();
+					Text_UNITE.Text = receiptArticle["UNITE"].ToString();
 					Text_QTE.Text = "";
 					((Control)Text_QTE).Focus();
 					return;
@@ -10447,8 +10468,17 @@ public class Form_6_RECEPTIONS : Form
 		{
 			if (DataGridView_ARTICLES.Rows.Count != 0)
 			{
-				Text_CODE_FIND.Text = Conversions.ToString(DataGridView_ARTICLES.Rows[((DataGridViewBand)DataGridView_ARTICLES.CurrentRow).Index].Cells[1].Value);
-				Button_FIND.PerformClick();
+				DataGridViewRow chosenReceiptRow = DataGridView_ARTICLES.Rows[((DataGridViewBand)DataGridView_ARTICLES.CurrentRow).Index];
+				_receiptSelectedArticleId = Conversions.ToString(chosenReceiptRow.Cells[0].Value);
+				try
+				{
+					Text_CODE_FIND.Text = Conversions.ToString(chosenReceiptRow.Cells[1].Value);
+					Button_FIND.PerformClick();
+				}
+				finally
+				{
+					_receiptSelectedArticleId = null;
+				}
 			}
 		}
 		catch (Exception ex)
