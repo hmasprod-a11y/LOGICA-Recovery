@@ -93,6 +93,38 @@ internal static class ReceiptArticleSelectionSmoke
                 "mixed barcode lookup rejects scanner selection");
             Check(ReceiptArticleSelectionService.Resolve(mixedCodes, "MISSING") == null,
                 "mixed barcode lookup never falls back to another article");
+            // Real WinForms Find button must distinguish an empty scanner from
+            // an explicit grid-selected article without a barcode. The latter
+            // must reach the existing local Code='' query and exact ID resolver.
+            Check(!ReceiptArticleSelectionService.ShouldLookupBarcode("", null),
+                "empty scanner does not read or select an arbitrary blank-code article");
+            Check(!ReceiptArticleSelectionService.ShouldLookupBarcode("  ", null),
+                "whitespace-only scanner is ignored");
+            Check(!ReceiptArticleSelectionService.ShouldLookupBarcode(null, null),
+                "null scanner value is ignored");
+            Check(ReceiptArticleSelectionService.ShouldLookupBarcode("KNOWN", null),
+                "ordinary scanner still queries catalogue");
+            Check(ReceiptArticleSelectionService.ShouldLookupBarcode("KNOWN", "A"),
+                "explicit grid article with barcode still queries catalogue");
+            Check(ReceiptArticleSelectionService.ShouldLookupBarcode("", "B"),
+                "explicit barcode-free grid article must reach exact ID lookup");
+            Check(ReceiptArticleSelectionService.ShouldLookupBarcode(null, "B"),
+                "explicit ID remains distinguishable from empty scanner input");
+            Check(ReceiptArticleSelectionService.ShouldLookupBarcode(" ", "B"),
+                "explicit grid identity retains whitespace Code exactly");
+            Check(ReceiptArticleSelectionService.ShouldLookupBarcode("", ""),
+                "malformed explicit ID is still sent to fail-closed resolver");
+            var barcodeFreeSingle = Matches();
+            barcodeFreeSingle.Rows.RemoveAt(1);
+            barcodeFreeSingle.Rows[0]["Code"] = "";
+            Check(Object.ReferenceEquals(ReceiptArticleSelectionService.Resolve(
+                barcodeFreeSingle, "A"), barcodeFreeSingle.Rows[0]),
+                "single barcode-free product can be selected by explicit ID");
+            Check(ReceiptArticleSelectionService.Resolve(barcodeFreeSingle, "MISSING") == null,
+                "stale explicit ID cannot select barcode-free product");
+            Check(!ReceiptArticleSelectionService.CanOfferCreation(barcodeFreeSingle.Clone(), "A"),
+                "disappeared barcode-free grid article cannot trigger create prompt");
+
             var blankCodes = Matches();
             blankCodes.Rows[0]["Code"] = "";
             blankCodes.Rows[1]["Code"] = "";
