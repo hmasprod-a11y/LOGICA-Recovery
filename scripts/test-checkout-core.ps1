@@ -18,6 +18,7 @@ try {
         'recovered-source/LOGICA/Domain/SalesLinePricing.cs',
         'recovered-source/LOGICA/Domain/StockAvailability.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutArticleImageSelectionService.cs',
+        'recovered-source/LOGICA/Application/Checkout/CheckoutBarcodeSelectionService.cs',
         'recovered-source/LOGICA/Application/Checkout/StockValidationModels.cs',
         'recovered-source/LOGICA/Application/Checkout/StockValidationService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutPostingModels.cs',
@@ -40,7 +41,7 @@ try {
     }
     $binary = Join-Path $temporary 'CheckoutCoreWithoutVB.exe'
     # No VB, WinForms, MySQL, Bunifu or database references.
-    & $compiler /nologo /platform:x86 /target:exe "/out:$binary" $sources
+    & $compiler /nologo /platform:x86 /target:exe /r:System.Data.dll "/out:$binary" $sources
     if ($LASTEXITCODE -ne 0) { throw 'Checkout core failed independent compilation' }
     & $binary
     if ($LASTEXITCODE -ne 0) { throw 'Checkout core isolated smoke failed' }

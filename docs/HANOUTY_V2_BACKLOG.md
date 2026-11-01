@@ -26,3 +26,10 @@ The sale scanner's `Button_FIND_Click` previously concatenated `Text_CODE.Text` 
 ## Next resume point
 
 After the exact-barcode PR passes Windows/MariaDB and portable CI: characterize barcode duplicate selection and quantity increments in the original Windows sale screen, then implement the user-approved chooser without silently altering stock, payment, or ticket behavior. Inspect image-tab initial selection and search latency independently.
+
+
+## Duplicate barcode scan — explicit variant selection (2026-11-01)
+
+The exact parameterized `Code = @code` lookup still returns every matching row. The new portable `CheckoutBarcodeSelectionService` keeps the original row identity for zero/one matches, and requires an explicit index from a Windows-only chooser when multiple articles share a code. The chooser displays article name, code, ID and the currently selected price tier; Cancel/Escape returns without calling `Button_GO_Click`. No database write, quantity increment, ticket or stock posting occurs until an article is explicitly chosen. The selected original `DataRow` is passed to the unchanged weighing/free-price/posting sequence. This is an intentional UX change for duplicate codes; it does **not** add catalogue variants or change barcode creation.
+
+Acceptance: isolated .NET Framework characterization (including cancel, bounds and exception propagation), portable .NET 10 smoke, Windows POS build, and isolated MariaDB duplicate lookup must pass. Manual keyboard/scanner and small-screen usability verification remains required before field release.

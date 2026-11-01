@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using LOGICA.ApplicationLayer.Checkout;
 using LOGICA.Infrastructure.Checkout;
 
@@ -43,6 +44,17 @@ internal static class PortableArticleSearchSmoke
         if (barcode != "select * from TABLE_ARTICLES WHERE Code = @code" ||
             barcode.Contains("O'Hara") || barcode.Contains("ORDER BY") || barcode.Contains("LIKE"))
             throw new Exception("Portable scanned barcode lookup must be parameterized exact equality");
+        DataTable matches = new DataTable();
+        matches.Columns.Add("Article");
+        matches.Rows.Add("first");
+        matches.Rows.Add("variant");
+        if (CheckoutBarcodeSelectionService.Select(matches, delegate(DataTable rows) { return 1; }) != matches.Rows[1])
+            throw new Exception("Portable duplicate selection did not preserve selected DataRow");
+        if (CheckoutBarcodeSelectionService.Select(matches, delegate(DataTable rows) { return -1; }) != null)
+            throw new Exception("Portable duplicate cancel must not select a product");
+        matches.Rows.RemoveAt(1);
+        if (CheckoutBarcodeSelectionService.Select(matches, null) != matches.Rows[0])
+            throw new Exception("Portable single barcode legacy behavior changed");
         Console.WriteLine("PASS .NET 10 portable checkout article search: routing, read order, parameterized search and exact barcode lookup");
         return 0;
     }
