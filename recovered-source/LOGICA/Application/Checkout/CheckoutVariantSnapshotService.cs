@@ -137,6 +137,14 @@ namespace LOGICA.ApplicationLayer.Checkout
             if (selectedIndex < 0 || selectedIndex >= displayed.Count)
                 throw new ArgumentOutOfRangeException("selectedIndex",
                     "The chosen article is outside the displayed variant list.");
+            // A caller may supply an IList rather than the immutable output of
+            // Read. Reject duplicate/malformed displayed identities before using
+            // a valid-looking selected entry; never silently select one of them.
+            // Preserve the historical null-selected argument exception.
+            if (displayed[selectedIndex] == null)
+                return Resolve(currentMatches, displayed[selectedIndex]);
+            if (ValidateDisplayed(displayed) != CheckoutVariantSnapshotReadStatus.Ready)
+                return null;
             return Resolve(currentMatches, displayed[selectedIndex]);
         }
 
@@ -156,7 +164,38 @@ namespace LOGICA.ApplicationLayer.Checkout
                     "The chosen article is outside the displayed variant list.");
             CheckoutVariantSnapshot selected = displayed[selectedIndex];
             if (selected == null) throw new ArgumentException("The chosen variant cannot be null.", "displayed");
+            CheckoutVariantSnapshotReadStatus displayedStatus = ValidateDisplayed(displayed);
+            if (displayedStatus != CheckoutVariantSnapshotReadStatus.Ready)
+                return new CheckoutVariantChoiceResult(
+                    displayedStatus == CheckoutVariantSnapshotReadStatus.Ambiguous
+                        ? CheckoutVariantChoiceStatus.Ambiguous
+                        : CheckoutVariantChoiceStatus.InvalidCandidates, null);
             return EvaluateSelected(currentMatches, selected);
+        }
+
+        // The displayed list is supplied by a caller, not necessarily by Read.
+        // Validate the whole list with the same ID uniqueness and malformed-row
+        // precedence as EvaluateSnapshot. Two distinct IDs may share a barcode.
+        private static CheckoutVariantSnapshotReadStatus ValidateDisplayed(
+            IList<CheckoutVariantSnapshot> displayed)
+        {
+            var seenIds = new HashSet<string>(StringComparer.Ordinal);
+            bool ambiguous = false;
+            bool invalid = false;
+            foreach (CheckoutVariantSnapshot snapshot in displayed)
+            {
+                if (snapshot == null || String.IsNullOrEmpty(snapshot.ArticleId) ||
+                    snapshot.Code == null)
+                {
+                    invalid = true;
+                    continue;
+                }
+                if (!seenIds.Add(snapshot.ArticleId))
+                    ambiguous = true;
+            }
+            return invalid ? CheckoutVariantSnapshotReadStatus.InvalidCandidates
+                : ambiguous ? CheckoutVariantSnapshotReadStatus.Ambiguous
+                : CheckoutVariantSnapshotReadStatus.Ready;
         }
 
         // All modern selection entry points must share the same fail-closed
