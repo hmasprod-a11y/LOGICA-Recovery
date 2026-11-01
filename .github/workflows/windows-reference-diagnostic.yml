@@ -69,6 +69,21 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          # PR default is a synthetic merge commit; never package that as the
+          # reviewed integration branch head or report its CI as exact-head.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Assert exact candidate source SHA before build
+        shell: pwsh
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $actual = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:EXPECTED_SHA) {
+            throw "Checkout provenance mismatch: expected $env:EXPECTED_SHA; actual $actual"
+          }
+          Write-Host "PASS: building exact candidate source commit $actual"
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
