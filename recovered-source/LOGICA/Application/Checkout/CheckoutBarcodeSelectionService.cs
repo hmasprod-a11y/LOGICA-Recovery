@@ -25,8 +25,11 @@ namespace LOGICA.ApplicationLayer.Checkout
         // identity rules in the same flow used by the refreshed adapter.
         internal static DataRow Select(DataTable matches, Func<DataTable, int> chooseDuplicate)
         {
-            return SelectWithRefresh(matches, chooseDuplicate,
-                delegate { return matches; }).SelectedRow;
+            // The original WinForms handler has no second SQL read yet. Keep
+            // that legacy in-memory behavior until Track C wires a real refresh.
+            // Do not pretend this fallback has fresh catalogue prices.
+            return CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                matches, chooseDuplicate, delegate { return matches; }).SelectedRow;
         }
 
         // Drop-in bridge for the Windows barcode handler once its local SQL
@@ -39,8 +42,18 @@ namespace LOGICA.ApplicationLayer.Checkout
             DataTable displayedMatches, Func<DataTable, int> chooseDuplicate,
             Func<DataTable> readCurrentMatches)
         {
+            if (displayedMatches == null)
+                throw new ArgumentNullException("displayedMatches");
+            if (readCurrentMatches == null)
+                throw new ArgumentNullException("readCurrentMatches");
+            // A refresh adapter that hands back the same mutable table cannot
+            // guarantee fresh price/discount/tax data. Reject that misuse rather
+            // than silently advertising an in-memory row as a live SQL read.
             return CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
-                displayedMatches, chooseDuplicate, readCurrentMatches);
+                displayedMatches, chooseDuplicate, delegate {
+                    DataTable live = readCurrentMatches();
+                    return Object.ReferenceEquals(live, displayedMatches) ? null : live;
+                });
         }
 
     }
