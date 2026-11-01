@@ -10277,9 +10277,9 @@ public class Form_6_RECEPTIONS : Form
 					((Control)Button_VALIDER).Enabled = true;
 					return;
 				}
-				// Only an unvalidated receipt is eligible for stock posting.
-				if (!String.Equals(Convert.ToString(confirmedReceiptRow.Cells["ETAT"].Value),
-					"ENREGISTRER", StringComparison.Ordinal))
+				// Keep the original confirmation path for EN_COURS and ENREGISTRER;
+				// the consulted receipt is rechecked before any stock transaction.
+				if (Operators.ConditionalCompareObjectEqual(confirmedReceiptRow.Cells["ETAT"].Value, "VALIDER", TextCompare: false))
 				{
 					((Control)Button_VALIDER).Enabled = true;
 					return;
