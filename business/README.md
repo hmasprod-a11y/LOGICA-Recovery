@@ -1,0 +1,13 @@
+# Hanouty business operations: isolated preview boundary
+
+This is a **new opt-in**, read-only business layer. It does **not** replace or invoke LOGICA's working purchase/stock workflows. No SQL, WinForms, MySQL connector, migration, stock mutation or license changes are included.
+
+- `PurchaseReceiptPreviewService`: validates a supplier receipt and aggregates quantities/cost by exact `ID_ARTICLE` identity (not barcode), preserving duplicate-barcode variants and fractional decimal values. A conflicting barcode for one ID fails closed.
+- `StockCountVarianceService`: compares physical counts with recorded stock, separately reporting shortage and surplus without adjusting stock. Negative *recorded* stock is allowed because it may exist in legacy data; negative physical counts are rejected.
+- Both services return read-only snapshots. Nothing is committed. Integration with the real purchase UI/database requires a separate, reviewed design and isolated MariaDB tests.
+
+Regression gates:
+- Windows/.NET Framework compiler: `powershell -File scripts/test-catalogue-core.ps1` (included in existing Domain characterization workflow).
+- .NET 10: `dotnet run --project business/Hanouty.BusinessOperations.Smoke.csproj -c Release`.
+
+**Coordination request to QA / Modern Core owners:** please add the standalone .NET 10 command to a future shared Linux CI workflow after review. Do not edit `modernization/CoreSources.props` or shared workflows from Track B. Do not claim MariaDB integration: this preview has no database adapter.
