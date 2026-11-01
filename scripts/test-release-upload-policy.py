@@ -222,7 +222,7 @@ def assert_mandatory_step_commands(source):
                     if lines[i].startswith('      - ')), len(lines))
         block = lines[start + 1:end]
         run_headers = [(i, line) for i, line in enumerate(block)
-                       if re.match(r'^        run:\\s*', line)]
+                       if re.match(r'^        run:\s*', line)]
         if len(run_headers) != 1:
             raise ValueError(f'{name}: missing or ambiguous run command')
         run_index, run_header = run_headers[0]
@@ -511,7 +511,7 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
     def test_comment_does_not_count_as_executable_gate(self):
         source = WORKFLOW.read_text(encoding='utf-8')
         modified = source.replace('run: ./scripts/test-pos.ps1',
-                                  'run: |\\n          # ./scripts/test-pos.ps1\\n          Write-Host skipped-pos', 1)
+                                  'run: |\n          # ./scripts/test-pos.ps1\n          Write-Host skipped-pos', 1)
         with self.assertRaisesRegex(ValueError, 'missing executable verification command'):
             assert_critical_release_gates(modified)
 
