@@ -104,6 +104,7 @@ internal static class PortableCoreSmoke
     public static int Main()
     {
         PortableClientSearchSmoke.Verify();
+        PortableGridExportSmoke.Verify();
         var cash = new CashSemantics();
         Require(CashDenominationTotal.Calculate(delegate(int i) { return "1"; }, cash) == 388.8m, "Cash total changed");
         var cashContext = new CashContext();

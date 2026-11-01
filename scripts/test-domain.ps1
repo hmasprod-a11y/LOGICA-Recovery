@@ -14,6 +14,7 @@ try {
     $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Application/Catalogue') -Filter '*.cs' | ForEach-Object { $_.FullName })
     $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Presentation/Input') -Filter '*.cs' | ForEach-Object { $_.FullName })
     $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Presentation/Formatting') -Filter '*.cs' | ForEach-Object { $_.FullName })
+    $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Application/Export') -Filter '*.cs' | ForEach-Object { $_.FullName })
     $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Application/Clients') -Filter '*.cs' | ForEach-Object { $_.FullName })
     $sources += @(Get-ChildItem -LiteralPath (Join-Path $root 'recovered-source/LOGICA/Infrastructure/Compatibility') -Filter '*.cs' | ForEach-Object { $_.FullName })
     # Portable SQL text builders have no database or Visual Basic dependency.

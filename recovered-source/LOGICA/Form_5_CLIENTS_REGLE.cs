@@ -1,3 +1,4 @@
+using LOGICA.Infrastructure.Export;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -3925,42 +3926,7 @@ public class Form_5_CLIENTS_REGLE : Form
 			{
 				return;
 			}
-			DataTable dataTable = new DataTable();
-			foreach (DataGridViewColumn item in (BaseCollection)DataGridView1.Columns)
-			{
-				DataGridViewColumn val2 = item;
-				if ((object)((object)val2).GetType() == typeof(DataGridViewTextBoxColumn))
-				{
-					dataTable.Columns.Add(val2.HeaderText, val2.ValueType);
-				}
-			}
-			foreach (DataGridViewRow item2 in (IEnumerable)DataGridView1.Rows)
-			{
-				DataGridViewRow val3 = item2;
-				dataTable.Rows.Add();
-				foreach (DataGridViewCell item3 in (BaseCollection)val3.Cells)
-				{
-					DataGridViewCell val4 = item3;
-					if ((object)((object)val4).GetType() == typeof(DataGridViewTextBoxCell))
-					{
-						if (val4.Value == null)
-						{
-							val4.Value = "-";
-						}
-						dataTable.Rows[checked(dataTable.Rows.Count - 1)][val4.ColumnIndex] = val4.Value.ToString();
-					}
-				}
-			}
-			XLWorkbook val5 = new XLWorkbook();
-			try
-			{
-				val5.Worksheets.Add(dataTable, "Table");
-				val5.SaveAs(((FileDialog)val).FileName + ".xlsx");
-			}
-			finally
-			{
-				((IDisposable)val5)?.Dispose();
-			}
+			WinFormsGridExcelExporter.Export(DataGridView1, ((FileDialog)val).FileName + ".xlsx");
 		}
 		catch (Exception ex)
 		{

@@ -32,3 +32,11 @@ matrix checks every read/write/print/completion boundary and verifies that no su
 operation runs after a failure. The same production services are linked into .NET 10 Linux
 and exercised without VB, WinForms, MySQL or Bunifu. Transaction commit/rollback, printing,
 license, and actual shop database ownership remain in the original Windows form.
+
+Shared Excel export milestone: the original client settlement and stock movement screens
+now call a single WinForms/ClosedXML infrastructure adapter. Their DataTable projection
+runs in the portable Application layer, retaining exact textbox type selection,
+null-to-dash cell mutation, original column indexing, new-row handling and failure
+order. The same production projection is linked into .NET 10 Linux smoke tests;
+Windows CI separately exercises real XLSX output for both grid types. Neither
+POS database writes nor licensing, activation, printing or UI layout changed.

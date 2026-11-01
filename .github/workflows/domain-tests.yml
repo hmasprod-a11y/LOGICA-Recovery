@@ -41,6 +41,9 @@ jobs:
       - name: Compile and test stock movement core without VB or database
         shell: powershell
         run: ./scripts/test-stock-movement-core.ps1
+      - name: Compile and test shared client/stock export projection without WinForms
+        shell: powershell
+        run: ./scripts/test-export-core.ps1
       - name: Compile and test catalogue creation without VB or database
         shell: powershell
         run: ./scripts/test-catalogue-core.ps1
