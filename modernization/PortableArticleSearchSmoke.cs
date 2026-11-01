@@ -52,6 +52,15 @@ internal static class PortableArticleSearchSmoke
             throw new Exception("Portable duplicate selection did not preserve selected DataRow");
         if (CheckoutBarcodeSelectionService.Select(matches, delegate(DataTable rows) { return -1; }) != null)
             throw new Exception("Portable duplicate cancel must not select a product");
+        DataTable basket = new DataTable();
+        basket.Columns.Add("Code");
+        basket.Columns.Add("ID_ARTICLE");
+        basket.Rows.Add("shared", "article-1");
+        Func<object, object, bool> equals = delegate(object left, object right) { return Object.Equals(left, right); };
+        if (!CheckoutBarcodeSelectionService.IsSameBasketArticle(basket.Rows[0], "shared", "article-1", equals))
+            throw new Exception("Portable checkout failed to identify same basket article");
+        if (CheckoutBarcodeSelectionService.IsSameBasketArticle(basket.Rows[0], "shared", "article-2", equals))
+            throw new Exception("Portable checkout merged distinct variants sharing a barcode");
         matches.Rows.RemoveAt(1);
         if (CheckoutBarcodeSelectionService.Select(matches, null) != matches.Rows[0])
             throw new Exception("Portable single barcode legacy behavior changed");

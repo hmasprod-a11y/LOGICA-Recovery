@@ -71,6 +71,52 @@ internal static class CheckoutBarcodeSelectionTests
                     if (!Object.ReferenceEquals(ex, failure)) throw new Exception("Exception identity changed");
                 }
                 checks++;
+                // The legacy basket loop used Code alone; selecting another article
+                // with the same code would incorrectly increment the first line.
+                DataTable basket = Candidates();
+                DataRow firstLine = basket.Rows[0];
+                int comparisons = 0;
+                Func<object, object, bool> equal = delegate(object left, object right) {
+                    comparisons++;
+                    return Object.Equals(left, right);
+                };
+                if (!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                        firstLine, "ABC-001", "1", equal) || comparisons != 2)
+                    throw new Exception("Same article must increment existing basket line");
+                checks++;
+                comparisons = 0;
+                if (CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                        firstLine, "ABC-001", "2", equal) || comparisons != 2)
+                    throw new Exception("Different variant must remain separate");
+                checks++;
+                comparisons = 0;
+                if (CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                        firstLine, "OTHER", "1", equal) || comparisons != 1)
+                    throw new Exception("Different code must short circuit before ID comparison");
+                checks++;
+                comparisons = 0;
+                if (CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                        firstLine, "ABC-001", "3", equal) || comparisons != 2)
+                    throw new Exception("Third duplicate variant must not merge into first");
+                checks++;
+                Expect<ArgumentNullException>(delegate {
+                    CheckoutBarcodeSelectionService.IsSameBasketArticle(null, "ABC-001", "1", equal);
+                });
+                Expect<ArgumentNullException>(delegate {
+                    CheckoutBarcodeSelectionService.IsSameBasketArticle(firstLine, "ABC-001", "1", null);
+                });
+                checks += 2;
+                Exception identityFailure = new InvalidOperationException("comparison failure");
+                try {
+                    CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                        firstLine, "ABC-001", "1",
+                        delegate(object left, object right) { throw identityFailure; });
+                    throw new Exception("Basket comparison failure swallowed");
+                } catch (InvalidOperationException ex) {
+                    if (!Object.ReferenceEquals(ex, identityFailure))
+                        throw new Exception("Basket comparison exception identity changed");
+                }
+                checks++;
                 rows.Rows.RemoveAt(2);
                 rows.Rows.RemoveAt(1);
                 if (CheckoutBarcodeSelectionService.Select(rows, null) != rows.Rows[0])

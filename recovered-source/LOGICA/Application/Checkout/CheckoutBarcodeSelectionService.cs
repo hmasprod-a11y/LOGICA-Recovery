@@ -7,6 +7,19 @@ namespace LOGICA.ApplicationLayer.Checkout
     // row index or -1 for cancellation. No quantity, price or stock is mutated here.
     internal static class CheckoutBarcodeSelectionService
     {
+        // A chosen variant must not increment a different article merely because
+        // both share a barcode. Use the caller's original VB equality semantics,
+        // preserving code-first short-circuit and exception propagation.
+        internal static bool IsSameBasketArticle(
+            DataRow basketLine, object scannedCode, object selectedArticleId,
+            Func<object, object, bool> legacyEquals)
+        {
+            if (basketLine == null) throw new ArgumentNullException("basketLine");
+            if (legacyEquals == null) throw new ArgumentNullException("legacyEquals");
+            return legacyEquals(basketLine["Code"], scannedCode) &&
+                   legacyEquals(basketLine["ID_ARTICLE"], selectedArticleId);
+        }
+
         internal static DataRow Select(DataTable matches, Func<DataTable, int> chooseDuplicate)
         {
             if (matches == null) throw new ArgumentNullException("matches");
