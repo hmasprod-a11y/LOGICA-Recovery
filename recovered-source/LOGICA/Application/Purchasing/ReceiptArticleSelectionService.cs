@@ -62,5 +62,16 @@ namespace LOGICA.ApplicationLayer.Purchasing
                 !String.IsNullOrWhiteSpace(loadedReceiptId) &&
                 String.Equals(confirmedReceiptId, loadedReceiptId, StringComparison.Ordinal);
         }
+
+        // A receipt already validated (or in an unexpected state) must not
+        // enter the stock-posting transaction, even when its ID still matches.
+        // This is a UI guard, NOT a substitute for an atomic database claim.
+        internal static bool MayValidate(string confirmedReceiptId, string loadedReceiptId,
+            string displayedState, string loadedState)
+        {
+            return Matches(confirmedReceiptId, loadedReceiptId) &&
+                String.Equals(displayedState, "ENREGISTRER", StringComparison.Ordinal) &&
+                String.Equals(loadedState, "ENREGISTRER", StringComparison.Ordinal);
+        }
     }
 }
