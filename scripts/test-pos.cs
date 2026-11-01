@@ -1473,6 +1473,17 @@ class PosSmoke {
      args=new object[]{new Message(),Keys.Control|Keys.G};
      if(Object.Equals(method.Invoke(form,args),true))
       throw new Exception("Unrelated Ctrl+G must remain available to legacy controls");
+     args=new object[]{new Message(),Keys.Control|Keys.Shift|Keys.F};
+     if(Object.Equals(method.Invoke(form,args),true))
+      throw new Exception("Ctrl+Shift+F must retain its original key routing");
+     args=new object[]{new Message(),Keys.Alt|Keys.F};
+     if(Object.Equals(method.Invoke(form,args),true))
+      throw new Exception("Alt+F must retain its original menu routing");
+     searchProperty.SetValue(form,null,null);
+     args=new object[]{new Message(),Keys.Control|Keys.F};
+     if(Object.Equals(method.Invoke(form,args),true))
+      throw new Exception("Missing search field must not swallow Ctrl+F");
+     searchProperty.SetValue(form,probe,null);
      probe.ReadOnly=true;
      args=new object[]{new Message(),Keys.Control|Keys.F};
      if(Object.Equals(method.Invoke(form,args),true))
