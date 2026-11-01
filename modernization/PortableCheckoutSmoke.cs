@@ -852,6 +852,17 @@ internal static class PortableCheckoutSmoke
                 }, delegate { modalDriftReads++; return flowMatches.Copy(); }).Status ==
                 CheckoutVariantChoiceStatus.InvalidCandidates && modalDriftReads == 0,
                 "New modal row cannot silently change displayed choice set");
+            DataTable modalReplacedRow = flowMatches.Copy();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                modalReplacedRow, delegate(DataTable shown) {
+                    DataRow replacement = shown.NewRow();
+                    replacement.ItemArray = (object[])shown.Rows[0].ItemArray.Clone();
+                    shown.Rows.RemoveAt(0);
+                    shown.Rows.InsertAt(replacement, 0);
+                    return 0;
+                }, delegate { modalDriftReads++; return flowMatches.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && modalDriftReads == 0,
+                "Modal cannot replace a DataRow with a lookalike ID and retain its old index");
             DataTable modalCancelled = flowMatches.Copy();
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
                 modalCancelled, delegate(DataTable shown) {
