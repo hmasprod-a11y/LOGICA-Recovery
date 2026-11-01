@@ -84,6 +84,12 @@ try {
             continue
         }
         Assert-SafePath $name
+        if ($zipDirectories.Contains($name)) { throw "ZIP file collides with directory: $name" }
+        $parts = $name.Split('/')
+        for ($i = 1; $i -lt $parts.Length; $i++) {
+            $parent = [string]::Join('/', $parts, 0, $i)
+            if ($seen.Contains($parent)) { throw "ZIP file/directory collision: $name" }
+        }
         if ((($entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000) { throw "Symbolic link forbidden in beta ZIP: $name" }
         if (-not $seen.Add($name)) { throw "Duplicate ZIP entry (including case collision): $name" }
         if (-not $byPath.ContainsKey($name)) { throw "Unexpected ZIP file: $name" }
