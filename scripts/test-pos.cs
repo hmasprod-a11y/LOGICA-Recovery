@@ -1167,11 +1167,11 @@ class PosSmoke {
   }
  }
 
- static int SearchRows(IDbConnection connection, string sql, string pattern) {
+ static int SearchRows(IDbConnection connection, string sql, string pattern, string parameterName="@search") {
   using(var command=connection.CreateCommand()) {
    command.CommandText=sql;
    var parameter=command.CreateParameter();
-   parameter.ParameterName="@search";
+   parameter.ParameterName=parameterName;
    parameter.Value=pattern;
    command.Parameters.Add(parameter);
    int count=0;
@@ -1206,7 +1206,23 @@ class PosSmoke {
      if(actualList!=expectedList[i] || actualImages!=expectedImages[i])
       throw new Exception("Article search mismatch for "+terms[i]+": list="+actualList+" images="+actualImages);
     }
-    Console.WriteLine("PASS isolated MariaDB article search: 14 parameterized list/image checks, quotes, injection, wildcards and barcode");
+    // Scanner lookup must remain exact equality and preserve all matching rows
+    // (the legacy UI takes the first row; duplicate-choice UX is a separate change).
+    string barcodeSql=(string)query.GetMethod("ExactBarcode",Flags).Invoke(null,null);
+    if(barcodeSql!="select * from TABLE_ARTICLES WHERE Code = @code")
+     throw new Exception("Barcode scan SQL changed or contains unsafe text interpolation");
+    Sql(connection,"INSERT INTO TABLE_ARTICLES VALUES ('Quote barcode','O''Hara','photo.png'),('Literal attack','x'' OR 1=1 --','photo.png')");
+    string[] scanned={ "ABC-001", "ABC_002", "X-004", "ABC", "nope' OR 1=1 -- ", "%", "", "O'Hara", "x' OR 1=1 --" };
+    int[] expected={ 1, 1, 1, 0, 0, 0, 0, 1, 1 };
+    for(int i=0;i<scanned.Length;i++) {
+     int actual=SearchRows(connection,barcodeSql,scanned[i],"@code");
+     if(actual!=expected[i])
+      throw new Exception("Exact barcode scan mismatch for "+scanned[i]+": "+actual+" expected "+expected[i]);
+    }
+    Sql(connection,"INSERT INTO TABLE_ARTICLES VALUES ('Duplicate variant','ABC-001','photo.png')");
+    if(SearchRows(connection,barcodeSql,"ABC-001","@code")!=2)
+     throw new Exception("Duplicate barcode lookup must retain both rows for future chooser");
+    Console.WriteLine("PASS isolated MariaDB article search: 14 list/image checks + 10 exact barcode scans (quotes, injection, wildcard, duplicates)");
    } finally {Sql(connection,"DROP TEMPORARY TABLE IF EXISTS TABLE_ARTICLES");}
   }
  }
