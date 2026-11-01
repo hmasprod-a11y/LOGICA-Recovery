@@ -3743,6 +3743,43 @@ public class Form_5_CLIENTS_REGLE : Form
 		Picture_FIND_Click(RuntimeHelpers.GetObjectValue(sender), e);
 	}
 
+    private sealed class SettlementSearchContext : LOGICA.ApplicationLayer.Clients.IClientSettlementSearchContext
+    {
+        private readonly Form_5_CLIENTS_REGLE form;
+        public SettlementSearchContext(Form_5_CLIENTS_REGLE form) { this.form = form; }
+        public string Column { get { return form.Combo_FIND.Text; } }
+        public bool UseDates { get { return form.Check_FIND_DATE.Checked; } }
+        public bool Exact { get { return form.Check_FIND_EXACTE.Checked; } }
+        public void LoadDateRange()
+        {
+            form.DT.Clear();
+            form.DA = LOGICA.Infrastructure.Clients.ClientSettlementQuery.DateRange(
+                form.Label_TABLE.Text, form.DateTime1_FIND.Value, form.DateTime2_FIND.Value, Module1.cn_SQL);
+            ((DbDataAdapter)(object)form.DA).Fill(form.DT);
+        }
+        public void SetDatePrefix()
+        {
+            form._sql = LOGICA.Infrastructure.Clients.ClientSettlementQuery.DatePrefix(
+                form.DateTime1_FIND.Value, form.DateTime2_FIND.Value);
+        }
+        public void ClearDatePrefix() { form._sql = ""; }
+        public void LoadContains()
+        {
+            form.DT.Clear();
+            form.DA = LOGICA.Infrastructure.Clients.ClientSettlementQuery.Contains(
+                form.Label_TABLE.Text, form._sql, form.Combo_FIND.Text, form.Text_FIND.Text, Module1.cn_SQL);
+            ((DbDataAdapter)(object)form.DA).Fill(form.DT);
+        }
+        public void LoadExactLike()
+        {
+            form.DT.Clear();
+            form.DA = LOGICA.Infrastructure.Clients.ClientSettlementQuery.ExactLike(
+                form.Label_TABLE.Text, form._sql, form.Combo_FIND.Text, form.Text_FIND.Text, Module1.cn_SQL);
+            ((DbDataAdapter)(object)form.DA).Fill(form.DT);
+        }
+        public void BindResults() { form.DataGridView1.DataSource = form.DT; }
+    }
+
 	private void Picture_FIND_Click(object sender, EventArgs e)
 	{
 		//IL_0378: Unknown result type (might be due to invalid IL or missing references)
@@ -3755,36 +3792,9 @@ public class Form_5_CLIENTS_REGLE : Form
 		//IL_02c2: Expected Obj, but got Unknown
 		try
 		{
-			if (Operators.CompareString(Combo_FIND.Text, "DATES", TextCompare: false) == 0)
-			{
-				DT.Clear();
-				DA = new MySqlDataAdapter("select * from     TABLE_" + Label_TABLE.Text + "      Where       Dates   between   ' " + Strings.Format(DateTime1_FIND.Value, "yyyy-MM-dd") + " '     And      ' " + Strings.Format(DateTime2_FIND.Value, "yyyy-MM-dd") + " '               order by   ID    desc ", Module1.cn_SQL);
-				((DbDataAdapter)(object)DA).Fill(DT);
-			}
-			else
-			{
-				if (Check_FIND_DATE.Checked)
-				{
-					_sql = "        Dates   between   ' " + Strings.Format(DateTime1_FIND.Value, "yyyy-MM-dd") + " '     And      ' " + Strings.Format(DateTime2_FIND.Value, "yyyy-MM-dd") + " '         AND     ";
-				}
-				else
-				{
-					_sql = "";
-				}
-				if (!Check_FIND_EXACTE.Checked)
-				{
-					DT.Clear();
-					DA = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat("select * from     TABLE_" + Label_TABLE.Text, "      Where            "), _sql), "            ("), Combo_FIND.Text), "  like  '%"), Text_FIND.Text), "%'   )                                order by   ID    desc ")), Module1.cn_SQL);
-					((DbDataAdapter)(object)DA).Fill(DT);
-				}
-				else if (Check_FIND_EXACTE.Checked)
-				{
-					DT.Clear();
-					DA = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat("select * from     TABLE_" + Label_TABLE.Text, "      Where            "), _sql), "            ("), Combo_FIND.Text), "  like  '"), Text_FIND.Text), "'     )                                order by   ID    desc ")), Module1.cn_SQL);
-					((DbDataAdapter)(object)DA).Fill(DT);
-				}
-			}
-			DataGridView1.DataSource = DT;
+			LOGICA.ApplicationLayer.Clients.ClientSettlementSearchService.Search(
+				new SettlementSearchContext(this),
+				LOGICA.Infrastructure.Compatibility.VisualBasicClientSearchSemantics.Instance);
 		}
 		catch (Exception ex)
 		{
@@ -3814,6 +3824,20 @@ public class Form_5_CLIENTS_REGLE : Form
 			ProjectData.ClearProjectError();
 		}
 	}
+
+    private sealed class SettlementRefreshContext : LOGICA.ApplicationLayer.Clients.IClientSettlementRefreshContext
+    {
+        private readonly Form_5_CLIENTS_REGLE form;
+        public SettlementRefreshContext(Form_5_CLIENTS_REGLE form) { this.form = form; }
+        public void ClearSearch() { form.Text_FIND.Text = ""; }
+        public void ReloadAll()
+        {
+            form.DT.Clear();
+            form.DA = LOGICA.Infrastructure.Clients.ClientSettlementQuery.Refresh(form.Label_TABLE.Text, Module1.cn_SQL);
+            ((DbDataAdapter)(object)form.DA).Fill(form.DT);
+        }
+        public void BindResults() { form.DataGridView1.DataSource = form.DT; }
+    }
 
 	private void Picture_REFRESH_Click(object sender, EventArgs e)
 	{
@@ -3823,11 +3847,7 @@ public class Form_5_CLIENTS_REGLE : Form
 		//IL_0104: Expected Obj, but got Unknown
 		try
 		{
-			Text_FIND.Text = "";
-			DT.Clear();
-			DA = new MySqlDataAdapter("select * from      TABLE_" + Label_TABLE.Text + "                  order by   ID    desc ", Module1.cn_SQL);
-			((DbDataAdapter)(object)DA).Fill(DT);
-			DataGridView1.DataSource = DT;
+			LOGICA.ApplicationLayer.Clients.ClientSettlementRefreshService.Refresh(new SettlementRefreshContext(this));
 		}
 		catch (Exception ex)
 		{
@@ -3858,33 +3878,29 @@ public class Form_5_CLIENTS_REGLE : Form
 		}
 	}
 
-	private void Check_FIND_DATE_CheckedChanged(object sender, EventArgs e)
-	{
-		if (Check_FIND_DATE.Checked)
-		{
-			((Control)Panel_DATES).Visible = true;
-		}
-		else
-		{
-			((Control)Panel_DATES).Visible = false;
-		}
-	}
+    private sealed class SettlementFilterLayoutContext : LOGICA.ApplicationLayer.Clients.IClientSettlementFilterLayoutContext
+    {
+        private readonly Form_5_CLIENTS_REGLE form;
+        public SettlementFilterLayoutContext(Form_5_CLIENTS_REGLE form) { this.form = form; }
+        public bool DateFilterChecked { get { return form.Check_FIND_DATE.Checked; } }
+        public string SelectedColumn { get { return form.Combo_FIND.Text; } }
+        public void SetDatePanelVisible(bool visible) { ((Control)form.Panel_DATES).Visible = visible; }
+        public void SetDatePanelLeft(int left) { ((Control)form.Panel_DATES).Left = left; }
+        public void SetSearchText(string text) { form.Text_FIND.Text = text; }
+    }
 
-	private void Combo_FIND_SelectedIndexChanged(object sender, EventArgs e)
-	{
-		if (Operators.CompareString(Combo_FIND.Text, "DATES", TextCompare: false) == 0)
-		{
-			((Control)Panel_DATES).Visible = true;
-			((Control)Panel_DATES).Left = 78;
-			Text_FIND.Text = "*";
-		}
-		else
-		{
-			((Control)Panel_DATES).Visible = false;
-			((Control)Panel_DATES).Left = 417;
-			Text_FIND.Text = "";
-		}
-	}
+    private void Check_FIND_DATE_CheckedChanged(object sender, EventArgs e)
+    {
+        LOGICA.ApplicationLayer.Clients.ClientSettlementFilterLayoutService.DateCheckboxChanged(
+            new SettlementFilterLayoutContext(this));
+    }
+
+    private void Combo_FIND_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        LOGICA.ApplicationLayer.Clients.ClientSettlementFilterLayoutService.ColumnChanged(
+            new SettlementFilterLayoutContext(this),
+            LOGICA.Infrastructure.Compatibility.VisualBasicClientSearchSemantics.Instance);
+    }
 
 	private void Picture_EXPORT_Click(object sender, EventArgs e)
 	{
