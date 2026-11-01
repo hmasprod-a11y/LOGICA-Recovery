@@ -10004,8 +10004,14 @@ public class Form_6_RECEPTIONS : Form
 		//IL_0209: Expected Obj, but got Unknown
 		try
 		{
-			DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["TOTAL_NET_ACHATS"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["Qté"].Value, DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["Prix_A"].Value)));
-			DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["TOTAL_NET_VENTES"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["Qté"].Value, DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["Prix_V"].Value)));
+			// CellValidated reports the edited row, which may differ from CurrentRow
+			// after keyboard navigation. Never overwrite another receipt line's totals.
+			if (e == null || !LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(
+				e.RowIndex, DataGrid_BODY.Rows.Count) || DataGrid_BODY.Rows[e.RowIndex].IsNewRow)
+				return;
+			DataGridViewRow editedLine = DataGrid_BODY.Rows[e.RowIndex];
+			editedLine.Cells["TOTAL_NET_ACHATS"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(editedLine.Cells["Qté"].Value, editedLine.Cells["Prix_A"].Value)));
+			editedLine.Cells["TOTAL_NET_VENTES"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(editedLine.Cells["Qté"].Value, editedLine.Cells["Prix_V"].Value)));
 			Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
 		}
 		catch (Exception ex)
@@ -10042,10 +10048,17 @@ public class Form_6_RECEPTIONS : Form
 		//IL_0046: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0053: Unknown result type (might be due to invalid IL or missing references)
 		//IL_005d: Expected Obj, but got Unknown
-		if ((DataGrid_BODY.CurrentCell.ColumnIndex == 3) | (DataGrid_BODY.CurrentCell.ColumnIndex == 4) | (DataGrid_BODY.CurrentCell.ColumnIndex == 5))
-		{
-			((Control)(TextBox)e.Control).KeyPress += TextBox_keyPress;
-		}
+		// WinForms reuses the editing TextBox across cells. Reattaching on every
+		// edit previously stacked duplicate KeyPress handlers.
+		TextBox editingBox = e == null ? null : e.Control as TextBox;
+		if (editingBox == null)
+			return;
+		editingBox.KeyPress -= TextBox_keyPress;
+		if (DataGrid_BODY.CurrentCell != null &&
+			(DataGrid_BODY.CurrentCell.ColumnIndex == 3 ||
+			 DataGrid_BODY.CurrentCell.ColumnIndex == 4 ||
+			 DataGrid_BODY.CurrentCell.ColumnIndex == 5))
+			editingBox.KeyPress += TextBox_keyPress;
 	}
 
 	private void TextBox_keyPress(object sender, KeyPressEventArgs e)
@@ -10069,9 +10082,24 @@ public class Form_6_RECEPTIONS : Form
 		//IL_005c: Invalid comparison between Unknown and I4
 		try
 		{
-			if (((Operators.ConditionalCompareObjectEqual(e.ColumnIndex, Operators.SubtractObject(NewLateBinding.LateGet(sender, null, "ColumnCount", new object[0], null, null, null), 1), TextCompare: false) && e.RowIndex >= 0) ? true : false) && (int)MessageBox.Show("Voulez-vous vraiment supprimer ??", "Suppression", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
+			if (e == null || !LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(
+				e.RowIndex, DataGrid_BODY.Rows.Count) || e.ColumnIndex != DataGrid_BODY.ColumnCount - 1 ||
+				DataGrid_BODY.Rows[e.RowIndex].IsNewRow)
+				return;
+			// CurrentCell can point at a different line from the clicked delete
+			// button, and a modal can reorder/remove rows before confirmation.
+			DataGridViewRow clickedLine = DataGrid_BODY.Rows[e.RowIndex];
+			string confirmedArticleId = Convert.ToString(clickedLine.Cells["ID_ARTICLE"].Value);
+			string confirmedCode = Convert.ToString(clickedLine.Cells["Code"].Value);
+			if ((int)MessageBox.Show("Voulez-vous vraiment supprimer ??", "Suppression", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
 			{
-				DataGrid_BODY.Rows.RemoveAt(DataGrid_BODY.CurrentCell.RowIndex);
+				if (clickedLine.DataGridView != DataGrid_BODY || clickedLine.IsNewRow ||
+					!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.MatchesLine(
+						confirmedArticleId, confirmedCode,
+						Convert.ToString(clickedLine.Cells["ID_ARTICLE"].Value),
+						Convert.ToString(clickedLine.Cells["Code"].Value)))
+					return;
+				DataGrid_BODY.Rows.Remove(clickedLine);
 				Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
 			}
 		}
