@@ -1580,8 +1580,9 @@ class PosSmoke {
    if(reference.Invoke(null,new object[]{rows.Rows[0]})!=null)
     throw new Exception("Missing article ID must fail closed");
    rows.Rows[0]["ID_ARTICLE"]="101";
-   rows.Rows[0].Delete();
-   if(reference.Invoke(null,new object[]{rows.Rows[0]})!=null)
+   var deletedRow=rows.Rows[0];
+   deletedRow.Delete();
+   if(reference.Invoke(null,new object[]{deletedRow})!=null)
     throw new Exception("Deleted list row must fail closed");
    list.DataSource=null;
    code.Text="KEEP-SCAN";
