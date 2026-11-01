@@ -51,16 +51,36 @@ foreach ($item in $expected) {
     }
     $byPath.Add($name, $item)
 }
+# Windows extraction cannot represent a file that is also a parent directory.
+# Reject this even when the manifest and ZIP hashes agree with each other.
+foreach ($item in $expected) {
+    $segments = ([string]$item.path).Split('/')
+    for ($i = 1; $i -lt $segments.Length; $i++) {
+        $parent = [string]::Join('/', $segments[0..($i - 1)])
+        if ($byPath.ContainsKey($parent)) {
+            throw "Manifest file/directory collision: $parent is a file and parent of $($item.path)"
+        }
+    }
+}
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
 try {
     $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $seenDirectories = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $metadata = $null
     [long]$totalUncompressed = 0
     foreach ($entry in $archive.Entries) {
         $name = $entry.FullName
         if ($name.EndsWith('/')) {
-            Assert-SafePath $name.TrimEnd('/')
+            $directoryName = $name.TrimEnd('/')
+            Assert-SafePath $directoryName
+            if (-not $seenDirectories.Add($directoryName)) { throw "Duplicate ZIP directory (including case collision): $name" }
+            # A directory cannot be the child of a packaged file, even when empty.
+            $directorySegments = $directoryName.Split('/')
+            for ($i = 1; $i -le $directorySegments.Length; $i++) {
+                $ancestor = [string]::Join('/', $directorySegments[0..($i - 1)])
+                if ($byPath.ContainsKey($ancestor)) { throw "ZIP directory shadows packaged file: $name (file $ancestor)" }
+            }
             if ((($entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000) { throw "Symbolic-link directory forbidden in beta ZIP: $name" }
             continue
         }
