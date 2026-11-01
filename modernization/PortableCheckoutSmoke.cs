@@ -892,9 +892,9 @@ internal static class PortableCheckoutSmoke
             CheckoutVariantChoiceResult modalPriceChoice =
                 CheckoutBarcodeSelectionService.SelectWithRefresh(
                     modalPriceChanged, delegate(DataTable shown) {
-                        shown.Rows[1]["UnitPrice"] = 1000m;
-                        shown.Rows[1]["Discount"] = 90m;
-                        return 1;
+                        shown.Rows[0]["UnitPrice"] = 1000m;
+                        shown.Rows[0]["Discount"] = 90m;
+                        return 0;
                     }, delegate { modalDriftReads++; return legacyLive.Copy(); });
             Require(modalPriceChoice.Status == CheckoutVariantChoiceStatus.Selected &&
                 (decimal)modalPriceChoice.SelectedRow["UnitPrice"] == 8.75m &&
