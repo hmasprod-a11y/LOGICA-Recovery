@@ -57,6 +57,27 @@ namespace LOGICA.ApplicationLayer.Purchasing
             if (catalogue == null) throw new ArgumentNullException("catalogue");
             if (stockSnapshot == null) throw new ArgumentNullException("stockSnapshot");
 
+            // Do not trust a caller-constructed preview: it is an internal DTO, not
+            // proof that receipt totals or per-article identities are consistent.
+            if (String.IsNullOrWhiteSpace(receipt.SupplierId) ||
+                receipt.Articles == null || receipt.Articles.Count == 0)
+                throw new InvalidOperationException("Receipt supplier and articles are required.");
+            var receiptIds = new HashSet<string>(StringComparer.Ordinal);
+            decimal verifiedQuantity = 0m;
+            decimal verifiedCost = 0m;
+            foreach (PurchaseReceiptArticleTotal article in receipt.Articles)
+            {
+                if (article == null || String.IsNullOrWhiteSpace(article.ArticleId) ||
+                    article.Quantity <= 0m || article.ExtendedCost < 0m)
+                    throw new InvalidOperationException("Receipt contains invalid article totals.");
+                if (!receiptIds.Add(article.ArticleId))
+                    throw new InvalidOperationException("Receipt contains duplicate article IDs.");
+                verifiedQuantity = checked(verifiedQuantity + article.Quantity);
+                verifiedCost = checked(verifiedCost + article.ExtendedCost);
+            }
+            if (verifiedQuantity != receipt.TotalQuantity || verifiedCost != receipt.TotalCost)
+                throw new InvalidOperationException("Receipt totals do not match its articles.");
+
             PurchaseReceiptCatalogueValidation identity =
                 PurchaseReceiptCatalogueValidationService.Compare(receipt, catalogue);
             if (!identity.IsValid)
