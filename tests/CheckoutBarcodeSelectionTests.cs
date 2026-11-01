@@ -365,6 +365,67 @@ internal static class CheckoutBarcodeSelectionTests
                 });
                 checks++;
 
+                // The UI must capture the scan text before the modal. A query
+                // returning a consistent but WRONG barcode is not proof that
+                // the cashier scanned that article. This overload checks both
+                // the initial display and the post-modal local SQL refresh.
+                int capturedModalCalls = 0;
+                int capturedSqlReads = 0;
+                CheckoutVariantChoiceResult capturedChoice =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh("ABC-001", displayedLive,
+                        delegate(DataTable shown) { capturedModalCalls++; return 1; },
+                        delegate { capturedSqlReads++; return liveReordered; });
+                if (capturedChoice.Status != CheckoutVariantChoiceStatus.Selected ||
+                    !Object.ReferenceEquals(capturedChoice.SelectedRow, liveReordered.Rows[1]) ||
+                    (decimal)capturedChoice.SelectedRow["Prix_V_1"] != 42m ||
+                    (decimal)capturedChoice.SelectedRow["REMISE"] != 15m ||
+                    (decimal)capturedChoice.SelectedRow["TAUX_TVA"] != 7m ||
+                    capturedModalCalls != 1 || capturedSqlReads != 1)
+                    throw new Exception("Captured scan must preserve fresh live pricing and selected variant");
+                checks++;
+                CheckoutVariantChoiceResult wrongCaptured =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh("NOT-SCANNED", displayedLive,
+                        delegate(DataTable shown) { capturedModalCalls++; return 1; },
+                        delegate { capturedSqlReads++; return liveReordered; });
+                if (wrongCaptured.Status != CheckoutVariantChoiceStatus.InvalidCandidates ||
+                    wrongCaptured.SelectedRow != null || capturedModalCalls != 1 || capturedSqlReads != 1)
+                    throw new Exception("Wrong initial barcode must not open modal or query SQL");
+                checks++;
+                CheckoutVariantChoiceResult blankCaptured =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh(" ", displayedLive,
+                        delegate(DataTable shown) { capturedModalCalls++; return 1; },
+                        delegate { capturedSqlReads++; return liveReordered; });
+                if (blankCaptured.Status != CheckoutVariantChoiceStatus.InvalidCandidates ||
+                    blankCaptured.SelectedRow != null || capturedModalCalls != 1 || capturedSqlReads != 1)
+                    throw new Exception("Blank captured scan must not enter barcode checkout");
+                checks++;
+                CheckoutVariantChoiceResult caseMismatch =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh("abc-001", displayedLive,
+                        delegate(DataTable shown) { capturedModalCalls++; return 1; },
+                        delegate { capturedSqlReads++; return liveReordered; });
+                if (caseMismatch.Status != CheckoutVariantChoiceStatus.InvalidCandidates ||
+                    capturedModalCalls != 1 || capturedSqlReads != 1)
+                    throw new Exception("Scanner identity comparison must remain ordinal across cultures");
+                checks++;
+                CheckoutVariantChoiceResult capturedCancelled =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh("ABC-001", displayedLive,
+                        delegate(DataTable shown) { return -1; },
+                        delegate { capturedSqlReads++; return liveReordered; });
+                if (capturedCancelled.Status != CheckoutVariantChoiceStatus.Cancelled ||
+                    capturedSqlReads != 1)
+                    throw new Exception("Captured scan cancellation must not requery local SQL");
+                checks++;
+                DataTable capturedMixedLive = liveReordered.Copy();
+                capturedMixedLive.Rows[0]["Code"] = "DIFFERENT";
+                CheckoutVariantChoiceResult capturedWrongLive =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh("ABC-001", displayedLive,
+                        delegate(DataTable shown) { return 1; },
+                        delegate { return capturedMixedLive; });
+                if (capturedWrongLive.Status != CheckoutVariantChoiceStatus.InvalidCandidates ||
+                    capturedWrongLive.SelectedRow != null)
+                    throw new Exception("Captured scan rejects an unrelated live SQL barcode");
+                checks++;
+
                 // The actual scanner SQL is WHERE Code = @code. A mixed-code
                 // initial result is never a legitimate duplicate-barcode list:
                 // do not show the modal or read the store for such candidates.
