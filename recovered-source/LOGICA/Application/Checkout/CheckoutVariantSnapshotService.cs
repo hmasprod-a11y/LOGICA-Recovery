@@ -212,6 +212,10 @@ namespace LOGICA.ApplicationLayer.Checkout
             DataRow found = null;
             bool ambiguous = false;
             bool invalidCandidates = false;
+            // The live result must obey the same identity uniqueness contract
+            // as EvaluateSnapshot, not just for the selected ID. Otherwise a
+            // corrupt unrelated variant could be hidden by a valid selection.
+            var seenIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (DataRow row in currentMatches.Rows)
             {
                 // Deleted rows may still be present until AcceptChanges; they
@@ -224,9 +228,12 @@ namespace LOGICA.ApplicationLayer.Checkout
                     invalidCandidates = true;
                     continue;
                 }
-                // ID_ARTICLE is the catalogue identity. A second row with the
-                // same ID but a different barcode is also unsafe to select.
-                if (String.Equals(row["ID_ARTICLE"].ToString(), selected.ArticleId, StringComparison.Ordinal))
+                string articleId = Convert.ToString(row["ID_ARTICLE"]);
+                if (!seenIds.Add(articleId))
+                    ambiguous = true;
+                // ID_ARTICLE is the catalogue identity. Reused IDs or a changed
+                // barcode must not silently select a different article.
+                if (String.Equals(articleId, selected.ArticleId, StringComparison.Ordinal))
                 {
                     if (found != null || !String.Equals(row["Code"].ToString(), selected.Code, StringComparison.Ordinal))
                         ambiguous = true;
