@@ -203,6 +203,64 @@ internal static class PortableCheckoutSmoke
             Require(selectedOutcome.Status == CheckoutVariantChoiceStatus.Selected &&
                 Object.ReferenceEquals(selectedOutcome.SelectedRow, outcomeRows.Rows[1]),
                 "Typed outcome must preserve selected article identity");
+            // A valid selected row must not conceal duplicate IDs elsewhere
+            // in the *current* catalogue query. The snapshot and all chooser
+            // entry points must agree on live candidate integrity.
+            DataTable unrelatedLiveCollision = outcomeRows.Copy();
+            unrelatedLiveCollision.Rows.Add("OTHER-CODE", "UNRELATED");
+            unrelatedLiveCollision.Rows.Add("DIFFERENT-CODE", "UNRELATED");
+            Require(CheckoutVariantSnapshotService.EvaluateSnapshot(unrelatedLiveCollision).Status ==
+                CheckoutVariantSnapshotReadStatus.Ambiguous,
+                "Snapshot rejects duplicate unrelated live IDs");
+            var unrelatedLiveChoice = CheckoutVariantSnapshotService.EvaluateChoice(
+                unrelatedLiveCollision, snapshots, 1);
+            Require(unrelatedLiveChoice.Status == CheckoutVariantChoiceStatus.Ambiguous &&
+                unrelatedLiveChoice.SelectedRow == null,
+                "Typed choice rejects duplicate unrelated live IDs");
+            Require(CheckoutVariantSnapshotService.Resolve(
+                unrelatedLiveCollision, snapshots[1]) == null,
+                "Null-returning resolver rejects duplicate unrelated live IDs");
+            Require(CheckoutVariantSnapshotService.ResolveChosenVariant(
+                unrelatedLiveCollision, snapshots, 1) == null,
+                "Index chooser rejects duplicate unrelated live IDs");
+            var unrelatedLiveTile = CheckoutArticleTileSelectionService.TagFor(outcomeRows.Rows[1]);
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(
+                unrelatedLiveCollision, unrelatedLiveTile).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous,
+                "Image tile choice shares full live identity validation");
+            Require(CheckoutArticleTileSelectionService.FindExact(
+                unrelatedLiveCollision, unrelatedLiveTile) == null,
+                "Image tile resolver rejects duplicate unrelated live IDs");
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(
+                unrelatedLiveCollision,
+                new[] { new CheckoutVariantSnapshot("NOT-PRESENT", "MISSING") }, 0).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous,
+                "Unrelated live duplicate takes precedence over missing selection");
+            unrelatedLiveCollision.Rows.Add(DBNull.Value, "BROKEN");
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(
+                unrelatedLiveCollision, snapshots, 1).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Malformed live candidate takes precedence over unrelated duplicate");
+            Require(CheckoutArticleTileSelectionService.FindExact(
+                unrelatedLiveCollision, unrelatedLiveTile) == null,
+                "Malformed live candidate never escapes image tile resolver");
+            unrelatedLiveCollision.Rows.RemoveAt(unrelatedLiveCollision.Rows.Count - 1);
+            unrelatedLiveCollision.AcceptChanges();
+            unrelatedLiveCollision.Rows[3].Delete();
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(
+                unrelatedLiveCollision, snapshots, 1).Status ==
+                CheckoutVariantChoiceStatus.Selected,
+                "Pending-deleted unrelated duplicate does not poison live selection");
+            Require(CheckoutVariantSnapshotService.EvaluateSnapshot(
+                unrelatedLiveCollision).Status == CheckoutVariantSnapshotReadStatus.Ready,
+                "Snapshot and chooser agree after unrelated duplicate deletion");
+            Require(Object.ReferenceEquals(CheckoutArticleTileSelectionService.FindExact(
+                unrelatedLiveCollision, unrelatedLiveTile), unrelatedLiveCollision.Rows[1]),
+                "Image tile revalidation retains exact selected row after deletion");
+            Require(unrelatedLiveCollision.Rows[3].RowState == DataRowState.Deleted &&
+                unrelatedLiveCollision.Rows[1]["ID_ARTICLE"].ToString() == "B",
+                "Live candidate validation never mutates row states or identities");
+            Console.WriteLine("PASS modern live catalogue uniqueness: unrelated duplicate IDs, invalid precedence, tile parity and deletion");
             // A modern caller can construct or modify an IList after the
             // snapshot was displayed. Do not trust only the selected entry:
             // duplicate IDs elsewhere in the displayed list make it unsafe.
