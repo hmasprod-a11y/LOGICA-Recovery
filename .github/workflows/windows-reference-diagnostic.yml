@@ -3,6 +3,19 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - 'business/**'
+      - 'modernization/**'
+      - 'scripts/test-catalogue-core.ps1'
+      - 'input/mysql-compatibility.sql'
+      - 'input/recovered-original.sql'
+      - 'input/LOGICA-dependencies.zip'
+      - 'input/original-startup.json'
+      - 'scripts/test-checkout-core.ps1'
+      - 'scripts/repair-source.py'
+      - 'scripts/Start-LOGICA.cmd'
+      - 'scripts/Launch-LOGICA.ps1'
+      - 'scripts/test-recovered-db.ps1'
+      - 'scripts/setup-test-db.ps1'
       - 'recovered-source/**'
       - 'tests/**'
       - 'scripts/test-domain.ps1'
@@ -13,9 +26,22 @@ on:
       - 'scripts/package-runtime.ps1'
       - 'scripts/verify-beta-rc.ps1'
       - 'scripts/test-beta-release-verifier.ps1'
+      - 'scripts/test-release-upload-policy.py'
       - '.github/workflows/windows-reference-diagnostic.yml'
   push:
     paths:
+      - 'business/**'
+      - 'modernization/**'
+      - 'scripts/test-catalogue-core.ps1'
+      - 'input/LOGICA-dependencies.zip'
+      - 'input/original-startup.json'
+      - 'scripts/test-checkout-core.ps1'
+      - 'scripts/test-domain.ps1'
+      - 'tests/**'
+      - 'scripts/Start-LOGICA.cmd'
+      - 'scripts/Launch-LOGICA.ps1'
+      - 'scripts/test-recovered-db.ps1'
+      - 'scripts/setup-test-db.ps1'
       - 'recovered-source/**'
       - 'scripts/repair-source.py'
       - 'docs/RUNNING.md'
@@ -26,6 +52,7 @@ on:
       - 'scripts/package-runtime.ps1'
       - 'scripts/verify-beta-rc.ps1'
       - 'scripts/test-beta-release-verifier.ps1'
+      - 'scripts/test-release-upload-policy.py'
       - 'input/recovered-original.sql'
       - 'input/mysql-compatibility.sql'
       - '.github/workflows/windows-reference-diagnostic.yml'
@@ -43,6 +70,20 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Guard release artifact upload policy (including negative fixtures)
+        shell: pwsh
+        run: python scripts/test-release-upload-policy.py
+      - name: Compile shared modern core for dual targets when available
+        if: ${{ hashFiles('modernization/LOGICA.CoreCompatibility.csproj') != '' }}
+        shell: pwsh
+        run: dotnet build modernization/LOGICA.CoreCompatibility.csproj -c Release --warnaserror
+      - name: Exercise business operations .NET 10 smoke when available
+        if: ${{ hashFiles('business/Hanouty.BusinessOperations.Smoke.csproj') != '' }}
+        shell: pwsh
+        run: dotnet run --project business/Hanouty.BusinessOperations.Smoke.csproj -c Release
       - name: Verify committed source is present
         shell: pwsh
         run: |
@@ -125,9 +166,9 @@ jobs:
           if-no-files-found: error
           retention-days: 90
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: success()
         with:
           name: LOGICA-Windows-complete
           path: dist/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 90
