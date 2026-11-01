@@ -77,6 +77,7 @@ internal static class ReceiptArticleSelectionSmoke
             Check(ReceiptArticleSelectionService.Resolve(missingCode, "A") == null,
                 "null barcode candidate fails closed");
             var deleted = Matches();
+            deleted.AcceptChanges();
             deleted.Rows[1].Delete();
             Check(ReceiptArticleSelectionService.Resolve(deleted, "A") == null,
                 "pending deleted row fails closed");
