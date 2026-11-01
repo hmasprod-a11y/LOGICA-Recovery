@@ -10281,6 +10281,9 @@ public class Form_6_RECEPTIONS : Form
 					}
 					DataGridViewCellEventArgs e2 = new DataGridViewCellEventArgs(
 						((DataGridViewBand)DataGridView1.Columns["cons"]).Index, confirmedReceiptRow.Index);
+					// Invalidate any prior consultation ID before loading. A swallowed
+					// reader error must never leave a matching stale ID behind.
+					Text_ID_BR.Text = "";
 					DataGridView1_CellClick(DataGridView1, e2);
 					// Consultation populates Text_ID_BR and DataGrid_BODY. If the
 					// binding cursor was stale or the read failed, abort before SQL.
