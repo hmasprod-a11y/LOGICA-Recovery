@@ -31,6 +31,15 @@ function Assert-Rejected([string]$label) {
     catch { $rejected = $true; Write-Host "PASS: verifier rejected $label" }
     if (-not $rejected) { throw "Release verifier accepted invalid fixture: $label" }
 }
+function Assert-RejectedWithMessage([string]$label, [string]$expectedMessage) {
+    $actualFailure = $null
+    try { & $verifier -ZipPath $zip -ManifestPath $manifest -SumsPath $sums -ExpectedCommit $commit | Out-Null }
+    catch { $actualFailure = $_.Exception.Message }
+    if ($null -eq $actualFailure -or $actualFailure -notlike "*$expectedMessage*") {
+        throw "Verifier did not reject $label for the required reason: $actualFailure"
+    }
+    Write-Host "PASS: verifier rejected $label ($expectedMessage)"
+}
 try {
     [IO.File]::WriteAllText((Join-Path $src 'LOGICA.exe'), 'isolated dummy executable')
     [IO.File]::WriteAllText((Join-Path $src 'Dependency.dll'), 'isolated dummy dependency')
@@ -78,6 +87,12 @@ try {
     $entries | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding UTF8
     Assert-Rejected 'case-colliding manifest entries'
     [IO.File]::WriteAllText($manifest, $originalManifest)
+    # A valid hash manifest may still describe an impossible Windows file tree.
+    $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
+    $entries[1].path = ([string]$entries[0].path) + '/child'
+    $entries | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding UTF8
+    Assert-RejectedWithMessage 'file/child manifest collision' 'Manifest file/directory collision'
+    [IO.File]::WriteAllText($manifest, $originalManifest)
     $rejected = $false
     try { & $verifier -ZipPath $zip -ManifestPath $manifest -SumsPath $sums -ExpectedCommit ('b' * 40) | Out-Null }
     catch { $rejected = $true }
@@ -87,6 +102,16 @@ try {
     Write-FixtureZip
     Assert-Rejected 'unexpected ZIP file'
     Remove-Item -LiteralPath (Join-Path $src 'unexpected.txt') -Force
+    Write-FixtureZip
+    # ZIP can contain a directory whose exact path is a manifest-listed file.
+    # This is not representable on Windows even if the extra directory is empty.
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
+    try { $null = $archive.CreateEntry('LOGICA.exe/') }
+    finally { $archive.Dispose() }
+    $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
+    Assert-RejectedWithMessage 'ZIP directory shadowing LOGICA.exe' 'ZIP directory shadows packaged file'
     Write-FixtureZip
     [IO.File]::WriteAllText((Join-Path $src 'hash_licence.sni'), 'private-license-value')
     Write-FixtureManifest
