@@ -93,7 +93,18 @@ namespace LOGICA.ApplicationLayer.Checkout
                     "The chosen article is outside the displayed variant list.");
             CheckoutVariantSnapshot selected = displayed[selectedIndex];
             if (selected == null) throw new ArgumentException("The chosen variant cannot be null.", "displayed");
-            if (String.IsNullOrEmpty(selected.ArticleId) || selected.Code == null)
+            return EvaluateSelected(currentMatches, selected);
+        }
+
+        // All modern selection entry points must share the same fail-closed
+        // validation. In particular, a pending-deleted DataRow must never
+        // escape through the null-only Resolve/ResolveChosenVariant APIs.
+        private static CheckoutVariantChoiceResult EvaluateSelected(
+            DataTable currentMatches, CheckoutVariantSnapshot selected)
+        {
+            if (String.IsNullOrEmpty(selected.ArticleId) || selected.Code == null ||
+                !currentMatches.Columns.Contains("Code") ||
+                !currentMatches.Columns.Contains("ID_ARTICLE"))
                 return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
 
             DataRow found = null;
@@ -136,8 +147,7 @@ namespace LOGICA.ApplicationLayer.Checkout
         {
             if (matches == null) throw new ArgumentNullException("matches");
             if (selected == null) throw new ArgumentNullException("selected");
-            return CheckoutArticleTileSelectionService.FindExact(
-                matches, new CheckoutArticleTileReference(selected.Code, selected.ArticleId));
+            return EvaluateSelected(matches, selected).SelectedRow;
         }
     }
 }
