@@ -15492,10 +15492,24 @@ public class Form_3_VENTE : Form
 	{
 	}
 
+	// Clearing search must execute at most one catalogue refresh. The legacy
+	// space-then-empty workaround fired TextChanged twice (two SQL reads).
+	// Preserve its force-refresh behavior when search is already empty.
+	private static void ClearProductSearch(TextBox search, Action refreshWhenEmpty)
+	{
+		if (search.Text.Length != 0)
+		{
+			search.Clear(); // TextChanged performs one refresh.
+		}
+		else
+		{
+			refreshWhenEmpty();
+		}
+	}
+
 	private void Button_987_Click(object sender, EventArgs e)
 	{
-		Text_FIND.Text = " ";
-		Text_FIND.Text = "";
+		ClearProductSearch(Text_FIND, delegate { Text_FIND_TextChanged(Text_FIND, EventArgs.Empty); });
 		((Control)Text_FIND).Focus();
 	}
 
@@ -17089,7 +17103,9 @@ public class Form_3_VENTE : Form
 	private void Button_876_Click(object sender, EventArgs e)
 	{
 		((Control)Text_FIND).Focus();
-		if (Operators.ConditionalCompareObjectEqual(((Control)TabControl2).Tag, "", TextCompare: false))
+		// Tag is null on a fresh designer-created tab unless a resource overrides it.
+		// Treat null as the closed state, not as a request to restore an unknown height.
+		if (((Control)TabControl2).Tag == null || Operators.ConditionalCompareObjectEqual(((Control)TabControl2).Tag, "", TextCompare: false))
 		{
 			// On compact displays, never collapse the product list to zero/negative height.
 			// Keep the original layout and keyboard state as a safe legacy fallback.
