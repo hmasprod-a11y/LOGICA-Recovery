@@ -9223,7 +9223,7 @@ public class Form_3_VENTE : Form
 		componentResourceManager.ApplyResources(Butt_AR, "Butt_AR");
 		((Control)Butt_AR).Cursor = Cursors.Hand;
 		((ButtonBase)Butt_AR).FlatAppearance.BorderColor = Color.Silver;
-		((Control)Butt_AR).ForeColor = Color.White;
+		((Control)Butt_AR).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Butt_AR).Name = "Butt_AR";
 		((ButtonBase)Butt_AR).UseVisualStyleBackColor = false;
 		((ButtonBase)Butt_SPACE).BackColor = Color.Transparent;
@@ -9652,7 +9652,7 @@ public class Form_3_VENTE : Form
 		componentResourceManager.ApplyResources(Butt_DOT_AR, "Butt_DOT_AR");
 		((Control)Butt_DOT_AR).Cursor = Cursors.Hand;
 		((ButtonBase)Butt_DOT_AR).FlatAppearance.BorderColor = Color.Silver;
-		((Control)Butt_DOT_AR).ForeColor = Color.White;
+		((Control)Butt_DOT_AR).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Butt_DOT_AR).Name = "Butt_DOT_AR";
 		((ButtonBase)Butt_DOT_AR).UseVisualStyleBackColor = false;
 		((ButtonBase)Button_CLAVIER_NOSELECT13).BackColor = Color.Transparent;
@@ -9706,7 +9706,7 @@ public class Form_3_VENTE : Form
 		componentResourceManager.ApplyResources(Butt_FR, "Butt_FR");
 		((Control)Butt_FR).Cursor = Cursors.Hand;
 		((ButtonBase)Butt_FR).FlatAppearance.BorderColor = Color.Silver;
-		((Control)Butt_FR).ForeColor = Color.White;
+		((Control)Butt_FR).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Butt_FR).Name = "Butt_FR";
 		((ButtonBase)Butt_FR).UseVisualStyleBackColor = false;
 		((ButtonBase)Butt_SPACE_AR).BackColor = Color.White;
