@@ -56,10 +56,12 @@ $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
 try {
     $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $metadata = $null
+    [long]$totalUncompressed = 0
     foreach ($entry in $archive.Entries) {
         $name = $entry.FullName
         if ($name.EndsWith('/')) {
             Assert-SafePath $name.TrimEnd('/')
+            if ((($entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000) { throw "Symbolic-link directory forbidden in beta ZIP: $name" }
             continue
         }
         Assert-SafePath $name
@@ -68,6 +70,10 @@ try {
         if (-not $byPath.ContainsKey($name)) { throw "Unexpected ZIP file: $name" }
         $record = $byPath[$name]
         if ($entry.Length -ne [long]$record.size) { throw "ZIP file size mismatch: $name" }
+        if ($entry.Length -gt 268435456) { throw "Oversized beta ZIP entry: $name" }
+        $totalUncompressed += $entry.Length
+        if ($totalUncompressed -gt 1073741824) { throw 'Beta ZIP uncompressed payload exceeds 1 GiB' }
+        if ($entry.Length -gt 1048576 -and $entry.CompressedLength -lt 1024) { throw "Suspicious compression ratio in beta ZIP: $name" }
         $stream = $entry.Open()
         try {
             $sha = [System.Security.Cryptography.SHA256]::Create()
