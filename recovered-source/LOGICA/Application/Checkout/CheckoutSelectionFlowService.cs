@@ -108,13 +108,51 @@ namespace LOGICA.ApplicationLayer.Checkout
                 return new CheckoutVariantChoiceResult(
                     CheckoutVariantChoiceStatus.InvalidCandidates, null);
 
-            return ChooseBarcodeWithRefresh(displayedMatches,
+            // The legacy modal returns a DataTable row index, not an article ID.
+            // If it sorts, removes or reassigns rows while open, that index can
+            // point at another article even though the live SQL refresh succeeds.
+            // Preserve cancellation and invalid-index behavior; fail closed on
+            // a changed identity/order before any second database read.
+            bool dialogChanged = false;
+            CheckoutVariantChoiceResult result = ChooseBarcodeWithRefresh(displayedMatches,
                 chooseDuplicate == null ? null :
                     new Func<IList<CheckoutVariantSnapshot>, int>(
                         delegate(IList<CheckoutVariantSnapshot> ignored) {
-                            return chooseDuplicate(displayedMatches);
+                            int selectedIndex = chooseDuplicate(displayedMatches);
+                            if (selectedIndex >= 0 && selectedIndex < initial.Snapshots.Count &&
+                                !MatchesOriginalDialogOrder(displayedMatches, initial.Snapshots))
+                            {
+                                dialogChanged = true;
+                                return -1;
+                            }
+                            return selectedIndex;
                         }),
                 readCurrentMatches);
+            return dialogChanged
+                ? new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null)
+                : result;
+        }
+
+        private static bool MatchesOriginalDialogOrder(
+            DataTable displayed, IList<CheckoutVariantSnapshot> snapshots)
+        {
+            if (displayed.Rows.Count != snapshots.Count ||
+                !displayed.Columns.Contains("Code") ||
+                !displayed.Columns.Contains("ID_ARTICLE"))
+                return false;
+            for (int i = 0; i < snapshots.Count; i++)
+            {
+                DataRow row = displayed.Rows[i];
+                if (row.RowState == DataRowState.Deleted ||
+                    row.RowState == DataRowState.Detached ||
+                    row.IsNull("Code") || row.IsNull("ID_ARTICLE") ||
+                    !String.Equals(Convert.ToString(row["Code"]), snapshots[i].Code,
+                        StringComparison.Ordinal) ||
+                    !String.Equals(Convert.ToString(row["ID_ARTICLE"]), snapshots[i].ArticleId,
+                        StringComparison.Ordinal))
+                    return false;
+            }
+            return true;
         }
 
         // Image tiles must be resolved from a live catalogue result by article
