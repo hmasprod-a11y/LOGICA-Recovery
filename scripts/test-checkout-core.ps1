@@ -41,7 +41,7 @@ try {
     }
     $binary = Join-Path $temporary 'CheckoutCoreWithoutVB.exe'
     # No VB, WinForms, MySQL, Bunifu or database references.
-    & $compiler /nologo /platform:x86 /target:exe "/out:$binary" $sources
+    & $compiler /nologo /platform:x86 /target:exe /r:System.Data.dll "/out:$binary" $sources
     if ($LASTEXITCODE -ne 0) { throw 'Checkout core failed independent compilation' }
     & $binary
     if ($LASTEXITCODE -ne 0) { throw 'Checkout core isolated smoke failed' }
