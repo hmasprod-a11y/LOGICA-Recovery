@@ -175,6 +175,59 @@ def assert_optional_modern_core_gate(source):
     return True
 
 
+
+def assert_critical_release_gates(source):
+    """A successful Windows artifact must imply every mandatory verification ran.
+
+    GitHub Actions `continue-on-error` can turn a failed POS/database/packaging
+    check into a successful job. A step-level `if` can skip the same checks.
+    Reject both rather than trusting the artifact's upload condition alone.
+    """
+    lines = source.splitlines()
+    if re.search(r'(?m)^\\s+continue-on-error\\s*:', source):
+        raise ValueError('Release job must not suppress failures with continue-on-error')
+    mandatory = (
+        'Guard release artifact upload policy (including negative fixtures)',
+        'Verify committed source is present',
+        'Restore original runtime dependencies',
+        'Build original project on Windows',
+        'Start isolated test database',
+        'Exercise original POS on Windows',
+        'Verify original recovered Access data on MySQL',
+        'Verify portable launcher with original data',
+        'Finalize portable runtime package',
+        'Gate unified beta candidate and generate file hashes',
+        'Test offline release verifier with isolated adversarial fixtures',
+        'Build and independently verify beta RC ZIP',
+    )
+    positions = []
+    for name in mandatory:
+        marker = '      - name: ' + name
+        if lines.count(marker) != 1:
+            raise ValueError(f'Missing or duplicated mandatory release step: {name}')
+        start = lines.index(marker)
+        end = next((i for i in range(start + 1, len(lines))
+                    if lines[i].startswith('      - ')), len(lines))
+        block = lines[start + 1:end]
+        conditions = [line.strip() for line in block
+                      if re.match(r'^        if\\s*:', line)]
+        if name == 'Finalize portable runtime package':
+            if conditions != ['if: always()']:
+                raise ValueError('Runtime finalizer must run even after failed builds')
+        elif conditions:
+            raise ValueError(f'Mandatory release step must not be skipped: {name}')
+        positions.append(start)
+    if positions != sorted(positions):
+        raise ValueError('Mandatory release steps must retain verification order')
+    last_gate = positions[-1]
+    for index, line in enumerate(lines):
+        if re.match(r'^\\s+uses:\\s*actions/upload-artifact@', line) and index < last_gate:
+            raise ValueError('Release artifacts must be uploaded after verification')
+    return True
+
+
+
+
 FIXTURE = '''      - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -365,6 +418,49 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
             '      - name: Compile shared modern core for dual targets when available\n        continue-on-error: true', 1)
         with self.assertRaisesRegex(ValueError, 'must fail'):
             assert_optional_modern_core_gate(modified)
+
+
+
+    def test_repository_release_gates_cannot_be_skipped(self):
+        self.assertTrue(assert_critical_release_gates(WORKFLOW.read_text(encoding='utf-8')))
+
+    def test_pos_failure_cannot_be_ignored(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace('      - name: Exercise original POS on Windows',
+                                  '      - name: Exercise original POS on Windows\\n        continue-on-error: true', 1)
+        with self.assertRaisesRegex(ValueError, 'continue-on-error'):
+            assert_critical_release_gates(modified)
+
+    def test_database_check_cannot_be_skipped(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace('      - name: Verify original recovered Access data on MySQL',
+                                  '      - name: Verify original recovered Access data on MySQL\\n        if: false', 1)
+        with self.assertRaisesRegex(ValueError, 'must not be skipped'):
+            assert_critical_release_gates(modified)
+
+    def test_job_failure_cannot_be_ignored(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace('  build-test:\\n',
+                                  '  build-test:\\n    continue-on-error: true\\n', 1)
+        with self.assertRaisesRegex(ValueError, 'continue-on-error'):
+            assert_critical_release_gates(modified)
+
+    def test_release_verifier_cannot_be_removed(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace('      - name: Test offline release verifier with isolated adversarial fixtures',
+                                  '      - name: Disabled release verifier', 1)
+        with self.assertRaisesRegex(ValueError, 'Missing or duplicated mandatory'):
+            assert_critical_release_gates(modified)
+
+    def test_packaging_must_follow_verification(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        verifier = '      - name: Test offline release verifier with isolated adversarial fixtures'
+        package = '      - name: Build and independently verify beta RC ZIP'
+        modified = source.replace(verifier, '      - name: PLACEHOLDER', 1).replace(
+            package, verifier, 1).replace('      - name: PLACEHOLDER', package, 1)
+        with self.assertRaisesRegex(ValueError, 'verification order'):
+            assert_critical_release_gates(modified)
+
 
 
 
