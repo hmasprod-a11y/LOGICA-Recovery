@@ -142,11 +142,11 @@ def assert_optional_business_smoke_gate(source):
     block = lines[start + 1:end]
     conditions = [line.strip() for line in block if re.match(r'^        if\s*:', line)]
     if conditions != [expected]:
-        raise ValueError('Business smoke must have exactly one project-existence condition')
+        raise ValueError('Business smoke must remain conditional: exactly one project-existence condition')
     runs = [line.strip() for line in block if re.match(r'^        run\s*:', line)]
     expected_run = 'run: dotnet run --project business/Hanouty.BusinessOperations.Smoke.csproj -c Release'
     if runs != [expected_run]:
-        raise ValueError('Business smoke project must be executed as the sole run command')
+        raise ValueError('Business smoke project not executed as the sole run command')
     if any(re.match(r'^        continue-on-error\s*:', line) for line in block):
         raise ValueError('Business smoke failures must block the release')
     return True
@@ -170,7 +170,7 @@ def assert_optional_modern_core_gate(source):
     expected_command = '        run: dotnet build modernization/LOGICA.CoreCompatibility.csproj -c Release --warnaserror'
     conditions = [line for line in block if re.match(r'^        if\s*:', line)]
     if conditions != [expected_condition]:
-        raise ValueError('Modern core gate must have exactly one project-existence condition')
+        raise ValueError('Modern core gate must remain conditional: exactly one project-existence condition')
     runs = [line for line in block if re.match(r'^        run\s*:', line)]
     if runs != [expected_command]:
         raise ValueError('Modern core dual-target compilation is not executed as the sole run command')
