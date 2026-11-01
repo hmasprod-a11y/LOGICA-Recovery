@@ -1406,11 +1406,150 @@ class PosSmoke {
   }
  }
 
+ static void SalesProductNameRowDpi(Assembly assembly) {
+  // The legacy product list disabled row resizing but did not wrap long article names.
+  // Only visible rows should auto-size: the full catalogue may contain thousands of items.
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
+   var list=(DataGridView)Get(form,"DataGridView100");
+   if(list.AutoSizeRowsMode!=DataGridViewAutoSizeRowsMode.DisplayedCellsExceptHeaders)
+    throw new Exception("Product list must size visible rows for wrapped names without scanning all products");
+   var name=list.Columns["DataGridViewTextBoxColumn1"];
+   if(name==null || name.DataPropertyName!="Article" || name.DefaultCellStyle.WrapMode!=DataGridViewTriState.True)
+    throw new Exception("Article column must retain its binding and wrap long names");
+   if(list.Columns.Count!=4 || list.Columns["Codeee"].DataPropertyName!="Code" ||
+      list.Columns["Prix_VV"].DataPropertyName!="PRIX_V_1" ||
+      list.Columns["Stock"].DataPropertyName!="Stock")
+    throw new Exception("Product list columns or data bindings changed");
+   if(list.AllowUserToAddRows || list.AllowUserToResizeRows)
+    throw new Exception("Product list editing/row-resize behavior changed");
+   Console.WriteLine("PASS visible product row autosizing, long-name wrapping, original four bindings");
+  }
+ }
+
+ static void SalesProductListHeaderDpi(Assembly assembly) {
+  // The product list previously froze captions at 30px during Load.
+  // Verify the actual WinForms control stays ready for larger fonts/DPI,
+  // without changing product-list columns or image-grid filtering.
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
+   var list=(DataGridView)Get(form,"DataGridView100");
+   if(list.ColumnHeadersHeightSizeMode!=DataGridViewColumnHeadersHeightSizeMode.AutoSize)
+    throw new Exception("Product-list headers must auto-size after Windows font/DPI changes");
+   if(list.ColumnHeadersDefaultCellStyle.WrapMode!=DataGridViewTriState.True)
+    throw new Exception("Product-list header text must wrap instead of clipping");
+   string[] names={"Codeee","DataGridViewTextBoxColumn1","Prix_VV","Stock"};
+   string[] fields={"Code","Article","PRIX_V_1","Stock"};
+   if(list.Columns.Count!=names.Length)
+    throw new Exception("Product-list column count changed");
+   for(int i=0;i<names.Length;i++) {
+    if(list.Columns[i].Name!=names[i] || list.Columns[i].DataPropertyName!=fields[i])
+     throw new Exception("Product-list identity/binding changed at column "+i);
+   }
+   if(list.AllowUserToAddRows)
+    throw new Exception("Product-list add-row behavior changed");
+   Console.WriteLine("PASS product-list auto-height, wrapped captions and original four bindings");
+  }
+ }
+
+ static void SalesBasketHeaderDpi(Assembly assembly) {
+  // The original Load set DisableResizing + one-time AutoResizeColumnHeadersHeight.
+  // A font/DPI change could clip wrapped basket headers; AutoSize must persist.
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
+   var grid=(DataGridView)Get(form,"DataGridView1");
+   if(grid.ColumnHeadersHeightSizeMode!=DataGridViewColumnHeadersHeightSizeMode.AutoSize)
+    throw new Exception("Basket headers must auto-size when Windows font/DPI changes");
+   if(grid.ColumnHeadersDefaultCellStyle.WrapMode!=DataGridViewTriState.True)
+    throw new Exception("Wrapped basket column captions were disabled");
+   foreach(var name in new[]{"Article","Prix_V","Qté","TOTAL_NET"}) {
+    if(grid.Columns[name]==null)throw new Exception("Basket header missing: "+name);
+   }
+   if(grid.AllowUserToAddRows)throw new Exception("Basket editing semantics changed");
+   Console.WriteLine("PASS basket header auto-height for DPI/font scaling and unchanged columns");
+  }
+ }
+
+ static void SalesBasketSelectionContrast(Assembly assembly) {
+  // Exercise the actual WinForms form without database-dependent Load.
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
+   var grid=(DataGridView)Get(form,"DataGridView1");
+   Action verify=delegate() {
+    if(grid.DefaultCellStyle.SelectionBackColor.ToArgb()!=Color.Yellow.ToArgb())
+     throw new Exception("Original yellow basket selection highlight changed");
+    if(grid.DefaultCellStyle.SelectionForeColor.ToArgb()!=Color.FromArgb(31,41,55).ToArgb())
+     throw new Exception("Selected basket row text is not high-contrast dark slate");
+    foreach(var column in new[]{"Article","Prix_V","Qté","TOTAL_NET"})
+     if(grid.Columns[column]==null)throw new Exception("Basket column removed: "+column);
+   };
+   verify();
+   // Legacy Load reapplies the palette after binding; assert it cannot restore red-on-yellow.
+   grid.DefaultCellStyle.SelectionForeColor=Color.Red;
+   form.GetType().GetMethod("ApplyBasketSelectionContrast",Flags).Invoke(form,null);
+   verify();
+   Console.WriteLine("PASS selected basket row contrast, yellow highlight and unchanged sales columns");
+  }
+ }
+
+ static void SalesWhiteUtilityButtonContrast(Assembly assembly) {
+  // The search action and eight white keyboard utility buttons had no explicit
+  // foreground: inherited/theme foreground can become unreadable on white.
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
+   foreach(var name in new[]{"Button_876","Button_CLAVIER_NOSELECT35","Button_CLAVIER_NOSELECT34",
+      "Button_CLAVIER_NOSELECT25","Button_CLAVIER_NOSELECT24","Button_CLAVIER_NOSELECT23",
+      "Button_CLAVIER_NOSELECT22","Button_CLAVIER_NOSELECT21","Button_CLAVIER_NOSELECT20"}) {
+    var button=(Control)Get(form,name);
+    if(button.BackColor.ToArgb()!=Color.White.ToArgb())
+     throw new Exception(name+" original white background changed");
+    if(button.ForeColor.GetBrightness()>=0.45f)
+     throw new Exception(name+" inherited/light caption is unreadable on white");
+    Console.WriteLine("PASS explicit white utility button contrast "+name);
+   }
+   var search=(Control)Get(form,"Text_FIND");
+   if(search.BackColor.ToArgb()!=Color.White.ToArgb() || search.ForeColor.ToArgb()!=Color.Black.ToArgb())
+    throw new Exception("Sales product search text colors changed");
+   Console.WriteLine("PASS sales product search text colors unchanged");
+  }
+ }
+
+ static void SalesKeyboardContrast(Assembly assembly) {
+  // Language/keyboard toggles inherit a white table background; white captions disappeared.
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
+   foreach(var name in new[]{"Butt_AR","Butt_DOT_AR","Butt_FR"}) {
+    var button=(Control)Get(form,name);
+    if(button.Parent==null || button.Parent.BackColor.ToArgb()!=Color.White.ToArgb())
+     throw new Exception(name+" keyboard parent is no longer white");
+    if(button.ForeColor.GetBrightness()>=0.45f)
+     throw new Exception(name+" keyboard caption is too light for its white parent");
+    if(name=="Butt_FR" && button.BackColor.ToArgb()!=Color.White.ToArgb())
+     throw new Exception("French keyboard toggle background changed");
+    if(name!="Butt_FR" && button.BackColor!=Color.Transparent)
+     throw new Exception(name+" transparent keyboard background changed");
+    Console.WriteLine("PASS readable keyboard toggle "+name+" foreground="+button.ForeColor);
+   }
+  }
+ }
+
+ static void SalesActionContrast(Assembly assembly) {
+  // Regression for three sales actions whose original designer colors were white on white.
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
+   foreach(var name in new[]{"Button2626","Button2121","Button1717"}) {
+    var button=(Control)Get(form,name);
+    if(button.BackColor.ToArgb()!=Color.White.ToArgb())
+     throw new Exception(name+" background unexpectedly changed");
+    if(button.ForeColor.GetBrightness()>=0.45f)
+     throw new Exception(name+" has unreadable foreground on white background");
+    Console.WriteLine("PASS readable sales action "+name+" foreground="+button.ForeColor);
+   }
+   var grid=(DataGridView)Get(form,"DataGridView1");
+   foreach(var name in new[]{"Article","Prix_V","Qté","TOTAL_NET"})
+    if(grid.Columns[name]==null)throw new Exception("Sales basket column missing: "+name);
+   Console.WriteLine("PASS sales basket core columns unchanged");
+  }
+ }
+
  [STAThread] static int Main(string[] args) {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="checkout-barcode-chooser") { CheckoutBarcodeChooser(assembly); } else if(args[0]=="checkout-image-grid") { CheckoutImageGrid(assembly); } else if(args[0]=="checkout-article-search-sql") { CheckoutArticleSearchSql(assembly); } else if(args[0]=="shared-export-projection") { SharedExportProjection(assembly); } else if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="checkout-product-name-row-dpi") { SalesProductNameRowDpi(assembly); } else if(args[0]=="checkout-product-list-header-dpi") { SalesProductListHeaderDpi(assembly); } else if(args[0]=="checkout-basket-header-dpi") { SalesBasketHeaderDpi(assembly); } else if(args[0]=="checkout-basket-selection-contrast") { SalesBasketSelectionContrast(assembly); } else if(args[0]=="checkout-white-buttons-contrast") { SalesWhiteUtilityButtonContrast(assembly); } else if(args[0]=="checkout-keyboard-contrast") { SalesKeyboardContrast(assembly); } else if(args[0]=="checkout-contrast") { SalesActionContrast(assembly); } else if(args[0]=="checkout-barcode-chooser") { CheckoutBarcodeChooser(assembly); } else if(args[0]=="checkout-image-grid") { CheckoutImageGrid(assembly); } else if(args[0]=="checkout-article-search-sql") { CheckoutArticleSearchSql(assembly); } else if(args[0]=="shared-export-projection") { SharedExportProjection(assembly); } else if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
