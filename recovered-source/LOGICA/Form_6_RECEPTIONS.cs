@@ -9139,7 +9139,8 @@ public class Form_6_RECEPTIONS : Form
 	private void DataGridView1_CellEnter(object sender, DataGridViewCellEventArgs e)
 	{
 		// Rebinding can fire CellEnter while CurrentCell is null or stale.
-		if (e == null || !LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(e.RowIndex, DataGridView1.Rows.Count))
+		if (e == null || !LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(e.RowIndex, DataGridView1.Rows.Count) ||
+			DataGridView1.Rows[e.RowIndex].IsNewRow)
 			return;
 		Label_TOTAL_LIGNES_BD.Text = Conversions.ToString(e.RowIndex + 1) + "/" + Conversions.ToString(DataGridView1.Rows.Count);
 	}
@@ -10090,7 +10091,8 @@ public class Form_6_RECEPTIONS : Form
 
 	private void DataGrid_BODY_CellEnter(object sender, DataGridViewCellEventArgs e)
 	{
-		if (e == null || !LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(e.RowIndex, DataGrid_BODY.Rows.Count))
+		if (e == null || !LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(e.RowIndex, DataGrid_BODY.Rows.Count) ||
+			DataGrid_BODY.Rows[e.RowIndex].IsNewRow)
 			return;
 		Label_TOTAL_LIGNES.Text = Conversions.ToString(e.RowIndex + 1) + "/" + Conversions.ToString(DataGrid_BODY.Rows.Count);
 	}
@@ -10543,12 +10545,17 @@ public class Form_6_RECEPTIONS : Form
 				// Enter in the filtered search must select the visible focused
 				// article, not call CellClick with a null event (a no-op).
 				DataGridViewCell activeCell = DataGridView_ARTICLES.CurrentCell;
-				if (activeCell != null && LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(
-					activeCell.RowIndex, DataGridView_ARTICLES.Rows.Count) &&
-					!DataGridView_ARTICLES.Rows[activeCell.RowIndex].IsNewRow)
+				// A freshly filtered DataView may have visible rows but no
+				// CurrentCell yet. Enter should choose the first visible result,
+				// never a stale row from the unfiltered backing DataTable.
+				int selectedRowIndex = activeCell == null ? 0 : activeCell.RowIndex;
+				int selectedColumnIndex = activeCell == null ? 0 : activeCell.ColumnIndex;
+				if (LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(
+					selectedRowIndex, DataGridView_ARTICLES.Rows.Count) &&
+					!DataGridView_ARTICLES.Rows[selectedRowIndex].IsNewRow)
 				{
 					DataGridView_ARTICLES_CellClick(DataGridView_ARTICLES,
-						new DataGridViewCellEventArgs(activeCell.ColumnIndex, activeCell.RowIndex));
+						new DataGridViewCellEventArgs(selectedColumnIndex, selectedRowIndex));
 					e.Handled = true;
 					e.SuppressKeyPress = true;
 				}
