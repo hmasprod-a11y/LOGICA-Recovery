@@ -3,6 +3,16 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - 'input/mysql-compatibility.sql'
+      - 'input/recovered-original.sql'
+      - 'input/LOGICA-dependencies.zip'
+      - 'input/original-startup.json'
+      - 'scripts/test-checkout-core.ps1'
+      - 'scripts/repair-source.py'
+      - 'scripts/Start-LOGICA.cmd'
+      - 'scripts/Launch-LOGICA.ps1'
+      - 'scripts/test-recovered-db.ps1'
+      - 'scripts/setup-test-db.ps1'
       - 'recovered-source/**'
       - 'tests/**'
       - 'scripts/test-domain.ps1'
@@ -17,6 +27,13 @@ on:
       - '.github/workflows/windows-reference-diagnostic.yml'
   push:
     paths:
+      - 'input/LOGICA-dependencies.zip'
+      - 'input/original-startup.json'
+      - 'scripts/test-checkout-core.ps1'
+      - 'scripts/Start-LOGICA.cmd'
+      - 'scripts/Launch-LOGICA.ps1'
+      - 'scripts/test-recovered-db.ps1'
+      - 'scripts/setup-test-db.ps1'
       - 'recovered-source/**'
       - 'scripts/repair-source.py'
       - 'docs/RUNNING.md'
