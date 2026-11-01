@@ -710,6 +710,19 @@ internal static class PortableCheckoutSmoke
                 "Whitespace scanner barcode cannot select an image-only article");
             Console.WriteLine("PASS checkout exact-barcode boundary: mixed and blank codes rejected");
 
+            DataTable mixedLiveScannerRows = flowMatches.Copy();
+            mixedLiveScannerRows.Rows[1]["Code"] = "UNRELATED-LIVE-CODE";
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 0; },
+                delegate { return mixedLiveScannerRows; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Live scanner refresh must not admit unrelated barcode rows");
+            DataTable blankLiveScannerRows = flowSingle.Copy();
+            blankLiveScannerRows.Rows[0]["Code"] = "";
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowSingle, null, delegate { return blankLiveScannerRows; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Live scanner refresh must not convert barcode to image-only selection");
             int singleReadCalls = 0;
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
                 flowSingle, null, delegate { singleReadCalls++; return flowSingle.Copy(); }).Status ==
