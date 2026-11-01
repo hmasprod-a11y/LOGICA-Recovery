@@ -50,6 +50,14 @@ internal static class PortableCheckoutSmoke
             variants.Rows.Add("123", "A");
             variants.Rows.Add("123", "B");
             var snapshots = CheckoutVariantSnapshotService.Read(variants);
+            bool nullReadRejected = false;
+            try { CheckoutVariantSnapshotService.Read(null); }
+            catch (ArgumentNullException) { nullReadRejected = true; }
+            Require(nullReadRejected, "Null variant source rejected");
+            bool nullResolveRejected = false;
+            try { CheckoutVariantSnapshotService.Resolve(null, snapshots[0]); }
+            catch (ArgumentNullException) { nullResolveRejected = true; }
+            Require(nullResolveRejected, "Null candidate table rejected");
             Require(snapshots.Count == 2, "Duplicate barcode variants retained");
             Require(Object.ReferenceEquals(CheckoutVariantSnapshotService.Resolve(variants, snapshots[1]),
                 variants.Rows[1]), "Selected variant must resolve exact ID");
