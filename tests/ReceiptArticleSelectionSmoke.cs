@@ -153,6 +153,51 @@ internal static class ReceiptArticleSelectionSmoke
                 "empty receipt ID cannot validate even with matching state");
 
 
+            // The WinForms receipt grid may be sorted or filtered independently
+            // from DT.Rows and BindingContext.Position. The clicked DataRowView
+            // is authoritative for consultation, modification and deletion.
+            var receipts = new DataTable();
+            receipts.Columns.Add("ID_BR", typeof(string));
+            receipts.Columns.Add("ETAT", typeof(string));
+            receipts.Rows.Add("BR-001", "ENREGISTRER");
+            receipts.Rows.Add("BR-002", "VALIDER");
+            receipts.Rows.Add("BR-003", "ENREGISTRER");
+            receipts.AcceptChanges();
+            DataView receiptView = receipts.DefaultView;
+            receiptView.Sort = "ID_BR DESC";
+            Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveBoundRow(
+                receiptView[0], "BR-003"), receipts.Rows[2]),
+                "descending sorted click resolves actual third record, not DT.Rows[0]");
+            Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveBoundRow(
+                receiptView[2], "BR-001"), receipts.Rows[0]),
+                "descending sorted click resolves first record at displayed index two");
+            Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(receiptView[0], "BR-001") == null,
+                "mismatched displayed receipt ID cannot consult another row");
+            receiptView.RowFilter = "ETAT = 'ENREGISTRER'";
+            Check(receiptView.Count == 2 && Object.ReferenceEquals(
+                ReceiptDocumentSelectionGuard.ResolveBoundRow(receiptView[1], "BR-001"), receipts.Rows[0]),
+                "filtered grid retains bound identity after removing middle row");
+            Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(null, "BR-001") == null,
+                "unbound grid row fails closed");
+            Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(receiptView[0], null) == null,
+                "missing visible ID fails closed");
+            Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(receiptView[0], "br-003") == null,
+                "receipt ID is case-sensitive");
+            receipts.Rows[2]["ID_BR"] = "BR-CHANGED";
+            Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(receiptView[0], "BR-003") == null,
+                "edited bound identity cannot retain stale visible ID");
+            Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(receiptView[0], "BR-CHANGED") == receipts.Rows[2],
+                "updated bound identity resolves only under its current ID");
+            receipts.Rows[2].Delete();
+            Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(
+                receipts.DefaultView.Count > 0 ? receipts.DefaultView[0] : null, "BR-CHANGED") == null,
+                "deleted record cannot be resolved through a stale receipt ID");
+            var missingReceiptId = new DataTable();
+            missingReceiptId.Columns.Add("ETAT", typeof(string));
+            missingReceiptId.Rows.Add("ENREGISTRER");
+            Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(missingReceiptId.DefaultView[0], "BR-001") == null,
+                "missing receipt ID schema fails closed");
+
             Console.WriteLine("PASS real receipt article selection: " + assertions +
                 " assertions; duplicate barcodes, exact grid IDs, stale/malformed identities");
             return 0;
