@@ -73,6 +73,11 @@ REQUIRED_WINDOWS_INPUTS = {
     'input/LOGICA-dependencies.zip',
     'input/recovered-original.sql',
     'input/mysql-compatibility.sql',
+    'business/**',
+    'modernization/**',
+    'scripts/test-catalogue-core.ps1',
+    'scripts/test-domain.ps1',
+    'tests/**',
 }
 
 
@@ -99,6 +104,28 @@ def assert_required_windows_triggers(source):
         missing = REQUIRED_WINDOWS_INPUTS - paths
         if missing:
             raise ValueError(f'{event}: missing Windows CI paths: {sorted(missing)}')
+    return True
+
+
+def assert_optional_business_smoke_gate(source):
+    """When Track B's smoke project is present, Windows CI must actually run it.
+
+    Conditional execution keeps the legacy release branch working before PR #72
+    is merged, while exercising the same production sources once it lands.
+    """
+    expected = "if: ${{ hashFiles('business/Hanouty.BusinessOperations.Smoke.csproj') != '' }}"
+    lines = source.splitlines()
+    name = '      - name: Exercise business operations .NET 10 smoke when available'
+    if lines.count(name) != 1:
+        raise ValueError('Missing or duplicated conditional business smoke step')
+    start = lines.index(name)
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i].startswith('      - ')), len(lines))
+    block = '\n'.join(lines[start + 1:end])
+    if '        ' + expected not in block:
+        raise ValueError('Business smoke must be conditional on project existence')
+    if 'dotnet run --project business/Hanouty.BusinessOperations.Smoke.csproj -c Release' not in block:
+        raise ValueError('Business smoke project is not executed')
     return True
 
 
@@ -181,6 +208,44 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
         modified = source.replace('  pull_request:\n', '  pull_request_disabled:\n', 1)
         with self.assertRaisesRegex(ValueError, 'Missing Windows CI event'):
             assert_required_windows_triggers(modified)
+
+    def test_optional_business_smoke_is_wired(self):
+        self.assertTrue(assert_optional_business_smoke_gate(WORKFLOW.read_text(encoding='utf-8')))
+
+    def test_business_smoke_cannot_be_removed(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace('      - name: Exercise business operations .NET 10 smoke when available',
+                                  '      - name: Disabled business smoke', 1)
+        with self.assertRaisesRegex(ValueError, 'Missing or duplicated'):
+            assert_optional_business_smoke_gate(modified)
+
+    def test_business_smoke_must_remain_conditional(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace("if: ${{ hashFiles('business/Hanouty.BusinessOperations.Smoke.csproj') != '' }}",
+                                  'if: always()', 1)
+        with self.assertRaisesRegex(ValueError, 'conditional'):
+            assert_optional_business_smoke_gate(modified)
+
+    def test_business_smoke_command_cannot_be_skipped(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace('dotnet run --project business/Hanouty.BusinessOperations.Smoke.csproj -c Release',
+                                  'Write-Host skipped-business-smoke', 1)
+        with self.assertRaisesRegex(ValueError, 'not executed'):
+            assert_optional_business_smoke_gate(modified)
+
+    def test_missing_pr_business_trigger_is_rejected(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace("      - 'business/**'\n", '', 1)
+        with self.assertRaisesRegex(ValueError, 'pull_request: missing Windows CI paths'):
+            assert_required_windows_triggers(modified)
+
+    def test_missing_push_modernization_trigger_is_rejected(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        before, after = source.split('  push:\n', 1)
+        modified = before + '  push:\n' + after.replace("      - 'modernization/**'\n", '', 1)
+        with self.assertRaisesRegex(ValueError, 'push: missing Windows CI paths'):
+            assert_required_windows_triggers(modified)
+
 
 
 if __name__ == '__main__':
