@@ -4,5 +4,7 @@ internal static class CatalogueCoreIsolationEntry
         if (catalogue != 0) return catalogue;
         int business = BusinessOperationsSmoke.Run();
         if (business != 0) return business;
-        return StockCountCoverageSmoke.Run(); }
+        int coverage = StockCountCoverageSmoke.Run();
+        if (coverage != 0) return coverage;
+        return BusinessOperationsSafetySmoke.Run(); }
 }
