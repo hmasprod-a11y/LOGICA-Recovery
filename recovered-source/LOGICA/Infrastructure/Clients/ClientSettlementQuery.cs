@@ -9,19 +9,19 @@ namespace LOGICA.Infrastructure.Clients
         public static MySqlDataAdapter DateRange(string table, DateTime from, DateTime to, MySqlConnection connection)
         {
             return new MySqlDataAdapter(ClientSettlementQueryText.DateRange(
-                table, from, to, VisualBasicClientSettlementQuerySemantics.Instance), connection);
+                table, from, to, VisualBasicClientSearchSemantics.Instance), connection);
         }
 
         public static MySqlDataAdapter Contains(string table, object datePrefix, object column, object term, MySqlConnection connection)
         {
             return new MySqlDataAdapter(ClientSettlementQueryText.Contains(
-                table, datePrefix, column, term, VisualBasicClientSettlementQuerySemantics.Instance), connection);
+                table, datePrefix, column, term, VisualBasicClientSearchSemantics.Instance), connection);
         }
 
         public static MySqlDataAdapter ExactLike(string table, object datePrefix, object column, object term, MySqlConnection connection)
         {
             return new MySqlDataAdapter(ClientSettlementQueryText.ExactLike(
-                table, datePrefix, column, term, VisualBasicClientSettlementQuerySemantics.Instance), connection);
+                table, datePrefix, column, term, VisualBasicClientSearchSemantics.Instance), connection);
         }
 
         public static MySqlDataAdapter Refresh(string table, MySqlConnection connection)
@@ -32,7 +32,7 @@ namespace LOGICA.Infrastructure.Clients
         public static string DatePrefix(DateTime from, DateTime to)
         {
             return ClientSettlementQueryText.DatePrefix(
-                from, to, VisualBasicClientSettlementQuerySemantics.Instance);
+                from, to, VisualBasicClientSearchSemantics.Instance);
         }
     }
 }
