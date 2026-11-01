@@ -8592,6 +8592,8 @@ public class Form_3_VENTE : Form
 		val.SelectionForeColor = SystemColors.HighlightText;
 		val.WrapMode = (DataGridViewTriState)1;
 		DataGridView1.ColumnHeadersDefaultCellStyle = val;
+		// Keep wrapped basket headers readable when Windows font scaling or DPI changes.
+		DataGridView1.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
 		DataGridView1.Columns.AddRange(new DataGridViewColumn[9]
 		{
 			(DataGridViewColumn)Article,
@@ -12096,8 +12098,8 @@ public class Form_3_VENTE : Form
 				DataGridView1.DefaultCellStyle.Font = new Font("Segoe UI", 11f, (FontStyle)0);
 				DataGridView1.ColumnHeadersBorderStyle = (DataGridViewHeaderBorderStyle)1;
 				DataGridView1.ColumnHeadersDefaultCellStyle.Alignment = (DataGridViewContentAlignment)16;
-				DataGridView1.ColumnHeadersHeightSizeMode = (DataGridViewColumnHeadersHeightSizeMode)0;
-				DataGridView1.AutoResizeColumnHeadersHeight();
+				// One-time AutoResizeColumnHeadersHeight clips text after DPI/font changes.
+				DataGridView1.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
 				DataGridView1.CellBorderStyle = (DataGridViewCellBorderStyle)5;
 				DataGridView1.SelectionMode = (DataGridViewSelectionMode)1;
 				DataGridView1.MultiSelect = true;
