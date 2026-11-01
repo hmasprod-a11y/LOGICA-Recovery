@@ -1592,6 +1592,17 @@ class PosSmoke {
     qtyKeyPress.Invoke(form,new object[]{quantity,key});
     if(key.Handled)throw new Exception("Quantity keyboard rejected legacy valid key: "+allowed);
    }
+   var misplacedMinus=new KeyPressEventArgs('-');
+   qtyKeyPress.Invoke(form,new object[]{quantity,misplacedMinus});
+   if(!misplacedMinus.Handled)throw new Exception("Physical quantity keyboard accepted minus after digits");
+   quantity.Text="";
+   var leadingMinus=new KeyPressEventArgs('-');
+   qtyKeyPress.Invoke(form,new object[]{quantity,leadingMinus});
+   if(leadingMinus.Handled)throw new Exception("Legacy leading minus entry must remain available");
+   quantity.Text="-2";
+   var repeatedMinus=new KeyPressEventArgs('-');
+   qtyKeyPress.Invoke(form,new object[]{quantity,repeatedMinus});
+   if(!repeatedMinus.Handled)throw new Exception("Physical quantity keyboard accepted repeated minus");
    var invalidKey=new KeyPressEventArgs('X');
    qtyKeyPress.Invoke(form,new object[]{quantity,invalidKey});
    if(!invalidKey.Handled)throw new Exception("Quantity keyboard accepted nonnumeric input");
