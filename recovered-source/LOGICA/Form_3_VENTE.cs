@@ -7700,7 +7700,7 @@ public class Form_3_VENTE : Form
 	// The original search button remains unchanged, including its layout toggle.
 	protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
 	{
-		if (keyData == (Keys.Control | Keys.F) && Text_FIND != null && Text_FIND.CanFocus)
+		if (keyData == (Keys.Control | Keys.F) && Text_FIND != null && Text_FIND.Enabled && Text_FIND.Visible)
 		{
 			Text_FIND.Focus();
 			return true;
