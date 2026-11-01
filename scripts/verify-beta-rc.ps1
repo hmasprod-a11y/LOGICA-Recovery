@@ -70,12 +70,16 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
 try {
     $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $zipDirectories = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $metadata = $null
     [long]$totalUncompressed = 0
     foreach ($entry in $archive.Entries) {
         $name = $entry.FullName
         if ($name.EndsWith('/')) {
             Assert-SafePath $name.TrimEnd('/')
+            $directory = $name.TrimEnd('/')
+            if (-not $zipDirectories.Add($directory)) { throw "Duplicate ZIP directory (including case collision): $name" }
+            if ($byPath.ContainsKey($directory)) { throw "ZIP directory collides with manifest file: $name" }
             if ((($entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000) { throw "Symbolic-link directory forbidden in beta ZIP: $name" }
             continue
         }
