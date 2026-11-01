@@ -35,6 +35,7 @@ namespace LOGICA.ApplicationLayer.Checkout
 
         internal static DataRow Resolve(DataTable matches, CheckoutVariantSnapshot selected)
         {
+            if (matches == null) throw new ArgumentNullException("matches");
             if (selected == null) throw new ArgumentNullException("selected");
             return CheckoutArticleTileSelectionService.FindExact(
                 matches, new CheckoutArticleTileReference(selected.Code, selected.ArticleId));
