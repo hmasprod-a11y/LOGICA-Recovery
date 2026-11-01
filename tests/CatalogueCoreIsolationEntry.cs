@@ -8,5 +8,7 @@ internal static class CatalogueCoreIsolationEntry
         if (coverage != 0) return coverage;
         int safety = BusinessOperationsSafetySmoke.Run();
         if (safety != 0) return safety;
-        return PurchaseReceiptStockProjectionSmoke.Run(); }
+        int projection = PurchaseReceiptStockProjectionSmoke.Run();
+        if (projection != 0) return projection;
+        return BusinessSnapshotFreshnessSmoke.Run(); }
 }
