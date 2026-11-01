@@ -12465,7 +12465,7 @@ public class Form_3_VENTE : Form
 					button_RJ_ARTICLE._COLOR_PRIX = ((TextBoxBase)Text_THEME).BackColor;
 					((Control)button_RJ_ARTICLE).Name = "Button_ARTICLE_" + Conversions.ToString(num2);
 					((ButtonBase)button_RJ_ARTICLE).Text = dataTable.Rows[num2]["Article"].ToString();
-					((Control)button_RJ_ARTICLE).Tag = dataTable.Rows[num2]["Code"].ToString();
+					((Control)button_RJ_ARTICLE).Tag = LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(dataTable.Rows[num2]);
 					button_RJ_ARTICLE._PRIX = Strings.FormatNumber(dataTable.Rows[num2]["PRIX_V_1"].ToString());
 					button_RJ_ARTICLE._BackgroundColor = Color.White;
 					button_RJ_ARTICLE._BorderColor = ((TextBoxBase)Text_THEME).BackColor;
@@ -12521,7 +12521,9 @@ public class Form_3_VENTE : Form
 	{
 		try
 		{
-			Text_CODE.Text = Conversions.ToString(NewLateBinding.LateGet(sender, null, "tag", new object[0], null, null, null));
+			object imageTag = NewLateBinding.LateGet(sender, null, "tag", new object[0], null, null, null);
+			LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference imageArticle = imageTag as LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference;
+			Text_CODE.Text = imageArticle == null ? Conversions.ToString(imageTag) : imageArticle.Code;
 			Button_FIND_Click(RuntimeHelpers.GetObjectValue(sender), e);
 		}
 		catch (Exception ex)
@@ -14596,11 +14598,16 @@ public class Form_3_VENTE : Form
 			((DbDataAdapter)(object)Module1.da_find).Fill(Module1.dt_find);
 			if (Module1.dt_find.Rows.Count != 0)
 			{
-				DataRow selectedArticle = LOGICA.ApplicationLayer.Checkout.CheckoutBarcodeSelectionService.Select(
-					Module1.dt_find, delegate(DataTable matches) {
-						return LOGICA.Presentation.Checkout.CheckoutBarcodeChoiceDialog.Choose(
-							matches, "Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5));
-					});
+				Control clickedControl = sender as Control;
+				LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference clickedImage = clickedControl == null
+					? null : clickedControl.Tag as LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference;
+				DataRow selectedArticle = clickedImage != null
+					? LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.FindExact(Module1.dt_find, clickedImage)
+					: LOGICA.ApplicationLayer.Checkout.CheckoutBarcodeSelectionService.Select(
+						Module1.dt_find, delegate(DataTable matches) {
+							return LOGICA.Presentation.Checkout.CheckoutBarcodeChoiceDialog.Choose(
+								matches, "Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5));
+						});
 				if (selectedArticle == null)
 				{
 					((Control)Text_CODE).Focus();
@@ -15197,7 +15204,7 @@ public class Form_3_VENTE : Form
 							button_RJ_ARTICLE._COLOR_PRIX = ((TextBoxBase)Text_THEME).BackColor;
 							((Control)button_RJ_ARTICLE).Name = "Button_ARTICLE_" + Conversions.ToString(num2);
 							((ButtonBase)button_RJ_ARTICLE).Text = dt_PIC.Rows[num2]["Article"].ToString();
-							((Control)button_RJ_ARTICLE).Tag = dt_PIC.Rows[num2]["Code"].ToString();
+							((Control)button_RJ_ARTICLE).Tag = LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(dt_PIC.Rows[num2]);
 							button_RJ_ARTICLE._PRIX = Strings.FormatNumber(dt_PIC.Rows[num2]["PRIX_V_1"].ToString());
 							button_RJ_ARTICLE._BackgroundColor = Color.White;
 							button_RJ_ARTICLE._BorderColor = ((TextBoxBase)Text_THEME).BackColor;
