@@ -987,6 +987,34 @@ internal static class PortableCheckoutSmoke
                 delegate(DataTable dialogCandidates) { return 1; },
                 delegate { return legacyLive.Copy(); }).Status == CheckoutVariantChoiceStatus.Selected,
                 "Strict scanner filter retains valid duplicate-barcode variant selection");
+            int capturedScannerModalCalls = 0;
+            int capturedScannerSqlCalls = 0;
+            CheckoutVariantChoiceResult capturedScannerChoice =
+                CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", flowMatches,
+                    delegate(DataTable shown) { capturedScannerModalCalls++; return 1; },
+                    delegate { capturedScannerSqlCalls++; return legacyLive.Copy(); });
+            Require(capturedScannerChoice.Status == CheckoutVariantChoiceStatus.Selected &&
+                capturedScannerChoice.SelectedRow["ID_ARTICLE"].ToString() == "B" &&
+                capturedScannerModalCalls == 1 && capturedScannerSqlCalls == 1,
+                "Captured scanner barcode resolves selected variant against a fresh catalogue");
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh("DIFFERENT", flowMatches,
+                delegate(DataTable shown) { capturedScannerModalCalls++; return 1; },
+                delegate { capturedScannerSqlCalls++; return legacyLive.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates &&
+                capturedScannerModalCalls == 1 && capturedScannerSqlCalls == 1,
+                "A valid but wrong initial SQL barcode must not reach the modal or local store");
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh(" ", flowMatches,
+                delegate(DataTable shown) { capturedScannerModalCalls++; return 1; },
+                delegate { capturedScannerSqlCalls++; return legacyLive.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates &&
+                capturedScannerModalCalls == 1 && capturedScannerSqlCalls == 1,
+                "Blank scanner input cannot use the barcode path");
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", flowMatches,
+                delegate(DataTable shown) { return -1; },
+                delegate { capturedScannerSqlCalls++; return legacyLive.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.Cancelled && capturedScannerSqlCalls == 1,
+                "Cancellation of captured scan must not issue another local query");
+            Console.WriteLine("PASS captured barcode binding: live identity, wrong SQL result, blank scan and cancellation");
             Console.WriteLine("PASS scanner exact-code validation before WinForms modal, local-store refresh and basket copy");
 
             int singleReadCalls = 0;
