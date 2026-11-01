@@ -12,14 +12,26 @@ WORKFLOW = Path(__file__).resolve().parents[1] / '.github/workflows/windows-refe
 
 
 def upload_steps(source):
+    """Discover upload actions regardless of YAML step key ordering.
+
+    A named step can put `uses` below `- name`; ignoring that shape would
+    allow a second, unguarded upload to bypass the release policy.
+    """
     lines = source.splitlines()
-    starts = [i for i, line in enumerate(lines)
-              if line == '      - uses: actions/upload-artifact@v4']
+    starts = [i for i, line in enumerate(lines) if line.startswith('      - ')]
     result = {}
-    for start in starts:
-        end = next((i for i in range(start + 1, len(lines))
-                    if lines[i].startswith('      - ')), len(lines))
-        block = lines[start + 1:end]
+    for index, start in enumerate(starts):
+        end = starts[index + 1] if index + 1 < len(starts) else len(lines)
+        # Normalize either "- uses:" or "- name:" to an ordinary step field.
+        block = ['        ' + lines[start][8:]] + lines[start + 1:end]
+        actions = [m.group(1) for line in block
+                   if (m := re.match(r'^        uses:\s*(\S+)\s*$', line))]
+        uploads = [action for action in actions
+                   if re.fullmatch(r'actions/upload-artifact@[^\s]+', action)]
+        if not uploads:
+            continue
+        if len(actions) != 1 or len(uploads) != 1:
+            raise ValueError(f'Ambiguous artifact upload action at line {start + 1}')
 
         def field(indent, name, required=True):
             pattern = re.compile(r'^' + ' ' * indent + re.escape(name) + r':\s*(.*?)\s*$')
@@ -48,6 +60,9 @@ def assert_release_upload_policy(source):
         'LOGICA-2.0-Beta-RC1-Windows-x86': {'if': 'success()', 'if-no-files-found': 'error', 'path': 'release/'},
         'LOGICA-Windows-complete': {'if': 'success()', 'if-no-files-found': 'error', 'path': 'dist/'},
     }
+    unexpected = set(uploads) - set(required)
+    if unexpected:
+        raise ValueError(f'Unapproved artifact uploads: {sorted(unexpected)}')
     for name, fields in required.items():
         if name not in uploads:
             raise ValueError(f'Missing required artifact upload: {name}')
@@ -213,6 +228,37 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
         modified = FIXTURE.replace('name: LOGICA-Windows-complete\n          path: dist/',
                                    'name: LOGICA-Windows-complete\n          path: results/')
         with self.assertRaisesRegex(ValueError, 'LOGICA-Windows-complete: path'):
+            assert_release_upload_policy(modified)
+
+    def test_name_first_upload_cannot_bypass_success_gate(self):
+        modified = FIXTURE.replace(
+            '      - uses: actions/upload-artifact@v4\\n        if: success()\\n'
+            '        with:\\n          name: LOGICA-2.0-Beta-RC1-Windows-x86',
+            '      - name: Publish beta\\n        uses: actions/upload-artifact@v4\\n'
+            '        if: always()\\n        with:\\n'
+            '          name: LOGICA-2.0-Beta-RC1-Windows-x86')
+        with self.assertRaisesRegex(ValueError, 'LOGICA-2.0-Beta-RC1-Windows-x86: if'):
+            assert_release_upload_policy(modified)
+
+    def test_extra_name_first_upload_is_rejected(self):
+        modified = FIXTURE + (
+            '      - name: Publish unverified runtime\\n'
+            '        uses: actions/upload-artifact@v4\\n'
+            '        if: always()\\n'
+            '        with:\\n'
+            '          name: LOGICA-unverified\\n'
+            '          path: dist/\\n')
+        with self.assertRaisesRegex(ValueError, 'Unapproved artifact uploads'):
+            assert_release_upload_policy(modified)
+
+    def test_extra_upload_with_other_action_version_is_rejected(self):
+        modified = FIXTURE + (
+            '      - uses: actions/upload-artifact@v3\\n'
+            '        if: always()\\n'
+            '        with:\\n'
+            '          name: LOGICA-unverified\\n'
+            '          path: dist/\\n')
+        with self.assertRaisesRegex(ValueError, 'Unapproved artifact uploads'):
             assert_release_upload_policy(modified)
 
     def test_repository_triggers_cover_release_inputs(self):
