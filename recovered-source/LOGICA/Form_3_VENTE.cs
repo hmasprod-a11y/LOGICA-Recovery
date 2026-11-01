@@ -7692,6 +7692,41 @@ public class Form_3_VENTE : Form
 		da_PIC = new MySqlDataAdapter();
 		_string = "";
 		InitializeComponent();
+		ApplyBasketSelectionContrast();
+		ApplyProductListSelectionContrast();
+	}
+
+	// Family colors come from shop configuration and can be very light or dark.
+	// Choose the higher-contrast text color without changing the configured background.
+	private static Color ReadableFamilyCaptionColor(Color background)
+	{
+		double luminance = 0.2126 * LinearFamilyColorChannel(background.R)
+			+ 0.7152 * LinearFamilyColorChannel(background.G)
+			+ 0.0722 * LinearFamilyColorChannel(background.B);
+		// WCAG relative-luminance midpoint for black versus white foreground.
+		return luminance > 0.179128784747792 ? Color.Black : Color.White;
+	}
+
+	private static double LinearFamilyColorChannel(byte channel)
+	{
+		double value = channel / 255.0;
+		return value <= 0.04045 ? value / 12.92 : Math.Pow((value + 0.055) / 1.055, 2.4);
+	}
+
+	// Keep the original light-blue product selection readable regardless of inherited theme colors.
+	// Reapply after legacy Load, which resets product-list styles on data binding.
+	private void ApplyProductListSelectionContrast()
+	{
+		DataGridView100.RowsDefaultCellStyle.SelectionBackColor = Color.FromArgb(171, 185, 211);
+		DataGridView100.RowsDefaultCellStyle.SelectionForeColor = Color.FromArgb(31, 41, 55);
+	}
+
+	// Keep selected basket quantities and prices readable on the original yellow highlight.
+	// Apply at construction for previews and again after the legacy Load styling.
+	private void ApplyBasketSelectionContrast()
+	{
+		DataGridView1.DefaultCellStyle.SelectionBackColor = Color.Yellow;
+		DataGridView1.DefaultCellStyle.SelectionForeColor = Color.FromArgb(31, 41, 55);
 	}
 
 	[DebuggerNonUserCode]
@@ -8583,6 +8618,8 @@ public class Form_3_VENTE : Form
 		val.SelectionForeColor = SystemColors.HighlightText;
 		val.WrapMode = (DataGridViewTriState)1;
 		DataGridView1.ColumnHeadersDefaultCellStyle = val;
+		// Keep wrapped basket headers readable when Windows font scaling or DPI changes.
+		DataGridView1.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
 		DataGridView1.Columns.AddRange(new DataGridViewColumn[9]
 		{
 			(DataGridViewColumn)Article,
@@ -8734,11 +8771,15 @@ public class Form_3_VENTE : Form
 		((Control)TabPage3).Name = "TabPage3";
 		DataGridView100.AllowUserToAddRows = false;
 		DataGridView100.AllowUserToResizeRows = false;
+		// Size only visible product rows so long article names stay readable without scanning the entire catalogue.
+		DataGridView100.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCellsExceptHeaders;
 		DataGridView100.AutoSizeColumnsMode = (DataGridViewAutoSizeColumnsMode)16;
 		DataGridView100.BackgroundColor = Color.White;
 		DataGridView100.CellBorderStyle = (DataGridViewCellBorderStyle)5;
 		DataGridView100.ColumnHeadersBorderStyle = (DataGridViewHeaderBorderStyle)1;
-		DataGridView100.ColumnHeadersHeightSizeMode = (DataGridViewColumnHeadersHeightSizeMode)2;
+		// Product-list captions must remain legible after Windows font/DPI changes.
+		DataGridView100.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.True;
+		DataGridView100.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
 		DataGridView100.Columns.AddRange(new DataGridViewColumn[4]
 		{
 			(DataGridViewColumn)Codeee,
@@ -8758,6 +8799,8 @@ public class Form_3_VENTE : Form
 		((DataGridViewColumn)Codeee).Name = "Codeee";
 		Codeee.SortMode = (DataGridViewColumnSortMode)0;
 		((DataGridViewColumn)DataGridViewTextBoxColumn1).DataPropertyName = "Article";
+		// Wrap long product names; barcode, price and stock columns keep their original display formats.
+		DataGridViewTextBoxColumn1.DefaultCellStyle.WrapMode = DataGridViewTriState.True;
 		((DataGridViewColumn)DataGridViewTextBoxColumn1).FillWeight = 10.30928f;
 		componentResourceManager.ApplyResources(DataGridViewTextBoxColumn1, "DataGridViewTextBoxColumn1");
 		((DataGridViewColumn)DataGridViewTextBoxColumn1).Name = "DataGridViewTextBoxColumn1";
@@ -9223,7 +9266,7 @@ public class Form_3_VENTE : Form
 		componentResourceManager.ApplyResources(Butt_AR, "Butt_AR");
 		((Control)Butt_AR).Cursor = Cursors.Hand;
 		((ButtonBase)Butt_AR).FlatAppearance.BorderColor = Color.Silver;
-		((Control)Butt_AR).ForeColor = Color.White;
+		((Control)Butt_AR).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Butt_AR).Name = "Butt_AR";
 		((ButtonBase)Butt_AR).UseVisualStyleBackColor = false;
 		((ButtonBase)Butt_SPACE).BackColor = Color.Transparent;
@@ -9652,7 +9695,7 @@ public class Form_3_VENTE : Form
 		componentResourceManager.ApplyResources(Butt_DOT_AR, "Butt_DOT_AR");
 		((Control)Butt_DOT_AR).Cursor = Cursors.Hand;
 		((ButtonBase)Butt_DOT_AR).FlatAppearance.BorderColor = Color.Silver;
-		((Control)Butt_DOT_AR).ForeColor = Color.White;
+		((Control)Butt_DOT_AR).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Butt_DOT_AR).Name = "Butt_DOT_AR";
 		((ButtonBase)Butt_DOT_AR).UseVisualStyleBackColor = false;
 		((ButtonBase)Button_CLAVIER_NOSELECT13).BackColor = Color.Transparent;
@@ -9706,7 +9749,7 @@ public class Form_3_VENTE : Form
 		componentResourceManager.ApplyResources(Butt_FR, "Butt_FR");
 		((Control)Butt_FR).Cursor = Cursors.Hand;
 		((ButtonBase)Butt_FR).FlatAppearance.BorderColor = Color.Silver;
-		((Control)Butt_FR).ForeColor = Color.White;
+		((Control)Butt_FR).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Butt_FR).Name = "Butt_FR";
 		((ButtonBase)Butt_FR).UseVisualStyleBackColor = false;
 		((ButtonBase)Butt_SPACE_AR).BackColor = Color.White;
@@ -9894,6 +9937,7 @@ public class Form_3_VENTE : Form
 		((Control)Label12).Name = "Label12";
 		componentResourceManager.ApplyResources(Button_876, "Button_876");
 		((ButtonBase)Button_876).BackColor = Color.White;
+		((Control)Button_876).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Button_876).Cursor = Cursors.Hand;
 		((ButtonBase)Button_876).FlatAppearance.BorderSize = 0;
 		((Control)Button_876).Name = "Button_876";
@@ -9916,19 +9960,19 @@ public class Form_3_VENTE : Form
 		((ButtonBase)Button2626).BackColor = Color.White;
 		((ButtonBase)Button2626).FlatAppearance.BorderColor = Color.White;
 		componentResourceManager.ApplyResources(Button2626, "Button2626");
-		((Control)Button2626).ForeColor = Color.White;
+		((Control)Button2626).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Button2626).Name = "Button2626";
 		((ButtonBase)Button2626).UseVisualStyleBackColor = false;
 		((ButtonBase)Button2121).BackColor = Color.White;
 		((ButtonBase)Button2121).FlatAppearance.BorderColor = Color.White;
 		componentResourceManager.ApplyResources(Button2121, "Button2121");
-		((Control)Button2121).ForeColor = Color.White;
+		((Control)Button2121).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Button2121).Name = "Button2121";
 		((ButtonBase)Button2121).UseVisualStyleBackColor = false;
 		((ButtonBase)Button1717).BackColor = Color.White;
 		((ButtonBase)Button1717).FlatAppearance.BorderColor = Color.White;
 		componentResourceManager.ApplyResources(Button1717, "Button1717");
-		((Control)Button1717).ForeColor = Color.White;
+		((Control)Button1717).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Button1717).Name = "Button1717";
 		((ButtonBase)Button1717).UseVisualStyleBackColor = false;
 		((ButtonBase)Button_CAISSIER).BackColor = Color.Transparent;
@@ -10443,48 +10487,56 @@ public class Form_3_VENTE : Form
 		componentResourceManager.ApplyResources(TabPage1, "TabPage1");
 		((Control)TabPage1).Name = "TabPage1";
 		((ButtonBase)Button_CLAVIER_NOSELECT35).BackColor = Color.White;
+		((Control)Button_CLAVIER_NOSELECT35).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Button_CLAVIER_NOSELECT35).Cursor = Cursors.Hand;
 		((ButtonBase)Button_CLAVIER_NOSELECT35).FlatAppearance.BorderColor = Color.DarkGray;
 		componentResourceManager.ApplyResources(Button_CLAVIER_NOSELECT35, "Button_CLAVIER_NOSELECT35");
 		((Control)Button_CLAVIER_NOSELECT35).Name = "Button_CLAVIER_NOSELECT35";
 		((ButtonBase)Button_CLAVIER_NOSELECT35).UseVisualStyleBackColor = false;
 		((ButtonBase)Button_CLAVIER_NOSELECT34).BackColor = Color.White;
+		((Control)Button_CLAVIER_NOSELECT34).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Button_CLAVIER_NOSELECT34).Cursor = Cursors.Hand;
 		((ButtonBase)Button_CLAVIER_NOSELECT34).FlatAppearance.BorderColor = Color.DarkGray;
 		componentResourceManager.ApplyResources(Button_CLAVIER_NOSELECT34, "Button_CLAVIER_NOSELECT34");
 		((Control)Button_CLAVIER_NOSELECT34).Name = "Button_CLAVIER_NOSELECT34";
 		((ButtonBase)Button_CLAVIER_NOSELECT34).UseVisualStyleBackColor = false;
 		((ButtonBase)Button_CLAVIER_NOSELECT25).BackColor = Color.White;
+		((Control)Button_CLAVIER_NOSELECT25).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Button_CLAVIER_NOSELECT25).Cursor = Cursors.Hand;
 		((ButtonBase)Button_CLAVIER_NOSELECT25).FlatAppearance.BorderColor = Color.DarkGray;
 		componentResourceManager.ApplyResources(Button_CLAVIER_NOSELECT25, "Button_CLAVIER_NOSELECT25");
 		((Control)Button_CLAVIER_NOSELECT25).Name = "Button_CLAVIER_NOSELECT25";
 		((ButtonBase)Button_CLAVIER_NOSELECT25).UseVisualStyleBackColor = false;
 		((ButtonBase)Button_CLAVIER_NOSELECT24).BackColor = Color.White;
+		((Control)Button_CLAVIER_NOSELECT24).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Button_CLAVIER_NOSELECT24).Cursor = Cursors.Hand;
 		((ButtonBase)Button_CLAVIER_NOSELECT24).FlatAppearance.BorderColor = Color.DarkGray;
 		componentResourceManager.ApplyResources(Button_CLAVIER_NOSELECT24, "Button_CLAVIER_NOSELECT24");
 		((Control)Button_CLAVIER_NOSELECT24).Name = "Button_CLAVIER_NOSELECT24";
 		((ButtonBase)Button_CLAVIER_NOSELECT24).UseVisualStyleBackColor = false;
 		((ButtonBase)Button_CLAVIER_NOSELECT23).BackColor = Color.White;
+		((Control)Button_CLAVIER_NOSELECT23).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Button_CLAVIER_NOSELECT23).Cursor = Cursors.Hand;
 		((ButtonBase)Button_CLAVIER_NOSELECT23).FlatAppearance.BorderColor = Color.DarkGray;
 		componentResourceManager.ApplyResources(Button_CLAVIER_NOSELECT23, "Button_CLAVIER_NOSELECT23");
 		((Control)Button_CLAVIER_NOSELECT23).Name = "Button_CLAVIER_NOSELECT23";
 		((ButtonBase)Button_CLAVIER_NOSELECT23).UseVisualStyleBackColor = false;
 		((ButtonBase)Button_CLAVIER_NOSELECT22).BackColor = Color.White;
+		((Control)Button_CLAVIER_NOSELECT22).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Button_CLAVIER_NOSELECT22).Cursor = Cursors.Hand;
 		((ButtonBase)Button_CLAVIER_NOSELECT22).FlatAppearance.BorderColor = Color.DarkGray;
 		componentResourceManager.ApplyResources(Button_CLAVIER_NOSELECT22, "Button_CLAVIER_NOSELECT22");
 		((Control)Button_CLAVIER_NOSELECT22).Name = "Button_CLAVIER_NOSELECT22";
 		((ButtonBase)Button_CLAVIER_NOSELECT22).UseVisualStyleBackColor = false;
 		((ButtonBase)Button_CLAVIER_NOSELECT21).BackColor = Color.White;
+		((Control)Button_CLAVIER_NOSELECT21).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Button_CLAVIER_NOSELECT21).Cursor = Cursors.Hand;
 		((ButtonBase)Button_CLAVIER_NOSELECT21).FlatAppearance.BorderColor = Color.DarkGray;
 		componentResourceManager.ApplyResources(Button_CLAVIER_NOSELECT21, "Button_CLAVIER_NOSELECT21");
 		((Control)Button_CLAVIER_NOSELECT21).Name = "Button_CLAVIER_NOSELECT21";
 		((ButtonBase)Button_CLAVIER_NOSELECT21).UseVisualStyleBackColor = false;
 		((ButtonBase)Button_CLAVIER_NOSELECT20).BackColor = Color.White;
+		((Control)Button_CLAVIER_NOSELECT20).ForeColor = Color.FromArgb(31, 41, 55);
 		((Control)Button_CLAVIER_NOSELECT20).Cursor = Cursors.Hand;
 		((ButtonBase)Button_CLAVIER_NOSELECT20).FlatAppearance.BorderColor = Color.DarkGray;
 		componentResourceManager.ApplyResources(Button_CLAVIER_NOSELECT20, "Button_CLAVIER_NOSELECT20");
@@ -12071,16 +12123,15 @@ public class Form_3_VENTE : Form
 				DataGridView1.DataSource = Module1.dt1;
 				DataGridView1.BackgroundColor = Color.White;
 				DataGridView1.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(34, 34, 34);
-				DataGridView1.DefaultCellStyle.SelectionBackColor = Color.Yellow;
-				DataGridView1.DefaultCellStyle.SelectionForeColor = Color.Red;
+				ApplyBasketSelectionContrast();
 				DataGridView1.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(221, 235, 247);
 				DataGridView1.GridColor = Color.FromArgb(231, 231, 231);
 				DataGridView1.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 11f, (FontStyle)1);
 				DataGridView1.DefaultCellStyle.Font = new Font("Segoe UI", 11f, (FontStyle)0);
 				DataGridView1.ColumnHeadersBorderStyle = (DataGridViewHeaderBorderStyle)1;
 				DataGridView1.ColumnHeadersDefaultCellStyle.Alignment = (DataGridViewContentAlignment)16;
-				DataGridView1.ColumnHeadersHeightSizeMode = (DataGridViewColumnHeadersHeightSizeMode)0;
-				DataGridView1.AutoResizeColumnHeadersHeight();
+				// One-time AutoResizeColumnHeadersHeight clips text after DPI/font changes.
+				DataGridView1.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
 				DataGridView1.CellBorderStyle = (DataGridViewCellBorderStyle)5;
 				DataGridView1.SelectionMode = (DataGridViewSelectionMode)1;
 				DataGridView1.MultiSelect = true;
@@ -12272,7 +12323,7 @@ public class Form_3_VENTE : Form
 						int fileLineNumber2 = frame2.GetFileLineNumber();
 						ProjectData.ClearProjectError();
 					}
-					((Control)val3).ForeColor = Color.White;
+					((Control)val3).ForeColor = ReadableFamilyCaptionColor(((Control)val3).BackColor);
 					((Control)val3).Click += FAM_click;
 					((Control)FlowLayoutPanel1).Controls.Add((Control)(object)val3);
 					num12++;
@@ -12303,7 +12354,7 @@ public class Form_3_VENTE : Form
 					((Control)val4).Font = new Font("Segoe UI", 9f, (FontStyle)1);
 					string htmlColor2 = List_COLOR.Items[num15].ToString();
 					((ButtonBase)val4).BackColor = ColorTranslator.FromHtml(htmlColor2);
-					((Control)val4).ForeColor = Color.White;
+					((Control)val4).ForeColor = ReadableFamilyCaptionColor(((Control)val4).BackColor);
 					((Control)val4).Click += FAM2_click;
 					((Control)FlowLayoutPanel2).Controls.Add((Control)(object)val4);
 					num15++;
@@ -12318,11 +12369,12 @@ public class Form_3_VENTE : Form
 				DataGridView100.EditMode = (DataGridViewEditMode)4;
 				DataGridView100.ColumnHeadersDefaultCellStyle.Alignment = (DataGridViewContentAlignment)16;
 				DataGridView100.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(34, 34, 34);
-				DataGridView100.ColumnHeadersHeightSizeMode = (DataGridViewColumnHeadersHeightSizeMode)0;
-				DataGridView100.ColumnHeadersHeight = 30;
+				// Do not freeze product-list captions at 30px after binding.
+				DataGridView100.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.True;
+				DataGridView100.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
 				DataGridView100.DefaultCellStyle.ForeColor = Color.FromArgb(34, 34, 34);
 				DataGridView100.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(221, 235, 247);
-				DataGridView100.RowsDefaultCellStyle.SelectionBackColor = Color.FromArgb(171, 185, 211);
+				ApplyProductListSelectionContrast();
 				DataGridView100.RowHeadersWidth = 22;
 				_effacer_article_attributions();
 				((Control)Label_QTE).BackColor = Color.White;
