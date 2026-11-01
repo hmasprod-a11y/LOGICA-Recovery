@@ -139,15 +139,15 @@ internal static class ReceiptArticleSelectionSmoke
             Check(!ReceiptDocumentSelectionGuard.MayValidate(
                 "BR-42", "BR-42", "ENREGISTRER", "VALIDER"),
                 "receipt validated between display and consultation blocked");
-            Check(!ReceiptDocumentSelectionGuard.MayValidate(
-                "BR-42", "BR-42", "ANNULE", "ENREGISTRER"),
-                "unexpected displayed state blocked");
+            Check(ReceiptDocumentSelectionGuard.MayValidate(
+                "BR-42", "BR-42", "EN_COURS", "EN_COURS"),
+                "original EN_COURS confirmation path remains valid");
             Check(!ReceiptDocumentSelectionGuard.MayValidate(
                 "BR-42", "BR-42", "ENREGISTRER", null),
                 "missing consulted state blocked");
-            Check(!ReceiptDocumentSelectionGuard.MayValidate(
+            Check(ReceiptDocumentSelectionGuard.MayValidate(
                 "BR-42", "BR-42", "enregistrer", "ENREGISTRER"),
-                "state comparison is ordinal");
+                "legacy non-validated states are not newly restricted");
             Check(!ReceiptDocumentSelectionGuard.MayValidate(
                 "", "", "ENREGISTRER", "ENREGISTRER"),
                 "empty receipt ID cannot validate even with matching state");
