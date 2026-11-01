@@ -41,3 +41,9 @@ Acceptance: isolated .NET Framework characterization (including cancel, bounds a
 The checkout Application boundary now checks both original barcode and selected `ID_ARTICLE`, invoking the existing VB equality semantics in the same code-first, short-circuit order. The original sale/return quantity, discount, price-tier and posting branches remain intact; matching the exact same article still increments the existing line. Selecting another variant with the same code follows the original new-line path instead of merging it with the wrong product.
 
 Acceptance: portable core smoke, isolated .NET Framework tests for same/different variants and error propagation, Windows compiled POS reflection fixture, original Windows/MariaDB regression and licensing gates. Hardware scanner, quantity thresholds, receipt/stock reconciliation and real-store-copy field tests are still required before release. Never promote to main without approval.
+
+## Family image tiles: SQL boundary (2026-11-01)
+
+The image-family click handler `Form_3_VENTE.FAM2_click` used to concatenate the clicked family name directly into a MariaDB `WHERE Famille = '...'` string. Names containing apostrophes could fail, and SQL-looking input could broaden the selection. The handler now calls `CheckoutArticleSearchQueryText.Family()` and binds the original button text as `@family`. Exact family equality, `ORDER BY Article asc`, real-image-only tiles, barcode tags, price display and focus behavior remain unchanged. No schema, basket, ticket, payment or stock mutation is involved.
+
+Acceptance: portable SQL contract test and original Windows POS/MariaDB isolated temporary-table fixture for a normal family, an apostrophe, a literal SQL-looking family, and a malicious nonmatching family; existing list/image search and checkout gates remain mandatory. Manual scanner and real-store acceptance is deferred. Never promote to `main` without approval.
