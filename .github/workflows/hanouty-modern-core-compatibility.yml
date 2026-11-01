@@ -1,0 +1,22 @@
+name: Hanouty modern core compatibility
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'modernization/**'
+      - 'recovered-source/LOGICA/Domain/**'
+      - 'recovered-source/LOGICA/Application/**'
+      - 'recovered-source/LOGICA/Infrastructure/**'
+      - '.github/workflows/hanouty-modern-core-compatibility.yml'
+jobs:
+  compile-shared-core:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compile identical production sources for legacy-compatible and modern targets
+        run: dotnet build modernization/LOGICA.CoreCompatibility.csproj -c Release --warnaserror
+      - name: Execute existing modern core regression smoke
+        run: dotnet run --project modernization/LOGICA.CoreSmoke.csproj -c Release
