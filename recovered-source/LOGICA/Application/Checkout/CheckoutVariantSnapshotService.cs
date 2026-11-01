@@ -33,6 +33,22 @@ namespace LOGICA.ApplicationLayer.Checkout
             return result.AsReadOnly();
         }
 
+        // Modern selection boundary: -1 is explicit cancellation; no implicit first
+        // match for duplicate barcodes. Re-resolve against the current query so
+        // removed, changed or ambiguous article identities cannot be sold.
+        internal static DataRow ResolveChosenVariant(
+            DataTable currentMatches, IList<CheckoutVariantSnapshot> displayed,
+            int selectedIndex)
+        {
+            if (currentMatches == null) throw new ArgumentNullException("currentMatches");
+            if (displayed == null) throw new ArgumentNullException("displayed");
+            if (selectedIndex == -1) return null;
+            if (selectedIndex < 0 || selectedIndex >= displayed.Count)
+                throw new ArgumentOutOfRangeException("selectedIndex",
+                    "The chosen article is outside the displayed variant list.");
+            return Resolve(currentMatches, displayed[selectedIndex]);
+        }
+
         internal static DataRow Resolve(DataTable matches, CheckoutVariantSnapshot selected)
         {
             if (matches == null) throw new ArgumentNullException("matches");
