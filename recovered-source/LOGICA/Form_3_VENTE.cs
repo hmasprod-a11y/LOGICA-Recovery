@@ -16953,6 +16953,11 @@ public class Form_3_VENTE : Form
 	private void Button_qte1_Click(object sender, EventArgs e)
 	{
 		string key = Conversions.ToString(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null));
+		// Ignore unexpected button captions rather than producing an invalid checkout quantity.
+		if (string.IsNullOrEmpty(key) || (key != "." && (key.Length != 1 || key[0] < '0' || key[0] > '9')))
+		{
+			return;
+		}
 		string current = ((Control)Label_QTE).BackColor == Color.White ? "" : Label_QTE.Text;
 		// A second decimal point creates a quantity that cannot be converted at checkout.
 		// Preserve the existing numeric keypad and reset semantics for valid input.
