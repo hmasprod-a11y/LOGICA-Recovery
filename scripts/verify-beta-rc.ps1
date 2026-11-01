@@ -79,6 +79,7 @@ try {
             Assert-SafePath $name.TrimEnd('/')
             $directory = $name.TrimEnd('/')
             if (-not $zipDirectories.Add($directory)) { throw "Duplicate ZIP directory (including case collision): $name" }
+            if ($seen.Contains($directory)) { throw "ZIP directory collides with previously seen file: $name" }
             if ($byPath.ContainsKey($directory)) { throw "ZIP directory collides with manifest file: $name" }
             $dirParts = $directory.Split('/')
             for ($i = 1; $i -lt $dirParts.Length; $i++) {
