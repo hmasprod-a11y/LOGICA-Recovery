@@ -212,6 +212,44 @@ internal static class PortableCheckoutSmoke
             Require(CheckoutVariantSnapshotService.EvaluateChoice(imageOnly,
                 CheckoutVariantSnapshotService.Read(imageOnly), 0).Status ==
                 CheckoutVariantChoiceStatus.Selected, "Image-only article identity is valid");
+            // Regression: the older null-returning modern APIs must enforce
+            // exactly the same safety rules as the typed outcome API.
+            Require(CheckoutVariantSnapshotService.Resolve(deletedRows, snapshots[1]) == null,
+                "Resolve must skip pending-deleted selected rows without throwing");
+            Require(CheckoutVariantSnapshotService.ResolveChosenVariant(deletedRows, snapshots, 1) == null,
+                "Explicit selection must not return a pending-deleted row");
+            Require(Object.ReferenceEquals(
+                CheckoutVariantSnapshotService.Resolve(pendingDeletion, snapshots[0]),
+                pendingDeletion.Rows[0]), "Unrelated pending deletion must not hide a valid article");
+            Require(CheckoutVariantSnapshotService.Resolve(duplicatedRows, snapshots[1]) == null,
+                "Resolve must reject duplicate article identities");
+            Require(CheckoutVariantSnapshotService.ResolveChosenVariant(collidingId, snapshots, 1) == null,
+                "Explicit selection must reject same ID under different barcodes");
+            Require(CheckoutVariantSnapshotService.Resolve(mixedInvalid, snapshots[1]) == null,
+                "Resolve must reject malformed unrelated live candidates");
+            Require(CheckoutVariantSnapshotService.ResolveChosenVariant(mixedInvalid, snapshots, 1) == null,
+                "Explicit selection must reject malformed unrelated live candidates");
+            DataTable changedCode = outcomeRows.Clone();
+            changedCode.Rows.Add("OTHER-CODE", "B");
+            Require(CheckoutVariantSnapshotService.Resolve(changedCode, snapshots[1]) == null,
+                "Reused article ID with changed barcode must fail closed");
+            DataTable missingCodeColumn = new DataTable();
+            missingCodeColumn.Columns.Add("ID_ARTICLE", typeof(string));
+            missingCodeColumn.Rows.Add("B");
+            Require(CheckoutVariantSnapshotService.Resolve(missingCodeColumn, snapshots[1]) == null,
+                "Resolve must fail closed on missing barcode column");
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(missingCodeColumn, snapshots, 1).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Typed choice must report incomplete live schema as invalid");
+            Require(Object.ReferenceEquals(CheckoutVariantSnapshotService.Resolve(
+                imageOnly, CheckoutVariantSnapshotService.Read(imageOnly)[0]), imageOnly.Rows[0]),
+                "Resolve must retain valid image-only products with blank barcode");
+            Require(CheckoutVariantSnapshotService.Resolve(outcomeRows,
+                new CheckoutVariantSnapshot("123", "")) == null,
+                "Resolve must reject blank article identity");
+            Require(outcomeRows.Rows.Count == 2 && outcomeRows.Rows[1]["ID_ARTICLE"].ToString() == "B",
+                "Shared validation must not mutate live candidate rows");
+            Console.WriteLine("PASS shared modern checkout resolution: pending deletion, duplicate ID, corrupt rows, schema and image-only");
             Console.WriteLine("PASS modern checkout snapshot deletion, ID collision and invalid-row precedence");
             Require(outcomeRows.Rows.Count == 2 && outcomeRows.Rows[1]["ID_ARTICLE"].ToString() == "B",
                 "Typed evaluation must not mutate current query");
