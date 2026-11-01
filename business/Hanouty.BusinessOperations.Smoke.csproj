@@ -9,10 +9,13 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptPreviewService.cs" Link="Purchasing/PurchaseReceiptPreviewService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptCatalogueValidationService.cs" Link="Purchasing/PurchaseReceiptCatalogueValidationService.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockCountVarianceService.cs" Link="Inventory/StockCountVarianceService.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockCountCoverageService.cs" Link="Inventory/StockCountCoverageService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockCountAdjustmentProposalService.cs" Link="Inventory/StockCountAdjustmentProposalService.cs" />
     <Compile Include="../tests/StockCountCoverageSmoke.cs" Link="Tests/StockCountCoverageSmoke.cs" />
     <Compile Include="../tests/BusinessOperationsSmoke.cs" Link="Tests/BusinessOperationsSmoke.cs" />
+    <Compile Include="../tests/BusinessOperationsSafetySmoke.cs" Link="Tests/BusinessOperationsSafetySmoke.cs" />
     <Compile Include="BusinessOperationsEntry.cs" />
   </ItemGroup>
 </Project>
