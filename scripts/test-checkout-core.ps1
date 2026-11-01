@@ -19,6 +19,7 @@ try {
         'recovered-source/LOGICA/Domain/StockAvailability.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutArticleImageSelectionService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutBarcodeSelectionService.cs',
+        'recovered-source/LOGICA/Infrastructure/Checkout/CheckoutArticleSearchQueryText.cs',
         'recovered-source/LOGICA/Application/Checkout/StockValidationModels.cs',
         'recovered-source/LOGICA/Application/Checkout/StockValidationService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutPostingModels.cs',
