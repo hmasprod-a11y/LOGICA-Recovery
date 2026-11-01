@@ -8,6 +8,8 @@ internal static class CatalogueCoreIsolationEntry
         if (coverage != 0) return coverage;
         int safety = BusinessOperationsSafetySmoke.Run();
         if (safety != 0) return safety;
+        int receiptSearch = ReceiptArticleSearchFilterSmoke.Run();
+        if (receiptSearch != 0) return receiptSearch;
         int receiptChoice = ReceiptArticleSelectionSmoke.Run();
         if (receiptChoice != 0) return receiptChoice;
         int projection = PurchaseReceiptStockProjectionSmoke.Run();
