@@ -34,6 +34,7 @@ def upload_steps(source):
         if name in result:
             raise ValueError(f'Duplicate artifact upload: {name}')
         result[name] = {
+            'path': field(10, 'path'),
             'if': field(8, 'if'),
             'if-no-files-found': field(10, 'if-no-files-found', required=False),
         }
@@ -43,9 +44,9 @@ def upload_steps(source):
 def assert_release_upload_policy(source):
     uploads = upload_steps(source)
     required = {
-        'LOGICA-build-diagnostics': {'if': 'always()'},
-        'LOGICA-2.0-Beta-RC1-Windows-x86': {'if': 'success()', 'if-no-files-found': 'error'},
-        'LOGICA-Windows-complete': {'if': 'success()', 'if-no-files-found': 'error'},
+        'LOGICA-build-diagnostics': {'if': 'always()', 'path': 'results/'},
+        'LOGICA-2.0-Beta-RC1-Windows-x86': {'if': 'success()', 'if-no-files-found': 'error', 'path': 'release/'},
+        'LOGICA-Windows-complete': {'if': 'success()', 'if-no-files-found': 'error', 'path': 'dist/'},
     }
     for name, fields in required.items():
         if name not in uploads:
@@ -54,6 +55,50 @@ def assert_release_upload_policy(source):
             actual = uploads[name][field]
             if actual != expected:
                 raise ValueError(f'{name}: {field} must be {expected!r}, found {actual!r}')
+    return True
+
+
+
+# These files directly affect the runnable Windows package, its isolated database
+# or its regression checks. Omitting any from PR/push filters silently skips CI.
+REQUIRED_WINDOWS_INPUTS = {
+    'scripts/setup-test-db.ps1',
+    'scripts/test-recovered-db.ps1',
+    'scripts/Launch-LOGICA.ps1',
+    'scripts/Start-LOGICA.cmd',
+    'scripts/repair-source.py',
+    'scripts/test-checkout-core.ps1',
+    'scripts/test-release-upload-policy.py',
+    'input/original-startup.json',
+    'input/LOGICA-dependencies.zip',
+    'input/recovered-original.sql',
+    'input/mysql-compatibility.sql',
+}
+
+
+def trigger_paths(source, event):
+    lines = source.splitlines()
+    header = f'  {event}:'
+    if header not in lines:
+        raise ValueError(f'Missing Windows CI event: {event}')
+    start = lines.index(header)
+    block = []
+    for line in lines[start + 1:]:
+        if line and not line.startswith('    '):
+            break
+        block.append(line)
+    if '    paths:' not in block:
+        raise ValueError(f'{event}: missing paths filter')
+    return {line.strip()[2:].strip().strip("\\'\\\"")
+            for line in block if re.match(r'^      - ', line)}
+
+
+def assert_required_windows_triggers(source):
+    for event in ('pull_request', 'push'):
+        paths = trigger_paths(source, event)
+        missing = REQUIRED_WINDOWS_INPUTS - paths
+        if missing:
+            raise ValueError(f'{event}: missing Windows CI paths: {sorted(missing)}')
     return True
 
 
@@ -107,6 +152,35 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
                                    'if: success()\n        with:\n          name: LOGICA-build-diagnostics')
         with self.assertRaisesRegex(ValueError, 'LOGICA-build-diagnostics: if'):
             assert_release_upload_policy(modified)
+
+
+    def test_release_paths_cannot_be_redirected(self):
+        modified = FIXTURE.replace('name: LOGICA-Windows-complete\\n          path: dist/',
+                                   'name: LOGICA-Windows-complete\\n          path: results/')
+        with self.assertRaisesRegex(ValueError, 'LOGICA-Windows-complete: path'):
+            assert_release_upload_policy(modified)
+
+    def test_repository_triggers_cover_release_inputs(self):
+        self.assertTrue(assert_required_windows_triggers(WORKFLOW.read_text(encoding='utf-8')))
+
+    def test_missing_pr_database_trigger_is_rejected(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace("      - 'scripts/setup-test-db.ps1'\\n", '', 1)
+        with self.assertRaisesRegex(ValueError, 'pull_request: missing Windows CI paths'):
+            assert_required_windows_triggers(modified)
+
+    def test_missing_push_launcher_trigger_is_rejected(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        before, after = source.split('  push:\\n', 1)
+        modified = before + '  push:\\n' + after.replace("      - 'scripts/Launch-LOGICA.ps1'\\n", '', 1)
+        with self.assertRaisesRegex(ValueError, 'push: missing Windows CI paths'):
+            assert_required_windows_triggers(modified)
+
+    def test_missing_pr_event_is_rejected(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace('  pull_request:\\n', '  pull_request_disabled:\\n', 1)
+        with self.assertRaisesRegex(ValueError, 'Missing Windows CI event'):
+            assert_required_windows_triggers(modified)
 
 
 if __name__ == '__main__':
