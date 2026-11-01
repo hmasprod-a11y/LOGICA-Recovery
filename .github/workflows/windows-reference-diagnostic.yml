@@ -13,6 +13,7 @@ on:
       - 'scripts/package-runtime.ps1'
       - 'scripts/verify-beta-rc.ps1'
       - 'scripts/test-beta-release-verifier.ps1'
+      - 'scripts/test-release-upload-policy.py'
       - '.github/workflows/windows-reference-diagnostic.yml'
   push:
     paths:
@@ -26,6 +27,7 @@ on:
       - 'scripts/package-runtime.ps1'
       - 'scripts/verify-beta-rc.ps1'
       - 'scripts/test-beta-release-verifier.ps1'
+      - 'scripts/test-release-upload-policy.py'
       - 'input/recovered-original.sql'
       - 'input/mysql-compatibility.sql'
       - '.github/workflows/windows-reference-diagnostic.yml'
@@ -43,6 +45,12 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Guard release artifact upload policy (including negative fixtures)
+        shell: pwsh
+        run: python scripts/test-release-upload-policy.py
       - name: Verify committed source is present
         shell: pwsh
         run: |
@@ -125,9 +133,9 @@ jobs:
           if-no-files-found: error
           retention-days: 90
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: success()
         with:
           name: LOGICA-Windows-complete
           path: dist/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 90
