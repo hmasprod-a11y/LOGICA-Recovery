@@ -1141,11 +1141,276 @@ class PosSmoke {
   } finally { CultureInfo.CurrentCulture=original; }
  }
 
+ static void SharedExportProjection(Assembly assembly) {
+  var exporter=assembly.GetType("LOGICA.Infrastructure.Export.WinFormsGridExcelExporter",true);
+  var export=exporter.GetMethod("Export",Flags);
+  if(export==null)throw new Exception("Shared export adapter missing");
+  foreach(var category in new[]{"stock-movement","client-settlement"}) {
+   using(var grid=new DataGridView()) {
+    grid.AllowUserToAddRows=false;
+    grid.Columns.Add(new DataGridViewTextBoxColumn { Name="CODE",HeaderText="CODE",ValueType=typeof(string) });
+    grid.Columns.Add(new DataGridViewTextBoxColumn { Name="VALUE",HeaderText="VALUE",ValueType=typeof(string) });
+    grid.Columns.Add(new DataGridViewButtonColumn { Name="ACTION",HeaderText="ACTION" });
+    grid.Rows.Add(category,null,"ignored");
+    string output=Path.Combine(Path.GetTempPath(),"logica-export-"+Guid.NewGuid().ToString("N")+".xlsx");
+    try {
+     export.Invoke(null,new object[]{grid,output});
+     if(!File.Exists(output))throw new Exception("Export file missing: "+category);
+     var bytes=File.ReadAllBytes(output);
+     if(bytes.Length<100 || bytes[0]!=0x50 || bytes[1]!=0x4B)
+      throw new Exception("Excel workbook is not a ZIP container: "+category);
+     if((string)grid.Rows[0].Cells[1].Value!="-")
+      throw new Exception("Legacy null mutation lost: "+category);
+     Console.WriteLine("PASS "+category+" shared Excel exporter: workbook and null mutation");
+    } finally {if(File.Exists(output))File.Delete(output);}
+   }
+  }
+ }
+
+ static void CheckoutBarcodeChooser(Assembly assembly) {
+  var type=assembly.GetType("LOGICA.Presentation.Checkout.CheckoutBarcodeChoiceDialog",true);
+  var choose=type.GetMethod("Choose",Flags);
+  var describe=type.GetMethod("Describe",Flags);
+  DataTable rows=new DataTable();
+  foreach(string column in new[]{"ID_ARTICLE","Code","Article","Prix_V_1"})rows.Columns.Add(column);
+  rows.Rows.Add("11","SAME-001","Small", "12.50");
+  rows.Rows.Add("12","SAME-001","Large", "19.50");
+  string label=(string)describe.Invoke(null,new object[]{rows.Rows[1],"Prix_V_1"});
+  if(!label.Contains("Large") || !label.Contains("19.50") || !label.Contains("ID: 12"))
+   throw new Exception("Duplicate barcode dialog does not display selected variant and active price");
+  foreach(int expected in new[]{1,-1}) {
+   bool found=false;
+   using(var timer=new System.Windows.Forms.Timer()) {
+    timer.Interval=100;
+    timer.Tick+=delegate(object sender,EventArgs e) {
+     Form dialog=null;
+     foreach(Form open in Application.OpenForms)
+      if(open.Text=="Hanouty — choisir un article") {dialog=open;break;}
+     if(dialog==null)return;
+     found=true;
+     ListBox list=null;
+     foreach(Control control in dialog.Controls)
+      if(control is ListBox) {list=(ListBox)control;break;}
+     if(list==null || list.Items.Count!=2)throw new Exception("Duplicate chooser missing product options");
+     timer.Stop();
+     if(expected==-1) ((Button)dialog.CancelButton).PerformClick();
+     else {
+      list.SelectedIndex=expected;
+      ((Button)dialog.AcceptButton).PerformClick();
+     }
+    };
+    timer.Start();
+    int result=(int)choose.Invoke(null,new object[]{rows,"Prix_V_1"});
+    timer.Stop();
+    if(!found || result!=expected)throw new Exception("Duplicate chooser modal result mismatch: "+result+" expected "+expected);
+   }
+  }
+  // Exercise the exact production Application service via the compiled net48 POS.
+  // This is a non-posting fixture; no shop data or checkout rows are modified.
+  var selection=assembly.GetType("LOGICA.ApplicationLayer.Checkout.CheckoutBarcodeSelectionService",true);
+  var identity=selection.GetMethod("IsSameBasketArticle",Flags);
+  Func<object,object,bool> identityEquals=delegate(object left,object right) {
+   return Object.Equals(left,right);
+  };
+  bool same=(bool)identity.Invoke(null,new object[]{rows.Rows[0],"SAME-001","11",identityEquals});
+  bool otherVariant=(bool)identity.Invoke(null,new object[]{rows.Rows[0],"SAME-001","12",identityEquals});
+  bool otherCode=(bool)identity.Invoke(null,new object[]{rows.Rows[0],"OTHER","11",identityEquals});
+  if(!same||otherVariant||otherCode)
+   throw new Exception("Windows compiled checkout merges a different variant or loses same article identity");
+  Console.WriteLine("PASS Windows duplicate barcode chooser: two variants, active price, selected row and Cancel");
+ }
+
+ static int SearchRows(IDbConnection connection, string sql, string pattern, string parameterName="@search") {
+  using(var command=connection.CreateCommand()) {
+   command.CommandText=sql;
+   var parameter=command.CreateParameter();
+   parameter.ParameterName=parameterName;
+   parameter.Value=pattern;
+   command.Parameters.Add(parameter);
+   int count=0;
+   using(var reader=command.ExecuteReader())while(reader.Read())count++;
+   return count;
+  }
+ }
+ static void CheckoutArticleSearchSql(Assembly assembly) {
+  var query=assembly.GetType("LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText",true);
+  var list=(string)query.GetMethod("List",Flags).Invoke(null,null);
+  var images=(string)query.GetMethod("Images",Flags).Invoke(null,null);
+  var pattern=query.GetMethod("Pattern",Flags);
+  if(!list.Contains("Article like @search") || !list.Contains("Code like @search") ||
+     !images.Contains("Article like @search") || !images.Contains("Images <> '0.png'"))
+   throw new Exception("Production search query is not parameterized");
+  var module=assembly.GetType("LOGICA.Module1",true);
+  using(var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null)) {
+   if(!connection.ConnectionString.Contains("127.0.0.1") || !connection.ConnectionString.Contains("logica_ci"))
+    throw new Exception("Article search test requires isolated database");
+   connection.Open();
+   // Temporary table shadows recovered data on this connection only.
+   Sql(connection,"CREATE TEMPORARY TABLE TABLE_ARTICLES (Article VARCHAR(120) CHARACTER SET utf8mb4, Code VARCHAR(50), Images VARCHAR(80))");
+   try {
+    Sql(connection,"INSERT INTO TABLE_ARTICLES VALUES ('Alpha O''Hara','ABC-001','photo.png'),('Alpha Percent%','ABC_002','0.png'),('Beta','XYZ-003','photo2.png'),('Quote X'' OR 1=1 --','X-004','0.png')");
+    string[] terms={"Alpha","O'Hara","ABC-001","zzz' OR 1=1 -- ","%","_","Quote X'"};
+    int[] expectedList={2,1,1,0,4,4,1};
+    int[] expectedImages={1,1,0,0,2,2,0};
+    for(int i=0;i<terms.Length;i++) {
+     string value=(string)pattern.Invoke(null,new object[]{terms[i]});
+     int actualList=SearchRows(connection,list,value);
+     int actualImages=SearchRows(connection,images,value);
+     if(actualList!=expectedList[i] || actualImages!=expectedImages[i])
+      throw new Exception("Article search mismatch for "+terms[i]+": list="+actualList+" images="+actualImages);
+    }
+    // Scanner lookup must remain exact equality and preserve all matching rows
+    // (the legacy UI takes the first row; duplicate-choice UX is a separate change).
+    string barcodeSql=(string)query.GetMethod("ExactBarcode",Flags).Invoke(null,null);
+    if(barcodeSql!="select * from TABLE_ARTICLES WHERE Code = @code")
+     throw new Exception("Barcode scan SQL changed or contains unsafe text interpolation");
+    Sql(connection,"INSERT INTO TABLE_ARTICLES VALUES ('Quote barcode','O''Hara','photo.png'),('Literal attack','x'' OR 1=1 --','photo.png')");
+    string[] scanned={ "ABC-001", "ABC_002", "X-004", "ABC", "nope' OR 1=1 -- ", "%", "", "O'Hara", "x' OR 1=1 --" };
+    int[] expected={ 1, 1, 1, 0, 0, 0, 0, 1, 1 };
+    for(int i=0;i<scanned.Length;i++) {
+     int actual=SearchRows(connection,barcodeSql,scanned[i],"@code");
+     if(actual!=expected[i])
+      throw new Exception("Exact barcode scan mismatch for "+scanned[i]+": "+actual+" expected "+expected[i]);
+    }
+    Sql(connection,"INSERT INTO TABLE_ARTICLES VALUES ('Duplicate variant','ABC-001','photo.png')");
+    if(SearchRows(connection,barcodeSql,"ABC-001","@code")!=2)
+     throw new Exception("Duplicate barcode lookup must retain both rows for future chooser");
+    Console.WriteLine("PASS isolated MariaDB article search: 14 list/image checks + 10 exact barcode scans (quotes, injection, wildcard, duplicates)");
+   } finally {Sql(connection,"DROP TEMPORARY TABLE IF EXISTS TABLE_ARTICLES");}
+  }
+ }
+
+
+ static void CheckoutImageGrid(Assembly assembly) {
+  var module=assembly.GetType("LOGICA.Module1",true);
+  var field=module.GetField("_CHEMIN_FOLDER",Flags);
+  object originalFolder=field.GetValue(null);
+  string root=AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+  string images=Path.Combine(root,"bd","images");
+  Directory.CreateDirectory(images);
+  string good=Path.Combine(images,"hanouty_ci_real.png");
+  string corrupt=Path.Combine(images,"hanouty_ci_corrupt.png");
+  string missing=Path.Combine(images,"hanouty_ci_missing.png");
+  if(File.Exists(good)||File.Exists(corrupt)||File.Exists(missing))
+   throw new Exception("Image fixture paths unexpectedly occupied");
+  try {
+   field.SetValue(null,root);
+   using(var bitmap=new Bitmap(2,2))bitmap.Save(good,System.Drawing.Imaging.ImageFormat.Png);
+   File.WriteAllText(corrupt,"not a decodable image");
+   var loader=assembly.GetType("LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader",true);
+   var load=loader.GetMethod("Load",Flags);
+   using(var image=(Bitmap)load.Invoke(null,new object[]{images,"hanouty_ci_real.png"}))
+    if(image==null||image.Width!=2)throw new Exception("Real product image did not load");
+   foreach(string name in new[]{"0.png","0X.png","hanouty_ci_missing.png","hanouty_ci_corrupt.png","../hanouty_ci_real.png",""})
+    if(load.Invoke(null,new object[]{images,name})!=null)
+     throw new Exception("Invalid product image generated a tile: "+name);
+   using(var connection=(IDbConnection)module.GetField("cn_SQL",Flags).GetValue(null)) {
+    if(!connection.ConnectionString.Contains("127.0.0.1")||!connection.ConnectionString.Contains("logica_ci"))
+     throw new Exception("Image grid fixture requires isolated MariaDB");
+    connection.Open();
+    Sql(connection,"CREATE TEMPORARY TABLE TABLE_ARTICLES (ID_ARTICLE INT NOT NULL AUTO_INCREMENT PRIMARY KEY,Article VARCHAR(120),Code VARCHAR(60),Images VARCHAR(100),Famille VARCHAR(80),PRIX_V_1 DECIMAL(14,2))");
+    try {
+     Sql(connection,"INSERT INTO TABLE_ARTICLES (Article,Code,Images,Famille,PRIX_V_1) VALUES "+
+      "('CI Item real','CI_IMAGE_REAL','hanouty_ci_real.png','CI_IMAGE',12.5),"+
+      "('CI Item missing','CI_IMAGE_MISSING','hanouty_ci_missing.png','CI_IMAGE',10),"+
+      "('CI Item placeholder','CI_IMAGE_DEFAULT','0.png','CI_IMAGE',10),"+
+      "('CI Item corrupt','CI_IMAGE_CORRUPT','hanouty_ci_corrupt.png','CI_IMAGE',10),"+
+      "('CI Item blank','CI_IMAGE_BLANK','','CI_IMAGE',10)");
+     using(var sale=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
+      var tiles=(FlowLayoutPanel)Get(sale,"FlowLayout_ARTICLES");
+      using(var family=new Button(){Text="CI_IMAGE"}) {
+       sale.GetType().GetMethod("FAM2_click",Flags).Invoke(sale,new object[]{family,EventArgs.Empty});
+      }
+      if(tiles.Controls.Count!=1||Convert.ToString(tiles.Controls[0].Tag)!="CI_IMAGE_REAL")
+       throw new Exception("Family image grid includes missing/placeholder/corrupt products: "+tiles.Controls.Count);
+      var tabs=(TabControl)Get(sale,"TabControl2");
+      tabs.SelectedIndex=0;
+      ((Control)Get(sale,"Text_FIND")).Text="CI Item";
+      sale.GetType().GetMethod("Text_FIND_TextChanged",Flags).Invoke(sale,new object[]{sale,EventArgs.Empty});
+      var list=(DataGridView)Get(sale,"DataGridView100");
+      var listData=list.DataSource as DataTable;
+      if(listData==null||listData.Rows.Count!=5)
+       throw new Exception("List mode must retain all five products");
+      tabs.SelectedIndex=1;
+      sale.GetType().GetMethod("Text_FIND_TextChanged",Flags).Invoke(sale,new object[]{sale,EventArgs.Empty});
+      if(tiles.Controls.Count!=1||Convert.ToString(tiles.Controls[0].Tag)!="CI_IMAGE_REAL")
+       throw new Exception("Search image grid includes products without a valid photo: "+tiles.Controls.Count);
+             // An apostrophe is valid in a family name. An SQL-looking family
+       // must be treated as an exact literal, never as a WHERE expression.
+       Sql(connection,"INSERT INTO TABLE_ARTICLES (Article,Code,Images,Famille,PRIX_V_1) VALUES "+
+        "('CI quote','CI_FAMILY_QUOTE','hanouty_ci_real.png','CI''IMAGE',15),"+
+        "('CI literal','CI_FAMILY_LITERAL','hanouty_ci_real.png','CI_IMAGE'' OR ''1''=''1',15)");
+       string[][] families={
+        new[]{"CI'IMAGE","CI_FAMILY_QUOTE","1"},
+        new[]{"CI_IMAGE' OR '1'='1","CI_FAMILY_LITERAL","1"},
+        new[]{"CI_IMAGE' OR 1=1 -- ","","0"},
+        new[]{"CI_IMAGE","CI_IMAGE_REAL","1"}
+       };
+       foreach(string[] scenario in families) {
+        using(var family=new Button(){Text=scenario[0]})
+         sale.GetType().GetMethod("FAM2_click",Flags).Invoke(sale,new object[]{family,EventArgs.Empty});
+        int expectedCount=int.Parse(scenario[2],CultureInfo.InvariantCulture);
+        if(tiles.Controls.Count!=expectedCount ||
+           (expectedCount==1 && Convert.ToString(tiles.Controls[0].Tag)!=scenario[1]))
+         throw new Exception("Family filter leaked rows or lost literal match: "+scenario[0]+
+          " tiles="+tiles.Controls.Count);
+       }
+       // Image tiles identify a specific article, unlike the scanner which may
+       // intentionally open the duplicate-barcode chooser.
+       Sql(connection,"INSERT INTO TABLE_ARTICLES (Article,Code,Images,Famille,PRIX_V_1) VALUES "+
+        "('CI Duplicate small','CI_SHARED','hanouty_ci_real.png','CI_DUPLICATE',12.5),"+
+        "('CI Duplicate large','CI_SHARED','hanouty_ci_real.png','CI_DUPLICATE',19.5)");
+       using(var family=new Button(){Text="CI_DUPLICATE"})
+        sale.GetType().GetMethod("FAM2_click",Flags).Invoke(sale,new object[]{family,EventArgs.Empty});
+       if(tiles.Controls.Count!=2)throw new Exception("Duplicate barcode image tiles missing");
+       var tileType=assembly.GetType("LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference",true);
+       var tileSelection=assembly.GetType("LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService",true);
+       var findExact=tileSelection.GetMethod("FindExact",Flags);
+       object firstTag=tiles.Controls[0].Tag,secondTag=tiles.Controls[1].Tag;
+       if(!tileType.IsInstanceOfType(firstTag)||!tileType.IsInstanceOfType(secondTag))
+        throw new Exception("Image tiles lost their exact article identity");
+       string firstId=Convert.ToString(tileType.GetProperty("ArticleId",Flags).GetValue(firstTag,null));
+       string secondId=Convert.ToString(tileType.GetProperty("ArticleId",Flags).GetValue(secondTag,null));
+       if(firstId==secondId || Convert.ToString(firstTag)!="CI_SHARED" || Convert.ToString(secondTag)!="CI_SHARED")
+        throw new Exception("Image tiles must share barcode but keep different article IDs");
+       var matches=new DataTable();
+       using(var command=connection.CreateCommand()) {
+        command.CommandText="SELECT * FROM TABLE_ARTICLES WHERE Code = @code";
+        var parameter=command.CreateParameter();
+        parameter.ParameterName="@code";
+        parameter.Value="CI_SHARED";
+        command.Parameters.Add(parameter);
+        using(var reader=command.ExecuteReader())matches.Load(reader);
+       }
+       if(matches.Rows.Count!=2)throw new Exception("Isolated duplicate-barcode fixture missing");
+       foreach(object tag in new[]{firstTag,secondTag}) {
+        var selected=(DataRow)findExact.Invoke(null,new object[]{matches,tag});
+        string expectedId=Convert.ToString(tileType.GetProperty("ArticleId",Flags).GetValue(tag,null));
+        if(selected==null || Convert.ToString(selected["ID_ARTICLE"])!=expectedId)
+         throw new Exception("Clicked image tile resolves to a different article variant");
+       }
+       matches.Rows.RemoveAt(1);
+       object removedTag=secondId==Convert.ToString(matches.Rows[0]["ID_ARTICLE"]) ? firstTag : secondTag;
+       if(findExact.Invoke(null,new object[]{matches,removedTag})!=null)
+        throw new Exception("Stale image tile silently selected another variant");
+       Console.WriteLine("PASS isolated MariaDB image tiles: same barcode, distinct article IDs, exact selection and stale-tile rejection");
+       Console.WriteLine("PASS original Windows POS: parameterized family tiles, quotes, literal SQL text and injection rejection");
+       Console.WriteLine("PASS original Windows POS: family and search image tiles real-only; list still shows all 5 products");
+     }
+    } finally {Sql(connection,"DROP TEMPORARY TABLE IF EXISTS TABLE_ARTICLES");}
+   }
+  } finally {
+   field.SetValue(null,originalFolder);
+   if(File.Exists(good))File.Delete(good);
+   if(File.Exists(corrupt))File.Delete(corrupt);
+  }
+ }
+
  [STAThread] static int Main(string[] args) {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="checkout-barcode-chooser") { CheckoutBarcodeChooser(assembly); } else if(args[0]=="checkout-image-grid") { CheckoutImageGrid(assembly); } else if(args[0]=="checkout-article-search-sql") { CheckoutArticleSearchSql(assembly); } else if(args[0]=="shared-export-projection") { SharedExportProjection(assembly); } else if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);

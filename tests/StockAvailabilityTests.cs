@@ -8,7 +8,7 @@ internal static class StockAvailabilityTests
     private static void Check(object available, object requested, bool expected)
     {
         assertions++;
-        if (StockAvailability.IsBelowRequested(available, requested) != expected)
+        if (StockAvailability.IsBelowRequested(available, requested, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance) != expected)
             throw new Exception("Stock comparison changed");
     }
     public static int Main()
@@ -38,7 +38,7 @@ internal static class StockAvailabilityTests
                 Check(decimal.MinValue,decimal.MaxValue,true);
                 Check(null,1m,true);
                 assertions++;
-                try { StockAvailability.IsBelowRequested("bad-quantity",1m); }
+                try { StockAvailability.IsBelowRequested("bad-quantity",1m, LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance); }
                 catch (InvalidCastException) { continue; }
                 throw new Exception("Expected legacy numeric coercion failure");
             }

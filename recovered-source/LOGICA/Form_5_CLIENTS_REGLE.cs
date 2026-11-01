@@ -1,3 +1,4 @@
+using LOGICA.Infrastructure.Export;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -3328,7 +3329,7 @@ public class Form_5_CLIENTS_REGLE : Form
 						decimal d2 = Conversions.ToDecimal(list[1]);
 						decimal d3 = Conversions.ToDecimal(list[2]);
 						decimal d4 = Conversions.ToDecimal(list[3]);
-						_total_credit = decimal.Subtract(decimal.Add(decimal.Add(d, d2), d3), d4);
+						_total_credit = LOGICA.Domain.ClientCreditBalance.Calculate(d, d2, d3, d4);
 					}
 					else
 					{
@@ -3404,6 +3405,38 @@ public class Form_5_CLIENTS_REGLE : Form
 		}
 	}
 
+	private sealed class SettlementRowContext : LOGICA.ApplicationLayer.Clients.IClientSettlementRowContext
+	{
+		private readonly Form_5_CLIENTS_REGLE form;
+		private readonly DataRow row;
+		private readonly int id;
+		public SettlementRowContext(Form_5_CLIENTS_REGLE form, DataRow row, int id)
+		{
+			this.form = form; this.row = row; this.id = id;
+		}
+		public object ReadId() { return id; }
+		public object ReadDate() { return form.DateTimePicker_DATE.Value; }
+		public object ReadUser() { return form.Text_UTILISATEUR.Text; }
+		public object ReadDocumentId() { return Strings.Format(DateTime.Now, "ddMMyyHHmmssfff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text; }
+		public object ReadClientId() { return form.Button_CLIENT._ID_Button; }
+		public object ReadClientCode() { return form.Button_CLIENT._CODE_Button; }
+		public object ReadClientName() { return ((ButtonBase)form.Button_CLIENT).Text; }
+		public object ReadAmount() { return form.TextBox_MONTANT.Text; }
+		public object ReadPaymentMode() { return form.Combo_MODE_P.Text; }
+		public object ReadNotes() { return form.TextBox_NOTES.Text; }
+		public void Set(string column, object value) { row[column] = value; }
+	}
+
+	private sealed class SettlementValidationContext : LOGICA.ApplicationLayer.Clients.IClientSettlementValidationContext
+	{
+		private readonly Form_5_CLIENTS_REGLE form;
+		public SettlementValidationContext(Form_5_CLIENTS_REGLE form) { this.form=form; }
+		public string ClientId { get { return form.Button_CLIENT._ID_Button; } }
+		public string ClientName { get { return ((ButtonBase)form.Button_CLIENT).Text; } }
+		public string Amount { get { return form.TextBox_MONTANT.Text; } }
+		public string PaymentMode { get { return form.Combo_MODE_P.Text; } }
+	}
+
 	private void Button12_Click(object sender, EventArgs e)
 	{
 		//IL_04a0: Unknown result type (might be due to invalid IL or missing references)
@@ -3422,29 +3455,10 @@ public class Form_5_CLIENTS_REGLE : Form
 		{
 			try
 			{
-				if (Operators.CompareString(Button_CLIENT._ID_Button, "", TextCompare: false) == 0)
+				string warning = LOGICA.ApplicationLayer.Clients.ClientSettlementValidationService.FirstWarning(new SettlementValidationContext(this), LOGICA.Infrastructure.Compatibility.VisualBasicSettlementSemantics.Instance);
+				if (warning != null)
 				{
-					MessageBox.Show("Veuillez remplir le champ -ID_CLIENT- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
-				if (Operators.CompareString(((ButtonBase)Button_CLIENT).Text, "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -CLIENT- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
-				if (Operators.CompareString(TextBox_MONTANT.Text, "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -MONTANT- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
-				if (Conversion.Val(TextBox_MONTANT.Text) <= 0.0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -MONTANT- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
-				if (Operators.CompareString(Combo_MODE_P.Text, "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -MODE_P- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					MessageBox.Show(warning, "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
 				if (Operators.CompareString(Label_TOP.Text, "NOUVEAU", TextCompare: false) == 0)
@@ -3457,21 +3471,11 @@ public class Form_5_CLIENTS_REGLE : Form
 					{
 						Module1.cn_SQL.Open();
 					}
-					int num = ((val.ExecuteScalar() == DBNull.Value) ? 1 : ((int)Math.Round(Conversions.ToDouble(val.ExecuteScalar()) + 1.0)));
+					int num = LOGICA.Domain.ClientSettlementSequence.NextId(() => val.ExecuteScalar(), LOGICA.Infrastructure.Compatibility.VisualBasicSettlementSemantics.Instance);
 					Module1.cn_SQL.Close();
 					DT.Rows.Add();
 					int index = DT.Rows.Count - 1;
-					DT.Rows[index]["ID"] = num;
-					DT.Rows[index]["DATES"] = DateTimePicker_DATE.Value;
-					DT.Rows[index]["UTILISATEUR"] = Text_UTILISATEUR.Text;
-					DT.Rows[index]["ID_REGLE"] = Strings.Format(DateTime.Now, "ddMMyyHHmmssfff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text;
-					DT.Rows[index]["ID_CLIENT"] = Button_CLIENT._ID_Button;
-					DT.Rows[index]["CODE_CLIENT"] = Button_CLIENT._CODE_Button;
-					DT.Rows[index]["CLIENT"] = ((ButtonBase)Button_CLIENT).Text;
-					DT.Rows[index]["MONTANT"] = TextBox_MONTANT.Text;
-					DT.Rows[index]["MODE_P"] = Combo_MODE_P.Text;
-					DT.Rows[index]["NOTES"] = TextBox_NOTES.Text;
-					DT.Rows[index]["ETAT"] = "VALIDER";
+					LOGICA.ApplicationLayer.Clients.ClientSettlementRowWriter.Populate(new SettlementRowContext(this, DT.Rows[index], num));
 					MySqlCommandBuilder val2 = new MySqlCommandBuilder(DA);
 					((DbDataAdapter)(object)DA).Update(DT);
 					DT.AcceptChanges();
@@ -3726,7 +3730,7 @@ public class Form_5_CLIENTS_REGLE : Form
 			decimal num4 = 0m;
 			num4 = ((dataTable.Rows[0]["N"] != DBNull.Value) ? Conversions.ToDecimal(Strings.FormatNumber(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"]))) : Conversions.ToDecimal(Strings.FormatNumber(0)));
 			Label_REGLE_CLIENT.Text = Conversions.ToString(num4);
-			Text_CREDIT.Text = Conversions.ToString(decimal.Subtract(decimal.Add(decimal.Add(num, num2), num3), num4)) + " DH";
+			Text_CREDIT.Text = Conversions.ToString(LOGICA.Domain.ClientCreditBalance.Calculate(num, num2, num3, num4)) + " DH";
 		}
 	}
 
@@ -3740,6 +3744,43 @@ public class Form_5_CLIENTS_REGLE : Form
 		Picture_FIND_Click(RuntimeHelpers.GetObjectValue(sender), e);
 	}
 
+    private sealed class SettlementSearchContext : LOGICA.ApplicationLayer.Clients.IClientSettlementSearchContext
+    {
+        private readonly Form_5_CLIENTS_REGLE form;
+        public SettlementSearchContext(Form_5_CLIENTS_REGLE form) { this.form = form; }
+        public string Column { get { return form.Combo_FIND.Text; } }
+        public bool UseDates { get { return form.Check_FIND_DATE.Checked; } }
+        public bool Exact { get { return form.Check_FIND_EXACTE.Checked; } }
+        public void LoadDateRange()
+        {
+            form.DT.Clear();
+            form.DA = LOGICA.Infrastructure.Clients.ClientSettlementQuery.DateRange(
+                form.Label_TABLE.Text, form.DateTime1_FIND.Value, form.DateTime2_FIND.Value, Module1.cn_SQL);
+            ((DbDataAdapter)(object)form.DA).Fill(form.DT);
+        }
+        public void SetDatePrefix()
+        {
+            form._sql = LOGICA.Infrastructure.Clients.ClientSettlementQuery.DatePrefix(
+                form.DateTime1_FIND.Value, form.DateTime2_FIND.Value);
+        }
+        public void ClearDatePrefix() { form._sql = ""; }
+        public void LoadContains()
+        {
+            form.DT.Clear();
+            form.DA = LOGICA.Infrastructure.Clients.ClientSettlementQuery.Contains(
+                form.Label_TABLE.Text, form._sql, form.Combo_FIND.Text, form.Text_FIND.Text, Module1.cn_SQL);
+            ((DbDataAdapter)(object)form.DA).Fill(form.DT);
+        }
+        public void LoadExactLike()
+        {
+            form.DT.Clear();
+            form.DA = LOGICA.Infrastructure.Clients.ClientSettlementQuery.ExactLike(
+                form.Label_TABLE.Text, form._sql, form.Combo_FIND.Text, form.Text_FIND.Text, Module1.cn_SQL);
+            ((DbDataAdapter)(object)form.DA).Fill(form.DT);
+        }
+        public void BindResults() { form.DataGridView1.DataSource = form.DT; }
+    }
+
 	private void Picture_FIND_Click(object sender, EventArgs e)
 	{
 		//IL_0378: Unknown result type (might be due to invalid IL or missing references)
@@ -3752,36 +3793,9 @@ public class Form_5_CLIENTS_REGLE : Form
 		//IL_02c2: Expected Obj, but got Unknown
 		try
 		{
-			if (Operators.CompareString(Combo_FIND.Text, "DATES", TextCompare: false) == 0)
-			{
-				DT.Clear();
-				DA = new MySqlDataAdapter("select * from     TABLE_" + Label_TABLE.Text + "      Where       Dates   between   ' " + Strings.Format(DateTime1_FIND.Value, "yyyy-MM-dd") + " '     And      ' " + Strings.Format(DateTime2_FIND.Value, "yyyy-MM-dd") + " '               order by   ID    desc ", Module1.cn_SQL);
-				((DbDataAdapter)(object)DA).Fill(DT);
-			}
-			else
-			{
-				if (Check_FIND_DATE.Checked)
-				{
-					_sql = "        Dates   between   ' " + Strings.Format(DateTime1_FIND.Value, "yyyy-MM-dd") + " '     And      ' " + Strings.Format(DateTime2_FIND.Value, "yyyy-MM-dd") + " '         AND     ";
-				}
-				else
-				{
-					_sql = "";
-				}
-				if (!Check_FIND_EXACTE.Checked)
-				{
-					DT.Clear();
-					DA = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat("select * from     TABLE_" + Label_TABLE.Text, "      Where            "), _sql), "            ("), Combo_FIND.Text), "  like  '%"), Text_FIND.Text), "%'   )                                order by   ID    desc ")), Module1.cn_SQL);
-					((DbDataAdapter)(object)DA).Fill(DT);
-				}
-				else if (Check_FIND_EXACTE.Checked)
-				{
-					DT.Clear();
-					DA = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat("select * from     TABLE_" + Label_TABLE.Text, "      Where            "), _sql), "            ("), Combo_FIND.Text), "  like  '"), Text_FIND.Text), "'     )                                order by   ID    desc ")), Module1.cn_SQL);
-					((DbDataAdapter)(object)DA).Fill(DT);
-				}
-			}
-			DataGridView1.DataSource = DT;
+			LOGICA.ApplicationLayer.Clients.ClientSettlementSearchService.Search(
+				new SettlementSearchContext(this),
+				LOGICA.Infrastructure.Compatibility.VisualBasicClientSearchSemantics.Instance);
 		}
 		catch (Exception ex)
 		{
@@ -3811,6 +3825,20 @@ public class Form_5_CLIENTS_REGLE : Form
 			ProjectData.ClearProjectError();
 		}
 	}
+
+    private sealed class SettlementRefreshContext : LOGICA.ApplicationLayer.Clients.IClientSettlementRefreshContext
+    {
+        private readonly Form_5_CLIENTS_REGLE form;
+        public SettlementRefreshContext(Form_5_CLIENTS_REGLE form) { this.form = form; }
+        public void ClearSearch() { form.Text_FIND.Text = ""; }
+        public void ReloadAll()
+        {
+            form.DT.Clear();
+            form.DA = LOGICA.Infrastructure.Clients.ClientSettlementQuery.Refresh(form.Label_TABLE.Text, Module1.cn_SQL);
+            ((DbDataAdapter)(object)form.DA).Fill(form.DT);
+        }
+        public void BindResults() { form.DataGridView1.DataSource = form.DT; }
+    }
 
 	private void Picture_REFRESH_Click(object sender, EventArgs e)
 	{
@@ -3820,11 +3848,7 @@ public class Form_5_CLIENTS_REGLE : Form
 		//IL_0104: Expected Obj, but got Unknown
 		try
 		{
-			Text_FIND.Text = "";
-			DT.Clear();
-			DA = new MySqlDataAdapter("select * from      TABLE_" + Label_TABLE.Text + "                  order by   ID    desc ", Module1.cn_SQL);
-			((DbDataAdapter)(object)DA).Fill(DT);
-			DataGridView1.DataSource = DT;
+			LOGICA.ApplicationLayer.Clients.ClientSettlementRefreshService.Refresh(new SettlementRefreshContext(this));
 		}
 		catch (Exception ex)
 		{
@@ -3855,33 +3879,29 @@ public class Form_5_CLIENTS_REGLE : Form
 		}
 	}
 
-	private void Check_FIND_DATE_CheckedChanged(object sender, EventArgs e)
-	{
-		if (Check_FIND_DATE.Checked)
-		{
-			((Control)Panel_DATES).Visible = true;
-		}
-		else
-		{
-			((Control)Panel_DATES).Visible = false;
-		}
-	}
+    private sealed class SettlementFilterLayoutContext : LOGICA.ApplicationLayer.Clients.IClientSettlementFilterLayoutContext
+    {
+        private readonly Form_5_CLIENTS_REGLE form;
+        public SettlementFilterLayoutContext(Form_5_CLIENTS_REGLE form) { this.form = form; }
+        public bool DateFilterChecked { get { return form.Check_FIND_DATE.Checked; } }
+        public string SelectedColumn { get { return form.Combo_FIND.Text; } }
+        public void SetDatePanelVisible(bool visible) { ((Control)form.Panel_DATES).Visible = visible; }
+        public void SetDatePanelLeft(int left) { ((Control)form.Panel_DATES).Left = left; }
+        public void SetSearchText(string text) { form.Text_FIND.Text = text; }
+    }
 
-	private void Combo_FIND_SelectedIndexChanged(object sender, EventArgs e)
-	{
-		if (Operators.CompareString(Combo_FIND.Text, "DATES", TextCompare: false) == 0)
-		{
-			((Control)Panel_DATES).Visible = true;
-			((Control)Panel_DATES).Left = 78;
-			Text_FIND.Text = "*";
-		}
-		else
-		{
-			((Control)Panel_DATES).Visible = false;
-			((Control)Panel_DATES).Left = 417;
-			Text_FIND.Text = "";
-		}
-	}
+    private void Check_FIND_DATE_CheckedChanged(object sender, EventArgs e)
+    {
+        LOGICA.ApplicationLayer.Clients.ClientSettlementFilterLayoutService.DateCheckboxChanged(
+            new SettlementFilterLayoutContext(this));
+    }
+
+    private void Combo_FIND_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        LOGICA.ApplicationLayer.Clients.ClientSettlementFilterLayoutService.ColumnChanged(
+            new SettlementFilterLayoutContext(this),
+            LOGICA.Infrastructure.Compatibility.VisualBasicClientSearchSemantics.Instance);
+    }
 
 	private void Picture_EXPORT_Click(object sender, EventArgs e)
 	{
@@ -3906,42 +3926,7 @@ public class Form_5_CLIENTS_REGLE : Form
 			{
 				return;
 			}
-			DataTable dataTable = new DataTable();
-			foreach (DataGridViewColumn item in (BaseCollection)DataGridView1.Columns)
-			{
-				DataGridViewColumn val2 = item;
-				if ((object)((object)val2).GetType() == typeof(DataGridViewTextBoxColumn))
-				{
-					dataTable.Columns.Add(val2.HeaderText, val2.ValueType);
-				}
-			}
-			foreach (DataGridViewRow item2 in (IEnumerable)DataGridView1.Rows)
-			{
-				DataGridViewRow val3 = item2;
-				dataTable.Rows.Add();
-				foreach (DataGridViewCell item3 in (BaseCollection)val3.Cells)
-				{
-					DataGridViewCell val4 = item3;
-					if ((object)((object)val4).GetType() == typeof(DataGridViewTextBoxCell))
-					{
-						if (val4.Value == null)
-						{
-							val4.Value = "-";
-						}
-						dataTable.Rows[checked(dataTable.Rows.Count - 1)][val4.ColumnIndex] = val4.Value.ToString();
-					}
-				}
-			}
-			XLWorkbook val5 = new XLWorkbook();
-			try
-			{
-				val5.Worksheets.Add(dataTable, "Table");
-				val5.SaveAs(((FileDialog)val).FileName + ".xlsx");
-			}
-			finally
-			{
-				((IDisposable)val5)?.Dispose();
-			}
+			WinFormsGridExcelExporter.Export(DataGridView1, ((FileDialog)val).FileName + ".xlsx");
 		}
 		catch (Exception ex)
 		{

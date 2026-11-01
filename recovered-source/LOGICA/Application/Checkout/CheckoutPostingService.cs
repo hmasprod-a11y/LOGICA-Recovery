@@ -14,12 +14,9 @@ namespace LOGICA.ApplicationLayer.Checkout
         // Transaction ownership and rollback stay with the existing caller.
         public static void Post(ICheckoutPostingStore store, CheckoutPostingInput input)
         {
-            foreach (CheckoutStockLine line in input.ReadStock())
-                store.ApplyStock(line);
-            store.WriteHeader(input.ReadHeader());
-            store.WriteJournal(input.ReadJournal());
-            foreach (TicketPaymentWrite payment in input.ReadPayments())
-                store.WritePayment(payment);
+            CheckoutStockPostingService.Apply(store, input.ReadStock());
+            CheckoutTicketPostingService.Write(store, input);
+            CheckoutPaymentPostingService.Write(store, input.ReadPayments());
             input.Print();
             store.Complete(input.ReadCompletion());
         }

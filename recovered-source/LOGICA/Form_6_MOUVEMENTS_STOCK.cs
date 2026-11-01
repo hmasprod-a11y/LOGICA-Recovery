@@ -1,3 +1,4 @@
+using LOGICA.Infrastructure.Export;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -1653,7 +1654,7 @@ public class Form_6_MOUVEMENTS_STOCK : Form
 		//IL_02e7: Expected Obj, but got Unknown
 		try
 		{
-			LOGICA.ApplicationLayer.Inventory.StockMovementSearchService.Search(new MovementSearchContext(this));
+			LOGICA.ApplicationLayer.Inventory.StockMovementSearchService.Search(new MovementSearchContext(this), LOGICA.Infrastructure.Compatibility.VisualBasicStockMovementSemantics.Instance);
 		}
 		catch (Exception ex)
 		{
@@ -1743,35 +1744,30 @@ public class Form_6_MOUVEMENTS_STOCK : Form
 		}
 	}
 
-	private void Check_FIND_DATE_CheckedChanged(object sender, EventArgs e)
-	{
-		if (Check_FIND_DATE.Checked)
-		{
-			((Control)Panel_DATES).Visible = true;
-		}
-		else
-		{
-			((Control)Panel_DATES).Visible = false;
-		}
-	}
+    private sealed class MovementFilterLayoutContext : LOGICA.ApplicationLayer.Inventory.IStockMovementFilterLayoutContext
+    {
+        private readonly Form_6_MOUVEMENTS_STOCK form;
+        public MovementFilterLayoutContext(Form_6_MOUVEMENTS_STOCK form) { this.form = form; }
+        public bool DateFilterChecked { get { return form.Check_FIND_DATE.Checked; } }
+        public string SelectedColumn { get { return form.Combo_FIND.Text; } }
+        public void SetDatePanelVisible(bool visible) { ((Control)form.Panel_DATES).Visible = visible; }
+        public void SetDatePanelLeft(int left) { ((Control)form.Panel_DATES).Left = left; }
+        public void SetDatePanelWidth(int width) { ((Control)form.Panel_DATES).Width = width; }
+        public void SetSearchText(string text) { form.Text_FIND.Texts = text; }
+    }
 
-	private void Combo_FIND_SelectedIndexChanged(object sender, EventArgs e)
-	{
-		if (Operators.CompareString(Combo_FIND.Text, "DATES", TextCompare: false) == 0)
-		{
-			((Control)Panel_DATES).Visible = true;
-			((Control)Panel_DATES).Left = 127;
-			((Control)Panel_DATES).Width = 713;
-			Text_FIND.Texts = "*";
-		}
-		else
-		{
-			((Control)Panel_DATES).Visible = false;
-			((Control)Panel_DATES).Left = 564;
-			((Control)Panel_DATES).Width = 276;
-			Text_FIND.Texts = "";
-		}
-	}
+    private void Check_FIND_DATE_CheckedChanged(object sender, EventArgs e)
+    {
+        LOGICA.ApplicationLayer.Inventory.StockMovementFilterLayoutService.DateCheckboxChanged(
+            new MovementFilterLayoutContext(this));
+    }
+
+    private void Combo_FIND_SelectedIndexChanged(object sender, EventArgs e)
+    {
+        LOGICA.ApplicationLayer.Inventory.StockMovementFilterLayoutService.ColumnChanged(
+            new MovementFilterLayoutContext(this),
+            LOGICA.Infrastructure.Compatibility.VisualBasicStockMovementSemantics.Instance);
+    }
 
 	private void Picture_EXPORT_Click(object sender, EventArgs e)
 	{
@@ -1796,42 +1792,7 @@ public class Form_6_MOUVEMENTS_STOCK : Form
 			{
 				return;
 			}
-			DataTable dataTable = new DataTable();
-			foreach (DataGridViewColumn item in (BaseCollection)DataGridView1.Columns)
-			{
-				DataGridViewColumn val2 = item;
-				if ((object)((object)val2).GetType() == typeof(DataGridViewTextBoxColumn))
-				{
-					dataTable.Columns.Add(val2.HeaderText, val2.ValueType);
-				}
-			}
-			foreach (DataGridViewRow item2 in (IEnumerable)DataGridView1.Rows)
-			{
-				DataGridViewRow val3 = item2;
-				dataTable.Rows.Add();
-				foreach (DataGridViewCell item3 in (BaseCollection)val3.Cells)
-				{
-					DataGridViewCell val4 = item3;
-					if ((object)((object)val4).GetType() == typeof(DataGridViewTextBoxCell))
-					{
-						if (val4.Value == null)
-						{
-							val4.Value = "-";
-						}
-						dataTable.Rows[checked(dataTable.Rows.Count - 1)][val4.ColumnIndex] = val4.Value.ToString();
-					}
-				}
-			}
-			XLWorkbook val5 = new XLWorkbook();
-			try
-			{
-				val5.Worksheets.Add(dataTable, "Table");
-				val5.SaveAs(((FileDialog)val).FileName + ".xlsx");
-			}
-			finally
-			{
-				((IDisposable)val5)?.Dispose();
-			}
+			WinFormsGridExcelExporter.Export(DataGridView1, ((FileDialog)val).FileName + ".xlsx");
 		}
 		catch (Exception ex)
 		{

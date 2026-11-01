@@ -1,13 +1,11 @@
-using Microsoft.VisualBasic.CompilerServices;
-
 namespace LOGICA.Domain
 {
     internal static class CheckoutSelectionRules
     {
-        public static bool IsMissing(string displayName)
+        public static bool IsMissing(string displayName, ILegacyCheckoutSemantics legacy)
         {
-            // Preserve the legacy empty comparison; whitespace is not treated as empty.
-            return Operators.CompareString(displayName, "", false) == 0;
+            // Whitespace is not empty; VB null/empty equality is delegated to the adapter.
+            return legacy.EqualsText(displayName, "");
         }
     }
 }

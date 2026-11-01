@@ -1,3 +1,4 @@
+using LOGICA.Infrastructure.Compatibility;
 using System;
 using System.Globalization;
 using Microsoft.VisualBasic.CompilerServices;
@@ -20,8 +21,8 @@ internal static class CashDenominationTotalTests
             {
                 CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
                 assertions+=2;
-                if(CashDenominationTotal.Calculate(delegate(int index){return "0";})!=0m ||
-                   CashDenominationTotal.Calculate(delegate(int index){return "1";})!=388.8m)
+                if(CashDenominationTotal.Calculate(delegate(int index){return "0";}, VisualBasicCashSemantics.Instance)!=0m ||
+                   CashDenominationTotal.Calculate(delegate(int index){return "1";}, VisualBasicCashSemantics.Instance)!=388.8m)
                     throw new Exception("Known counted-cash total changed");
                 var random=new Random(423);
                 for(int sample=0;sample<100;sample++)
@@ -29,7 +30,7 @@ internal static class CashDenominationTotalTests
                     string[] inputs=new string[11];
                     for(int index=0;index<inputs.Length;index++)inputs[index]=(random.Next(-500,2000)/10m).ToString(CultureInfo.CurrentCulture);
                     int next=0;
-                    string actual=Outcome(delegate{return CashDenominationTotal.Calculate(delegate(int index){if(index!=next++)throw new Exception("read order");return inputs[index];});});
+                    string actual=Outcome(delegate{return CashDenominationTotal.Calculate(delegate(int index){if(index!=next++)throw new Exception("read order");return inputs[index];}, VisualBasicCashSemantics.Instance);});
                     string expected=Outcome(delegate{return Legacy(delegate(int index){return inputs[index];});});
                     assertions+=2;
                     if(actual!=expected || next!=11)throw new Exception("Mixed arithmetic or denomination read order changed");
@@ -37,12 +38,12 @@ internal static class CashDenominationTotalTests
                 for(int failedIndex=0;failedIndex<11;failedIndex++)
                 {
                     int reads=0;Exception marker=new InvalidOperationException("denomination read"),caught=null;
-                    try {CashDenominationTotal.Calculate(delegate(int index){reads++;if(index==failedIndex)throw marker;return "1";});}
+                    try {CashDenominationTotal.Calculate(delegate(int index){reads++;if(index==failedIndex)throw marker;return "1";}, VisualBasicCashSemantics.Instance);}
                     catch(Exception error){caught=error;}
                     assertions+=2;
                     if(!Object.ReferenceEquals(marker,caught) || reads!=failedIndex+1)throw new Exception("Read failure continued or was wrapped");
                     reads=0;
-                    string bad=Outcome(delegate{return CashDenominationTotal.Calculate(delegate(int index){reads++;return index==failedIndex?"CI_INVALID":"1";});});
+                    string bad=Outcome(delegate{return CashDenominationTotal.Calculate(delegate(int index){reads++;return index==failedIndex?"CI_INVALID":"1";}, VisualBasicCashSemantics.Instance);});
                     assertions+=2;
                     if(!bad.StartsWith("error:") || reads!=failedIndex+1)throw new Exception("Conversion failure timing changed");
                 }
@@ -50,7 +51,7 @@ internal static class CashDenominationTotalTests
                 {
                     string value=edge;
                     assertions++;
-                    if(Outcome(delegate{return CashDenominationTotal.Calculate(delegate(int index){return index==0?value:"0";});})!=
+                    if(Outcome(delegate{return CashDenominationTotal.Calculate(delegate(int index){return index==0?value:"0";}, VisualBasicCashSemantics.Instance);})!=
                        Outcome(delegate{return Legacy(delegate(int index){return index==0?value:"0";});}))
                         throw new Exception("Boundary conversion/overflow changed");
                 }

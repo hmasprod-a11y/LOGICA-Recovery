@@ -1,15 +1,37 @@
 name: LOGICA Windows build and POS verification
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'recovered-source/**'
+      - 'tests/**'
+      - 'scripts/test-domain.ps1'
+      - 'docs/RUNNING.md'
+      - 'scripts/test-pos*'
+      - 'scripts/test-release-candidate.ps1'
+      - 'scripts/package-beta-rc.ps1'
+      - 'scripts/package-runtime.ps1'
+      - 'scripts/verify-beta-rc.ps1'
+      - 'scripts/test-beta-release-verifier.ps1'
+      - '.github/workflows/windows-reference-diagnostic.yml'
   push:
     paths:
       - 'recovered-source/**'
       - 'scripts/repair-source.py'
+      - 'docs/RUNNING.md'
       - 'scripts/test-pos*'
       - 'scripts/test-recovered*'
+      - 'scripts/test-release-candidate.ps1'
+      - 'scripts/package-beta-rc.ps1'
+      - 'scripts/package-runtime.ps1'
+      - 'scripts/verify-beta-rc.ps1'
+      - 'scripts/test-beta-release-verifier.ps1'
       - 'input/recovered-original.sql'
       - 'input/mysql-compatibility.sql'
       - '.github/workflows/windows-reference-diagnostic.yml'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build-test:
     runs-on: windows-latest
@@ -69,6 +91,15 @@ jobs:
         if: always()
         shell: pwsh
         run: ./scripts/package-runtime.ps1
+      - name: Gate unified beta candidate and generate file hashes
+        shell: pwsh
+        run: ./scripts/test-release-candidate.ps1
+      - name: Test offline release verifier with isolated adversarial fixtures
+        shell: pwsh
+        run: ./scripts/test-beta-release-verifier.ps1
+      - name: Build and independently verify beta RC ZIP
+        shell: pwsh
+        run: ./scripts/package-beta-rc.ps1
       - name: Inspect original dependency types
         if: always()
         shell: powershell
@@ -86,6 +117,13 @@ jobs:
           name: LOGICA-build-diagnostics
           path: results/
           retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: LOGICA-2.0-Beta-RC1-Windows-x86
+          path: release/
+          if-no-files-found: error
+          retention-days: 90
       - uses: actions/upload-artifact@v4
         if: always()
         with:
