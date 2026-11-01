@@ -8,6 +8,15 @@ namespace LOGICA.ApplicationLayer.Purchasing
     // A barcode is not a unique article identity; a grid choice must retain ID_ARTICLE.
     internal static class ReceiptArticleSelectionService
     {
+        // An explicit grid selection that disappeared after a fresh barcode read
+        // must never be treated as a request to create a different article.
+        // This decision is read-only and does not change legacy creation flow.
+        internal static bool CanOfferCreation(DataTable barcodeMatches, string selectedArticleId)
+        {
+            if (barcodeMatches == null) throw new ArgumentNullException("barcodeMatches");
+            return selectedArticleId == null && barcodeMatches.Rows.Count == 0;
+        }
+
         // Returns null on missing, ambiguous, deleted or malformed rows.
         // No SQL, price, quantity or stock mutations.
         internal static DataRow Resolve(DataTable barcodeMatches, string selectedArticleId)
