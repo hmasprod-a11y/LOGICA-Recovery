@@ -41,4 +41,17 @@ namespace LOGICA.ApplicationLayer.Purchasing
             return selected;
         }
     }
+
+    // The receipt currently displayed for consultation must be the one that the
+    // operator confirmed. This guards the real WinForms validation handler
+    // against a stale binding position without changing transaction SQL.
+    internal static class ReceiptDocumentSelectionGuard
+    {
+        internal static bool Matches(string confirmedReceiptId, string loadedReceiptId)
+        {
+            return !String.IsNullOrWhiteSpace(confirmedReceiptId) &&
+                !String.IsNullOrWhiteSpace(loadedReceiptId) &&
+                String.Equals(confirmedReceiptId, loadedReceiptId, StringComparison.Ordinal);
+        }
+    }
 }
