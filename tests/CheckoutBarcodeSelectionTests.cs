@@ -213,6 +213,123 @@ internal static class CheckoutBarcodeSelectionTests
                     throw new Exception("Deleted single candidate must not be sold");
                 checks++;
 
+                // Exercise the exact bridge the Windows modal can adopt. The
+                // chosen variant index belongs to the original displayed table;
+                // monetary and tax columns must come from the fresh live row.
+                DataTable displayedLive = Candidates();
+                displayedLive.Columns.Add("REMISE", typeof(decimal));
+                displayedLive.Columns.Add("TAUX_TVA", typeof(decimal));
+                DataTable liveReordered = displayedLive.Clone();
+                liveReordered.Rows.Add("3", "ABC-001", "Variant 2", 30m, 0m, 20m);
+                liveReordered.Rows.Add("2", "ABC-001", "Variant", 42m, 15m, 7m);
+                liveReordered.Rows.Add("1", "ABC-001", "Ordinary", 10m, 0m, 20m);
+                int modalCalls = 0;
+                int liveCalls = 0;
+                CheckoutVariantChoiceResult freshChoice =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
+                        delegate(DataTable shown) {
+                            if (!Object.ReferenceEquals(shown, displayedLive))
+                                throw new Exception("Modal must display the original table");
+                            modalCalls++;
+                            return 1;
+                        }, delegate { liveCalls++; return liveReordered; });
+                if (freshChoice.Status != CheckoutVariantChoiceStatus.Selected ||
+                    !Object.ReferenceEquals(freshChoice.SelectedRow, liveReordered.Rows[1]) ||
+                    (decimal)freshChoice.SelectedRow["Prix_V_1"] != 42m ||
+                    (decimal)freshChoice.SelectedRow["REMISE"] != 15m ||
+                    (decimal)freshChoice.SelectedRow["TAUX_TVA"] != 7m ||
+                    modalCalls != 1 || liveCalls != 1)
+                    throw new Exception("Modal choice must use fresh ID, price, discount and tax");
+                checks++;
+                if (LOGICA.Domain.SalesLinePricing.CalculateNetAmount(
+                    (decimal)freshChoice.SelectedRow["Prix_V_1"], 2m,
+                    (decimal)freshChoice.SelectedRow["REMISE"]) != 71.4m ||
+                    LOGICA.Domain.SalesLinePricing.CalculateNetAmount(
+                    (decimal)freshChoice.SelectedRow["Prix_V_1"], -2m,
+                    (decimal)freshChoice.SelectedRow["REMISE"]) != -71.4m)
+                    throw new Exception("Refreshed variant preserves sale and return net values");
+                checks++;
+                DataTable liveMissing = liveReordered.Copy();
+                liveMissing.Rows.RemoveAt(1);
+                if (CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
+                    delegate(DataTable shown) { return 1; },
+                    delegate { return liveMissing; }).Status != CheckoutVariantChoiceStatus.Missing)
+                    throw new Exception("Removed live variant must fail closed");
+                checks++;
+                DataTable liveReused = liveReordered.Copy();
+                liveReused.Rows[1]["Code"] = "REASSIGNED";
+                if (CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
+                    delegate(DataTable shown) { return 1; },
+                    delegate { return liveReused; }).Status != CheckoutVariantChoiceStatus.Ambiguous)
+                    throw new Exception("Reused ID with changed barcode must fail closed");
+                checks++;
+                DataTable liveDuplicate = liveReordered.Copy();
+                liveDuplicate.Rows[0]["ID_ARTICLE"] = "2";
+                if (CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
+                    delegate(DataTable shown) { return 1; },
+                    delegate { return liveDuplicate; }).Status != CheckoutVariantChoiceStatus.Ambiguous)
+                    throw new Exception("Duplicate live ID must not reach the basket");
+                checks++;
+                DataTable liveInvalid = liveReordered.Copy();
+                liveInvalid.Rows[0]["ID_ARTICLE"] = DBNull.Value;
+                if (CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
+                    delegate(DataTable shown) { return 1; },
+                    delegate { return liveInvalid; }).Status != CheckoutVariantChoiceStatus.InvalidCandidates)
+                    throw new Exception("Invalid live catalogue must fail closed");
+                checks++;
+                if (CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
+                    delegate(DataTable shown) { return 1; },
+                    delegate { return null; }).Status != CheckoutVariantChoiceStatus.InvalidCandidates)
+                    throw new Exception("Null local query must never fall back to displayed price");
+                checks++;
+                int noRead = 0;
+                if (CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
+                    delegate(DataTable shown) { return -1; },
+                    delegate { noRead++; return liveReordered; }).Status != CheckoutVariantChoiceStatus.Cancelled ||
+                    noRead != 0)
+                    throw new Exception("Cancel must not requery or post");
+                checks++;
+                DataTable emptyDisplayed = displayedLive.Clone();
+                if (CheckoutBarcodeSelectionService.SelectWithRefresh(emptyDisplayed, null,
+                    delegate { noRead++; return liveReordered; }).Status != CheckoutVariantChoiceStatus.Missing ||
+                    noRead != 0)
+                    throw new Exception("No-match must not read current catalogue");
+                checks++;
+                DataTable corruptDisplayed = displayedLive.Copy();
+                corruptDisplayed.Rows[2]["ID_ARTICLE"] = "1";
+                if (CheckoutBarcodeSelectionService.SelectWithRefresh(corruptDisplayed,
+                    delegate(DataTable shown) { throw new Exception("Unsafe chooser invoked"); },
+                    delegate { noRead++; return liveReordered; }).Status != CheckoutVariantChoiceStatus.Ambiguous ||
+                    noRead != 0)
+                    throw new Exception("Invalid displayed identities must not open modal or query");
+                checks++;
+                DataTable singleDisplayed = Candidates();
+                singleDisplayed.Rows.RemoveAt(2);
+                singleDisplayed.Rows.RemoveAt(1);
+                DataTable singleLive = singleDisplayed.Copy();
+                singleLive.Rows[0]["Prix_V_1"] = 16m;
+                if (CheckoutBarcodeSelectionService.SelectWithRefresh(singleDisplayed, null,
+                    delegate { noRead++; return singleLive; }).SelectedRow != singleLive.Rows[0] ||
+                    noRead != 1)
+                    throw new Exception("Single barcode candidate must also be refreshed");
+                checks++;
+                Exception readFailure = new InvalidOperationException("local store unavailable");
+                try {
+                    CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
+                        delegate(DataTable shown) { return 1; },
+                        delegate { throw readFailure; });
+                    throw new Exception("Local store failure swallowed");
+                } catch (InvalidOperationException error) {
+                    if (!Object.ReferenceEquals(error, readFailure))
+                        throw new Exception("Local store failure identity changed");
+                }
+                checks++;
+                Expect<ArgumentNullException>(delegate {
+                    CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
+                        delegate(DataTable shown) { return 1; }, null);
+                });
+                checks++;
+
                 rows.Rows.RemoveAt(2);
                 rows.Rows.RemoveAt(1);
                 if (CheckoutBarcodeSelectionService.Select(rows, null) != rows.Rows[0])
