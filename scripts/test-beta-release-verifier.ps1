@@ -155,9 +155,9 @@ try {
     "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
     Assert-Rejected 'ZIP symbolic-link directory'
     foreach ($directoryNames in @(
-        @('EmptyDir/', 'emptydir/'),
-        @('LOGICA.exe/'),
-        @('LOGICA.exe/nested/')
+        ,@('EmptyDir/', 'emptydir/')
+        ,@('LOGICA.exe/')
+        ,@('LOGICA.exe/nested/')
     )) {
         Write-FixtureZip
         $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
