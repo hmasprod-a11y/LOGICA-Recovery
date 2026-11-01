@@ -8918,8 +8918,17 @@ public class Form_6_RECEPTIONS : Form
 					MessageBox.Show("Veuillez remplir le champ -TOTAL_NET_VENTES- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
+				// Commit the in-progress grid edit before saving the receipt.
+				// CellValidated(null, null) used to silently do nothing after the
+				// event-row fix, leaving edited totals stale in persisted lines.
+				if (!DataGrid_BODY.EndEdit())
+					return;
+				for (int lineIndex = 0; lineIndex < DataGrid_BODY.Rows.Count; lineIndex++)
+				{
+					if (!DataGrid_BODY.Rows[lineIndex].IsNewRow)
+						RecalculateReceiptLineValues(DataGrid_BODY.Rows[lineIndex]);
+				}
 				Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), e);
-				DataGrid_BODY_CellValidated(null, null);
 				if (Operators.CompareString(Label_TOP.Text, "NOUVEAU", TextCompare: false) == 0)
 				{
 					MySqlCommand val = new MySqlCommand();
@@ -9129,7 +9138,10 @@ public class Form_6_RECEPTIONS : Form
 
 	private void DataGridView1_CellEnter(object sender, DataGridViewCellEventArgs e)
 	{
-		Label_TOTAL_LIGNES_BD.Text = Conversions.ToString(Conversions.ToDouble(DataGridView1.CurrentCell.RowIndex.ToString()) + 1.0) + "/" + Conversions.ToString(DataGridView1.Rows.Count);
+		// Rebinding can fire CellEnter while CurrentCell is null or stale.
+		if (e == null || !LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(e.RowIndex, DataGridView1.Rows.Count))
+			return;
+		Label_TOTAL_LIGNES_BD.Text = Conversions.ToString(e.RowIndex + 1) + "/" + Conversions.ToString(DataGridView1.Rows.Count);
 	}
 
 	private void DataGridView1_DataBindingComplete(object sender, DataGridViewBindingCompleteEventArgs e)
@@ -9891,8 +9903,9 @@ public class Form_6_RECEPTIONS : Form
 					return;
 				}
 				DataGrid_BODY.Rows.Add(new object[10] { text, text2, text3, num, num2, num3, num4, num5, text4, text5 });
+				// Added lines already carry their rounded totals in num4/num5.
+				// No synthetic CellValidated event with a null row is needed.
 				Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), e);
-				DataGrid_BODY_CellValidated(null, null);
 				Text_ID_ARTICLE.Text = "";
 				Text_CODE.Text = "";
 				Text_ARTICLE.Text = "";
@@ -9998,6 +10011,14 @@ public class Form_6_RECEPTIONS : Form
 		((Control)Panel_INFO).Hide();
 	}
 
+	// One legacy arithmetic path for edited and programmatically saved lines.
+	// Keep VB MultiplyObject and FLOUSS semantics unchanged.
+	private void RecalculateReceiptLineValues(DataGridViewRow editedLine)
+	{
+		editedLine.Cells["TOTAL_NET_ACHATS"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(editedLine.Cells["Qté"].Value, editedLine.Cells["Prix_A"].Value)));
+		editedLine.Cells["TOTAL_NET_VENTES"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(editedLine.Cells["Qté"].Value, editedLine.Cells["Prix_V"].Value)));
+	}
+
 	private void DataGrid_BODY_CellValidated(object sender, DataGridViewCellEventArgs e)
 	{
 		//IL_0202: Unknown result type (might be due to invalid IL or missing references)
@@ -10009,9 +10030,7 @@ public class Form_6_RECEPTIONS : Form
 			if (e == null || !LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(
 				e.RowIndex, DataGrid_BODY.Rows.Count) || DataGrid_BODY.Rows[e.RowIndex].IsNewRow)
 				return;
-			DataGridViewRow editedLine = DataGrid_BODY.Rows[e.RowIndex];
-			editedLine.Cells["TOTAL_NET_ACHATS"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(editedLine.Cells["Qté"].Value, editedLine.Cells["Prix_A"].Value)));
-			editedLine.Cells["TOTAL_NET_VENTES"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(editedLine.Cells["Qté"].Value, editedLine.Cells["Prix_V"].Value)));
+			RecalculateReceiptLineValues(DataGrid_BODY.Rows[e.RowIndex]);
 			Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
 		}
 		catch (Exception ex)
@@ -10071,7 +10090,9 @@ public class Form_6_RECEPTIONS : Form
 
 	private void DataGrid_BODY_CellEnter(object sender, DataGridViewCellEventArgs e)
 	{
-		Label_TOTAL_LIGNES.Text = Conversions.ToString(Conversions.ToDouble(DataGrid_BODY.CurrentCell.RowIndex.ToString()) + 1.0) + "/" + Conversions.ToString(DataGrid_BODY.Rows.Count);
+		if (e == null || !LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(e.RowIndex, DataGrid_BODY.Rows.Count))
+			return;
+		Label_TOTAL_LIGNES.Text = Conversions.ToString(e.RowIndex + 1) + "/" + Conversions.ToString(DataGrid_BODY.Rows.Count);
 	}
 
 	private void DataGrid_BODY_CellContentClick(object sender, DataGridViewCellEventArgs e)
@@ -10519,7 +10540,18 @@ public class Form_6_RECEPTIONS : Form
 		{
 			if ((int)e.KeyCode == 13)
 			{
-				DataGridView_ARTICLES_CellClick(null, null);
+				// Enter in the filtered search must select the visible focused
+				// article, not call CellClick with a null event (a no-op).
+				DataGridViewCell activeCell = DataGridView_ARTICLES.CurrentCell;
+				if (activeCell != null && LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(
+					activeCell.RowIndex, DataGridView_ARTICLES.Rows.Count) &&
+					!DataGridView_ARTICLES.Rows[activeCell.RowIndex].IsNewRow)
+				{
+					DataGridView_ARTICLES_CellClick(DataGridView_ARTICLES,
+						new DataGridViewCellEventArgs(activeCell.ColumnIndex, activeCell.RowIndex));
+					e.Handled = true;
+					e.SuppressKeyPress = true;
+				}
 			}
 		}
 		catch (Exception ex)
@@ -11966,8 +11998,9 @@ public class Form_6_RECEPTIONS : Form
 					{
 						DataGrid_BODY.Rows.Add(new object[10] { text, text2, text3, num13, "0", num14, num17, "0", text4, text5 });
 					}
+					// Imported rows already have computed totals; do not send a
+					// synthetic null CellValidated event.
 					Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), e);
-					DataGrid_BODY_CellValidated(null, null);
 					DataGrid_BODY.CurrentCell = DataGrid_BODY.Rows[DataGrid_BODY.Rows.Count - 1].Cells[0];
 					DataGrid_BODY.Rows[DataGrid_BODY.Rows.Count - 1].Selected = true;
 					num9++;
