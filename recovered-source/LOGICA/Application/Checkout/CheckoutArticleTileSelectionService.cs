@@ -28,17 +28,19 @@ namespace LOGICA.ApplicationLayer.Checkout
         {
             if (article == null) throw new ArgumentNullException("article");
             // A tile must not be created from a pending-deleted article or an
-            // incomplete identity. Blank barcodes remain valid for image tiles.
+            // incomplete ID. SQL NULL Code and empty Code both mean a valid
+            // image-only article in the recovered nullable catalogue schema.
             if (article.RowState == DataRowState.Deleted ||
                 article.RowState == DataRowState.Detached ||
                 article.Table == null ||
                 !article.Table.Columns.Contains("Code") ||
                 !article.Table.Columns.Contains("ID_ARTICLE") ||
-                article.IsNull("Code") || article.IsNull("ID_ARTICLE") ||
+                article.IsNull("ID_ARTICLE") ||
                 String.IsNullOrEmpty(Convert.ToString(article["ID_ARTICLE"])))
                 throw new InvalidOperationException("Image tile article identity is incomplete.");
             return new CheckoutArticleTileReference(
-                Convert.ToString(article["Code"]), Convert.ToString(article["ID_ARTICLE"]));
+                article.IsNull("Code") ? "" : Convert.ToString(article["Code"]),
+                Convert.ToString(article["ID_ARTICLE"]));
         }
 
         // Typed result for a future UI: distinguish missing, ambiguous and
@@ -49,8 +51,8 @@ namespace LOGICA.ApplicationLayer.Checkout
         {
             if (candidates == null) throw new ArgumentNullException("candidates");
             if (tile == null) throw new ArgumentNullException("tile");
-            return CheckoutVariantSnapshotService.EvaluateChoice(
-                candidates, new[] { new CheckoutVariantSnapshot(tile.Code, tile.ArticleId) }, 0);
+            return CheckoutVariantSnapshotService.EvaluateImageChoice(
+                candidates, new CheckoutVariantSnapshot(tile.Code, tile.ArticleId));
         }
 
         // Preserve the legacy null-or-row surface, but never return a deleted
