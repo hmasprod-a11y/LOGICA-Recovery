@@ -1,4 +1,6 @@
 internal static class BusinessOperationsEntry
 {
-    public static int Main() { return BusinessOperationsSmoke.Run(); }
+    public static int Main() { int business = BusinessOperationsSmoke.Run();
+        if (business != 0) return business;
+        return StockCountCoverageSmoke.Run(); }
 }
