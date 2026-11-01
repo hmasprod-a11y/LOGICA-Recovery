@@ -12666,6 +12666,43 @@ public class Form_3_VENTE : Form
 
 
 
+	// Blank Code is shared by many image/list-only articles. The legacy
+	// Code-based stock lookup can select an unrelated row, so validate these
+	// basket lines by immutable ID_ARTICLE instead. Fail closed on missing or
+	// duplicate identities; never silently substitute another blank-Code item.
+	private LOGICA.ApplicationLayer.Checkout.StockShortage FindFirstBlankCodeStockShortage()
+	{
+		foreach (DataRow basketLine in Module1.dt1.Rows)
+		{
+			if (!string.IsNullOrWhiteSpace(Convert.ToString(basketLine["Code"])))
+			{
+				continue;
+			}
+			string articleId = Convert.ToString(basketLine["ID_ARTICLE"]);
+			string articleName = Convert.ToString(basketLine["Article"]);
+			if (string.IsNullOrWhiteSpace(articleId))
+			{
+				return new LOGICA.ApplicationLayer.Checkout.StockShortage { ArticleName = articleName };
+			}
+			using (MySqlCommand command = new MySqlCommand(
+				"SELECT ID_ARTICLE, Article, STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE = @id", Module1.cn_SQL))
+			{
+				command.Parameters.AddWithValue("@id", articleId);
+				using (MySqlDataAdapter adapter = new MySqlDataAdapter(command))
+				{
+					DataTable matches = new DataTable();
+					((DbDataAdapter)adapter).Fill(matches);
+					if (matches.Rows.Count != 1 || matches.Rows[0].IsNull("STOCK") ||
+						LOGICA.Domain.StockAvailability.IsBelowRequested(
+							matches.Rows[0]["STOCK"], basketLine["Qté"],
+							LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance))
+						return new LOGICA.ApplicationLayer.Checkout.StockShortage { ArticleName = articleName };
+				}
+			}
+		}
+		return null;
+	}
+
 	private System.Collections.Generic.IEnumerable<LOGICA.ApplicationLayer.Checkout.StockValidationRow> ReadStockValidationRows()
 	{
 		checked
@@ -12677,6 +12714,12 @@ public class Form_3_VENTE : Form
 				if (rowIndex > lastRow)
 				{
 					break;
+				}
+				// Empty barcodes were validated by exact article ID above.
+				if (string.IsNullOrWhiteSpace(Convert.ToString(Module1.dt1.Rows[rowIndex]["Code"])))
+				{
+					rowIndex++;
+					continue;
 				}
 				yield return new LOGICA.ApplicationLayer.Checkout.StockValidationRow
 				{
@@ -12869,8 +12912,9 @@ public class Form_3_VENTE : Form
 				}
 				if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 && Operators.CompareString(MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("BLOCAGE_STOCK_INSUFFISANT", false, 0).Index].SubItems[1].Text, "True", TextCompare: false) == 0)
 				{
-					var shortage = LOGICA.ApplicationLayer.Checkout.StockValidationService.FindFirstShortage(
-						new LOGICA.Infrastructure.Checkout.MySqlStockAvailabilityLookup(Module1.cn_SQL), ReadStockValidationRows(), LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance);
+					var shortage = FindFirstBlankCodeStockShortage() ??
+						LOGICA.ApplicationLayer.Checkout.StockValidationService.FindFirstShortage(
+							new LOGICA.Infrastructure.Checkout.MySqlStockAvailabilityLookup(Module1.cn_SQL), ReadStockValidationRows(), LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutSemantics.Instance);
 					if (shortage != null)
 					{
 						MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("stock insuffisant de l'article -", shortage.ArticleName), "-")), "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
