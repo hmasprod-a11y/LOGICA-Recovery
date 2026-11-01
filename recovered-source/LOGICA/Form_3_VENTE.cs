@@ -14785,7 +14785,9 @@ public class Form_3_VENTE : Form
 					{
 						break;
 					}
-					if (Operators.ConditionalCompareObjectEqual(Module1.dt1.Rows[num2]["Code"], Text_CODE.Text, TextCompare: false))
+					if (LOGICA.ApplicationLayer.Checkout.CheckoutBarcodeSelectionService.IsSameBasketArticle(
+						Module1.dt1.Rows[num2], Text_CODE.Text, Text_ID_ARTICLE.Text,
+						delegate(object left, object right) { return Operators.ConditionalCompareObjectEqual(left, right, TextCompare: false); }))
 					{
 						DataGridView1.CurrentCell = DataGridView1.Rows[num2].Cells[0];
 						DataGridView1.Rows[num2].Selected = true;
