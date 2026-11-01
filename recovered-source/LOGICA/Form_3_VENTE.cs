@@ -7696,6 +7696,23 @@ public class Form_3_VENTE : Form
 		ApplyProductListSelectionContrast();
 	}
 
+	// Family colors come from shop configuration and can be very light or dark.
+	// Choose the higher-contrast text color without changing the configured background.
+	private static Color ReadableFamilyCaptionColor(Color background)
+	{
+		double luminance = 0.2126 * LinearFamilyColorChannel(background.R)
+			+ 0.7152 * LinearFamilyColorChannel(background.G)
+			+ 0.0722 * LinearFamilyColorChannel(background.B);
+		// WCAG relative-luminance midpoint for black versus white foreground.
+		return luminance > 0.179128784747792 ? Color.Black : Color.White;
+	}
+
+	private static double LinearFamilyColorChannel(byte channel)
+	{
+		double value = channel / 255.0;
+		return value <= 0.04045 ? value / 12.92 : Math.Pow((value + 0.055) / 1.055, 2.4);
+	}
+
 	// Keep the original light-blue product selection readable regardless of inherited theme colors.
 	// Reapply after legacy Load, which resets product-list styles on data binding.
 	private void ApplyProductListSelectionContrast()
@@ -12306,7 +12323,7 @@ public class Form_3_VENTE : Form
 						int fileLineNumber2 = frame2.GetFileLineNumber();
 						ProjectData.ClearProjectError();
 					}
-					((Control)val3).ForeColor = Color.White;
+					((Control)val3).ForeColor = ReadableFamilyCaptionColor(((Control)val3).BackColor);
 					((Control)val3).Click += FAM_click;
 					((Control)FlowLayoutPanel1).Controls.Add((Control)(object)val3);
 					num12++;
@@ -12337,7 +12354,7 @@ public class Form_3_VENTE : Form
 					((Control)val4).Font = new Font("Segoe UI", 9f, (FontStyle)1);
 					string htmlColor2 = List_COLOR.Items[num15].ToString();
 					((ButtonBase)val4).BackColor = ColorTranslator.FromHtml(htmlColor2);
-					((Control)val4).ForeColor = Color.White;
+					((Control)val4).ForeColor = ReadableFamilyCaptionColor(((Control)val4).BackColor);
 					((Control)val4).Click += FAM2_click;
 					((Control)FlowLayoutPanel2).Controls.Add((Control)(object)val4);
 					num15++;
