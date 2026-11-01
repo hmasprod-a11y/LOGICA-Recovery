@@ -293,6 +293,73 @@ internal static class PortableCheckoutSmoke
             tiles.Rows.RemoveAt(1);
             Require(CheckoutArticleTileSelectionService.FindExact(tiles, tile) == null,
                 "Stale image tile must fail closed");
+            // Image tiles and barcode choosers must apply the same live-result
+            // identity checks. A tile is not a licence to select a stale row.
+            DataTable tileReordered = tiles.Clone();
+            tileReordered.Rows.Add("12", "DUP");
+            tileReordered.Rows.Add("11", "DUP");
+            Require(Object.ReferenceEquals(
+                CheckoutArticleTileSelectionService.EvaluateExact(tileReordered, tile).SelectedRow,
+                tileReordered.Rows[0]), "Reordered image tiles must resolve exact article ID");
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(tiles, tile).Status ==
+                CheckoutVariantChoiceStatus.Missing, "Missing tile must report Missing");
+            DataTable reusedTileId = tiles.Clone();
+            reusedTileId.Rows.Add("12", "NEW");
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(reusedTileId, tile).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous, "Reused tile ID with changed barcode must be ambiguous");
+            Require(CheckoutArticleTileSelectionService.FindExact(reusedTileId, tile) == null,
+                "Reused tile ID must never silently select a different barcode");
+            DataTable duplicateTileId = tiles.Clone();
+            duplicateTileId.Rows.Add("12", "DUP");
+            duplicateTileId.Rows.Add("12", "DUP");
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(duplicateTileId, tile).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous, "Repeated image tile ID must be ambiguous");
+            DataTable corruptTileRows = tiles.Clone();
+            corruptTileRows.Rows.Add("12", "DUP");
+            corruptTileRows.Rows.Add(DBNull.Value, "OTHER");
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(corruptTileRows, tile).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Corrupt unrelated tile candidate must invalidate selection");
+            Require(CheckoutArticleTileSelectionService.FindExact(corruptTileRows, tile) == null,
+                "Corrupt result must never return a valid-looking tile row");
+            DataTable missingTileSchema = new DataTable();
+            missingTileSchema.Columns.Add("ID_ARTICLE", typeof(string));
+            missingTileSchema.Rows.Add("12");
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(missingTileSchema, tile).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Missing barcode column must report invalid candidates");
+            DataTable pendingTileDeletion = tileReordered.Copy();
+            pendingTileDeletion.AcceptChanges();
+            pendingTileDeletion.Rows[0].Delete();
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(pendingTileDeletion, tile).Status ==
+                CheckoutVariantChoiceStatus.Missing,
+                "Pending-deleted tile must not be returned");
+            bool deletedTileTagRejected = false;
+            try { CheckoutArticleTileSelectionService.TagFor(pendingTileDeletion.Rows[0]); }
+            catch (InvalidOperationException) { deletedTileTagRejected = true; }
+            Require(deletedTileTagRejected, "Pending-deleted article cannot become an image tile tag");
+            DataTable imageOnlyTileRows = tiles.Clone();
+            imageOnlyTileRows.Rows.Add("13", "");
+            CheckoutArticleTileReference imageOnlyTile =
+                CheckoutArticleTileSelectionService.TagFor(imageOnlyTileRows.Rows[0]);
+            Require(imageOnlyTile.ToString() == "" &&
+                CheckoutArticleTileSelectionService.EvaluateExact(imageOnlyTileRows, imageOnlyTile).Status ==
+                    CheckoutVariantChoiceStatus.Selected,
+                "Valid image-only article must retain blank barcode");
+            DataTable blankTileId = tiles.Clone();
+            blankTileId.Rows.Add("", "DUP");
+            bool blankTileTagRejected = false;
+            try { CheckoutArticleTileSelectionService.TagFor(blankTileId.Rows[0]); }
+            catch (InvalidOperationException) { blankTileTagRejected = true; }
+            Require(blankTileTagRejected, "Blank article ID cannot become an image tile tag");
+            bool nullTileRejected = false;
+            try { CheckoutArticleTileSelectionService.EvaluateExact(tileReordered, null); }
+            catch (ArgumentNullException) { nullTileRejected = true; }
+            Require(nullTileRejected, "Null image tile reference must be rejected");
+            Require(tileReordered.Rows.Count == 2 &&
+                tileReordered.Rows[0]["ID_ARTICLE"].ToString() == "12",
+                "Image tile revalidation must never mutate live candidates");
+            Console.WriteLine("PASS modern image tile validation: reordered, stale, reused ID, duplicates, corrupt, deleted and image-only");
             Console.WriteLine("PASS portable checkout image tile identity and stale variant rejection");
             Console.WriteLine("PASS portable checkout family SQL parameter and original order");
             Console.WriteLine("PASS portable checkout guards, basket, pricing and stock validation");
