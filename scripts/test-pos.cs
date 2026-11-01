@@ -1503,6 +1503,10 @@ class PosSmoke {
      searchProperty.SetValue(form,search,null);
     }
    }
+   if(!Object.ReferenceEquals(searchProperty.GetValue(form,null),search))
+    throw new Exception("Original sales search control was not restored after shortcut regression");
+   if(search.IsDisposed || search.Parent==null)
+    throw new Exception("Shortcut regression must preserve the original search control and parent");
    Console.WriteLine("PASS Ctrl+F product-search shortcut leaves keyboard layout unchanged");
   }
  }
