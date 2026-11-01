@@ -8745,6 +8745,8 @@ public class Form_3_VENTE : Form
 		((Control)TabPage3).Name = "TabPage3";
 		DataGridView100.AllowUserToAddRows = false;
 		DataGridView100.AllowUserToResizeRows = false;
+		// Size only visible product rows so long article names stay readable without scanning the entire catalogue.
+		DataGridView100.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.DisplayedCellsExceptHeaders;
 		DataGridView100.AutoSizeColumnsMode = (DataGridViewAutoSizeColumnsMode)16;
 		DataGridView100.BackgroundColor = Color.White;
 		DataGridView100.CellBorderStyle = (DataGridViewCellBorderStyle)5;
@@ -8771,6 +8773,8 @@ public class Form_3_VENTE : Form
 		((DataGridViewColumn)Codeee).Name = "Codeee";
 		Codeee.SortMode = (DataGridViewColumnSortMode)0;
 		((DataGridViewColumn)DataGridViewTextBoxColumn1).DataPropertyName = "Article";
+		// Wrap long product names; barcode, price and stock columns keep their original display formats.
+		DataGridViewTextBoxColumn1.DefaultCellStyle.WrapMode = DataGridViewTriState.True;
 		((DataGridViewColumn)DataGridViewTextBoxColumn1).FillWeight = 10.30928f;
 		componentResourceManager.ApplyResources(DataGridViewTextBoxColumn1, "DataGridViewTextBoxColumn1");
 		((DataGridViewColumn)DataGridViewTextBoxColumn1).Name = "DataGridViewTextBoxColumn1";
