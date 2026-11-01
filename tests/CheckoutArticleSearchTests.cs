@@ -111,6 +111,17 @@ internal static class CheckoutArticleSearchTests
             throw new Exception("Unexpected search parameter count");
     }
 
+    private static void CheckExactBarcodeSql(string scannerValue)
+    {
+        const string expected = "select * from TABLE_ARTICLES WHERE Code = @code";
+        string sql = CheckoutArticleSearchQueryText.ExactBarcode();
+        if (sql != expected || sql.Contains("ORDER BY") || sql.Contains("LIKE") ||
+            (scannerValue != null && sql.Contains(scannerValue)))
+            throw new Exception("Exact barcode lookup must bind @code, keep exact equality and preserve duplicate row order");
+        if (sql.Split(new[] { "@code" }, StringSplitOptions.None).Length != 2)
+            throw new Exception("Exact barcode lookup must have exactly one parameter");
+    }
+
     public static int Main()
     {
         int cases = 0;
@@ -140,7 +151,8 @@ internal static class CheckoutArticleSearchTests
                 })
                 {
                     CheckSql(term);
-                    cases++;
+                    CheckExactBarcodeSql(term);
+                    cases += 2;
                 }
             }
         }
