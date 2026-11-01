@@ -32,14 +32,14 @@ internal static class PortableArticleSearchSmoke
         Check(3, new[] { 2 }, "length,tab1,tab2");
         Check(3, new[] { 2, 1 }, "length,tab1,tab2,images");
         const string term = "O'Hara";
-        string list = "select   *    from TABLE_ARTICLES   WHERE       Article like  '%" +
-            term + "%'       or       Code like  '%" + term + "%'        order by Article asc ";
-        string images = "select      *     from      TABLE_ARTICLES      WHERE    Article like  '%" +
-            term + "%'     and   Images <> '0.png'         order by Article asc ";
-        if (CheckoutArticleSearchQueryText.List(term) != list ||
-            CheckoutArticleSearchQueryText.Images(term) != images)
-            throw new Exception("Portable article search SQL changed");
-        Console.WriteLine("PASS .NET 10 portable checkout article search: routing, read order and SQL parity");
+        string list = CheckoutArticleSearchQueryText.List();
+        string images = CheckoutArticleSearchQueryText.Images();
+        if (!list.Contains("Article like @search") || !list.Contains("Code like @search") ||
+            !images.Contains("Article like @search") || !images.Contains("Images <> '0.png'") ||
+            list.Contains(term) || images.Contains(term) ||
+            CheckoutArticleSearchQueryText.Pattern(term) != "%O'Hara%")
+            throw new Exception("Portable article search parameterization changed");
+        Console.WriteLine("PASS .NET 10 portable checkout article search: routing, read order and parameterized SQL");
         return 0;
     }
 }

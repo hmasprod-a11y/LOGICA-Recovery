@@ -96,14 +96,19 @@ internal static class CheckoutArticleSearchTests
 
     private static void CheckSql(string term)
     {
-        // Characterization oracle: literal SQL from the recovered sale Form.
-        string legacyList = "select   *    from TABLE_ARTICLES   WHERE       Article like  '%" +
-            term + "%'       or       Code like  '%" + term + "%'        order by Article asc ";
-        string legacyImages = "select      *     from      TABLE_ARTICLES      WHERE    Article like  '%" +
-            term + "%'     and   Images <> '0.png'         order by Article asc ";
-        if (legacyList != CheckoutArticleSearchQueryText.List(term) ||
-            legacyImages != CheckoutArticleSearchQueryText.Images(term))
-            throw new Exception("Article search SQL text changed for: " + term);
+        const string expectedList = "select   *    from TABLE_ARTICLES   WHERE       Article like @search       or       Code like @search        order by Article asc ";
+        const string expectedImages = "select      *     from      TABLE_ARTICLES      WHERE    Article like @search     and   Images <> '0.png'         order by Article asc ";
+        string list = CheckoutArticleSearchQueryText.List();
+        string images = CheckoutArticleSearchQueryText.Images();
+        if (list != expectedList || images != expectedImages)
+            throw new Exception("Article search SQL placeholders or ordering changed");
+        if (CheckoutArticleSearchQueryText.Pattern(term) != "%" + term + "%")
+            throw new Exception("LIKE wildcard matching changed");
+        if (list.Contains("O'Hara") || images.Contains("O'Hara"))
+            throw new Exception("Search text interpolated into SQL");
+        if (list.Split(new[] { "@search" }, StringSplitOptions.None).Length != 3 ||
+            images.Split(new[] { "@search" }, StringSplitOptions.None).Length != 2)
+            throw new Exception("Unexpected search parameter count");
     }
 
     public static int Main()
@@ -145,7 +150,7 @@ internal static class CheckoutArticleSearchTests
             CultureInfo.CurrentUICulture = oldUi;
         }
         Console.WriteLine("PASS checkout article search: " + cases +
-            " legacy route/SQL parity cases across 3 cultures, failures and repeated tab reads");
+            " legacy routing and parameterized SQL cases across 3 cultures, failures and repeated tab reads");
         return 0;
     }
 }
