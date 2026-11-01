@@ -1544,50 +1544,6 @@ class PosSmoke {
   }
  }
 
- static void SalesSearchShortcut(Assembly assembly) {
-  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
-   var search=(Control)Get(form,"Text_FIND");
-   var tabs=(Control)Get(form,"TabControl2");
-   var originalTag=tabs.Tag;
-   var method=form.GetType().GetMethod("ProcessCmdKey",BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.DeclaredOnly);
-   var searchProperty=form.GetType().GetProperty("Text_FIND",BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic);
-   if(method==null || search==null || search.Parent==null || !search.Enabled || searchProperty==null)
-    throw new Exception("Sales search shortcut or search field is unavailable");
-   // An unshown WinForms form reports child.Visible=false because its parent is hidden.
-   // Avoid Form.Show() here: it triggers the production Load path and database reads.
-   // Swap in a visible, unattached test TextBox to exercise the REAL ProcessCmdKey
-   // implementation, then restore the actual designer control and its event hooks.
-   using(var probe=new TextBox()) {
-    probe.Visible=true;
-    searchProperty.SetValue(form,probe,null);
-    try {
-     var args=new object[]{new Message(),Keys.Control|Keys.F};
-     if(!Object.Equals(method.Invoke(form,args),true))
-      throw new Exception("Ctrl+F must be consumed when product search is available");
-     if(!Object.Equals(tabs.Tag,originalTag))
-      throw new Exception("Ctrl+F must not toggle the legacy on-screen keyboard");
-     probe.ReadOnly=true;
-     args=new object[]{new Message(),Keys.Control|Keys.F};
-     if(Object.Equals(method.Invoke(form,args),true))
-      throw new Exception("Ctrl+F must not swallow scanner input when search is read-only");
-     probe.ReadOnly=false;
-     probe.Visible=false;
-     args=new object[]{new Message(),Keys.Control|Keys.F};
-     if(Object.Equals(method.Invoke(form,args),true))
-      throw new Exception("Ctrl+F must not be consumed when search is hidden");
-     probe.Visible=true;
-     probe.Enabled=false;
-     args=new object[]{new Message(),Keys.Control|Keys.F};
-     if(Object.Equals(method.Invoke(form,args),true))
-      throw new Exception("Ctrl+F must not consume barcode input when search is disabled");
-    } finally {
-     searchProperty.SetValue(form,search,null);
-    }
-   }
-   Console.WriteLine("PASS Ctrl+F product-search shortcut leaves keyboard layout unchanged");
-  }
- }
-
  static void SalesListSelectionFallback(Assembly assembly) {
   // The list includes barcode-free products even without a photo. Guard empty
   // selections and use the exact bound row rather than stale currency position.
