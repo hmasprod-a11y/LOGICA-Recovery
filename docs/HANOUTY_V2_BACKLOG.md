@@ -5,7 +5,7 @@ Source of truth: LOGICA V1 requirements, current recovered Windows .NET Framewor
 | Priority | Workstream | Acceptance gate | Current evidence / next action |
 | --- | --- | --- | --- |
 | P0 | Checkout: stock, ticket, payment and transaction | Original Windows POS + isolated MariaDB, characterization, portable core and failure injection | Posting/finalization already extracted; continue targeted UI/data access boundaries |
-| P0 | Checkout article search | List and image branches, three-character threshold, SQL text and exception timing match original | Extract routing + SQL text without changing query semantics; cover .NET 10 and Windows |
+| P0 | Checkout article search | List and image branches, three-character threshold, SQL text and exception timing match original | Routing extraction merged in PR #61; parameterized search with isolated MariaDB regression in follow-up PR |
 | P0 | Inventory/catalogue | Stock movement, barcode variants, image selection, atomic edits | Existing partial coverage; verify missing-file image policy separately before functional change |
 | P0 | Cash, access control and audit | Permissions denial, cash reconciliation, audit and rollback tests | Cash recount partially portable; full role and session acceptance pending |
 | P1 | Customers, suppliers, purchases, reports | Balance reconciliation and isolated database fixtures | Client settlement partially portable; remaining modules need inventory |
@@ -17,8 +17,8 @@ Source of truth: LOGICA V1 requirements, current recovered Windows .NET Framewor
 
 The legacy sale screen currently searches all products by Article or Code in list mode and filters only `Images <> '0.png'` in image mode. The image mode can still show an item whose image file is missing (with a fallback image). This extraction preserves that behavior; the desired stricter image-only policy is a separate **functional change** requiring fixture and UI acceptance.
 
-The original SQL concatenates raw search text, including quotes. The new query-text class deliberately preserves byte-for-byte SQL for parity, **not** because it is safe: parameterization and LIKE escaping require a separately approved behavior/security fix and database regression. Do not treat characterization as a security pass.
+PR #61 preserved unsafe SQL text as a characterization baseline. The follow-up security PR binds search input as a MySQL parameter in both list and image modes. It intentionally fixes quote handling and injection while retaining LIKE wildcard matching (`%` and `_`) and original image-mode SQL filtering. Isolated MariaDB tests must pass before merging; image-file existence filtering remains a separate task.
 
 ## Next resume point
 
-After Windows and portable CI pass on the article-search PR: inspect sale search latency, parameterization risks, image-file existence policy, and duplicate-barcode chooser. Keep original checkout transaction and printer-failure behavior under explicit regression before any changes.
+After Windows and portable CI pass on the article-search PR: after parameterization CI, inspect sale search latency, image-file existence policy, and duplicate-barcode chooser. Keep original checkout transaction and printer-failure behavior under explicit regression before any changes.

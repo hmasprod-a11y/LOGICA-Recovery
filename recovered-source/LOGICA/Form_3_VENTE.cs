@@ -15157,14 +15157,16 @@ public class Form_3_VENTE : Form
 					delegate
 					{
 					dt_LA.Clear();
-					da_LA = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.List(Text_FIND.Text), Module1.cn_SQL);
+					da_LA = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.List(), Module1.cn_SQL);
+					da_LA.SelectCommand.Parameters.AddWithValue("@search", LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Pattern(Text_FIND.Text));
 					((DbDataAdapter)(object)da_LA).Fill(dt_LA);
 					DataGridView100.DataSource = dt_LA;
 					},
 					delegate
 					{
 					dt_PIC.Clear();
-					da_PIC = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Images(Text_FIND.Text), Module1.cn_SQL);
+					da_PIC = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Images(), Module1.cn_SQL);
+					da_PIC.SelectCommand.Parameters.AddWithValue("@search", LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Pattern(Text_FIND.Text));
 					((DbDataAdapter)(object)da_PIC).Fill(dt_PIC);
 					((Control)FlowLayout_ARTICLES).Controls.Clear();
 					int num = dt_PIC.Rows.Count - 1;
