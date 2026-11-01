@@ -1470,6 +1470,16 @@ class PosSmoke {
       throw new Exception("Ctrl+F must be consumed when product search is available");
      if(!Object.Equals(tabs.Tag,originalTag))
       throw new Exception("Ctrl+F must not toggle the legacy on-screen keyboard");
+     probe.ReadOnly=true;
+     args=new object[]{new Message(),Keys.Control|Keys.F};
+     if(Object.Equals(method.Invoke(form,args),true))
+      throw new Exception("Ctrl+F must not swallow scanner input when search is read-only");
+     probe.ReadOnly=false;
+     probe.Visible=false;
+     args=new object[]{new Message(),Keys.Control|Keys.F};
+     if(Object.Equals(method.Invoke(form,args),true))
+      throw new Exception("Ctrl+F must not be consumed when search is hidden");
+     probe.Visible=true;
      probe.Enabled=false;
      args=new object[]{new Message(),Keys.Control|Keys.F};
      if(Object.Equals(method.Invoke(form,args),true))
