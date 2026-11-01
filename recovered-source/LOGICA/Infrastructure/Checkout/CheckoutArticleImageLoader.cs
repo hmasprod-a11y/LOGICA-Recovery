@@ -18,8 +18,15 @@ namespace LOGICA.Infrastructure.Checkout
             {
                 using (var stream = new FileStream(Path.Combine(imageDirectory, fileName),
                     FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
-                using (var source = Image.FromStream(stream))
-                    return new Bitmap(source); // Own the pixels after closing the file.
+                {
+                    Image source;
+                    try { source = Image.FromStream(stream); }
+                    // GDI+ reports some invalid image formats as OutOfMemoryException.
+                    // Only treat that exception as a bad file at the decoder boundary.
+                    catch (OutOfMemoryException) { return null; }
+                    using (source)
+                        return new Bitmap(source); // Own pixels after closing the file.
+                }
             }
             catch (IOException) { return null; }
             catch (UnauthorizedAccessException) { return null; }
