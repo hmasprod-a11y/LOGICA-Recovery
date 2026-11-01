@@ -14590,7 +14590,8 @@ public class Form_3_VENTE : Form
 				return;
 			}
 			Module1.dt_find.Clear();
-			Module1.da_find = new MySqlDataAdapter("select * from TABLE_ARTICLES WHERE Code =  '" + Text_CODE.Text + "'    ", Module1.cn_SQL);
+			Module1.da_find = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.ExactBarcode(), Module1.cn_SQL);
+			Module1.da_find.SelectCommand.Parameters.AddWithValue("@code", Text_CODE.Text);
 			((DbDataAdapter)(object)Module1.da_find).Fill(Module1.dt_find);
 			if (Module1.dt_find.Rows.Count != 0)
 			{
