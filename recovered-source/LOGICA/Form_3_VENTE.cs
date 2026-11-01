@@ -12483,6 +12483,29 @@ public class Form_3_VENTE : Form
 	{
 	}
 
+	// Search/family refreshes can happen thousands of times during a cashier shift.
+	// Controls.Clear only detaches image tiles; it does not release their GDI bitmaps.
+	// Each tile image is loaded as a new Bitmap and is owned by that tile.
+	private static void ClearArticleImageTiles(FlowLayoutPanel tiles)
+	{
+		while (tiles.Controls.Count > 0)
+		{
+			Control tile = tiles.Controls[0];
+			tiles.Controls.RemoveAt(0);
+			ButtonBase button = tile as ButtonBase;
+			Image ownedImage = button == null ? null : button.Image;
+			if (button != null)
+			{
+				button.Image = null;
+			}
+			tile.Dispose();
+			if (ownedImage != null)
+			{
+				ownedImage.Dispose();
+			}
+		}
+	}
+
 	public void FAM2_click(object sender, EventArgs e)
 	{
 		//IL_0008: Unknown result type (might be due to invalid IL or missing references)
@@ -12507,7 +12530,7 @@ public class Form_3_VENTE : Form
 				val = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Family(), Module1.cn_SQL);
 				val.SelectCommand.Parameters.AddWithValue("@family", Conversions.ToString(NewLateBinding.LateGet(sender, null, "Text", new object[0], null, null, null)));
 				((DbDataAdapter)(object)val).Fill(dataTable);
-				((Control)FlowLayout_ARTICLES).Controls.Clear();
+				ClearArticleImageTiles(FlowLayout_ARTICLES);
 				int num = dataTable.Rows.Count - 1;
 				int num2 = 0;
 				while (true)
@@ -12517,6 +12540,13 @@ public class Form_3_VENTE : Form
 					if (num3 > num4)
 					{
 						break;
+					}
+					LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference tileReference =
+						LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(dataTable.Rows[num2]);
+					if (tileReference == null)
+					{
+						num2++;
+						continue;
 					}
 					Bitmap articleImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.Load(
 						Module1._CHEMIN_FOLDER + "\\bd\\images", dataTable.Rows[num2]["Images"].ToString());
@@ -12529,7 +12559,7 @@ public class Form_3_VENTE : Form
 					button_RJ_ARTICLE._COLOR_PRIX = ((TextBoxBase)Text_THEME).BackColor;
 					((Control)button_RJ_ARTICLE).Name = "Button_ARTICLE_" + Conversions.ToString(num2);
 					((ButtonBase)button_RJ_ARTICLE).Text = dataTable.Rows[num2]["Article"].ToString();
-					((Control)button_RJ_ARTICLE).Tag = LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(dataTable.Rows[num2]);
+					((Control)button_RJ_ARTICLE).Tag = tileReference;
 					button_RJ_ARTICLE._PRIX = Strings.FormatNumber(dataTable.Rows[num2]["PRIX_V_1"].ToString());
 					button_RJ_ARTICLE._BackgroundColor = Color.White;
 					button_RJ_ARTICLE._BorderColor = ((TextBoxBase)Text_THEME).BackColor;
@@ -12587,7 +12617,13 @@ public class Form_3_VENTE : Form
 		{
 			object imageTag = NewLateBinding.LateGet(sender, null, "tag", new object[0], null, null, null);
 			LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference imageArticle = imageTag as LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference;
-			Text_CODE.Text = imageArticle == null ? Conversions.ToString(imageTag) : imageArticle.Code;
+			// Never reinterpret a malformed image tag as a scanner barcode. A stale
+			// tile must fail closed rather than sell the last scanned article.
+			if (imageArticle == null || string.IsNullOrWhiteSpace(imageArticle.ArticleId) || !Button_FIND.Enabled)
+			{
+				return;
+			}
+			Text_CODE.Text = imageArticle.Code;
 			Button_FIND_Click(RuntimeHelpers.GetObjectValue(sender), e);
 		}
 		catch (Exception ex)
@@ -15287,7 +15323,7 @@ public class Form_3_VENTE : Form
 					da_PIC = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Images(), Module1.cn_SQL);
 					da_PIC.SelectCommand.Parameters.AddWithValue("@search", LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Pattern(Text_FIND.Text));
 					((DbDataAdapter)(object)da_PIC).Fill(dt_PIC);
-					((Control)FlowLayout_ARTICLES).Controls.Clear();
+					ClearArticleImageTiles(FlowLayout_ARTICLES);
 					int num = dt_PIC.Rows.Count - 1;
 					int num2 = 0;
 					while (true)
@@ -15296,6 +15332,13 @@ public class Form_3_VENTE : Form
 						int num4 = num;
 						if (num3 <= num4)
 						{
+							LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference tileReference =
+								LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(dt_PIC.Rows[num2]);
+							if (tileReference == null)
+							{
+								num2++;
+								continue;
+							}
 							Bitmap articleImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.Load(
 								Module1._CHEMIN_FOLDER + "\\bd\\images", dt_PIC.Rows[num2]["Images"].ToString());
 							if (articleImage == null)
@@ -15307,7 +15350,7 @@ public class Form_3_VENTE : Form
 							button_RJ_ARTICLE._COLOR_PRIX = ((TextBoxBase)Text_THEME).BackColor;
 							((Control)button_RJ_ARTICLE).Name = "Button_ARTICLE_" + Conversions.ToString(num2);
 							((ButtonBase)button_RJ_ARTICLE).Text = dt_PIC.Rows[num2]["Article"].ToString();
-							((Control)button_RJ_ARTICLE).Tag = LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(dt_PIC.Rows[num2]);
+							((Control)button_RJ_ARTICLE).Tag = tileReference;
 							button_RJ_ARTICLE._PRIX = Strings.FormatNumber(dt_PIC.Rows[num2]["PRIX_V_1"].ToString());
 							button_RJ_ARTICLE._BackgroundColor = Color.White;
 							button_RJ_ARTICLE._BorderColor = ((TextBoxBase)Text_THEME).BackColor;
