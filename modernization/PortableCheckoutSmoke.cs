@@ -67,6 +67,10 @@ internal static class PortableCheckoutSmoke
             StockShortage shortage = StockValidationService.FindFirstShortage(lookup, rows, port);
             Require(shortage != null && Object.Equals(shortage.ArticleName, "First"), "First shortage name");
             Require(lookup.Calls == 1 && lookup.Names == 1 && quantities == 1, "Lazy first-shortage order");
+            const string familySql = "select      *     from      TABLE_ARTICLES        WHERE      Famille = @family            order by Article asc ";
+            Require(String.Equals(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Family(), familySql,
+                StringComparison.Ordinal), "Family tile SQL must preserve exact equality and bound parameter");
+            Console.WriteLine("PASS portable checkout family SQL parameter and original order");
             Console.WriteLine("PASS portable checkout guards, basket, pricing and stock validation");
             return 0;
         }
