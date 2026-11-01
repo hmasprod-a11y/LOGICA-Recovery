@@ -319,6 +319,28 @@ internal static class CheckoutBarcodeSelectionTests
                     delegate { return liveDuplicate; }).Status != CheckoutVariantChoiceStatus.Ambiguous)
                     throw new Exception("Duplicate live ID must not reach the basket");
                 checks++;
+                // A misfiltered exact-barcode SQL result must remain invalid
+                // even if it also contains a duplicate article identity.
+                // Never let duplicate-ID classification mask the query breach.
+                DataTable duplicateAndForeignCode = liveReordered.Copy();
+                duplicateAndForeignCode.Rows[0]["ID_ARTICLE"] = "2";
+                duplicateAndForeignCode.Rows[1]["Code"] = "FOREIGN-CODE";
+                int foreignSqlReads = 0;
+                CheckoutVariantChoiceResult invalidBeforeAmbiguous =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh("ABC-001", displayedLive,
+                        delegate(DataTable shown) { return 1; },
+                        delegate { foreignSqlReads++; return duplicateAndForeignCode; });
+                if (invalidBeforeAmbiguous.Status != CheckoutVariantChoiceStatus.InvalidCandidates ||
+                    invalidBeforeAmbiguous.SelectedRow != null || foreignSqlReads != 1)
+                    throw new Exception("Foreign SQL barcode must outrank duplicate-ID ambiguity");
+                checks++;
+                // The original modal fallback still uses only the displayed
+                // catalogue and does not execute the opt-in local SQL callback.
+                if (CheckoutBarcodeSelectionService.Select(Candidates(),
+                        delegate(DataTable shown) { return 1; }) == null ||
+                    foreignSqlReads != 1)
+                    throw new Exception("Legacy scanner fallback must not issue refresh SQL");
+                checks++;
                 DataTable liveInvalid = liveReordered.Copy();
                 liveInvalid.Rows[0]["ID_ARTICLE"] = DBNull.Value;
                 if (CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
