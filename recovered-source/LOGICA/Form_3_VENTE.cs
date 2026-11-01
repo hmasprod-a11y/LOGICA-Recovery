@@ -15158,6 +15158,13 @@ public class Form_3_VENTE : Form
 
 	private void Label_QTE_KeyPress(object sender, KeyPressEventArgs e)
 	{
+		// Keep the original numeric/backspace/minus input, but reject a second
+		// decimal separator before it can reach the checkout quantity parser.
+		if (e.KeyChar == '.' && Label_QTE.Text.IndexOf('.') >= 0)
+		{
+			e.Handled = true;
+			return;
+		}
 		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
 		{
 			e.Handled = true;
