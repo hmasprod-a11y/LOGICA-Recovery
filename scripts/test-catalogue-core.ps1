@@ -16,6 +16,8 @@ try {
         'recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptPreviewService.cs',
         'recovered-source/LOGICA/Application/Inventory/StockCountVarianceService.cs',
         'tests/BusinessOperationsSmoke.cs',
+        'recovered-source/LOGICA/Application/Inventory/StockCountCoverageService.cs',
+        'tests/StockCountCoverageSmoke.cs',
         'modernization/PortableCatalogueSmoke.cs',
         'tests/CatalogueCoreIsolationEntry.cs'
     ) | ForEach-Object { Join-Path $root $_ }
