@@ -18,6 +18,9 @@
     <Compile Include="../tests/StockCountCoverageSmoke.cs" Link="Tests/StockCountCoverageSmoke.cs" />
     <Compile Include="../tests/BusinessOperationsSmoke.cs" Link="Tests/BusinessOperationsSmoke.cs" />
     <Compile Include="../tests/BusinessOperationsSafetySmoke.cs" Link="Tests/BusinessOperationsSafetySmoke.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockCountFreshnessService.cs" Link="Inventory/StockCountFreshnessService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptSupplierValidationService.cs" Link="Purchasing/PurchaseReceiptSupplierValidationService.cs" />
+    <Compile Include="../tests/BusinessSnapshotFreshnessSmoke.cs" Link="Tests/BusinessSnapshotFreshnessSmoke.cs" />
     <Compile Include="BusinessOperationsEntry.cs" />
   </ItemGroup>
 </Project>
