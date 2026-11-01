@@ -80,6 +80,34 @@ internal static class ReceiptArticleSelectionSmoke
             Check(ReceiptArticleSelectionService.Resolve(empty, "A") == null,
                 "unknown selected article returns no row");
 
+            // The local barcode query is expected to contain exactly one Code.
+            // A corrupt/mixed query must not assign an unrelated variant's
+            // purchase price, even when an explicit grid ID was supplied.
+            var mixedCodes = Matches();
+            mixedCodes.Rows[1]["Code"] = "OTHER";
+            Check(ReceiptArticleSelectionService.Resolve(mixedCodes, "A") == null,
+                "mixed barcode lookup rejects first explicit variant");
+            Check(ReceiptArticleSelectionService.Resolve(mixedCodes, "B") == null,
+                "mixed barcode lookup rejects second explicit variant");
+            Check(ReceiptArticleSelectionService.Resolve(mixedCodes, null) == null,
+                "mixed barcode lookup rejects scanner selection");
+            Check(ReceiptArticleSelectionService.Resolve(mixedCodes, "MISSING") == null,
+                "mixed barcode lookup never falls back to another article");
+            var blankCodes = Matches();
+            blankCodes.Rows[0]["Code"] = "";
+            blankCodes.Rows[1]["Code"] = "";
+            Check(Object.ReferenceEquals(ReceiptArticleSelectionService.Resolve(blankCodes, "B"),
+                blankCodes.Rows[1]), "explicit image-free blank-code article retains exact ID");
+            Check(ReceiptArticleSelectionService.Resolve(blankCodes, null) == null,
+                "ambiguous blank-code scan cannot silently select first article");
+            var ordinalCodes = Matches();
+            ordinalCodes.Rows[1]["Code"] = "same";
+            Check(ReceiptArticleSelectionService.Resolve(ordinalCodes, "A") == null,
+                "barcode matching remains ordinal and case-sensitive");
+            ordinalCodes.Rows[1]["Code"] = "SAME ";
+            Check(ReceiptArticleSelectionService.Resolve(ordinalCodes, "B") == null,
+                "barcode matching does not silently trim variant identity");
+
             var duplicateId = Matches();
             duplicateId.Rows[1]["ID_ARTICLE"] = "A";
             Check(ReceiptArticleSelectionService.Resolve(duplicateId, "A") == null,
@@ -200,6 +228,17 @@ internal static class ReceiptArticleSelectionSmoke
 
             // The real receipt line grid must honor the clicked/edited row,
             // not CurrentCell, and must recheck article identity after a modal.
+            // Keyboard Enter and CellEnter now use the same explicit event-row
+            // bounds as mouse clicks; a stale CurrentCell must not be used.
+            Check(ReceiptLineGridGuard.HasExistingRow(2, 3),
+                "keyboard selection may target last filtered result");
+            Check(!ReceiptLineGridGuard.HasExistingRow(-1, 3),
+                "keyboard selection cannot act on a column header");
+            Check(!ReceiptLineGridGuard.HasExistingRow(0, 0),
+                "keyboard selection cannot act on empty results");
+            Check(!ReceiptLineGridGuard.HasExistingRow(3, 3),
+                "keyboard selection cannot act on stale out-of-range cell");
+
             Check(ReceiptLineGridGuard.HasExistingRow(0, 2),
                 "first receipt line is selectable");
             Check(ReceiptLineGridGuard.HasExistingRow(1, 2),
