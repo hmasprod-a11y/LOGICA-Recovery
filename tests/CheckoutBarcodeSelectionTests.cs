@@ -459,6 +459,40 @@ internal static class CheckoutBarcodeSelectionTests
                     throw new Exception("Refreshed scanner candidates must all match the scanned barcode");
                 checks++;
 
+                // An exact-barcode SQL callback returning only unrelated IDs
+                // must be InvalidCandidates, not a benign Missing selection.
+                // The latter could incorrectly trigger a legacy fallback.
+                DataTable wrongOnlyRefresh = liveReordered.Clone();
+                wrongOnlyRefresh.ImportRow(liveReordered.Rows[0]);
+                wrongOnlyRefresh.Rows[0]["ID_ARTICLE"] = "NOT-SELECTED";
+                wrongOnlyRefresh.Rows[0]["Code"] = "WRONG-SQL-FILTER";
+                CheckoutVariantChoiceResult wrongOnlyResult =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh("ABC-001", displayedLive,
+                        delegate(DataTable dialogRows) { return 1; },
+                        delegate { return wrongOnlyRefresh; });
+                if (wrongOnlyResult.Status != CheckoutVariantChoiceStatus.InvalidCandidates ||
+                    wrongOnlyResult.SelectedRow != null)
+                    throw new Exception("Wrong-only SQL refresh must be invalid, not missing");
+                checks++;
+                DataTable trulyMissingRefresh = liveReordered.Clone();
+                CheckoutVariantChoiceResult trulyMissingResult =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh("ABC-001", displayedLive,
+                        delegate(DataTable dialogRows) { return 1; },
+                        delegate { return trulyMissingRefresh; });
+                if (trulyMissingResult.Status != CheckoutVariantChoiceStatus.Missing ||
+                    trulyMissingResult.SelectedRow != null)
+                    throw new Exception("Empty exact-barcode refresh must remain Missing");
+                checks++;
+                DataTable nullCodeRefresh = liveReordered.Clone();
+                nullCodeRefresh.ImportRow(liveReordered.Rows[0]);
+                nullCodeRefresh.Rows[0]["Code"] = DBNull.Value;
+                if (CheckoutBarcodeSelectionService.SelectWithRefresh("ABC-001", displayedLive,
+                    delegate(DataTable dialogRows) { return 1; },
+                    delegate { return nullCodeRefresh; }).Status !=
+                    CheckoutVariantChoiceStatus.InvalidCandidates)
+                    throw new Exception("SQL NULL barcode must not masquerade as missing scanner variant");
+                checks++;
+
                 DataTable scanBlankDisplayed = Candidates();
                 scanBlankDisplayed.Rows.RemoveAt(2);
                 scanBlankDisplayed.Rows.RemoveAt(1);
