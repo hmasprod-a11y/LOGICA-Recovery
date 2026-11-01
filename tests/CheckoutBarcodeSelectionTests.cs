@@ -471,6 +471,46 @@ internal static class CheckoutBarcodeSelectionTests
                     throw new Exception("Blank image-only barcode must not enter the scanner path");
                 checks++;
 
+                // SQL schema TABLE_ARTICLES.Code permits NULL. This is a valid
+                // image-only tile, not a scanner barcode. Verify the exact
+                // production selection services in all three POS cultures.
+                DataTable imageNull = Candidates();
+                imageNull.Rows.Clear();
+                imageNull.Columns.Add("REMISE", typeof(decimal));
+                imageNull.Columns.Add("TAUX_TVA", typeof(decimal));
+                imageNull.Rows.Add("IMG-NULL", DBNull.Value, "Image only", 10m, 0m, 20m);
+                CheckoutArticleTileReference imageNullTile =
+                    CheckoutArticleTileSelectionService.TagFor(imageNull.Rows[0]);
+                if (imageNullTile.Code != "" || imageNullTile.ArticleId != "IMG-NULL" ||
+                    CheckoutArticleTileSelectionService.FindExact(imageNull, imageNullTile) != imageNull.Rows[0] ||
+                    !imageNull.Rows[0].IsNull("Code"))
+                    throw new Exception("Nullable image barcode must retain original catalogue identity");
+                checks++;
+                DataTable imageNullLive = imageNull.Copy();
+                imageNullLive.Rows[0]["Prix_V_1"] = 15m;
+                imageNullLive.Rows[0]["REMISE"] = 10m;
+                imageNullLive.Rows[0]["TAUX_TVA"] = 7m;
+                CheckoutVariantChoiceResult imageNullChoice =
+                    CheckoutSelectionFlowService.ChooseImageWithRefresh(imageNullTile,
+                        delegate { return imageNullLive; });
+                if (imageNullChoice.Status != CheckoutVariantChoiceStatus.Selected ||
+                    imageNullChoice.SelectedRow != imageNullLive.Rows[0] ||
+                    (decimal)imageNullChoice.SelectedRow["Prix_V_1"] != 15m ||
+                    (decimal)imageNullChoice.SelectedRow["REMISE"] != 10m ||
+                    (decimal)imageNullChoice.SelectedRow["TAUX_TVA"] != 7m)
+                    throw new Exception("Nullable image barcode must refresh price, discount and TVA by article ID");
+                checks++;
+                if (CheckoutBarcodeSelectionService.Select(imageNull, null) != null ||
+                    CheckoutVariantSnapshotService.EvaluateSnapshot(imageNull).Status !=
+                        CheckoutVariantSnapshotReadStatus.InvalidCandidates)
+                    throw new Exception("Scanner must continue rejecting SQL NULL barcode");
+                checks++;
+                imageNullLive.Rows[0]["Code"] = "REASSIGNED";
+                if (CheckoutArticleTileSelectionService.EvaluateExact(imageNullLive, imageNullTile).Status !=
+                    CheckoutVariantChoiceStatus.Ambiguous)
+                    throw new Exception("Image-only article barcode reassignment must fail closed");
+                checks++;
+
                 rows.Rows.RemoveAt(2);
                 rows.Rows.RemoveAt(1);
                 if (CheckoutBarcodeSelectionService.Select(rows, null) != rows.Rows[0])
