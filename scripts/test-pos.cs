@@ -1603,6 +1603,17 @@ class PosSmoke {
      qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
      if(quantity.Text!="23.5")
       throw new Exception("Fractional keypad input must preserve decimal text");
+     digit.Text=".";
+     qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
+     if(quantity.Text!="23.5")
+      throw new Exception("Repeated decimal key must not create an invalid quantity");
+     qtyReset.Invoke(form,new object[]{form,EventArgs.Empty});
+     digit.Text=".";
+     qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
+     digit.Text="5";
+     qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
+     if(quantity.Text!="0.5")
+      throw new Exception("Fractional quantity must start with a leading zero");
      qtyReset.Invoke(form,new object[]{form,EventArgs.Empty});
      digit.Text="7";
      qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
@@ -1622,8 +1633,16 @@ class PosSmoke {
     if(tabs.Height!=80||!Object.Equals(tabs.Tag,"1"))
      throw new Exception("Normal keyboard toggle must retain the legacy height calculation");
     keyboardButton.Invoke(form,new object[]{form,EventArgs.Empty});
-    if(tabs.Height!=panel.Height||!Object.Equals(tabs.Tag,""))
-     throw new Exception("Closing keyboard must restore original product list height");
+    if(tabs.Height!=keyboard.Height+90||!Object.Equals(tabs.Tag,""))
+     throw new Exception("Closing keyboard must restore the exact pre-keyboard height at DPI scale");
+    // Reopen and close at a different size; stale cached heights must not leak.
+    tabs.Height=keyboard.Height+115;
+    keyboardButton.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(tabs.Height!=105||!Object.Equals(tabs.Tag,"1"))
+     throw new Exception("Keyboard must shrink the list by its actual height");
+    keyboardButton.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(tabs.Height!=keyboard.Height+115||!Object.Equals(tabs.Tag,""))
+     throw new Exception("Keyboard must restore the newly measured product list height");
    } finally {
     quantity.Text=oldQty;
     quantity.BackColor=oldColor;
