@@ -1614,6 +1614,14 @@ class PosSmoke {
      qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
      if(quantity.Text!="0.5")
       throw new Exception("Fractional quantity must start with a leading zero");
+     // Unexpected button captions must not corrupt the numeric quantity.
+     foreach(string invalid in new string[]{"", "X", "12", "-", ",", " "}) {
+      string before=quantity.Text;
+      digit.Text=invalid;
+      qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
+      if(quantity.Text!=before)
+       throw new Exception("Invalid keypad caption changed quantity: "+invalid);
+     }
      qtyReset.Invoke(form,new object[]{form,EventArgs.Empty});
      digit.Text="7";
      qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
