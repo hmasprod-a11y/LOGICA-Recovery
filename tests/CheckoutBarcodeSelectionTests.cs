@@ -249,6 +249,41 @@ internal static class CheckoutBarcodeSelectionTests
                     (decimal)freshChoice.SelectedRow["REMISE"]) != -71.4m)
                     throw new Exception("Refreshed variant preserves sale and return net values");
                 checks++;
+                // The opt-in SQL-refresh adapter must not silently reuse the
+                // mutable modal table and present stale pricing as a live read.
+                int sameTableReads = 0;
+                CheckoutVariantChoiceResult sameTable =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
+                        delegate(DataTable shown) { return 1; },
+                        delegate { sameTableReads++; return displayedLive; });
+                if (sameTable.Status != CheckoutVariantChoiceStatus.InvalidCandidates ||
+                    sameTable.SelectedRow != null || sameTableReads != 1)
+                    throw new Exception("A same-table refresh must fail closed");
+                checks++;
+                DataTable reloadedCopy = displayedLive.Copy();
+                reloadedCopy.Rows[1]["Prix_V_1"] = 55m;
+                reloadedCopy.Rows[1]["REMISE"] = 20m;
+                reloadedCopy.Rows[1]["TAUX_TVA"] = 6m;
+                CheckoutVariantChoiceResult copiedRefresh =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
+                        delegate(DataTable shown) { return 1; },
+                        delegate { return reloadedCopy; });
+                if (copiedRefresh.Status != CheckoutVariantChoiceStatus.Selected ||
+                    !Object.ReferenceEquals(copiedRefresh.SelectedRow, reloadedCopy.Rows[1]) ||
+                    (decimal)copiedRefresh.SelectedRow["Prix_V_1"] != 55m ||
+                    (decimal)copiedRefresh.SelectedRow["REMISE"] != 20m ||
+                    (decimal)copiedRefresh.SelectedRow["TAUX_TVA"] != 6m)
+                    throw new Exception("Distinct live table must preserve refreshed price, discount and tax");
+                checks++;
+                // The existing real WinForms Select path intentionally has no
+                // second SQL query yet. It must remain functional and distinct
+                // from the strict opt-in refresh contract.
+                DataTable legacyFallback = Candidates();
+                if (!Object.ReferenceEquals(CheckoutBarcodeSelectionService.Select(
+                    legacyFallback, delegate(DataTable shown) { return 1; }),
+                    legacyFallback.Rows[1]))
+                    throw new Exception("Original Windows modal fallback must keep working");
+                checks++;
                 DataTable liveMissing = liveReordered.Copy();
                 liveMissing.Rows.RemoveAt(1);
                 if (CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
