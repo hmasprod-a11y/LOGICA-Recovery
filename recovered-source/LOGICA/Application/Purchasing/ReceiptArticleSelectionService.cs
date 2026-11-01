@@ -17,6 +17,15 @@ namespace LOGICA.ApplicationLayer.Purchasing
             return selectedArticleId == null && barcodeMatches.Rows.Count == 0;
         }
 
+        // The scanner must not query the blank barcode shared by unrelated
+        // products. An explicit article-grid click is different: its ID_ARTICLE
+        // disambiguates even a genuinely barcode-free product. The real receipt
+        // Find button calls this before its existing local catalogue query.
+        internal static bool ShouldLookupBarcode(string code, string selectedArticleId)
+        {
+            return selectedArticleId != null || !String.IsNullOrWhiteSpace(code);
+        }
+
         // Returns null on missing, ambiguous, deleted or malformed rows.
         // No SQL, price, quantity or stock mutations.
         internal static DataRow Resolve(DataTable barcodeMatches, string selectedArticleId)
