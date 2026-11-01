@@ -24,5 +24,7 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Build offline licensing core
         run: dotnet build licensing/Hanouty.Licensing.Core/Hanouty.Licensing.Core.csproj -c Release --nologo
+      - name: Build private offline issuer
+        run: dotnet build licensing/Hanouty.Licensing.Issuer/Hanouty.Licensing.Issuer.csproj -c Release --nologo
       - name: Run signing and clock-drift regression
         run: dotnet run --project licensing/Hanouty.Licensing.Smoke/Hanouty.Licensing.Smoke.csproj -c Release
