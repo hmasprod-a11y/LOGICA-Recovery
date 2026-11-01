@@ -19,3 +19,9 @@ secrets/
 # Explicitly permitted recovery input (PRIVATE repository only)
 !input/
 !input/LOGICA-GitHub-Input.zip
+
+# TODO POS issuer secrets and customer licenses (never commit)
+*.pem
+*.pfx
+*.p12
+*.license.json
