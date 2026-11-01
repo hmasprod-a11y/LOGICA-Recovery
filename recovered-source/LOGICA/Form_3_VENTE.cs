@@ -12506,6 +12506,25 @@ public class Form_3_VENTE : Form
 		}
 	}
 
+	// The image grid may be hidden or measured at zero height during startup/DPI
+	// transitions. Keep the legacy scroll scale, but never divide by zero or
+	// restore an offset beyond the current filtered image list.
+	private void RefreshArticleImageScrollbar()
+	{
+		ScrollBar scroll = (ScrollBar)vScrollBar1;
+		ScrollableControl tiles = (ScrollableControl)FlowLayout_ARTICLES;
+		scroll.Minimum = 0;
+		scroll.Maximum = Math.Max(0, tiles.DisplayRectangle.Height);
+		double large = (double)scroll.Maximum / Math.Max(1, ((Control)vScrollBar1).Height)
+			+ Math.Max(0, ((Control)FlowLayout_ARTICLES).Height);
+		scroll.LargeChange = Math.Max(1, (int)Math.Min(int.MaxValue, Math.Round(large)));
+		scroll.SmallChange = 15;
+		int offset = tiles.AutoScrollPosition.Y;
+		int requested = offset == int.MinValue ? int.MaxValue : Math.Abs(offset);
+		int maxValue = Math.Max(scroll.Minimum, scroll.Maximum - scroll.LargeChange + 1);
+		scroll.Value = Math.Min(Math.Max(scroll.Minimum, requested), maxValue);
+	}
+
 	public void FAM2_click(object sender, EventArgs e)
 	{
 		//IL_0008: Unknown result type (might be due to invalid IL or missing references)
@@ -12584,11 +12603,7 @@ public class Form_3_VENTE : Form
 					num2++;
 				}
 				((Control)Text_CODE).Focus();
-				((ScrollBar)vScrollBar1).Minimum = 0;
-				((ScrollBar)vScrollBar1).Maximum = ((ScrollableControl)FlowLayout_ARTICLES).DisplayRectangle.Height;
-				((ScrollBar)vScrollBar1).LargeChange = (int)Math.Round((double)((ScrollBar)vScrollBar1).Maximum / (double)((Control)vScrollBar1).Height + (double)((Control)FlowLayout_ARTICLES).Height);
-				((ScrollBar)vScrollBar1).SmallChange = 15;
-				((ScrollBar)vScrollBar1).Value = Math.Abs(((ScrollableControl)FlowLayout_ARTICLES).AutoScrollPosition.Y);
+				RefreshArticleImageScrollbar();
 			}
 			catch (Exception ex)
 			{
@@ -15377,6 +15392,7 @@ public class Form_3_VENTE : Form
 						}
 						break;
 					}
+					RefreshArticleImageScrollbar();
 					});
 			}
 			catch (Exception ex)
