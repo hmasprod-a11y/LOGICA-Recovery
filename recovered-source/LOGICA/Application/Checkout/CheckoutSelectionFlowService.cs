@@ -113,6 +113,9 @@ namespace LOGICA.ApplicationLayer.Checkout
             // point at another article even though the live SQL refresh succeeds.
             // Preserve cancellation and invalid-index behavior; fail closed on
             // a changed identity/order before any second database read.
+            DataRow[] originalRows = new DataRow[displayedMatches.Rows.Count];
+            for (int i = 0; i < originalRows.Length; i++)
+                originalRows[i] = displayedMatches.Rows[i];
             bool dialogChanged = false;
             CheckoutVariantChoiceResult result = ChooseBarcodeWithRefresh(displayedMatches,
                 chooseDuplicate == null ? null :
@@ -120,7 +123,7 @@ namespace LOGICA.ApplicationLayer.Checkout
                         delegate(IList<CheckoutVariantSnapshot> ignored) {
                             int selectedIndex = chooseDuplicate(displayedMatches);
                             if (selectedIndex >= 0 && selectedIndex < initial.Snapshots.Count &&
-                                !MatchesOriginalDialogOrder(displayedMatches, initial.Snapshots))
+                                !MatchesOriginalDialogOrder(displayedMatches, initial.Snapshots, originalRows))
                             {
                                 dialogChanged = true;
                                 return -1;
@@ -134,7 +137,7 @@ namespace LOGICA.ApplicationLayer.Checkout
         }
 
         private static bool MatchesOriginalDialogOrder(
-            DataTable displayed, IList<CheckoutVariantSnapshot> snapshots)
+            DataTable displayed, IList<CheckoutVariantSnapshot> snapshots, DataRow[] originalRows)
         {
             if (displayed.Rows.Count != snapshots.Count ||
                 !displayed.Columns.Contains("Code") ||
@@ -143,7 +146,8 @@ namespace LOGICA.ApplicationLayer.Checkout
             for (int i = 0; i < snapshots.Count; i++)
             {
                 DataRow row = displayed.Rows[i];
-                if (row.RowState == DataRowState.Deleted ||
+                if (!Object.ReferenceEquals(row, originalRows[i]) ||
+                    row.RowState == DataRowState.Deleted ||
                     row.RowState == DataRowState.Detached ||
                     row.IsNull("Code") || row.IsNull("ID_ARTICLE") ||
                     !String.Equals(Convert.ToString(row["Code"]), snapshots[i].Code,
