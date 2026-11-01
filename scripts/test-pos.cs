@@ -1550,11 +1550,12 @@ class PosSmoke {
   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
    var list=(DataGridView)Get(form,"DataGridView100");
    var code=(TextBox)Get(form,"Text_CODE");
+   var findButton=(Control)Get(form,"Button_FIND");
    var selected=form.GetType().GetMethod("SelectedProductListRow",Flags);
    var reference=form.GetType().GetMethod("BlankBarcodeListArticleReference",Flags);
    var click=form.GetType().GetMethod("DataGridView100_Click",Flags);
    var doubleClick=form.GetType().GetMethod("DataGridView100_DoubleClick",Flags);
-   if(list==null||code==null||selected==null||reference==null||click==null||doubleClick==null)
+   if(list==null||code==null||findButton==null||selected==null||reference==null||click==null||doubleClick==null)
     throw new Exception("Sales product-list selection handlers missing");
    var rows=new DataTable();
    foreach(string column in new[]{"ID_ARTICLE","Code","Article","PRIX_V_1"})rows.Columns.Add(column);
@@ -1569,6 +1570,14 @@ class PosSmoke {
    var tagType=assembly.GetType("LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference",true);
    if(!tagType.IsInstanceOfType(tag) || Convert.ToString(tagType.GetProperty("ArticleId",Flags).GetValue(tag,null))!="101" || Convert.ToString(tag)!="")
     throw new Exception("Barcode-free list row lost its exact article identity");
+   findButton.Tag="CI_KEEP_TAG";
+   findButton.Enabled=false;
+   code.Text="KEEP-SCAN";
+   doubleClick.Invoke(form,new object[]{list,EventArgs.Empty});
+   if(code.Text!="KEEP-SCAN" || !Object.Equals(findButton.Tag,"CI_KEEP_TAG"))
+    throw new Exception("Disabled lookup button must not post barcode-free list article");
+   findButton.Enabled=true;
+   findButton.Tag=null;
    code.Text="OLD-SCAN";
    click.Invoke(form,new object[]{list,EventArgs.Empty});
    if(code.Text!="")throw new Exception("List click retained a stale scanned barcode");
