@@ -20,6 +20,8 @@ try {
         'recovered-source/LOGICA/Application/Checkout/CheckoutArticleImageSelectionService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutBarcodeSelectionService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutArticleTileSelectionService.cs',
+        'recovered-source/LOGICA/Application/Checkout/CheckoutVariantSnapshotService.cs',
+        'recovered-source/LOGICA/Application/Checkout/CheckoutSelectionFlowService.cs',
         'recovered-source/LOGICA/Infrastructure/Checkout/CheckoutArticleSearchQueryText.cs',
         'recovered-source/LOGICA/Application/Checkout/StockValidationModels.cs',
         'recovered-source/LOGICA/Application/Checkout/StockValidationService.cs',
