@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Globalization;
 using LOGICA.Domain;
 using LOGICA.ApplicationLayer.Checkout;
@@ -70,6 +71,18 @@ internal static class PortableCheckoutSmoke
             const string familySql = "select      *     from      TABLE_ARTICLES        WHERE      Famille = @family            order by Article asc ";
             Require(String.Equals(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Family(), familySql,
                 StringComparison.Ordinal), "Family tile SQL must preserve exact equality and bound parameter");
+            DataTable tiles = new DataTable();
+            tiles.Columns.Add("ID_ARTICLE", typeof(string));
+            tiles.Columns.Add("Code", typeof(string));
+            tiles.Rows.Add("11", "DUP");
+            tiles.Rows.Add("12", "DUP");
+            CheckoutArticleTileReference tile = CheckoutArticleTileSelectionService.TagFor(tiles.Rows[1]);
+            Require(CheckoutArticleTileSelectionService.FindExact(tiles, tile) == tiles.Rows[1],
+                "Image tile must select exact variant instead of first duplicate barcode");
+            tiles.Rows.RemoveAt(1);
+            Require(CheckoutArticleTileSelectionService.FindExact(tiles, tile) == null,
+                "Stale image tile must fail closed");
+            Console.WriteLine("PASS portable checkout image tile identity and stale variant rejection");
             Console.WriteLine("PASS portable checkout family SQL parameter and original order");
             Console.WriteLine("PASS portable checkout guards, basket, pricing and stock validation");
             return 0;
