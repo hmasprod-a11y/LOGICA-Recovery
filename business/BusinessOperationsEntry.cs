@@ -4,5 +4,7 @@ internal static class BusinessOperationsEntry
         if (business != 0) return business;
         int coverage = StockCountCoverageSmoke.Run();
         if (coverage != 0) return coverage;
-        return BusinessOperationsSafetySmoke.Run(); }
+        int safety = BusinessOperationsSafetySmoke.Run();
+        if (safety != 0) return safety;
+        return PurchaseReceiptStockProjectionSmoke.Run(); }
 }
