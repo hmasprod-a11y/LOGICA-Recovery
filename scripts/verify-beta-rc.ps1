@@ -80,6 +80,11 @@ try {
             $directory = $name.TrimEnd('/')
             if (-not $zipDirectories.Add($directory)) { throw "Duplicate ZIP directory (including case collision): $name" }
             if ($byPath.ContainsKey($directory)) { throw "ZIP directory collides with manifest file: $name" }
+            $dirParts = $directory.Split('/')
+            for ($i = 1; $i -lt $dirParts.Length; $i++) {
+                $parent = [string]::Join('/', $dirParts, 0, $i)
+                if ($byPath.ContainsKey($parent)) { throw "ZIP directory nested beneath file: $name" }
+            }
             if ((($entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000) { throw "Symbolic-link directory forbidden in beta ZIP: $name" }
             continue
         }
