@@ -62,6 +62,14 @@ try {
     Assert-Rejected 'modified manifest file digest'
     [IO.File]::WriteAllText($manifest, $originalManifest)
     $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
+    foreach ($invalidSize in @($null, 'not-a-number', '-1', '1.5')) {
+        $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
+        $entries[0].size = $invalidSize
+        $entries | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding UTF8
+        Assert-Rejected "invalid manifest size $invalidSize"
+        [IO.File]::WriteAllText($manifest, $originalManifest)
+    }
+    $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
     $entries[0].path = '../escape.txt'
     $entries | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding UTF8
     Assert-Rejected 'manifest path traversal'
