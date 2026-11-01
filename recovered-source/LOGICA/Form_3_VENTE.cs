@@ -14583,6 +14583,9 @@ public class Form_3_VENTE : Form
 		{
 			if ((int)e.KeyCode == 13)
 			{
+				// Barcode scanners commonly terminate scans with Enter. Consume that
+				// terminator once; do not forward it to a focused button or dialog.
+				e.SuppressKeyPress = true;
 				Button_FIND_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
 				((TextBoxBase)Text_CODE).HideSelection = false;
 				((TextBoxBase)Text_CODE).SelectAll();
