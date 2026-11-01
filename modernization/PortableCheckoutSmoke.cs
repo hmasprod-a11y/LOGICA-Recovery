@@ -117,6 +117,88 @@ internal static class PortableCheckoutSmoke
             DataTable outcomeRows = variants.Clone();
             outcomeRows.Rows.Add("123", "A");
             outcomeRows.Rows.Add("123", "B");
+            // Modern chooser snapshot creation is all-or-nothing. Distinct
+            // article IDs may share a barcode, but an ID cannot occur twice.
+            var validRead = CheckoutVariantSnapshotService.EvaluateSnapshot(outcomeRows);
+            Require(validRead.Status == CheckoutVariantSnapshotReadStatus.Ready &&
+                validRead.Snapshots.Count == 2 &&
+                validRead.Snapshots[0].ArticleId == "A" &&
+                validRead.Snapshots[1].ArticleId == "B",
+                "Typed snapshot must retain distinct variants sharing a barcode");
+            bool typedReadNullRejected = false;
+            try { CheckoutVariantSnapshotService.EvaluateSnapshot(null); }
+            catch (ArgumentNullException) { typedReadNullRejected = true; }
+            Require(typedReadNullRejected, "Typed snapshot must reject null query");
+
+            DataTable missingReadSchema = new DataTable();
+            missingReadSchema.Columns.Add("ID_ARTICLE", typeof(string));
+            missingReadSchema.Rows.Add("A");
+            var missingRead = CheckoutVariantSnapshotService.EvaluateSnapshot(missingReadSchema);
+            Require(missingRead.Status == CheckoutVariantSnapshotReadStatus.InvalidCandidates &&
+                missingRead.Snapshots.Count == 0, "Incomplete snapshot schema must fail closed");
+            bool missingReadThrowsControlled = false;
+            try { CheckoutVariantSnapshotService.Read(missingReadSchema); }
+            catch (InvalidOperationException) { missingReadThrowsControlled = true; }
+            Require(missingReadThrowsControlled, "Legacy Read must throw controlled invalid-schema error");
+
+            DataTable duplicateReadIds = outcomeRows.Clone();
+            duplicateReadIds.Rows.Add("123", "A");
+            duplicateReadIds.Rows.Add("OTHER", "A");
+            var duplicateRead = CheckoutVariantSnapshotService.EvaluateSnapshot(duplicateReadIds);
+            Require(duplicateRead.Status == CheckoutVariantSnapshotReadStatus.Ambiguous &&
+                duplicateRead.Snapshots.Count == 0,
+                "Repeated ID under another barcode must not produce a partial snapshot");
+            bool duplicateReadRejected = false;
+            try { CheckoutVariantSnapshotService.Read(duplicateReadIds); }
+            catch (InvalidOperationException) { duplicateReadRejected = true; }
+            Require(duplicateReadRejected, "Read must reject repeated catalogue ID");
+
+            DataTable corruptDuplicateRead = duplicateReadIds.Copy();
+            corruptDuplicateRead.Rows.Add(DBNull.Value, "BROKEN");
+            var corruptDuplicateResult = CheckoutVariantSnapshotService.EvaluateSnapshot(corruptDuplicateRead);
+            Require(corruptDuplicateResult.Status == CheckoutVariantSnapshotReadStatus.InvalidCandidates &&
+                corruptDuplicateResult.Snapshots.Count == 0,
+                "Malformed row must take precedence over repeated ID during snapshot read");
+
+            DataTable missingReadId = outcomeRows.Clone();
+            missingReadId.Rows.Add("123", DBNull.Value);
+            Require(CheckoutVariantSnapshotService.EvaluateSnapshot(missingReadId).Status ==
+                CheckoutVariantSnapshotReadStatus.InvalidCandidates, "Null ID invalidates snapshot");
+            DataTable emptyReadId = outcomeRows.Clone();
+            emptyReadId.Rows.Add("123", "");
+            Require(CheckoutVariantSnapshotService.EvaluateSnapshot(emptyReadId).Status ==
+                CheckoutVariantSnapshotReadStatus.InvalidCandidates, "Empty ID invalidates snapshot");
+
+            DataTable deletedDuplicateRead = duplicateReadIds.Copy();
+            deletedDuplicateRead.AcceptChanges();
+            deletedDuplicateRead.Rows[1].Delete();
+            var deletedDuplicateResult = CheckoutVariantSnapshotService.EvaluateSnapshot(deletedDuplicateRead);
+            Require(deletedDuplicateResult.Status == CheckoutVariantSnapshotReadStatus.Ready &&
+                deletedDuplicateResult.Snapshots.Count == 1 &&
+                deletedDuplicateResult.Snapshots[0].ArticleId == "A",
+                "Deleted duplicate row must not poison active snapshot");
+            DataTable emptyRead = outcomeRows.Clone();
+            Require(CheckoutVariantSnapshotService.EvaluateSnapshot(emptyRead).Status ==
+                CheckoutVariantSnapshotReadStatus.Ready &&
+                CheckoutVariantSnapshotService.Read(emptyRead).Count == 0,
+                "Valid empty catalogue result is a ready empty snapshot");
+            DataTable ordinalRead = outcomeRows.Clone();
+            ordinalRead.Rows.Add("SAME", "id");
+            ordinalRead.Rows.Add("SAME", "ID");
+            Require(CheckoutVariantSnapshotService.EvaluateSnapshot(ordinalRead).Status ==
+                CheckoutVariantSnapshotReadStatus.Ready,
+                "Identity comparison must preserve ordinal case-sensitive IDs");
+            DataTable modifiedRead = outcomeRows.Copy();
+            modifiedRead.AcceptChanges();
+            modifiedRead.Rows[0]["Code"] = "UPDATED";
+            var modifiedSnapshot = CheckoutVariantSnapshotService.EvaluateSnapshot(modifiedRead);
+            Require(modifiedSnapshot.Status == CheckoutVariantSnapshotReadStatus.Ready &&
+                modifiedSnapshot.Snapshots[0].Code == "UPDATED" &&
+                modifiedRead.Rows[0].RowState == DataRowState.Modified,
+                "Snapshot must read current values without mutating live row state");
+            Require(validRead.Snapshots[0].Code == "123",
+                "Already displayed snapshot must remain immutable after other reads");
+            Console.WriteLine("PASS modern variant snapshot validation: duplicate IDs, invalid schema, corrupt precedence, deletion and immutability");
             var selectedOutcome = CheckoutVariantSnapshotService.EvaluateChoice(outcomeRows, snapshots, 1);
             Require(selectedOutcome.Status == CheckoutVariantChoiceStatus.Selected &&
                 Object.ReferenceEquals(selectedOutcome.SelectedRow, outcomeRows.Rows[1]),
