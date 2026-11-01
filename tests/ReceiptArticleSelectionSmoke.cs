@@ -55,6 +55,25 @@ internal static class ReceiptArticleSelectionSmoke
             Check(ReceiptArticleSelectionService.Resolve(unique, "B") == null,
                 "stale grid ID does not fall back to unique barcode");
 
+            // Real receipt UI: a vanished clicked grid row is not an unknown
+            // barcode scan and must not open the create-article dialog.
+            Check(ReceiptArticleSelectionService.CanOfferCreation(unique.Clone(), null),
+                "unknown scanner barcode may retain original create-article prompt");
+            Check(!ReceiptArticleSelectionService.CanOfferCreation(unique.Clone(), "A"),
+                "vanished explicit grid ID cannot offer article creation");
+            Check(!ReceiptArticleSelectionService.CanOfferCreation(unique, null),
+                "existing barcode cannot offer creation");
+            Check(!ReceiptArticleSelectionService.CanOfferCreation(duplicates, "B"),
+                "explicit existing variant cannot offer creation");
+            Check(!ReceiptArticleSelectionService.CanOfferCreation(duplicates, null),
+                "duplicate barcode cannot offer creation");
+            Check(!ReceiptArticleSelectionService.CanOfferCreation(unique.Clone(), ""),
+                "empty but explicit grid identity cannot offer creation");
+            bool missingLookupRejected = false;
+            try { ReceiptArticleSelectionService.CanOfferCreation(null, "A"); }
+            catch (ArgumentNullException) { missingLookupRejected = true; }
+            Check(missingLookupRejected, "missing fresh lookup cannot offer creation");
+
             var empty = unique.Clone();
             Check(ReceiptArticleSelectionService.Resolve(empty, null) == null,
                 "unknown barcode returns no row");
