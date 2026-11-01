@@ -365,6 +365,51 @@ internal static class CheckoutBarcodeSelectionTests
                 });
                 checks++;
 
+                // The actual scanner SQL is WHERE Code = @code. A mixed-code
+                // initial result is never a legitimate duplicate-barcode list:
+                // do not show the modal or read the store for such candidates.
+                DataTable scanMixedDisplayed = Candidates();
+                scanMixedDisplayed.Rows[2]["Code"] = "UNRELATED";
+                int scanMixedDialogCalls = 0;
+                int scanMixedReadCalls = 0;
+                CheckoutVariantChoiceResult scanMixedChoice =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh(scanMixedDisplayed,
+                        delegate(DataTable shown) { scanMixedDialogCalls++; return 1; },
+                        delegate { scanMixedReadCalls++; return Candidates(); });
+                if (scanMixedChoice.Status != CheckoutVariantChoiceStatus.InvalidCandidates ||
+                    scanMixedChoice.SelectedRow != null || scanMixedDialogCalls != 0 ||
+                    scanMixedReadCalls != 0 ||
+                    CheckoutBarcodeSelectionService.Select(scanMixedDisplayed,
+                        delegate(DataTable shown) { throw new Exception("Unsafe scanner modal"); }) != null)
+                    throw new Exception("Mixed scanner barcode result must fail before modal or requery");
+                checks++;
+
+                // A new SQL result can accidentally contain another barcode,
+                // e.g. when the UI callback loses the original scanner filter.
+                // Even a still-valid selected ID must not reach legacy pricing.
+                DataTable scanMixedLive = liveReordered.Copy();
+                scanMixedLive.Rows[0]["Code"] = "UNRELATED";
+                CheckoutVariantChoiceResult scanMixedRefresh =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
+                        delegate(DataTable shown) { return 1; },
+                        delegate { return scanMixedLive; });
+                if (scanMixedRefresh.Status != CheckoutVariantChoiceStatus.InvalidCandidates ||
+                    scanMixedRefresh.SelectedRow != null)
+                    throw new Exception("Refreshed scanner candidates must all match the scanned barcode");
+                checks++;
+
+                DataTable scanBlankDisplayed = Candidates();
+                scanBlankDisplayed.Rows.RemoveAt(2);
+                scanBlankDisplayed.Rows.RemoveAt(1);
+                scanBlankDisplayed.Rows[0]["Code"] = "  ";
+                int scanBlankReadCalls = 0;
+                if (CheckoutBarcodeSelectionService.SelectWithRefresh(scanBlankDisplayed, null,
+                    delegate { scanBlankReadCalls++; return scanBlankDisplayed.Copy(); }).Status !=
+                    CheckoutVariantChoiceStatus.InvalidCandidates || scanBlankReadCalls != 0 ||
+                    CheckoutBarcodeSelectionService.Select(scanBlankDisplayed, null) != null)
+                    throw new Exception("Blank image-only barcode must not enter the scanner path");
+                checks++;
+
                 rows.Rows.RemoveAt(2);
                 rows.Rows.RemoveAt(1);
                 if (CheckoutBarcodeSelectionService.Select(rows, null) != rows.Rows[0])
