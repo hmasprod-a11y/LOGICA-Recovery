@@ -133,20 +133,20 @@ try {
     $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
     Assert-Rejected 'ZIP symbolic-link directory'
-    # Oversized uncompressed entries must fail before content is streamed or extracted.
+    # Highly compressible payloads must fail before content is streamed or extracted.
     Write-FixtureZip
     $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
     try {
-        $huge = $archive.CreateEntry('oversized.bin')
+        $huge = $archive.CreateEntry('compression-bomb.bin')
         $stream = $huge.Open()
         try {
             $buffer = New-Object byte[] 1048576
-            for ($i = 0; $i -lt 257; $i++) { $stream.Write($buffer, 0, $buffer.Length) }
+            for ($i = 0; $i -lt 4; $i++) { $stream.Write($buffer, 0, $buffer.Length) }
         } finally { $stream.Dispose() }
     } finally { $archive.Dispose() }
     $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
-    Assert-Rejected 'oversized uncompressed ZIP entry'
+    Assert-Rejected 'suspicious ZIP compression ratio'
     Write-Host 'PASS: independent verifier positive and adversarial tests'
 } finally {
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
