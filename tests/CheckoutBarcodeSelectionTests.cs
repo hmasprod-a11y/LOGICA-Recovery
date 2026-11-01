@@ -293,10 +293,24 @@ internal static class CheckoutBarcodeSelectionTests
                 checks++;
                 DataTable liveReused = liveReordered.Copy();
                 liveReused.Rows[1]["Code"] = "REASSIGNED";
-                if (CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
-                    delegate(DataTable shown) { return 1; },
-                    delegate { return liveReused; }).Status != CheckoutVariantChoiceStatus.Ambiguous)
-                    throw new Exception("Reused ID with changed barcode must fail closed");
+                // A raw ID-based choice diagnoses reassignment as Ambiguous.
+                // The scanner adapter has the stricter SQL exact-barcode
+                // contract: ANY returned foreign barcode is InvalidCandidates,
+                // before selected-ID resolution. Never allow either to post.
+                CheckoutVariantChoiceResult reassignedScanner =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
+                        delegate(DataTable shown) { return 1; },
+                        delegate { return liveReused; });
+                if (reassignedScanner.Status != CheckoutVariantChoiceStatus.InvalidCandidates ||
+                    reassignedScanner.SelectedRow != null)
+                    throw new Exception("Scanner must reject changed-barcode SQL result as invalid");
+                checks++;
+                CheckoutVariantChoiceResult reassignedIdentity =
+                    CheckoutVariantSnapshotService.EvaluateChoice(liveReused,
+                        CheckoutVariantSnapshotService.Read(displayedLive), 1);
+                if (reassignedIdentity.Status != CheckoutVariantChoiceStatus.Ambiguous ||
+                    reassignedIdentity.SelectedRow != null)
+                    throw new Exception("Raw identity resolver must report reassigned ID as ambiguous");
                 checks++;
                 DataTable liveDuplicate = liveReordered.Copy();
                 liveDuplicate.Rows[0]["ID_ARTICLE"] = "2";
