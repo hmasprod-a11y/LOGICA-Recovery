@@ -14643,6 +14643,13 @@ public class Form_3_VENTE : Form
 		Text_PRIX_QTE_MIN.Text = "";
 	}
 
+	// Tile lookup is a parameterized identity query, never a barcode search.
+	// The returned row is still checked against the original tile ID AND Code.
+	private static string ExactImageArticleSql()
+	{
+		return "select * from TABLE_ARTICLES WHERE ID_ARTICLE = @id";
+	}
+
 	private void Button_FIND_Click(object sender, EventArgs e)
 	{
 		//IL_052d: Unknown result type (might be due to invalid IL or missing references)
@@ -14654,20 +14661,31 @@ public class Form_3_VENTE : Form
 		//IL_0409: Unknown result type (might be due to invalid IL or missing references)
 		try
 		{
-			if (Operators.CompareString(Text_CODE.Text.Trim(), "", TextCompare: false) == 0)
+			Control clickedControl = sender as Control;
+			LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference clickedImage = clickedControl == null
+				? null : clickedControl.Tag as LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference;
+			// An image tile is identified by ID_ARTICLE, even when it has no barcode.
+			// Keep the scanner's original exact-barcode path and chooser unchanged.
+			if ((clickedImage == null && Operators.CompareString(Text_CODE.Text.Trim(), "", TextCompare: false) == 0)
+				|| (clickedImage != null && string.IsNullOrWhiteSpace(clickedImage.ArticleId)))
 			{
 				((Control)Text_CODE).Focus();
 				return;
 			}
 			Module1.dt_find.Clear();
-			Module1.da_find = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.ExactBarcode(), Module1.cn_SQL);
-			Module1.da_find.SelectCommand.Parameters.AddWithValue("@code", Text_CODE.Text);
+			if (clickedImage != null)
+			{
+				Module1.da_find = new MySqlDataAdapter(ExactImageArticleSql(), Module1.cn_SQL);
+				Module1.da_find.SelectCommand.Parameters.AddWithValue("@id", clickedImage.ArticleId);
+			}
+			else
+			{
+				Module1.da_find = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.ExactBarcode(), Module1.cn_SQL);
+				Module1.da_find.SelectCommand.Parameters.AddWithValue("@code", Text_CODE.Text);
+			}
 			((DbDataAdapter)(object)Module1.da_find).Fill(Module1.dt_find);
 			if (Module1.dt_find.Rows.Count != 0)
 			{
-				Control clickedControl = sender as Control;
-				LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference clickedImage = clickedControl == null
-					? null : clickedControl.Tag as LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference;
 				DataRow selectedArticle = clickedImage != null
 					? LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.FindExact(Module1.dt_find, clickedImage)
 					: LOGICA.ApplicationLayer.Checkout.CheckoutBarcodeSelectionService.Select(
@@ -14713,6 +14731,12 @@ public class Form_3_VENTE : Form
 			}
 			else
 			{
+				// A stale image tile must not open the scanner's unknown-barcode dialog.
+				if (clickedImage != null)
+				{
+					((Control)Text_CODE).Focus();
+					return;
+				}
 				((Form)MyProject.Forms.FormDialog_ARTICLE_INCONNU).ShowDialog();
 				_effacer_article_attributions();
 				((Control)Label_QTE).BackColor = Color.White;
