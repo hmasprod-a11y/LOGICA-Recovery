@@ -65,6 +65,15 @@ namespace LOGICA.ApplicationLayer.Checkout
                         : CheckoutVariantChoiceStatus.InvalidCandidates, null);
             if (read.Snapshots.Count == 0)
                 return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.Missing, null);
+            // This entry point is for an exact, nonempty scanner barcode query.
+            // A faulty store adapter must never let a chooser select an unrelated
+            // article from a mixed-code result or treat blank codes as scans.
+            string scannedCode = read.Snapshots[0].Code;
+            if (String.IsNullOrWhiteSpace(scannedCode))
+                return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            foreach (CheckoutVariantSnapshot candidate in read.Snapshots)
+                if (!String.Equals(candidate.Code, scannedCode, StringComparison.Ordinal))
+                    return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
             if (read.Snapshots.Count > 1 && chooseDuplicate == null)
                 throw new ArgumentNullException("chooseDuplicate",
                     "Duplicate barcodes require an explicit article choice.");
