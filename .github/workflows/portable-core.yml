@@ -16,6 +16,7 @@ on:
   push:
     paths:
       - 'modernization/**'
+      - 'scripts/test-todo-license-cli.ps1'
       - 'recovered-source/LOGICA/Application/Inventory/**'
       - 'recovered-source/LOGICA/Application/Catalogue/**'
       - '.github/workflows/portable-core.yml'
@@ -37,6 +38,11 @@ jobs:
         run: dotnet build modernization/LOGICA.CorePortability.csproj -c Release --nologo
       - name: Execute Linux smoke tests for cash, settlement, checkout and inventory
         run: dotnet run --project modernization/LOGICA.CoreSmoke.csproj -c Release
+      - name: Build and exercise TODO POS offline licensing core on Linux
+        run: dotnet run --project modernization/TODO.Licensing.Tests/TODO.Licensing.Tests.csproj -c Release
+      - name: Test TODO POS offline issuer CLI end-to-end on Linux
+        shell: pwsh
+        run: ./scripts/test-todo-license-cli.ps1
       - name: Cross-platform offline beta verifier regression tests
         shell: pwsh
         run: ./scripts/test-beta-release-verifier.ps1
