@@ -14581,7 +14581,7 @@ public class Form_3_VENTE : Form
 		//IL_00d1: Expected Obj, but got Unknown
 		try
 		{
-			if ((int)e.KeyCode == 13)
+			if (e.KeyCode == Keys.Enter && e.Modifiers == Keys.None)
 			{
 				// Barcode scanners commonly terminate scans with Enter. Consume that
 				// terminator once; do not forward it to a focused button or dialog.
@@ -15119,7 +15119,7 @@ public class Form_3_VENTE : Form
 		//IL_00b6: Expected Obj, but got Unknown
 		try
 		{
-			if ((int)e.KeyCode == 13)
+			if (e.KeyCode == Keys.Enter && e.Modifiers == Keys.None)
 			{
 				// Quantity Enter returns to barcode scanning, without triggering
 				// a second implicit Enter on the focused sales control.
@@ -16957,7 +16957,7 @@ public class Form_3_VENTE : Form
 			Label_QTE.Text = "";
 		}
 		((Control)Label_QTE).BackColor = Color.Yellow;
-		Label_QTE.Text = Conversions.ToString(Operators.AddObject(Label_QTE.Text, NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null)));
+		Label_QTE.Text += Conversions.ToString(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null));
 	}
 
 	private void Button_qteBACK_Click(object sender, EventArgs e)
@@ -17067,6 +17067,12 @@ public class Form_3_VENTE : Form
 		((Control)Text_FIND).Focus();
 		if (Operators.ConditionalCompareObjectEqual(((Control)TabControl2).Tag, "", TextCompare: false))
 		{
+			// On compact displays, never collapse the product list to zero/negative height.
+			// Keep the original layout and keyboard state as a safe legacy fallback.
+			if (((Control)TabControl2).Height <= ((Control)Panel_CLAVIER).Height + 10)
+			{
+				return;
+			}
 			((Control)TabControl2).Height = checked(((Control)TabControl2).Height - ((Control)Panel_CLAVIER).Height - 10);
 			((Control)TabControl2).Tag = "1";
 		}
