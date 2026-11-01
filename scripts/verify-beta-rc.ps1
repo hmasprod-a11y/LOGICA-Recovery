@@ -43,6 +43,18 @@ foreach ($item in $expected) {
     $name = [string]$item.path
     Assert-SafePath $name
     if ($byPath.ContainsKey($name)) { throw "Duplicate manifest path (including case collision): $name" }
+    # Do not allow Windows extraction to replace a packaged file with a nested directory.
+    $segments = $name.Split('/')
+    for ($i = 1; $i -lt $segments.Length; $i++) {
+        $parent = [string]::Join('/', $segments, 0, $i)
+        if ($byPath.ContainsKey($parent)) { throw "Manifest file/directory collision: $name" }
+    }
+    foreach ($previous in $byPath.Keys) {
+        if ($previous.StartsWith($name + '/', [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Manifest file/directory collision: $name"
+        }
+    }
+
     [long]$validatedSize = 0
     if ($null -eq $item.size -or [string]$item.size -notmatch '^[0-9]+$' -or
         -not [long]::TryParse([string]$item.size, [ref]$validatedSize) -or
