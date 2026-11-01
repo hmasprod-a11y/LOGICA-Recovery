@@ -51,6 +51,26 @@ namespace LOGICA.ApplicationLayer.Purchasing
         }
     }
 
+
+    // Shared with the actual purchase receipt DataGrid_BODY event handlers.
+    // Index validation prevents a header/new-row click from being interpreted
+    // as an article line; identity recheck protects a pending delete dialog.
+    internal static class ReceiptLineGridGuard
+    {
+        internal static bool HasExistingRow(int rowIndex, int rowCount)
+        {
+            return rowIndex >= 0 && rowCount > 0 && rowIndex < rowCount;
+        }
+
+        internal static bool MatchesLine(string confirmedArticleId, string confirmedCode,
+            string currentArticleId, string currentCode)
+        {
+            return !String.IsNullOrWhiteSpace(confirmedArticleId) &&
+                String.Equals(confirmedArticleId, currentArticleId, StringComparison.Ordinal) &&
+                String.Equals(confirmedCode, currentCode, StringComparison.Ordinal);
+        }
+    }
+
     // The receipt currently displayed for consultation must be the one that the
     // operator confirmed. This guards the real WinForms validation handler
     // against a stale binding position without changing transaction SQL.
