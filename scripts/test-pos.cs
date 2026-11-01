@@ -1393,6 +1393,59 @@ class PosSmoke {
        object removedTag=secondId==Convert.ToString(matches.Rows[0]["ID_ARTICLE"]) ? firstTag : secondTag;
        if(findExact.Invoke(null,new object[]{matches,removedTag})!=null)
         throw new Exception("Stale image tile silently selected another variant");
+       // Image-only products have no barcode: the WinForms tile must resolve
+       // by parameterized article ID and still validate its original tile identity.
+       Sql(connection,"INSERT INTO TABLE_ARTICLES (Article,Code,Images,Famille,PRIX_V_1) VALUES "+
+        "('CI Image only','','hanouty_ci_real.png','CI_IMAGE_ONLY',8.5)");
+       using(var family=new Button(){Text="CI_IMAGE_ONLY"})
+        sale.GetType().GetMethod("FAM2_click",Flags).Invoke(sale,new object[]{family,EventArgs.Empty});
+       if(tiles.Controls.Count!=1||!tileType.IsInstanceOfType(tiles.Controls[0].Tag))
+        throw new Exception("Image-only product must create a typed image tile");
+       object imageOnlyTag=tiles.Controls[0].Tag;
+       if(Convert.ToString(imageOnlyTag)!="")
+        throw new Exception("Image-only tile must retain its empty barcode");
+       string imageOnlyId=Convert.ToString(tileType.GetProperty("ArticleId",Flags).GetValue(imageOnlyTag,null));
+       var imageSqlMethod=sale.GetType().GetMethod("ExactImageArticleSql",Flags);
+       if(imageSqlMethod==null||!imageSqlMethod.IsStatic)
+        throw new Exception("Image-only lookup SQL method missing");
+       string imageSql=(string)imageSqlMethod.Invoke(null,null);
+       if(imageSql!="select * from TABLE_ARTICLES WHERE ID_ARTICLE = @id")
+        throw new Exception("Image-only lookup must use parameterized ID_ARTICLE");
+       var imageRows=new DataTable();
+       using(var cmd=connection.CreateCommand()) {
+        cmd.CommandText=imageSql;
+        var idParam=cmd.CreateParameter();
+        idParam.ParameterName="@id";
+        idParam.Value=imageOnlyId;
+        cmd.Parameters.Add(idParam);
+        using(var reader=cmd.ExecuteReader())imageRows.Load(reader);
+       }
+       var imageRow=(DataRow)findExact.Invoke(null,new object[]{imageRows,imageOnlyTag});
+       if(imageRows.Rows.Count!=1||imageRow==null||
+          Convert.ToString(imageRow["ID_ARTICLE"])!=imageOnlyId||
+          Convert.ToString(imageRow["Code"])!="")
+        throw new Exception("Image-only ID lookup did not resolve the exact empty-barcode product");
+       // A deleted article must never resolve to another image tile.
+       using(var cmd=connection.CreateCommand()) {
+        cmd.CommandText="DELETE FROM TABLE_ARTICLES WHERE ID_ARTICLE = @id";
+        var idParam=cmd.CreateParameter();
+        idParam.ParameterName="@id";
+        idParam.Value=imageOnlyId;
+        cmd.Parameters.Add(idParam);
+        cmd.ExecuteNonQuery();
+       }
+       imageRows.Clear();
+       using(var cmd=connection.CreateCommand()) {
+        cmd.CommandText=imageSql;
+        var idParam=cmd.CreateParameter();
+        idParam.ParameterName="@id";
+        idParam.Value=imageOnlyId;
+        cmd.Parameters.Add(idParam);
+        using(var reader=cmd.ExecuteReader())imageRows.Load(reader);
+       }
+       if(imageRows.Rows.Count!=0||findExact.Invoke(null,new object[]{imageRows,imageOnlyTag})!=null)
+        throw new Exception("Deleted image-only article must fail closed");
+       Console.WriteLine("PASS isolated MariaDB image-only tile: exact ID, blank barcode and stale deletion");
        Console.WriteLine("PASS isolated MariaDB image tiles: same barcode, distinct article IDs, exact selection and stale-tile rejection");
        Console.WriteLine("PASS original Windows POS: parameterized family tiles, quotes, literal SQL text and injection rejection");
        Console.WriteLine("PASS original Windows POS: family and search image tiles real-only; list still shows all 5 products");
