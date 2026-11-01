@@ -36,23 +36,11 @@ namespace LOGICA.ApplicationLayer.Checkout
         internal static CheckoutVariantChoiceResult ChooseBarcode(
             DataTable exactBarcodeMatches, Func<IList<CheckoutVariantSnapshot>, int> chooseDuplicate)
         {
-            CheckoutVariantSnapshotReadResult read =
-                CheckoutVariantSnapshotService.EvaluateSnapshot(exactBarcodeMatches);
-            if (read.Status != CheckoutVariantSnapshotReadStatus.Ready)
-                return new CheckoutVariantChoiceResult(
-                    read.Status == CheckoutVariantSnapshotReadStatus.Ambiguous
-                        ? CheckoutVariantChoiceStatus.Ambiguous
-                        : CheckoutVariantChoiceStatus.InvalidCandidates, null);
-            if (read.Snapshots.Count == 0)
-                return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.Missing, null);
-
-            if (read.Snapshots.Count > 1 && chooseDuplicate == null)
-                throw new ArgumentNullException("chooseDuplicate",
-                    "Duplicate barcodes require an explicit article choice.");
-            int selectedIndex = read.Snapshots.Count == 1
-                ? 0 : chooseDuplicate(read.Snapshots);
-            return CheckoutVariantSnapshotService.EvaluateChoice(
-                exactBarcodeMatches, read.Snapshots, selectedIndex);
+            // Preserve the existing in-memory caller contract while sharing
+            // exactly one choice/identity implementation with the live-query
+            // adapter. No additional SQL or UI action is performed here.
+            return ChooseBarcodeWithRefresh(exactBarcodeMatches, chooseDuplicate,
+                delegate { return exactBarcodeMatches; });
         }
 
         // Opt-in local-store refresh boundary for the real scanner handler.
@@ -85,7 +73,7 @@ namespace LOGICA.ApplicationLayer.Checkout
             if (index == -1)
                 return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.Cancelled, null);
             if (index < 0 || index >= read.Snapshots.Count)
-                throw new ArgumentOutOfRangeException("index",
+                throw new ArgumentOutOfRangeException("selectedIndex",
                     "The chosen article is outside the displayed variant list.");
 
             DataTable live = readCurrentMatches();
