@@ -1569,9 +1569,20 @@ class PosSmoke {
     throw new Exception("List selection did not resolve the first bound row");
    // Pointer hit-testing must never use a stale CurrentRow for a different cell.
    // No sale is posted here; tests exercise the real WinForms selection handler.
-   list.Width=Math.Max(list.Width,600);
-   list.Height=Math.Max(list.Height,300);
-   list.PerformLayout();
+   // The production sales form is intentionally not shown (its Load reads SQL).
+   // Reparent only the list into a temporary visible host so WinForms can
+   // calculate real cell rectangles and HitTest without loading the sales form.
+   var originalParent=list.Parent;
+   var originalBounds=list.Bounds;
+   var originalDock=list.Dock;
+   using(var pointerHost=new Form()) {
+    try {
+     list.Dock=DockStyle.None;
+     list.Parent=pointerHost;
+     pointerHost.ClientSize=new Size(650,350);
+     list.Bounds=new Rectangle(0,0,600,300);
+     pointerHost.Show();
+     list.PerformLayout();
    var secondRect=list.GetCellDisplayRectangle(0,1,false);
    if(secondRect.Width<=8||secondRect.Height<=8)
     throw new Exception("Second product row not visible for pointer regression");
@@ -1604,6 +1615,12 @@ class PosSmoke {
    if(code.Text!="BAR-102")
     throw new Exception("Pointer click did not load barcode of the actually clicked row");
    list.CurrentCell=list.Rows[0].Cells[0];
+    } finally {
+     list.Parent=originalParent;
+     list.Dock=originalDock;
+     list.Bounds=originalBounds;
+    }
+   }
    var tag=reference.Invoke(null,new object[]{rows.Rows[0]});
    var tagType=assembly.GetType("LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference",true);
    if(!tagType.IsInstanceOfType(tag) || Convert.ToString(tagType.GetProperty("ArticleId",Flags).GetValue(tag,null))!="101" || Convert.ToString(tag)!="")
