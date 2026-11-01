@@ -15151,25 +15151,20 @@ public class Form_3_VENTE : Form
 		{
 			try
 			{
-				if (Text_FIND.Text.Length <= 2)
-				{
-					return;
-				}
-				if (TabControl2.SelectedIndex == 0)
-				{
+				LOGICA.ApplicationLayer.Checkout.CheckoutArticleSearchService.Search(
+					delegate { return Text_FIND.Text.Length; },
+					delegate { return TabControl2.SelectedIndex; },
+					delegate
+					{
 					dt_LA.Clear();
-					da_LA = new MySqlDataAdapter("select   *    from TABLE_ARTICLES   WHERE       Article like  '%" + Text_FIND.Text + "%'       or       Code like  '%" + Text_FIND.Text + "%'        order by Article asc ", Module1.cn_SQL);
+					da_LA = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.List(Text_FIND.Text), Module1.cn_SQL);
 					((DbDataAdapter)(object)da_LA).Fill(dt_LA);
 					DataGridView100.DataSource = dt_LA;
-				}
-				else
-				{
-					if (TabControl2.SelectedIndex != 1)
+					},
+					delegate
 					{
-						return;
-					}
 					dt_PIC.Clear();
-					da_PIC = new MySqlDataAdapter("select      *     from      TABLE_ARTICLES      WHERE    Article like  '%" + Text_FIND.Text + "%'     and   Images <> '0.png'         order by Article asc ", Module1.cn_SQL);
+					da_PIC = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Images(Text_FIND.Text), Module1.cn_SQL);
 					((DbDataAdapter)(object)da_PIC).Fill(dt_PIC);
 					((Control)FlowLayout_ARTICLES).Controls.Clear();
 					int num = dt_PIC.Rows.Count - 1;
@@ -15223,7 +15218,7 @@ public class Form_3_VENTE : Form
 						}
 						break;
 					}
-				}
+					});
 			}
 			catch (Exception ex)
 			{
