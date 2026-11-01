@@ -84,6 +84,39 @@ namespace LOGICA.ApplicationLayer.Checkout
             return CheckoutVariantSnapshotService.EvaluateChoice(live, read.Snapshots, index);
         }
 
+        // Bridge for the ACTUAL WinForms CheckoutBarcodeChoiceDialog, which takes
+        // the original DataTable (not IList<CheckoutVariantSnapshot>). Preserve
+        // its row-index contract, but resolve the chosen ID against a fresh local
+        // query before Form_3_VENTE copies price, discount, tax or other fields.
+        // The caller still owns the SQL read, modal dialog and legacy Button_GO.
+        internal static CheckoutVariantChoiceResult ChooseBarcodeWithLegacyDialog(
+            DataTable displayedMatches, Func<DataTable, int> chooseDuplicate,
+            Func<DataTable> readCurrentMatches)
+        {
+            if (displayedMatches == null)
+                throw new ArgumentNullException("displayedMatches");
+            if (readCurrentMatches == null)
+                throw new ArgumentNullException("readCurrentMatches");
+
+            // A pending-deleted row occupies DataTable.Rows but is omitted from
+            // the immutable snapshot. Passing the dialog's index through would
+            // select a different article. Fail closed before opening the modal.
+            CheckoutVariantSnapshotReadResult initial =
+                CheckoutVariantSnapshotService.EvaluateSnapshot(displayedMatches);
+            if (initial.Status == CheckoutVariantSnapshotReadStatus.Ready &&
+                initial.Snapshots.Count != displayedMatches.Rows.Count)
+                return new CheckoutVariantChoiceResult(
+                    CheckoutVariantChoiceStatus.InvalidCandidates, null);
+
+            return ChooseBarcodeWithRefresh(displayedMatches,
+                chooseDuplicate == null ? null :
+                    new Func<IList<CheckoutVariantSnapshot>, int>(
+                        delegate(IList<CheckoutVariantSnapshot> ignored) {
+                            return chooseDuplicate(displayedMatches);
+                        }),
+                readCurrentMatches);
+        }
+
         // Image tiles must be resolved from a live catalogue result by article
         // identity, not from an exact-barcode query: an image-only product can
         // legitimately have Code == "". No query, UI or database work here.
