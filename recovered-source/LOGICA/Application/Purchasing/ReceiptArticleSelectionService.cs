@@ -41,4 +41,22 @@ namespace LOGICA.ApplicationLayer.Purchasing
             return selected;
         }
     }
+    // Shared with the actual purchase receipt DataGrid_BODY event handlers.
+    // Validate the event row, then recheck the same article after confirmation.
+    internal static class ReceiptLineGridGuard
+    {
+        internal static bool HasExistingRow(int rowIndex, int rowCount)
+        {
+            return rowIndex >= 0 && rowCount > 0 && rowIndex < rowCount;
+        }
+
+        internal static bool MatchesLine(string confirmedArticleId, string confirmedCode,
+            string currentArticleId, string currentCode)
+        {
+            return !String.IsNullOrWhiteSpace(confirmedArticleId) &&
+                String.Equals(confirmedArticleId, currentArticleId, StringComparison.Ordinal) &&
+                String.Equals(confirmedCode, currentCode, StringComparison.Ordinal);
+        }
+    }
+
 }
