@@ -33,6 +33,13 @@ Assert(!LicenseValidator.Validate(annual, publicKey, issued.AddDays(370), "devic
     "Expired license accepted");
 Assert(LicenseValidator.Validate(annual, publicKey, issued.AddDays(-10), "device-A").MaySell,
     "CMOS rollback blocked checkout");
+var farFuture = LicenseCryptography.Generate(payload with { LicenseType = "Annual", ExpiresAt = DateTimeOffset.MaxValue }, key);
+Assert(LicenseValidator.Validate(farFuture, publicKey, issued, "device-A").Status == LicenseStatus.Valid,
+    "Maximum expiry date must not overflow");
+Assert(LicenseValidator.Validate(annual, publicKey, issued.AddDays(365).AddHours(72), "device-A").Status == LicenseStatus.Grace,
+    "Grace boundary should be inclusive");
+Assert(LicenseValidator.Validate(annual, publicKey, issued.AddDays(365).AddHours(72).AddTicks(1), "device-A").Status == LicenseStatus.Expired,
+    "Grace must end after its boundary");
 using var otherKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 Assert(!LicenseCryptography.Verify(roundTrip, otherKey), "Wrong public key accepted");
 Console.WriteLine("PASS: Hanouty offline license signing, tamper, device, lifetime clock drift and annual grace.");
