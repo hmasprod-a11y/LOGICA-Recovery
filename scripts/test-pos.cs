@@ -1308,9 +1308,9 @@ class PosSmoke {
     if(!connection.ConnectionString.Contains("127.0.0.1")||!connection.ConnectionString.Contains("logica_ci"))
      throw new Exception("Image grid fixture requires isolated MariaDB");
     connection.Open();
-    Sql(connection,"CREATE TEMPORARY TABLE TABLE_ARTICLES (Article VARCHAR(120),Code VARCHAR(60),Images VARCHAR(100),Famille VARCHAR(80),PRIX_V_1 DECIMAL(14,2))");
+    Sql(connection,"CREATE TEMPORARY TABLE TABLE_ARTICLES (ID_ARTICLE INT NOT NULL AUTO_INCREMENT PRIMARY KEY,Article VARCHAR(120),Code VARCHAR(60),Images VARCHAR(100),Famille VARCHAR(80),PRIX_V_1 DECIMAL(14,2))");
     try {
-     Sql(connection,"INSERT INTO TABLE_ARTICLES VALUES "+
+     Sql(connection,"INSERT INTO TABLE_ARTICLES (Article,Code,Images,Famille,PRIX_V_1) VALUES "+
       "('CI Item real','CI_IMAGE_REAL','hanouty_ci_real.png','CI_IMAGE',12.5),"+
       "('CI Item missing','CI_IMAGE_MISSING','hanouty_ci_missing.png','CI_IMAGE',10),"+
       "('CI Item placeholder','CI_IMAGE_DEFAULT','0.png','CI_IMAGE',10),"+
@@ -1337,7 +1337,7 @@ class PosSmoke {
        throw new Exception("Search image grid includes products without a valid photo: "+tiles.Controls.Count);
              // An apostrophe is valid in a family name. An SQL-looking family
        // must be treated as an exact literal, never as a WHERE expression.
-       Sql(connection,"INSERT INTO TABLE_ARTICLES VALUES "+
+       Sql(connection,"INSERT INTO TABLE_ARTICLES (Article,Code,Images,Famille,PRIX_V_1) VALUES "+
         "('CI quote','CI_FAMILY_QUOTE','hanouty_ci_real.png','CI''IMAGE',15),"+
         "('CI literal','CI_FAMILY_LITERAL','hanouty_ci_real.png','CI_IMAGE'' OR ''1''=''1',15)");
        string[][] families={
@@ -1355,6 +1355,45 @@ class PosSmoke {
          throw new Exception("Family filter leaked rows or lost literal match: "+scenario[0]+
           " tiles="+tiles.Controls.Count);
        }
+       // Image tiles identify a specific article, unlike the scanner which may
+       // intentionally open the duplicate-barcode chooser.
+       Sql(connection,"INSERT INTO TABLE_ARTICLES (Article,Code,Images,Famille,PRIX_V_1) VALUES "+
+        "('CI Duplicate small','CI_SHARED','hanouty_ci_real.png','CI_DUPLICATE',12.5),"+
+        "('CI Duplicate large','CI_SHARED','hanouty_ci_real.png','CI_DUPLICATE',19.5)");
+       using(var family=new Button(){Text="CI_DUPLICATE"})
+        sale.GetType().GetMethod("FAM2_click",Flags).Invoke(sale,new object[]{family,EventArgs.Empty});
+       if(tiles.Controls.Count!=2)throw new Exception("Duplicate barcode image tiles missing");
+       var tileType=assembly.GetType("LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference",true);
+       var tileSelection=assembly.GetType("LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService",true);
+       var findExact=tileSelection.GetMethod("FindExact",Flags);
+       object firstTag=tiles.Controls[0].Tag,secondTag=tiles.Controls[1].Tag;
+       if(!tileType.IsInstanceOfType(firstTag)||!tileType.IsInstanceOfType(secondTag))
+        throw new Exception("Image tiles lost their exact article identity");
+       string firstId=Convert.ToString(tileType.GetProperty("ArticleId",Flags).GetValue(firstTag,null));
+       string secondId=Convert.ToString(tileType.GetProperty("ArticleId",Flags).GetValue(secondTag,null));
+       if(firstId==secondId || Convert.ToString(firstTag)!="CI_SHARED" || Convert.ToString(secondTag)!="CI_SHARED")
+        throw new Exception("Image tiles must share barcode but keep different article IDs");
+       var matches=new DataTable();
+       using(var command=connection.CreateCommand()) {
+        command.CommandText="SELECT * FROM TABLE_ARTICLES WHERE Code = @code";
+        var parameter=command.CreateParameter();
+        parameter.ParameterName="@code";
+        parameter.Value="CI_SHARED";
+        command.Parameters.Add(parameter);
+        using(var reader=command.ExecuteReader())matches.Load(reader);
+       }
+       if(matches.Rows.Count!=2)throw new Exception("Isolated duplicate-barcode fixture missing");
+       foreach(object tag in new[]{firstTag,secondTag}) {
+        var selected=(DataRow)findExact.Invoke(null,new object[]{matches,tag});
+        string expectedId=Convert.ToString(tileType.GetProperty("ArticleId",Flags).GetValue(tag,null));
+        if(selected==null || Convert.ToString(selected["ID_ARTICLE"])!=expectedId)
+         throw new Exception("Clicked image tile resolves to a different article variant");
+       }
+       matches.Rows.RemoveAt(1);
+       object removedTag=secondId==Convert.ToString(matches.Rows[0]["ID_ARTICLE"]) ? firstTag : secondTag;
+       if(findExact.Invoke(null,new object[]{matches,removedTag})!=null)
+        throw new Exception("Stale image tile silently selected another variant");
+       Console.WriteLine("PASS isolated MariaDB image tiles: same barcode, distinct article IDs, exact selection and stale-tile rejection");
        Console.WriteLine("PASS original Windows POS: parameterized family tiles, quotes, literal SQL text and injection rejection");
        Console.WriteLine("PASS original Windows POS: family and search image tiles real-only; list still shows all 5 products");
      }
