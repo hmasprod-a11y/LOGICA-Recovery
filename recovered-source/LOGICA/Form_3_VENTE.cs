@@ -7693,6 +7693,15 @@ public class Form_3_VENTE : Form
 		_string = "";
 		InitializeComponent();
 		ApplyBasketSelectionContrast();
+		ApplyProductListSelectionContrast();
+	}
+
+	// Keep the original light-blue product selection readable regardless of inherited theme colors.
+	// Reapply after legacy Load, which resets product-list styles on data binding.
+	private void ApplyProductListSelectionContrast()
+	{
+		DataGridView100.RowsDefaultCellStyle.SelectionBackColor = Color.FromArgb(171, 185, 211);
+		DataGridView100.RowsDefaultCellStyle.SelectionForeColor = Color.FromArgb(31, 41, 55);
 	}
 
 	// Keep selected basket quantities and prices readable on the original yellow highlight.
@@ -12348,7 +12357,7 @@ public class Form_3_VENTE : Form
 				DataGridView100.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
 				DataGridView100.DefaultCellStyle.ForeColor = Color.FromArgb(34, 34, 34);
 				DataGridView100.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(221, 235, 247);
-				DataGridView100.RowsDefaultCellStyle.SelectionBackColor = Color.FromArgb(171, 185, 211);
+				ApplyProductListSelectionContrast();
 				DataGridView100.RowHeadersWidth = 22;
 				_effacer_article_attributions();
 				((Control)Label_QTE).BackColor = Color.White;
