@@ -973,7 +973,9 @@ internal static class PortableCheckoutSmoke
                 CheckoutVariantChoiceStatus.InvalidCandidates && rejectedRefreshCalls == 0,
                 "Whitespace barcode is rejected by scanner; image-only products use tile identity");
             DataTable mixedFreshCandidates = legacyLive.Copy();
-            mixedFreshCandidates.Rows[0]["Code"] = "WRONG-SQL-FILTER";
+            // Row 0 is the selected B after reordering; corrupt only the
+            // unrelated A row so identity resolution still succeeds first.
+            mixedFreshCandidates.Rows[1]["Code"] = "WRONG-SQL-FILTER";
             CheckoutVariantChoiceResult mixedFreshResult =
                 CheckoutBarcodeSelectionService.SelectWithRefresh(flowMatches,
                     delegate(DataTable dialogCandidates) { return 1; },
