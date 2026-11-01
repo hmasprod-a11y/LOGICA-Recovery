@@ -812,6 +812,76 @@ internal static class PortableCheckoutSmoke
                 }, delegate { noModalReads++; return flowMatches; }).Status ==
                 CheckoutVariantChoiceStatus.Ambiguous && noModalReads == 1,
                 "Ambiguous displayed article identity cannot enter modal");
+            // The real WinForms modal returns a row index. A catalogue binding
+            // that changes while the modal is open must never turn index 0
+            // into a different article, even if the subsequent SQL query is fresh.
+            int modalDriftReads = 0;
+            DataTable modalReordered = flowMatches.Copy();
+            CheckoutVariantChoiceResult reorderedDialogChoice =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                    modalReordered, delegate(DataTable shown) {
+                        shown.Rows[0]["ID_ARTICLE"] = "B";
+                        shown.Rows[1]["ID_ARTICLE"] = "A";
+                        return 0;
+                    }, delegate { modalDriftReads++; return flowMatches.Copy(); });
+            Require(reorderedDialogChoice.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                reorderedDialogChoice.SelectedRow == null && modalDriftReads == 0,
+                "Reordered WinForms modal identities fail closed without querying store");
+            DataTable modalChangedCode = flowMatches.Copy();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                modalChangedCode, delegate(DataTable shown) {
+                    shown.Rows[0]["Code"] = "REASSIGNED-IN-DIALOG";
+                    return 0;
+                }, delegate { modalDriftReads++; return flowMatches.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && modalDriftReads == 0,
+                "Barcode reassignment inside modal cannot select a stale row index");
+            DataTable modalRemovedRow = flowMatches.Copy();
+            modalRemovedRow.AcceptChanges();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                modalRemovedRow, delegate(DataTable shown) {
+                    shown.Rows[0].Delete();
+                    return 1;
+                }, delegate { modalDriftReads++; return flowMatches.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && modalDriftReads == 0,
+                "Pending deletion during modal cannot shift its selected index");
+            DataTable modalAddedRow = flowMatches.Copy();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                modalAddedRow, delegate(DataTable shown) {
+                    shown.Rows.Add("DUP", "C", 99m, 0m);
+                    return 1;
+                }, delegate { modalDriftReads++; return flowMatches.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && modalDriftReads == 0,
+                "New modal row cannot silently change displayed choice set");
+            DataTable modalCancelled = flowMatches.Copy();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                modalCancelled, delegate(DataTable shown) {
+                    shown.Rows[0]["ID_ARTICLE"] = "REPLACED";
+                    return -1;
+                }, delegate { modalDriftReads++; return flowMatches.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.Cancelled && modalDriftReads == 0,
+                "Explicit modal cancellation stays cancellation without store read");
+            DataTable modalPriceChanged = flowMatches.Copy();
+            CheckoutVariantChoiceResult modalPriceChoice =
+                CheckoutBarcodeSelectionService.SelectWithRefresh(
+                    modalPriceChanged, delegate(DataTable shown) {
+                        shown.Rows[1]["UnitPrice"] = 1000m;
+                        shown.Rows[1]["Discount"] = 90m;
+                        return 1;
+                    }, delegate { modalDriftReads++; return legacyLive.Copy(); });
+            Require(modalPriceChoice.Status == CheckoutVariantChoiceStatus.Selected &&
+                (decimal)modalPriceChoice.SelectedRow["UnitPrice"] == 8.75m &&
+                (decimal)modalPriceChoice.SelectedRow["Discount"] == 0m &&
+                modalDriftReads == 1,
+                "Unchanged modal identity selects refreshed price and discount, not displayed values");
+            DataTable legacyModalReassigned = flowMatches.Copy();
+            Require(CheckoutBarcodeSelectionService.Select(legacyModalReassigned,
+                delegate(DataTable shown) {
+                    shown.Rows[0]["ID_ARTICLE"] = "REPLACED";
+                    return 0;
+                }) == null,
+                "Actual legacy WinForms Select path cannot return wrong article after modal edit");
+            Console.WriteLine("PASS WinForms modal identity/order drift: changed IDs, barcode, deletion, addition, cancellation and live prices");
+
             DataTable legacyBadLive = flowMatches.Copy();
             legacyBadLive.Rows[1]["Code"] = "REASSIGNED";
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
