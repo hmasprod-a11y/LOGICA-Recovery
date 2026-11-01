@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptPreviewService.cs" Link="Purchasing/PurchaseReceiptPreviewService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptCatalogueValidationService.cs" Link="Purchasing/PurchaseReceiptCatalogueValidationService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptStockProjectionService.cs" Link="Purchasing/PurchaseReceiptStockProjectionService.cs" />
+    <Compile Include="../tests/PurchaseReceiptStockProjectionSmoke.cs" Link="Tests/PurchaseReceiptStockProjectionSmoke.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockCountVarianceService.cs" Link="Inventory/StockCountVarianceService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockCountCoverageService.cs" Link="Inventory/StockCountCoverageService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockCountAdjustmentProposalService.cs" Link="Inventory/StockCountAdjustmentProposalService.cs" />
+    <Compile Include="../tests/StockCountCoverageSmoke.cs" Link="Tests/StockCountCoverageSmoke.cs" />
+    <Compile Include="../tests/BusinessOperationsSmoke.cs" Link="Tests/BusinessOperationsSmoke.cs" />
+    <Compile Include="../tests/BusinessOperationsSafetySmoke.cs" Link="Tests/BusinessOperationsSafetySmoke.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockCountFreshnessService.cs" Link="Inventory/StockCountFreshnessService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptSupplierValidationService.cs" Link="Purchasing/PurchaseReceiptSupplierValidationService.cs" />
+    <Compile Include="../tests/BusinessSnapshotFreshnessSmoke.cs" Link="Tests/BusinessSnapshotFreshnessSmoke.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptFreshnessService.cs" Link="Purchasing/PurchaseReceiptFreshnessService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockCountReconciliationPreviewService.cs" Link="Inventory/StockCountReconciliationPreviewService.cs" />
+    <Compile Include="../tests/BusinessRevalidationSmoke.cs" Link="Tests/BusinessRevalidationSmoke.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockMovementAuditService.cs" Link="Inventory/StockMovementAuditService.cs" />
+    <Compile Include="../tests/StockMovementAuditSmoke.cs" Link="Tests/StockMovementAuditSmoke.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Purchasing/PurchaseOrderReceiptReconciliationService.cs" Link="Purchasing/PurchaseOrderReceiptReconciliationService.cs" />
+    <Compile Include="../tests/PurchaseOrderReceiptReconciliationSmoke.cs" Link="Tests/PurchaseOrderReceiptReconciliationSmoke.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockMovementFlowReportService.cs" Link="Inventory/StockMovementFlowReportService.cs" />
+    <Compile Include="../tests/StockMovementFlowReportSmoke.cs" Link="Tests/StockMovementFlowReportSmoke.cs" />
+    <Compile Include="BusinessOperationsEntry.cs" />
+  </ItemGroup>
+</Project>
