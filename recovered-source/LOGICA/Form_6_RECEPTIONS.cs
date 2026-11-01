@@ -10250,20 +10250,48 @@ public class Form_6_RECEPTIONS : Form
 			try
 			{
 				((Control)Button_VALIDER).Enabled = false;
-				if (DataGridView1.Rows.Count == 0)
+				// Capture the actual selected receipt before confirmation. A grid may
+				// have rows but no CurrentRow, or its CurrentCell may be stale.
+				DataGridViewRow confirmedReceiptRow = DataGridView1.CurrentRow;
+				if (confirmedReceiptRow == null || confirmedReceiptRow.IsNewRow)
 				{
 					((Control)Button_VALIDER).Enabled = true;
 					return;
 				}
-				if (Operators.ConditionalCompareObjectEqual(DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ETAT"].Value, "VALIDER", TextCompare: false))
+				string confirmedReceiptId = Convert.ToString(confirmedReceiptRow.Cells["ID_BR"].Value);
+				if (String.IsNullOrWhiteSpace(confirmedReceiptId))
 				{
 					((Control)Button_VALIDER).Enabled = true;
 					return;
 				}
-				if (unchecked((int)MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Voulez-vous vraiment Valider le Bon N° ", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_BR"].Value)), "Attention", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0)) == 1)
+				if (Operators.ConditionalCompareObjectEqual(confirmedReceiptRow.Cells["ETAT"].Value, "VALIDER", TextCompare: false))
 				{
-					DataGridViewCellEventArgs e2 = new DataGridViewCellEventArgs(((DataGridViewBand)DataGridView1.Columns["cons"]).Index, DataGridView1.CurrentCell.RowIndex);
+					((Control)Button_VALIDER).Enabled = true;
+					return;
+				}
+				if (unchecked((int)MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Voulez-vous vraiment Valider le Bon N° ", confirmedReceiptId)), "Attention", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0)) == 1)
+				{
+					// A modal confirmation may allow the current grid selection to move.
+					// Never post a different receipt than the one just confirmed.
+					if (confirmedReceiptRow.DataGridView != DataGridView1 ||
+						!Object.ReferenceEquals(DataGridView1.CurrentRow, confirmedReceiptRow))
+					{
+						((Control)Button_VALIDER).Enabled = true;
+						return;
+					}
+					DataGridViewCellEventArgs e2 = new DataGridViewCellEventArgs(
+						((DataGridViewBand)DataGridView1.Columns["cons"]).Index, confirmedReceiptRow.Index);
 					DataGridView1_CellClick(DataGridView1, e2);
+					// Consultation populates Text_ID_BR and DataGrid_BODY. If the
+					// binding cursor was stale or the read failed, abort before SQL.
+					if (!LOGICA.ApplicationLayer.Purchasing.ReceiptDocumentSelectionGuard.Matches(
+						confirmedReceiptId, Text_ID_BR.Text))
+					{
+						((Control)Button_VALIDER).Enabled = true;
+						MessageBox.Show("Le bon sélectionné a changé. Rechargez la réception.",
+							"Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+						return;
+					}
 					MySqlCommand val = new MySqlCommand();
 					if (Module1.cn_SQL.State != ConnectionState.Open)
 					{
