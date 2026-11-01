@@ -728,10 +728,10 @@ internal static class PortableCheckoutSmoke
             int legacyLiveReads = 0;
             CheckoutVariantChoiceResult legacySelected =
                 CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
-                    flowMatches, delegate(DataTable original) {
+                    flowMatches, delegate(DataTable dialogRows) {
                         legacyDialogCalls++;
-                        Require(Object.ReferenceEquals(original, flowMatches) &&
-                            original.Rows[0]["ID_ARTICLE"].ToString() == "A",
+                        Require(Object.ReferenceEquals(dialogRows, flowMatches) &&
+                            dialogRows.Rows[0]["ID_ARTICLE"].ToString() == "A",
                             "WinForms dialog receives the exact original displayed table");
                         return 0;
                     }, delegate { legacyLiveReads++; return legacyLive; });
@@ -753,14 +753,14 @@ internal static class PortableCheckoutSmoke
                 "WinForms bridge preserves legacy return sign and rounded total");
             int noModalReads = 0;
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
-                flowMatches, delegate(DataTable original) { return -1; },
+                flowMatches, delegate(DataTable dialogRows) { return -1; },
                 delegate { noModalReads++; throw new Exception("Cancelled checkout queried store"); }).Status ==
                 CheckoutVariantChoiceStatus.Cancelled && noModalReads == 0,
                 "WinForms modal cancellation never refreshes or posts");
             DataTable legacySingle = flowMatches.Clone();
             legacySingle.ImportRow(flowMatches.Rows[0]);
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
-                legacySingle, delegate(DataTable original) { throw new Exception("Single opened modal"); },
+                legacySingle, delegate(DataTable dialogRows) { throw new Exception("Single opened modal"); },
                 delegate { noModalReads++; return legacySingle.Copy(); }).Status ==
                 CheckoutVariantChoiceStatus.Selected && noModalReads == 1,
                 "Single barcode article refreshes once without a modal");
@@ -772,7 +772,7 @@ internal static class PortableCheckoutSmoke
             legacyPendingDeleted.AcceptChanges();
             legacyPendingDeleted.Rows[0].Delete();
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
-                legacyPendingDeleted, delegate(DataTable original) {
+                legacyPendingDeleted, delegate(DataTable dialogRows) {
                     throw new Exception("Deleted row shifted WinForms modal index");
                 }, delegate { noModalReads++; return flowMatches; }).Status ==
                 CheckoutVariantChoiceStatus.InvalidCandidates && noModalReads == 1,
@@ -780,7 +780,7 @@ internal static class PortableCheckoutSmoke
             DataTable legacyDuplicateId = flowMatches.Copy();
             legacyDuplicateId.Rows[1]["ID_ARTICLE"] = "A";
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
-                legacyDuplicateId, delegate(DataTable original) {
+                legacyDuplicateId, delegate(DataTable dialogRows) {
                     throw new Exception("Duplicate identity opened modal");
                 }, delegate { noModalReads++; return flowMatches; }).Status ==
                 CheckoutVariantChoiceStatus.Ambiguous && noModalReads == 1,
@@ -788,23 +788,23 @@ internal static class PortableCheckoutSmoke
             DataTable legacyBadLive = flowMatches.Copy();
             legacyBadLive.Rows[1]["Code"] = "REASSIGNED";
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
-                flowMatches, delegate(DataTable original) { return 1; },
+                flowMatches, delegate(DataTable dialogRows) { return 1; },
                 delegate { return legacyBadLive; }).Status == CheckoutVariantChoiceStatus.Ambiguous,
                 "WinForms bridge rejects article barcode reassignment before price copy");
             DataTable legacyMissingLive = flowMatches.Clone();
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
-                flowMatches, delegate(DataTable original) { return 1; },
+                flowMatches, delegate(DataTable dialogRows) { return 1; },
                 delegate { return legacyMissingLive; }).Status == CheckoutVariantChoiceStatus.Missing,
                 "WinForms bridge rejects article deleted from local catalogue");
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
-                flowMatches, delegate(DataTable original) { return 1; },
+                flowMatches, delegate(DataTable dialogRows) { return 1; },
                 delegate { return null; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
                 "WinForms bridge refuses null local-store result");
             int invalidIndexReads = 0;
             bool invalidLegacyIndex = false;
             try {
                 CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
-                    flowMatches, delegate(DataTable original) { return 9; },
+                    flowMatches, delegate(DataTable dialogRows) { return 9; },
                     delegate { invalidIndexReads++; return flowMatches; });
             } catch (ArgumentOutOfRangeException) { invalidLegacyIndex = true; }
             Require(invalidLegacyIndex && invalidIndexReads == 0,
@@ -819,7 +819,7 @@ internal static class PortableCheckoutSmoke
             Exception observedLocalFailure = null;
             try {
                 CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
-                    flowMatches, delegate(DataTable original) { return 0; },
+                    flowMatches, delegate(DataTable dialogRows) { return 0; },
                     delegate { throw localStoreFailure; });
             } catch (Exception error) { observedLocalFailure = error; }
             Require(Object.ReferenceEquals(localStoreFailure, observedLocalFailure),
