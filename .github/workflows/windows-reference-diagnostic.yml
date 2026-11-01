@@ -13,6 +13,10 @@ on:
       - 'scripts/package-runtime.ps1'
       - 'scripts/verify-beta-rc.ps1'
       - 'scripts/test-beta-release-verifier.ps1'
+      - 'scripts/test-todo-license-cli.ps1'
+      - 'modernization/TODO.Licensing/**'
+      - 'modernization/TODO.Licensing.Issuer/**'
+      - 'modernization/TODO.Licensing.Tests/**'
       - '.github/workflows/windows-reference-diagnostic.yml'
   push:
     paths:
@@ -49,6 +53,12 @@ jobs:
           if (-not (Test-Path -LiteralPath 'recovered-source/LOGICA.csproj')) {
             throw 'Authoritative committed project missing'
           }
+      - name: Validate standalone TODO POS offline licensing on Windows
+        shell: pwsh
+        run: |
+          dotnet run --project modernization/TODO.Licensing.Tests/TODO.Licensing.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'TODO licensing core tests failed' }
+          ./scripts/test-todo-license-cli.ps1
       - name: Restore original runtime dependencies
         shell: pwsh
         run: |
