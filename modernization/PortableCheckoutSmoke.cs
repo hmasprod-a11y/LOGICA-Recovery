@@ -61,9 +61,58 @@ internal static class PortableCheckoutSmoke
             Require(snapshots.Count == 2, "Duplicate barcode variants retained");
             Require(Object.ReferenceEquals(CheckoutVariantSnapshotService.Resolve(variants, snapshots[1]),
                 variants.Rows[1]), "Selected variant must resolve exact ID");
+            Require(Object.ReferenceEquals(
+                CheckoutVariantSnapshotService.ResolveChosenVariant(variants, snapshots, 1),
+                variants.Rows[1]), "Explicit duplicate-barcode choice must retain article ID");
+            Require(CheckoutVariantSnapshotService.ResolveChosenVariant(variants, snapshots, -1) == null,
+                "Cancellation must not select the first variant");
+            bool invalidIndexRejected = false;
+            try { CheckoutVariantSnapshotService.ResolveChosenVariant(variants, snapshots, 2); }
+            catch (ArgumentOutOfRangeException) { invalidIndexRejected = true; }
+            Require(invalidIndexRejected, "Out-of-range choice must be rejected");
+            invalidIndexRejected = false;
+            try { CheckoutVariantSnapshotService.ResolveChosenVariant(variants, snapshots, -2); }
+            catch (ArgumentOutOfRangeException) { invalidIndexRejected = true; }
+            Require(invalidIndexRejected, "Negative index other than cancellation must be rejected");
+            bool nullDisplayedRejected = false;
+            try { CheckoutVariantSnapshotService.ResolveChosenVariant(variants, null, 0); }
+            catch (ArgumentNullException) { nullDisplayedRejected = true; }
+            Require(nullDisplayedRejected, "Missing displayed snapshot must be rejected");
+            bool nullCurrentRejected = false;
+            try { CheckoutVariantSnapshotService.ResolveChosenVariant(null, snapshots, -1); }
+            catch (ArgumentNullException) { nullCurrentRejected = true; }
+            Require(nullCurrentRejected, "Missing live query must be rejected even on cancellation");
+
+            DataTable reordered = variants.Clone();
+            reordered.Rows.Add("123", "B");
+            reordered.Rows.Add("123", "A");
+            Require(Object.ReferenceEquals(
+                CheckoutVariantSnapshotService.ResolveChosenVariant(reordered, snapshots, 1),
+                reordered.Rows[0]), "Reordered live query must resolve identity rather than index");
+            reordered.Rows[0]["ID_ARTICLE"] = "C";
+            Require(CheckoutVariantSnapshotService.ResolveChosenVariant(reordered, snapshots, 1) == null,
+                "Changed article identity must fail closed");
+            Require(snapshots[1].ArticleId == "B" && snapshots[1].Code == "123",
+                "Displayed snapshot must not mutate when query rows change");
+            DataTable ambiguous = variants.Clone();
+            ambiguous.Rows.Add("123", "B");
+            ambiguous.Rows.Add("123", "B");
+            Require(CheckoutVariantSnapshotService.ResolveChosenVariant(ambiguous, snapshots, 1) == null,
+                "Ambiguous identical identities must never post a sale");
+            DataTable missingIdentity = variants.Clone();
+            missingIdentity.Rows.Add(DBNull.Value, "A");
+            bool invalidIdentityRejected = false;
+            try { CheckoutVariantSnapshotService.Read(missingIdentity); }
+            catch (InvalidOperationException) { invalidIdentityRejected = true; }
+            Require(invalidIdentityRejected, "Null barcode must not enter displayed snapshot");
+            Require(variants.Rows.Count == 2 && variants.Rows[0]["ID_ARTICLE"].ToString() == "A",
+                "Selection must never modify the live table");
             variants.Rows.RemoveAt(1);
             Require(CheckoutVariantSnapshotService.Resolve(variants, snapshots[1]) == null,
                 "Stale variant must fail closed");
+            Require(CheckoutVariantSnapshotService.ResolveChosenVariant(variants, snapshots, 1) == null,
+                "Stale explicit choice must fail closed");
+            Console.WriteLine("PASS portable checkout modern variant selection: cancellation, index, identity, reorder, ambiguity and stale rows");
             var port = new Semantics();
             Require(CheckoutAmountGuards.IsNegativeSale("VENTE", "-1", port), "Negative sale");
             Require(!CheckoutAmountGuards.IsNegativeSale("RETOUR", "-1", port), "Sale operation");
