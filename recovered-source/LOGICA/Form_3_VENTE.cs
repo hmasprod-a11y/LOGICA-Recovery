@@ -15160,8 +15160,10 @@ public class Form_3_VENTE : Form
 	{
 		// Keep the original numeric/backspace/minus input, but reject a second
 		// decimal separator before it can reach the checkout quantity parser.
-		if (e.KeyChar == '.' && Label_QTE.Text.IndexOf('.') >= 0)
+		if ((e.KeyChar == '.' && Label_QTE.Text.IndexOf('.') >= 0)
+			|| (e.KeyChar == '-' && (Label_QTE.Text.Length != 0 || Label_QTE.Text.IndexOf('-') >= 0)))
 		{
+			// A second decimal point or a misplaced minus sign is not a valid quantity.
 			e.Handled = true;
 			return;
 		}
