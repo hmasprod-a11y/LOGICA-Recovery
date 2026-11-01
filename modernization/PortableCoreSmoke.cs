@@ -174,6 +174,7 @@ internal static class PortableCoreSmoke
         Require(PortableTicketSequenceSmoke.Run() == 0, "Portable ticket sequence smoke failed");
         Require(PortableTicketPostingSmoke.Run() == 0, "Portable ticket posting smoke failed");
         Require(PortablePaymentModeSmoke.Run() == 0, "Portable payment modes smoke failed");
+        Require(PortableArticleSearchSmoke.Run() == 0, "Portable checkout article search smoke failed");
         Require(PortablePaymentReadSmoke.Run() == 0, "Portable payment projection smoke failed");
         Console.WriteLine("PASS .NET 10 Linux core: cash, client settlement, checkout posting, checkout validation/pricing, stock movement, catalogue creation and duplicate precheck");
         return 0;

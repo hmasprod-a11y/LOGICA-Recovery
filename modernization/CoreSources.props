@@ -28,6 +28,8 @@
     <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutPaymentReadService.cs" Link="Application/Checkout/CheckoutPaymentReadService.cs" />
     <Compile Include="../recovered-source/LOGICA/Domain/ILegacyCheckoutPaymentModeSemantics.cs" Link="Domain/ILegacyCheckoutPaymentModeSemantics.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutPaymentModeService.cs" Link="Application/Checkout/CheckoutPaymentModeService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutArticleSearchService.cs" Link="Application/Checkout/CheckoutArticleSearchService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Infrastructure/Checkout/CheckoutArticleSearchQueryText.cs" Link="Infrastructure/Checkout/CheckoutArticleSearchQueryText.cs" />
     <Compile Include="../recovered-source/LOGICA/Domain/ILegacyTicketPostingSemantics.cs" Link="Domain/ILegacyTicketPostingSemantics.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Checkout/CheckoutTicketSequenceService.cs" Link="Application/Checkout/CheckoutTicketSequenceService.cs" />
     <Compile Include="../recovered-source/LOGICA/Infrastructure/Checkout/CheckoutTicketSequenceSql.cs" Link="Infrastructure/Checkout/CheckoutTicketSequenceSql.cs" />
