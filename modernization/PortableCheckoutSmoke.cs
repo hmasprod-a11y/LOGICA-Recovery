@@ -839,19 +839,36 @@ internal static class PortableCheckoutSmoke
             modalRemovedRow.AcceptChanges();
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
                 modalRemovedRow, delegate(DataTable shown) {
-                    shown.Rows[0].Delete();
+                    shown.Rows[1].Delete();
                     return 1;
                 }, delegate { modalDriftReads++; return flowMatches.Copy(); }).Status ==
                 CheckoutVariantChoiceStatus.InvalidCandidates && modalDriftReads == 0,
-                "Pending deletion during modal cannot shift its selected index");
+                "Deleting the CHOSEN row during modal cannot silently sell a replacement");
+            DataTable modalUnrelatedRemoval = flowMatches.Copy();
+            DataRow intendedAfterShift = modalUnrelatedRemoval.Rows[1];
+            CheckoutVariantChoiceResult shiftedDialogChoice =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                    modalUnrelatedRemoval, delegate(DataTable shown) {
+                        shown.Rows.RemoveAt(0);
+                        return 1;
+                    }, delegate { modalDriftReads++; return modalUnrelatedRemoval; });
+            Require(shiftedDialogChoice.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(shiftedDialogChoice.SelectedRow, intendedAfterShift) &&
+                modalDriftReads == 1,
+                "Removing an UNRELATED row preserves the original chosen variant by identity");
+            modalDriftReads = 0;
             DataTable modalAddedRow = flowMatches.Copy();
-            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
-                modalAddedRow, delegate(DataTable shown) {
-                    shown.Rows.Add("DUP", "C", 99m, 0m);
-                    return 1;
-                }, delegate { modalDriftReads++; return flowMatches.Copy(); }).Status ==
-                CheckoutVariantChoiceStatus.InvalidCandidates && modalDriftReads == 0,
-                "New modal row cannot silently change displayed choice set");
+            CheckoutVariantChoiceResult addedUnrelated =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                    modalAddedRow, delegate(DataTable shown) {
+                        shown.Rows.Add("DUP", "C", 99m, 0m);
+                        return 1;
+                    }, delegate { modalDriftReads++; return flowMatches.Copy(); });
+            Require(addedUnrelated.Status == CheckoutVariantChoiceStatus.Selected &&
+                addedUnrelated.SelectedRow["ID_ARTICLE"].ToString() == "B" &&
+                modalDriftReads == 1,
+                "Adding an unrelated row preserves the chosen article after live revalidation");
+            modalDriftReads = 0;
             DataTable modalReplacedRow = flowMatches.Copy();
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
                 modalReplacedRow, delegate(DataTable shown) {
@@ -891,7 +908,7 @@ internal static class PortableCheckoutSmoke
                     return 0;
                 }) == null,
                 "Actual legacy WinForms Select path cannot return wrong article after modal edit");
-            Console.WriteLine("PASS WinForms modal identity/order drift: changed IDs, barcode, deletion, addition, cancellation and live prices");
+            Console.WriteLine("PASS WinForms modal identity integrity: chosen-row replacement rejected, unrelated shifts preserved, live prices");
 
             DataTable legacyBadLive = flowMatches.Copy();
             legacyBadLive.Rows[1]["Code"] = "REASSIGNED";
