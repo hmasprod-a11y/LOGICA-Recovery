@@ -1572,6 +1572,7 @@ class PosSmoke {
   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
    var quantity=(Control)Get(form,"Label_QTE");
    var qtyButton=form.GetType().GetMethod("Button_qte1_Click",Flags);
+   var qtyKeyPress=form.GetType().GetMethod("Label_QTE_KeyPress",Flags);
    var qtyReset=form.GetType().GetMethod("Button_qteDRAFT_Click",Flags);
    var keyboardButton=form.GetType().GetMethod("Button_876_Click",Flags);
    var tabs=(Control)Get(form,"TabControl2");
@@ -1580,6 +1581,19 @@ class PosSmoke {
    if(quantity==null||qtyButton==null||qtyReset==null||keyboardButton==null||
       tabs==null||keyboard==null||panel==null)
     throw new Exception("Sales quantity keypad or keyboard layout is missing");
+   if(qtyKeyPress==null)throw new Exception("Quantity keyboard handler missing");
+   quantity.Text="23.5";
+   var duplicateDecimal=new KeyPressEventArgs('.');
+   qtyKeyPress.Invoke(form,new object[]{quantity,duplicateDecimal});
+   if(!duplicateDecimal.Handled)throw new Exception("Physical keyboard must reject duplicate decimal separators");
+   foreach(char allowed in new char[]{'4','\b'}) {
+    var key=new KeyPressEventArgs(allowed);
+    qtyKeyPress.Invoke(form,new object[]{quantity,key});
+    if(key.Handled)throw new Exception("Quantity keyboard rejected legacy valid key: "+allowed);
+   }
+   var invalidKey=new KeyPressEventArgs('X');
+   qtyKeyPress.Invoke(form,new object[]{quantity,invalidKey});
+   if(!invalidKey.Handled)throw new Exception("Quantity keyboard accepted nonnumeric input");
    var oldQty=quantity.Text;
    var oldColor=quantity.BackColor;
    var oldHeight=tabs.Height;
