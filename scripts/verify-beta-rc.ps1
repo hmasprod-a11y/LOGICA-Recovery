@@ -43,7 +43,10 @@ foreach ($item in $expected) {
     $name = [string]$item.path
     Assert-SafePath $name
     if ($byPath.ContainsKey($name)) { throw "Duplicate manifest path (including case collision): $name" }
-    if ($null -eq $item.size -or [string]$item.size -notmatch '^[0-9]+
+    [long]$validatedSize = 0
+    if ($null -eq $item.size -or [string]$item.size -notmatch '^[0-9]+$' -or
+        -not [long]::TryParse([string]$item.size, [ref]$validatedSize) -or
+        [string]$item.sha256 -notmatch '^[a-fA-F0-9]{64}$') {
         throw "Invalid manifest hash or size: $name"
     }
     if ($name -match '(^|/)(mysql-credential\.xml|mysql-import-complete\.txt)$' -or $name -match '^bd/mysql-data(/|$)') {
