@@ -983,6 +983,29 @@ internal static class PortableCheckoutSmoke
             Require(mixedFreshResult.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
                 mixedFreshResult.SelectedRow == null,
                 "WinForms scanner adapter rejects a live SQL result containing an unrelated barcode");
+            DataTable wrongOnlyLive = legacyLive.Clone();
+            wrongOnlyLive.ImportRow(legacyLive.Rows[0]);
+            wrongOnlyLive.Rows[0]["ID_ARTICLE"] = "UNKNOWN-ID";
+            wrongOnlyLive.Rows[0]["Code"] = "UNRELATED-BARCODE";
+            CheckoutVariantChoiceResult wrongOnlySelection =
+                CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", flowMatches,
+                    delegate(DataTable dialogCandidates) { return 1; },
+                    delegate { return wrongOnlyLive; });
+            Require(wrongOnlySelection.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                wrongOnlySelection.SelectedRow == null,
+                "Wrong-only local SQL result is invalid, not a missing product");
+            DataTable noCurrentVariant = legacyLive.Clone();
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", flowMatches,
+                delegate(DataTable dialogCandidates) { return 1; },
+                delegate { return noCurrentVariant; }).Status == CheckoutVariantChoiceStatus.Missing,
+                "Empty exact-barcode SQL result remains a genuinely missing product");
+            DataTable nullLiveCode = legacyLive.Clone();
+            nullLiveCode.ImportRow(legacyLive.Rows[0]);
+            nullLiveCode.Rows[0]["Code"] = DBNull.Value;
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", flowMatches,
+                delegate(DataTable dialogCandidates) { return 1; },
+                delegate { return nullLiveCode; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "SQL NULL barcode is not a valid scanner refresh");
             Require(CheckoutBarcodeSelectionService.SelectWithRefresh(flowMatches,
                 delegate(DataTable dialogCandidates) { return 1; },
                 delegate { return legacyLive.Copy(); }).Status == CheckoutVariantChoiceStatus.Selected,
