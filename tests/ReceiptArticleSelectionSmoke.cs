@@ -92,6 +92,23 @@ internal static class ReceiptArticleSelectionSmoke
             catch (ArgumentNullException) { threw = true; }
             Check(threw, "null snapshot rejected");
 
+            // The real receipt validation button must not post stock for a
+            // different document when the grid binding cursor is stale.
+            Check(ReceiptDocumentSelectionGuard.Matches("BR-42", "BR-42"),
+                "confirmed and loaded receipt identities agree");
+            Check(!ReceiptDocumentSelectionGuard.Matches("BR-42", "BR-43"),
+                "different receipt must never be validated");
+            Check(!ReceiptDocumentSelectionGuard.Matches("BR-42", "br-42"),
+                "receipt identity comparison is ordinal");
+            Check(!ReceiptDocumentSelectionGuard.Matches("BR-42", null),
+                "missing loaded receipt must fail closed");
+            Check(!ReceiptDocumentSelectionGuard.Matches(null, "BR-42"),
+                "missing confirmed receipt must fail closed");
+            Check(!ReceiptDocumentSelectionGuard.Matches(" ", " "),
+                "blank receipt identifiers cannot validate");
+            Check(!ReceiptDocumentSelectionGuard.Matches("BR-42 ", "BR-42"),
+                "whitespace changes identity rather than silently trimming");
+
             Console.WriteLine("PASS real receipt article selection: " + assertions +
                 " assertions; duplicate barcodes, exact grid IDs, stale/malformed identities");
             return 0;
