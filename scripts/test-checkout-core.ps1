@@ -17,6 +17,7 @@ try {
         'recovered-source/LOGICA/Domain/BasketTotalConsistency.cs',
         'recovered-source/LOGICA/Domain/SalesLinePricing.cs',
         'recovered-source/LOGICA/Domain/StockAvailability.cs',
+        'recovered-source/LOGICA/Application/Checkout/CheckoutArticleImageSelectionService.cs',
         'recovered-source/LOGICA/Application/Checkout/StockValidationModels.cs',
         'recovered-source/LOGICA/Application/Checkout/StockValidationService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutPostingModels.cs',

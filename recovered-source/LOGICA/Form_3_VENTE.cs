@@ -12453,6 +12453,13 @@ public class Form_3_VENTE : Form
 					{
 						break;
 					}
+					Bitmap articleImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.Load(
+						Module1._CHEMIN_FOLDER + "\\bd\\images", dataTable.Rows[num2]["Images"].ToString());
+					if (articleImage == null)
+					{
+						num2++;
+						continue;
+					}
 					Button_RJ_ARTICLE button_RJ_ARTICLE = new Button_RJ_ARTICLE();
 					button_RJ_ARTICLE._COLOR_PRIX = ((TextBoxBase)Text_THEME).BackColor;
 					((Control)button_RJ_ARTICLE).Name = "Button_ARTICLE_" + Conversions.ToString(num2);
@@ -12468,20 +12475,8 @@ public class Form_3_VENTE : Form
 					((ButtonBase)button_RJ_ARTICLE).FlatStyle = (FlatStyle)2;
 					((Control)button_RJ_ARTICLE).Font = new Font("Segoe UI", 9f, (FontStyle)1);
 					((Control)button_RJ_ARTICLE).ForeColor = Color.Black;
-					if (((ServerComputer)MyProject.Computer).FileSystem.FileExists(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + dataTable.Rows[num2]["Images"].ToString()))
-					{
-						FileStream fileStream = new FileStream(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + dataTable.Rows[num2]["Images"].ToString(), FileMode.Open, FileAccess.Read);
-						((ButtonBase)button_RJ_ARTICLE).Image = (Image)new Bitmap(Image.FromStream((Stream)fileStream));
-						((ButtonBase)button_RJ_ARTICLE).ImageAlign = (ContentAlignment)2;
-						fileStream.Close();
-					}
-					else
-					{
-						FileStream fileStream2 = new FileStream(Module1._CHEMIN_FOLDER + "\\bd\\images\\0X.png", FileMode.Open, FileAccess.Read);
-						((ButtonBase)button_RJ_ARTICLE).Image = (Image)new Bitmap(Image.FromStream((Stream)fileStream2));
-						((ButtonBase)button_RJ_ARTICLE).ImageAlign = (ContentAlignment)2;
-						fileStream2.Close();
-					}
+					((ButtonBase)button_RJ_ARTICLE).Image = (Image)articleImage;
+					((ButtonBase)button_RJ_ARTICLE).ImageAlign = (ContentAlignment)2;
 					Padding margin = new Padding(2, 2, 0, 0);
 					((Control)button_RJ_ARTICLE).Margin = margin;
 					((Control)button_RJ_ARTICLE).Width = 127;
@@ -15177,6 +15172,13 @@ public class Form_3_VENTE : Form
 						int num4 = num;
 						if (num3 <= num4)
 						{
+							Bitmap articleImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.Load(
+								Module1._CHEMIN_FOLDER + "\\bd\\images", dt_PIC.Rows[num2]["Images"].ToString());
+							if (articleImage == null)
+							{
+								num2++;
+								continue;
+							}
 							Button_RJ_ARTICLE button_RJ_ARTICLE = new Button_RJ_ARTICLE();
 							button_RJ_ARTICLE._COLOR_PRIX = ((TextBoxBase)Text_THEME).BackColor;
 							((Control)button_RJ_ARTICLE).Name = "Button_ARTICLE_" + Conversions.ToString(num2);
@@ -15192,20 +15194,8 @@ public class Form_3_VENTE : Form
 							((ButtonBase)button_RJ_ARTICLE).FlatStyle = (FlatStyle)2;
 							((Control)button_RJ_ARTICLE).Font = new Font("Segoe UI", 9f, (FontStyle)1);
 							((Control)button_RJ_ARTICLE).ForeColor = Color.Black;
-							if (((ServerComputer)MyProject.Computer).FileSystem.FileExists(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + dt_PIC.Rows[num2]["Images"].ToString()))
-							{
-								FileStream fileStream = new FileStream(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + dt_PIC.Rows[num2]["Images"].ToString(), FileMode.Open, FileAccess.Read);
-								((ButtonBase)button_RJ_ARTICLE).Image = (Image)new Bitmap(Image.FromStream((Stream)fileStream));
-								((ButtonBase)button_RJ_ARTICLE).ImageAlign = (ContentAlignment)2;
-								fileStream.Close();
-							}
-							else
-							{
-								FileStream fileStream2 = new FileStream(Module1._CHEMIN_FOLDER + "\\bd\\images\\0X.png", FileMode.Open, FileAccess.Read);
-								((ButtonBase)button_RJ_ARTICLE).Image = (Image)new Bitmap(Image.FromStream((Stream)fileStream2));
-								((ButtonBase)button_RJ_ARTICLE).ImageAlign = (ContentAlignment)2;
-								fileStream2.Close();
-							}
+							((ButtonBase)button_RJ_ARTICLE).Image = (Image)articleImage;
+							((ButtonBase)button_RJ_ARTICLE).ImageAlign = (ContentAlignment)2;
 							Padding margin = new Padding(2, 2, 0, 0);
 							((Control)button_RJ_ARTICLE).Margin = margin;
 							((Control)button_RJ_ARTICLE).Width = 127;
