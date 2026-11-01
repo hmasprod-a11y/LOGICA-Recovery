@@ -500,6 +500,33 @@ internal static class PortableCheckoutSmoke
             Require(Object.ReferenceEquals(
                 CheckoutBarcodeSelectionService.Select(flowMatches, delegate(DataTable ignored) { return 1; }),
                 flowChoice.SelectedRow), "Modern selection must agree with legacy chosen variant");
+            // The opt-in Windows refresh contract must not silently reuse the
+            // displayed table. The old Select path above remains supported.
+            int fakeRefreshCalls = 0;
+            CheckoutVariantChoiceResult fakeRefresh =
+                CheckoutBarcodeSelectionService.SelectWithRefresh(flowMatches,
+                    delegate(DataTable shown) { return 1; },
+                    delegate { fakeRefreshCalls++; return flowMatches; });
+            Require(fakeRefresh.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                fakeRefresh.SelectedRow == null && fakeRefreshCalls == 1,
+                "Windows refresh adapter refuses a stale displayed DataTable");
+            DataTable freshSaleRows = flowMatches.Copy();
+            freshSaleRows.Rows[1]["UnitPrice"] = 18m;
+            freshSaleRows.Rows[1]["Discount"] = 5m;
+            CheckoutVariantChoiceResult freshSaleChoice =
+                CheckoutBarcodeSelectionService.SelectWithRefresh(flowMatches,
+                    delegate(DataTable shown) { return 1; },
+                    delegate { return freshSaleRows; });
+            Require(freshSaleChoice.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(freshSaleChoice.SelectedRow, freshSaleRows.Rows[1]) &&
+                SalesLinePricing.CalculateNetAmount(
+                    (decimal)freshSaleChoice.SelectedRow["UnitPrice"], 2m,
+                    (decimal)freshSaleChoice.SelectedRow["Discount"]) == 34.2m &&
+                SalesLinePricing.CalculateNetAmount(
+                    (decimal)freshSaleChoice.SelectedRow["UnitPrice"], -2m,
+                    (decimal)freshSaleChoice.SelectedRow["Discount"]) == -34.2m,
+                "Windows refresh adapter uses distinct live price for sale and return");
+            Console.WriteLine("PASS checkout Windows refresh isolation: reject same-table reader, preserve legacy scanner and live sale/return");
             // This is the Select API called by the real Form_3_VENTE handler,
             // not just the opt-in modern flow. The dialog's index belongs to
             // the originally displayed rows, even if a refresh shifts them.
