@@ -140,14 +140,14 @@ def assert_optional_business_smoke_gate(source):
     end = next((i for i in range(start + 1, len(lines))
                 if lines[i].startswith('      - ')), len(lines))
     block = lines[start + 1:end]
-    conditions = [line.strip() for line in block if re.match(r'^        if\\s*:', line)]
+    conditions = [line.strip() for line in block if re.match(r'^        if\s*:', line)]
     if conditions != [expected]:
         raise ValueError('Business smoke must have exactly one project-existence condition')
-    runs = [line.strip() for line in block if re.match(r'^        run\\s*:', line)]
+    runs = [line.strip() for line in block if re.match(r'^        run\s*:', line)]
     expected_run = 'run: dotnet run --project business/Hanouty.BusinessOperations.Smoke.csproj -c Release'
     if runs != [expected_run]:
         raise ValueError('Business smoke project must be executed as the sole run command')
-    if any(re.match(r'^        continue-on-error\\s*:', line) for line in block):
+    if any(re.match(r'^        continue-on-error\s*:', line) for line in block):
         raise ValueError('Business smoke failures must block the release')
     return True
 
@@ -168,13 +168,13 @@ def assert_optional_modern_core_gate(source):
     block = lines[start + 1:end]
     expected_condition = "        if: ${{ hashFiles('modernization/LOGICA.CoreCompatibility.csproj') != '' }}"
     expected_command = '        run: dotnet build modernization/LOGICA.CoreCompatibility.csproj -c Release --warnaserror'
-    conditions = [line for line in block if re.match(r'^        if\\s*:', line)]
+    conditions = [line for line in block if re.match(r'^        if\s*:', line)]
     if conditions != [expected_condition]:
         raise ValueError('Modern core gate must have exactly one project-existence condition')
-    runs = [line for line in block if re.match(r'^        run\\s*:', line)]
+    runs = [line for line in block if re.match(r'^        run\s*:', line)]
     if runs != [expected_command]:
         raise ValueError('Modern core dual-target compilation is not executed as the sole run command')
-    if any(re.match(r'^        continue-on-error\\s*:', line) for line in block):
+    if any(re.match(r'^        continue-on-error\s*:', line) for line in block):
         raise ValueError('Modern core gate must fail the release build on compiler errors')
     business = '      - name: Exercise business operations .NET 10 smoke when available'
     if business not in lines or start > lines.index(business):
@@ -584,7 +584,7 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
     def test_business_smoke_command_cannot_be_a_comment(self):
         source = WORKFLOW.read_text(encoding='utf-8')
         command = 'run: dotnet run --project business/Hanouty.BusinessOperations.Smoke.csproj -c Release'
-        modified = source.replace(command, 'run: |\\n          # ' + command + '\\n          Write-Host skipped-business', 1)
+        modified = source.replace(command, 'run: |\n          # ' + command + '\n          Write-Host skipped-business', 1)
         with self.assertRaisesRegex(ValueError, 'sole run command'):
             assert_optional_business_smoke_gate(modified)
 
@@ -598,35 +598,35 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
     def test_business_smoke_duplicate_run_key_is_rejected(self):
         source = WORKFLOW.read_text(encoding='utf-8')
         command = 'run: dotnet run --project business/Hanouty.BusinessOperations.Smoke.csproj -c Release'
-        modified = source.replace('        ' + command, '        ' + command + '\\n        run: Write-Host bypass', 1)
+        modified = source.replace('        ' + command, '        ' + command + '\n        run: Write-Host bypass', 1)
         with self.assertRaisesRegex(ValueError, 'sole run command'):
             assert_optional_business_smoke_gate(modified)
 
     def test_business_smoke_duplicate_if_key_is_rejected(self):
         source = WORKFLOW.read_text(encoding='utf-8')
         condition = "if: ${{ hashFiles('business/Hanouty.BusinessOperations.Smoke.csproj') != '' }}"
-        modified = source.replace('        ' + condition, '        ' + condition + '\\n        if: false', 1)
+        modified = source.replace('        ' + condition, '        ' + condition + '\n        if: false', 1)
         with self.assertRaisesRegex(ValueError, 'exactly one'):
             assert_optional_business_smoke_gate(modified)
 
     def test_business_smoke_cannot_ignore_failures(self):
         source = WORKFLOW.read_text(encoding='utf-8')
         marker = '      - name: Exercise business operations .NET 10 smoke when available'
-        modified = source.replace(marker, marker + '\\n        continue-on-error: true', 1)
+        modified = source.replace(marker, marker + '\n        continue-on-error: true', 1)
         with self.assertRaisesRegex(ValueError, 'failures must block'):
             assert_optional_business_smoke_gate(modified)
 
     def test_modern_core_duplicate_run_key_is_rejected(self):
         source = WORKFLOW.read_text(encoding='utf-8')
         command = '        run: dotnet build modernization/LOGICA.CoreCompatibility.csproj -c Release --warnaserror'
-        modified = source.replace(command, command + '\\n        run: Write-Host bypass', 1)
+        modified = source.replace(command, command + '\n        run: Write-Host bypass', 1)
         with self.assertRaisesRegex(ValueError, 'sole run command'):
             assert_optional_modern_core_gate(modified)
 
     def test_modern_core_duplicate_if_key_is_rejected(self):
         source = WORKFLOW.read_text(encoding='utf-8')
         condition = "        if: ${{ hashFiles('modernization/LOGICA.CoreCompatibility.csproj') != '' }}"
-        modified = source.replace(condition, condition + '\\n        if: false', 1)
+        modified = source.replace(condition, condition + '\n        if: false', 1)
         with self.assertRaisesRegex(ValueError, 'exactly one'):
             assert_optional_modern_core_gate(modified)
 
