@@ -1483,6 +1483,15 @@ class PosSmoke {
      if(Object.Equals(method.Invoke(form,args),true))
       throw new Exception("Ctrl+F must not be consumed when search is hidden");
      probe.Visible=true;
+     // A disposed search field must never intercept scanner/legacy key input.
+     using(var disposedProbe=new TextBox()) {
+      disposedProbe.Dispose();
+      searchProperty.SetValue(form,disposedProbe,null);
+      args=new object[]{new Message(),Keys.Control|Keys.F};
+      if(Object.Equals(method.Invoke(form,args),true))
+       throw new Exception("Disposed search field must not consume Ctrl+F");
+      searchProperty.SetValue(form,probe,null);
+     }
      probe.Enabled=false;
      args=new object[]{new Message(),Keys.Control|Keys.F};
      if(Object.Equals(method.Invoke(form,args),true))
