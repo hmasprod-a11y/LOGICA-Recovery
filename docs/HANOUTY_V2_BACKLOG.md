@@ -19,6 +19,10 @@ The legacy sale screen currently searches all products by Article or Code in lis
 
 PR #61 preserved unsafe SQL text as a characterization baseline. The follow-up security PR binds search input as a MySQL parameter in both list and image modes. It intentionally fixes quote handling and injection while retaining LIKE wildcard matching (`%` and `_`) and original image-mode SQL filtering. Isolated MariaDB tests must pass before merging; image-file existence and decode filtering is handled in the image-only follow-up; the SQL predicate remains unchanged to preserve database search compatibility.
 
+## Exact barcode scan boundary (next checkout safety gate)
+
+The sale scanner's `Button_FIND_Click` previously concatenated `Text_CODE.Text` into `WHERE Code = '...'`. This is now an exact `Code = @code` parameterized lookup. The original trimmed-empty guard, raw barcode parameter value, no `ORDER BY`, first-row selection, weighing/free-price dialogs, and `Button_GO_Click` sequence remain unchanged. In particular, this **does not** implement a new duplicate-barcode chooser or quantity policy. A separate UX decision and characterization test are required before changing the behavior when multiple articles share a barcode. The isolated MariaDB fixture checks quotes, injection attempts, LIKE metacharacters as literal barcode text, and multiple rows with the same barcode. No customer database is used.
+
 ## Next resume point
 
-After Windows and portable CI pass on the article-search PR: after parameterization and image-only CI, inspect sale search latency, image-tab default selection, and duplicate-barcode chooser. Keep original checkout transaction and printer-failure behavior under explicit regression before any changes.
+After the exact-barcode PR passes Windows/MariaDB and portable CI: characterize barcode duplicate selection and quantity increments in the original Windows sale screen, then implement the user-approved chooser without silently altering stock, payment, or ticket behavior. Inspect image-tab initial selection and search latency independently.
