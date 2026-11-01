@@ -39,7 +39,11 @@ internal static class PortableArticleSearchSmoke
             list.Contains(term) || images.Contains(term) ||
             CheckoutArticleSearchQueryText.Pattern(term) != "%O'Hara%")
             throw new Exception("Portable article search parameterization changed");
-        Console.WriteLine("PASS .NET 10 portable checkout article search: routing, read order and parameterized SQL");
+        string barcode = CheckoutArticleSearchQueryText.ExactBarcode();
+        if (barcode != "select * from TABLE_ARTICLES WHERE Code = @code" ||
+            barcode.Contains("O'Hara") || barcode.Contains("ORDER BY") || barcode.Contains("LIKE"))
+            throw new Exception("Portable scanned barcode lookup must be parameterized exact equality");
+        Console.WriteLine("PASS .NET 10 portable checkout article search: routing, read order, parameterized search and exact barcode lookup");
         return 0;
     }
 }
