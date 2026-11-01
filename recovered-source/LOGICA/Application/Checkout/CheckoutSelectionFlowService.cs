@@ -90,6 +90,19 @@ namespace LOGICA.ApplicationLayer.Checkout
             // displayed row. DB exceptions still propagate to the UI handler.
             if (live == null)
                 return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            // The refreshed scanner query must still represent the same exact
+            // barcode. Reject an adapter returning mixed or blank codes rather
+            // than letting an unrelated product enter a checkout selection.
+            if (!live.Columns.Contains("Code"))
+                return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            foreach (DataRow row in live.Rows)
+            {
+                if (row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached)
+                    continue;
+                if (row.IsNull("Code") ||
+                    !String.Equals(Convert.ToString(row["Code"]), scannedCode, StringComparison.Ordinal))
+                    return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            }
             return CheckoutVariantSnapshotService.EvaluateChoice(live, read.Snapshots, index);
         }
 
