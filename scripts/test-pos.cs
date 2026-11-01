@@ -1492,6 +1492,9 @@ class PosSmoke {
        throw new Exception("Disposed search field must not consume Ctrl+F");
       searchProperty.SetValue(form,probe,null);
      }
+     // The actual control must remain attached and bound after the probe is restored.
+     if(searchProperty.GetValue(form,null)!=probe)
+      throw new Exception("Search probe was unexpectedly detached before restoration");
      probe.Enabled=false;
      args=new object[]{new Message(),Keys.Control|Keys.F};
      if(Object.Equals(method.Invoke(form,args),true))
