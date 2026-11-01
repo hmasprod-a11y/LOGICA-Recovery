@@ -1037,6 +1037,34 @@ internal static class PortableCheckoutSmoke
                 delegate { capturedScannerSqlCalls++; return legacyLive.Copy(); }).Status ==
                 CheckoutVariantChoiceStatus.Cancelled && capturedScannerSqlCalls == 1,
                 "Cancellation of captured scan must not issue another local query");
+            // Raw identity selection and the production scanner adapter have
+            // deliberately different error classifications for a reassigned
+            // barcode. Both reject it; the scanner must report an invalid
+            // exact-barcode SQL result rather than a missing/ambiguous sale.
+            DataTable reassignedSelectedBarcode = legacyLive.Copy();
+            reassignedSelectedBarcode.Rows[0]["Code"] = "REASSIGNED";
+            CheckoutVariantChoiceResult rawReassignment =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                    flowMatches, delegate(DataTable shown) { return 1; },
+                    delegate { return reassignedSelectedBarcode; });
+            CheckoutVariantChoiceResult scannerReassignment =
+                CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", flowMatches,
+                    delegate(DataTable shown) { return 1; },
+                    delegate { return reassignedSelectedBarcode.Copy(); });
+            Require(rawReassignment.Status == CheckoutVariantChoiceStatus.Ambiguous &&
+                rawReassignment.SelectedRow == null &&
+                scannerReassignment.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                scannerReassignment.SelectedRow == null,
+                "Raw ID reassignment is ambiguous, but a foreign scanner SQL barcode is invalid");
+            DataTable duplicateAndForeignBarcode = legacyLive.Copy();
+            duplicateAndForeignBarcode.Rows[0]["ID_ARTICLE"] = "A";
+            duplicateAndForeignBarcode.Rows[1]["Code"] = "FOREIGN";
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", flowMatches,
+                delegate(DataTable shown) { return 0; },
+                delegate { return duplicateAndForeignBarcode; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Misfiltered SQL barcode outranks unrelated duplicate identity");
+            Console.WriteLine("PASS strict scanner status precedence: reassigned barcode and mixed duplicate identity");
             Console.WriteLine("PASS captured barcode binding: live identity, wrong SQL result, blank scan and cancellation");
             Console.WriteLine("PASS scanner exact-code validation before WinForms modal, local-store refresh and basket copy");
 
