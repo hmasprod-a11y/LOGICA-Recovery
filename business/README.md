@@ -19,3 +19,8 @@ This is a **new opt-in**, read-only business layer. It does **not** replace or i
 - .NET 10: `dotnet run --project business/Hanouty.BusinessOperations.Smoke.csproj -c Release`.
 
 **Coordination request to QA / Modern Core owners:** please add the standalone .NET 10 command to a future shared Linux CI workflow after review. Do not edit `modernization/CoreSources.props` or shared workflows from Track B. Do not claim MariaDB integration: this preview has no database adapter.
+
+## Stock movement journal reconciliation (Track B)
+
+- `StockMovementAuditService.Compare` checks a caller-supplied baseline, signed movement journal and current-stock snapshot using exact ordinal `ID_ARTICLE` and unique movement identities. It calculates expected quantities and per-article drift, and explicitly reports missing current rows, unexpected current articles and movements referencing unknown articles. Negative legacy stock and fractional movements are preserved; arithmetic overflow, duplicate IDs and malformed rows fail closed. The output is immutable and never writes stock, cost, prices or the database.
+- `StockMovementAuditSmoke` runs with both Windows independent Domain characterization and the standalone .NET 10 Business Operations smoke project. This is **not** an audit of real shop journals: the caller must provide consistent, isolated snapshots and a complete movement range. A future MariaDB adapter and transaction owner need separate review and integration tests before use for posting or compliance reporting.
