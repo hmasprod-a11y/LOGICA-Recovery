@@ -44,6 +44,18 @@ internal static class PortableCheckoutSmoke
         try
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            var variants = new DataTable();
+            variants.Columns.Add("Code", typeof(string));
+            variants.Columns.Add("ID_ARTICLE", typeof(string));
+            variants.Rows.Add("123", "A");
+            variants.Rows.Add("123", "B");
+            var snapshots = CheckoutVariantSnapshotService.Read(variants);
+            Require(snapshots.Count == 2, "Duplicate barcode variants retained");
+            Require(Object.ReferenceEquals(CheckoutVariantSnapshotService.Resolve(variants, snapshots[1]),
+                variants.Rows[1]), "Selected variant must resolve exact ID");
+            variants.Rows.RemoveAt(1);
+            Require(CheckoutVariantSnapshotService.Resolve(variants, snapshots[1]) == null,
+                "Stale variant must fail closed");
             var port = new Semantics();
             Require(CheckoutAmountGuards.IsNegativeSale("VENTE", "-1", port), "Negative sale");
             Require(!CheckoutAmountGuards.IsNegativeSale("RETOUR", "-1", port), "Sale operation");
