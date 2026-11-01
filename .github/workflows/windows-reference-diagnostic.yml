@@ -90,6 +90,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Parse release PowerShell scripts before expensive Windows POS tests
+        shell: pwsh
+        run: |
+          foreach ($path in @('scripts/package-beta-rc.ps1', 'scripts/test-extracted-release.ps1',
+                              'scripts/verify-beta-rc.ps1', 'scripts/test-beta-release-verifier.ps1',
+                              'scripts/test-release-candidate.ps1')) {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path -LiteralPath $path).Path, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors.Count -gt 0) {
+              $parseErrors | ForEach-Object { Write-Error "$path : $_" }
+              throw "Invalid PowerShell release script syntax: $path"
+            }
+            Write-Host "PASS: parsed $path"
+          }
       - name: Guard release artifact upload policy (including negative fixtures)
         shell: pwsh
         run: python scripts/test-release-upload-policy.py
