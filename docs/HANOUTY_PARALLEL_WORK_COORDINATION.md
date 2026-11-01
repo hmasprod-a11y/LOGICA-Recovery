@@ -27,3 +27,8 @@ Updated: 2026-11-01. Shared coordination reference for four independent developm
 - Track B PR #72 has read-only purchasing/stock-count preview services. Do not wire their stock adjustments into Checkout or change posting semantics until a reviewed contract identifies the stock movement owner, transaction boundaries, and isolated MariaDB integration tests.
 - Track C may consume the snapshot selection contract in UI only after coordination on legacy barcode selection behavior; no silent first-match for duplicate barcodes.
 - Track D should verify .NET Framework independent checkout isolation, Windows POS, .NET 10 smoke and packaging for PR #70 before recommending merge. No cross-track files were edited in this batch.
+
+## Modern checkout UI outcome contract (2026-11-01)
+- Track A added `CheckoutVariantSnapshotService.EvaluateChoice(currentMatches, displayed, selectedIndex)` in PR #70. This is a read-only API with `CheckoutVariantChoiceStatus` = Selected, Cancelled, Missing, Ambiguous, InvalidCandidates and a non-null `SelectedRow` only on Selected.
+- Track C may display separate messages for cancelled, stale, duplicate and invalid result sets, but must coordinate before wiring it into WinForms. The legacy `ResolveChosenVariant` and checkout posting flow are intentionally unchanged.
+- Track B continues to own catalogue identity and inventory mutation; Track A's choice result never updates quantity, price, stock or the database. Track D should check Domain isolated Windows, .NET 10 portable and Windows POS gates before integration.
