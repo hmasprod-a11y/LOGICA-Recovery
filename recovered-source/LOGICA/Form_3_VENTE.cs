@@ -12440,7 +12440,8 @@ public class Form_3_VENTE : Form
 				DataTable dataTable = new DataTable();
 				MySqlDataAdapter val = new MySqlDataAdapter();
 				dataTable.Clear();
-				val = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("select      *     from      TABLE_ARTICLES        WHERE      Famille =  '", NewLateBinding.LateGet(sender, null, "Text", new object[0], null, null, null)), "'            order by Article asc ")), Module1.cn_SQL);
+				val = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Family(), Module1.cn_SQL);
+				val.SelectCommand.Parameters.AddWithValue("@family", Conversions.ToString(NewLateBinding.LateGet(sender, null, "Text", new object[0], null, null, null)));
 				((DbDataAdapter)(object)val).Fill(dataTable);
 				((Control)FlowLayout_ARTICLES).Controls.Clear();
 				int num = dataTable.Rows.Count - 1;

@@ -1335,7 +1335,28 @@ class PosSmoke {
       sale.GetType().GetMethod("Text_FIND_TextChanged",Flags).Invoke(sale,new object[]{sale,EventArgs.Empty});
       if(tiles.Controls.Count!=1||Convert.ToString(tiles.Controls[0].Tag)!="CI_IMAGE_REAL")
        throw new Exception("Search image grid includes products without a valid photo: "+tiles.Controls.Count);
-      Console.WriteLine("PASS original Windows POS: family and search image tiles real-only; list still shows all 5 products");
+             // An apostrophe is valid in a family name. An SQL-looking family
+       // must be treated as an exact literal, never as a WHERE expression.
+       Sql(connection,"INSERT INTO TABLE_ARTICLES VALUES "+
+        "('CI quote','CI_FAMILY_QUOTE','hanouty_ci_real.png','CI''IMAGE',15),"+
+        "('CI literal','CI_FAMILY_LITERAL','hanouty_ci_real.png','CI_IMAGE'' OR ''1''=''1',15)");
+       string[][] families={
+        new[]{"CI'IMAGE","CI_FAMILY_QUOTE","1"},
+        new[]{"CI_IMAGE' OR '1'='1","CI_FAMILY_LITERAL","1"},
+        new[]{"CI_IMAGE' OR 1=1 -- ","","0"},
+        new[]{"CI_IMAGE","CI_IMAGE_REAL","1"}
+       };
+       foreach(string[] scenario in families) {
+        using(var family=new Button(){Text=scenario[0]})
+         sale.GetType().GetMethod("FAM2_click",Flags).Invoke(sale,new object[]{family,EventArgs.Empty});
+        int expectedCount=int.Parse(scenario[2],CultureInfo.InvariantCulture);
+        if(tiles.Controls.Count!=expectedCount ||
+           (expectedCount==1 && Convert.ToString(tiles.Controls[0].Tag)!=scenario[1]))
+         throw new Exception("Family filter leaked rows or lost literal match: "+scenario[0]+
+          " tiles="+tiles.Controls.Count);
+       }
+       Console.WriteLine("PASS original Windows POS: parameterized family tiles, quotes, literal SQL text and injection rejection");
+       Console.WriteLine("PASS original Windows POS: family and search image tiles real-only; list still shows all 5 products");
      }
     } finally {Sql(connection,"DROP TEMPORARY TABLE IF EXISTS TABLE_ARTICLES");}
    }

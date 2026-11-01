@@ -111,6 +111,17 @@ internal static class CheckoutArticleSearchTests
             throw new Exception("Unexpected search parameter count");
     }
 
+    private static void CheckFamilySql()
+    {
+        const string expected = "select      *     from      TABLE_ARTICLES        WHERE      Famille = @family            order by Article asc ";
+        string sql = CheckoutArticleSearchQueryText.Family();
+        if (sql != expected || sql.Contains("LIKE") ||
+            sql.Split(new[] { "@family" }, StringSplitOptions.None).Length != 2)
+            throw new Exception("Family tiles must use one bound exact-match parameter and retain article ordering");
+        foreach (string hostile in new[] { "CI'IMAGE", "CI_IMAGE' OR 1=1 -- ", "CI_IMAGE' OR '1'='1" })
+            if (sql.Contains(hostile)) throw new Exception("Family input leaked into SQL");
+    }
+
     private static void CheckExactBarcodeSql()
     {
         const string expected = "select * from TABLE_ARTICLES WHERE Code = @code";
@@ -145,6 +156,8 @@ internal static class CheckoutArticleSearchTests
                     Same(length, tabs, failure, culture + "/length " + length);
                     cases++;
                 }
+                CheckFamilySql();
+                cases++;
                 foreach (string term in new[] {
                     "", "AB", "O'Hara", "%_\\", "é عربي", null
                 })
