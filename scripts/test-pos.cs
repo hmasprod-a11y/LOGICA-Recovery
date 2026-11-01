@@ -1552,10 +1552,11 @@ class PosSmoke {
    var code=(TextBox)Get(form,"Text_CODE");
    var findButton=(Control)Get(form,"Button_FIND");
    var selected=form.GetType().GetMethod("SelectedProductListRow",Flags);
+   var pointer=form.GetType().GetMethod("SelectedProductListRowForPointer",Flags);
    var reference=form.GetType().GetMethod("BlankBarcodeListArticleReference",Flags);
    var click=form.GetType().GetMethod("DataGridView100_Click",Flags);
    var doubleClick=form.GetType().GetMethod("DataGridView100_DoubleClick",Flags);
-   if(list==null||code==null||findButton==null||selected==null||reference==null||click==null||doubleClick==null)
+   if(list==null||code==null||findButton==null||selected==null||pointer==null||reference==null||click==null||doubleClick==null)
     throw new Exception("Sales product-list selection handlers missing");
    var rows=new DataTable();
    foreach(string column in new[]{"ID_ARTICLE","Code","Article","PRIX_V_1"})rows.Columns.Add(column);
@@ -1566,6 +1567,43 @@ class PosSmoke {
    list.CurrentCell=list.Rows[0].Cells[0];
    if(!Object.ReferenceEquals(selected.Invoke(form,null),rows.Rows[0]))
     throw new Exception("List selection did not resolve the first bound row");
+   // Pointer hit-testing must never use a stale CurrentRow for a different cell.
+   // No sale is posted here; tests exercise the real WinForms selection handler.
+   list.Width=Math.Max(list.Width,600);
+   list.Height=Math.Max(list.Height,300);
+   list.PerformLayout();
+   var secondRect=list.GetCellDisplayRectangle(0,1,false);
+   if(secondRect.Width<=8||secondRect.Height<=8)
+    throw new Exception("Second product row not visible for pointer regression");
+   int hitX=secondRect.Left+5,hitY=secondRect.Top+5;
+   if(list.HitTest(hitX,hitY).RowIndex!=1)
+    throw new Exception("WinForms hit test did not locate second product");
+   var secondPointer=new MouseEventArgs(MouseButtons.Left,2,hitX,hitY,0);
+   if(!Object.ReferenceEquals(pointer.Invoke(form,new object[]{secondPointer}),rows.Rows[1]))
+    throw new Exception("Double-click pointer resolved stale CurrentRow instead of clicked product");
+   var outsidePointer=new MouseEventArgs(MouseButtons.Left,2,-1,-1,0);
+   if(pointer.Invoke(form,new object[]{outsidePointer})!=null)
+    throw new Exception("Outside-grid double-click must not resolve a product");
+   var rightPointer=new MouseEventArgs(MouseButtons.Right,2,hitX,hitY,0);
+   if(pointer.Invoke(form,new object[]{rightPointer})!=null)
+    throw new Exception("Right-click must not select a product for checkout");
+   if(list.ColumnHeadersVisible) {
+    var headerPointer=new MouseEventArgs(MouseButtons.Left,2,hitX,1,0);
+    if(pointer.Invoke(form,new object[]{headerPointer})!=null)
+     throw new Exception("Column-header double-click resolved previously selected product");
+    code.Text="HEADER-SCAN";
+    doubleClick.Invoke(form,new object[]{list,headerPointer});
+    if(code.Text!="HEADER-SCAN")
+     throw new Exception("Header double-click changed barcode or triggered a sale");
+    click.Invoke(form,new object[]{list,headerPointer});
+    if(code.Text!="HEADER-SCAN")
+     throw new Exception("Header click reused stale selected barcode");
+   }
+   code.Text="OLD-SCAN";
+   click.Invoke(form,new object[]{list,secondPointer});
+   if(code.Text!="BAR-102")
+    throw new Exception("Pointer click did not load barcode of the actually clicked row");
+   list.CurrentCell=list.Rows[0].Cells[0];
    var tag=reference.Invoke(null,new object[]{rows.Rows[0]});
    var tagType=assembly.GetType("LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference",true);
    if(!tagType.IsInstanceOfType(tag) || Convert.ToString(tagType.GetProperty("ArticleId",Flags).GetValue(tag,null))!="101" || Convert.ToString(tag)!="")
