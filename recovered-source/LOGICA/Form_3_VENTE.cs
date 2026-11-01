@@ -14774,6 +14774,21 @@ public class Form_3_VENTE : Form
 		}
 	}
 
+	// A blank Code is legitimate for image-only/list-only products, but only
+	// after the exact-ID lookup has selected the displayed article. Never make
+	// manual entry or scanner lookup accept an unverified blank barcode.
+	private static bool CanPostSelectedArticleWithoutBarcode(string code, string articleId,
+		LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference selectedIdentity)
+	{
+		if (!string.IsNullOrWhiteSpace(code))
+		{
+			return true; // Original scanner/barcode path is unchanged.
+		}
+		return code == "" && selectedIdentity != null && selectedIdentity.Code == ""
+			&& !string.IsNullOrWhiteSpace(articleId)
+			&& string.Equals(selectedIdentity.ArticleId, articleId, StringComparison.Ordinal);
+	}
+
 	private void Button_GO_Click(object sender, EventArgs e)
 	{
 		//IL_180d: Unknown result type (might be due to invalid IL or missing references)
@@ -14812,7 +14827,9 @@ public class Form_3_VENTE : Form
 					((Control)Text_CODE).Focus();
 					return;
 				}
-				if (Operators.CompareString(Text_CODE.Text.Trim(), "", TextCompare: false) == 0)
+				LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference selectedIdentity =
+					(sender as Control)?.Tag as LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference;
+				if (!CanPostSelectedArticleWithoutBarcode(Text_CODE.Text, Text_ID_ARTICLE.Text, selectedIdentity))
 				{
 					MessageBox.Show("Veuillez remplir le champ -CODE- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					((Control)Text_CODE).Focus();
