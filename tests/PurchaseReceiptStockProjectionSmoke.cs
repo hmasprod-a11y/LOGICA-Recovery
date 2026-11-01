@@ -162,6 +162,47 @@ internal static class PurchaseReceiptStockProjectionSmoke
             Require(Object.ReferenceEquals(observed, failure),
                 "stock enumeration failure propagated without swallowing");
 
+            // Internal preview DTOs can be constructed without the receipt builder.
+            // A corrupted snapshot must not reach stock projection as a valid total.
+            Throws<InvalidOperationException>(delegate {
+                PurchaseReceiptStockProjectionService.Build(
+                    new PurchaseReceiptPreview("SUP-1", new[] {
+                        new PurchaseReceiptArticleTotal("A", "SAME", 1m, 2m)
+                    }, 2m, 2m), catalogue, new[] { new StockBaselineLine("A", 5m) });
+            }, "forged receipt quantity total rejected");
+            Throws<InvalidOperationException>(delegate {
+                PurchaseReceiptStockProjectionService.Build(
+                    new PurchaseReceiptPreview("SUP-1", new[] {
+                        new PurchaseReceiptArticleTotal("A", "SAME", 1m, 2m)
+                    }, 1m, 3m), catalogue, new[] { new StockBaselineLine("A", 5m) });
+            }, "forged receipt cost total rejected");
+            Throws<InvalidOperationException>(delegate {
+                PurchaseReceiptStockProjectionService.Build(
+                    new PurchaseReceiptPreview("SUP-1", new[] {
+                        new PurchaseReceiptArticleTotal("A", "SAME", 1m, 2m),
+                        new PurchaseReceiptArticleTotal("A", "SAME", 1m, 2m)
+                    }, 2m, 4m), catalogue, new[] { new StockBaselineLine("A", 5m) });
+            }, "duplicate receipt article ID rejected");
+            Throws<InvalidOperationException>(delegate {
+                PurchaseReceiptStockProjectionService.Build(
+                    new PurchaseReceiptPreview("SUP-1", new[] {
+                        new PurchaseReceiptArticleTotal("A", "SAME", -1m, 2m)
+                    }, -1m, 2m), catalogue, new[] { new StockBaselineLine("A", 5m) });
+            }, "negative receipt quantity rejected");
+            Throws<InvalidOperationException>(delegate {
+                PurchaseReceiptStockProjectionService.Build(
+                    new PurchaseReceiptPreview(" ", new[] {
+                        new PurchaseReceiptArticleTotal("A", "SAME", 1m, 2m)
+                    }, 1m, 2m), catalogue, new[] { new StockBaselineLine("A", 5m) });
+            }, "missing receipt supplier rejected");
+            Throws<OverflowException>(delegate {
+                PurchaseReceiptStockProjectionService.Build(
+                    new PurchaseReceiptPreview("SUP-1", new[] {
+                        new PurchaseReceiptArticleTotal("A", "SAME", decimal.MaxValue, 0m),
+                        new PurchaseReceiptArticleTotal("B", "SAME", 1m, 0m)
+                    }, decimal.MaxValue, 0m), catalogue, new StockBaselineLine[0]);
+            }, "receipt quantity aggregate overflow rejected");
+
             var caseReceipt = PurchaseReceiptPreviewService.Build("S", new[] {
                 new PurchaseReceiptLine("A", "X", 1m, 0.125m),
                 new PurchaseReceiptLine("a", "X", 1m, 0.375m)
