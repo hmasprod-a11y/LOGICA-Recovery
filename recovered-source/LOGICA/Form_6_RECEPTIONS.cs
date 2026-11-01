@@ -10466,9 +10466,11 @@ public class Form_6_RECEPTIONS : Form
 		//IL_0106: Expected Obj, but got Unknown
 		try
 		{
-			if (DataGridView_ARTICLES.Rows.Count != 0)
+			if (e != null && e.RowIndex >= 0 && e.RowIndex < DataGridView_ARTICLES.Rows.Count &&
+				!DataGridView_ARTICLES.Rows[e.RowIndex].IsNewRow)
 			{
-				DataGridViewRow chosenReceiptRow = DataGridView_ARTICLES.Rows[((DataGridViewBand)DataGridView_ARTICLES.CurrentRow).Index];
+				// The clicked row, not a potentially stale CurrentRow, owns the article identity.
+				DataGridViewRow chosenReceiptRow = DataGridView_ARTICLES.Rows[e.RowIndex];
 				_receiptSelectedArticleId = Conversions.ToString(chosenReceiptRow.Cells[0].Value);
 				try
 				{
