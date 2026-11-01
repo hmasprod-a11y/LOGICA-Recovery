@@ -689,6 +689,40 @@ internal static class PortableCheckoutSmoke
                 delegate { return null; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
                 "Null refresh result fails closed instead of using stale row");
 
+            // Exact-barcode lookup is a trust boundary: mixed codes or a blank
+            // scanner value must not invoke a chooser or query the live store.
+            DataTable mixedScannerRows = flowMatches.Copy();
+            mixedScannerRows.Rows[1]["Code"] = "UNRELATED-CODE";
+            int rejectedChooserCalls = 0;
+            int rejectedStoreReads = 0;
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                mixedScannerRows, delegate(IList<CheckoutVariantSnapshot> d) {
+                    rejectedChooserCalls++; return 0;
+                }, delegate { rejectedStoreReads++; return mixedScannerRows; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates &&
+                rejectedChooserCalls == 0 && rejectedStoreReads == 0,
+                "Mixed-barcode scanner query fails closed before chooser and store refresh");
+            DataTable blankScannerRows = flowSingle.Copy();
+            blankScannerRows.Rows[0]["Code"] = "  ";
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                blankScannerRows, null, delegate { rejectedStoreReads++; return blankScannerRows; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && rejectedStoreReads == 0,
+                "Whitespace scanner barcode cannot select an image-only article");
+            Console.WriteLine("PASS checkout exact-barcode boundary: mixed and blank codes rejected");
+
+            DataTable mixedLiveScannerRows = flowMatches.Copy();
+            mixedLiveScannerRows.Rows[1]["Code"] = "UNRELATED-LIVE-CODE";
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 0; },
+                delegate { return mixedLiveScannerRows; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Live scanner refresh must not admit unrelated barcode rows");
+            DataTable blankLiveScannerRows = flowSingle.Copy();
+            blankLiveScannerRows.Rows[0]["Code"] = "";
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowSingle, null, delegate { return blankLiveScannerRows; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Live scanner refresh must not convert barcode to image-only selection");
             int singleReadCalls = 0;
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
                 flowSingle, null, delegate { singleReadCalls++; return flowSingle.Copy(); }).Status ==
