@@ -127,6 +127,31 @@ internal static class ReceiptArticleSelectionSmoke
                 "blank receipt identifiers cannot validate");
             Check(!ReceiptDocumentSelectionGuard.Matches("BR-42 ", "BR-42"),
                 "whitespace changes identity rather than silently trimming");
+            Check(ReceiptDocumentSelectionGuard.MayValidate(
+                "BR-42", "BR-42", "ENREGISTRER", "ENREGISTRER"),
+                "only matching unvalidated receipt can reach stock posting");
+            Check(!ReceiptDocumentSelectionGuard.MayValidate(
+                "BR-42", "BR-43", "ENREGISTRER", "ENREGISTRER"),
+                "different confirmed document blocked before transaction");
+            Check(!ReceiptDocumentSelectionGuard.MayValidate(
+                "BR-42", "BR-42", "VALIDER", "ENREGISTRER"),
+                "already validated displayed receipt blocked");
+            Check(!ReceiptDocumentSelectionGuard.MayValidate(
+                "BR-42", "BR-42", "ENREGISTRER", "VALIDER"),
+                "receipt validated between display and consultation blocked");
+            Check(!ReceiptDocumentSelectionGuard.MayValidate(
+                "BR-42", "BR-42", "ANNULE", "ENREGISTRER"),
+                "unexpected displayed state blocked");
+            Check(!ReceiptDocumentSelectionGuard.MayValidate(
+                "BR-42", "BR-42", "ENREGISTRER", null),
+                "missing consulted state blocked");
+            Check(!ReceiptDocumentSelectionGuard.MayValidate(
+                "BR-42", "BR-42", "enregistrer", "ENREGISTRER"),
+                "state comparison is ordinal");
+            Check(!ReceiptDocumentSelectionGuard.MayValidate(
+                "", "", "ENREGISTRER", "ENREGISTRER"),
+                "empty receipt ID cannot validate even with matching state");
+
 
             Console.WriteLine("PASS real receipt article selection: " + assertions +
                 " assertions; duplicate barcodes, exact grid IDs, stale/malformed identities");
