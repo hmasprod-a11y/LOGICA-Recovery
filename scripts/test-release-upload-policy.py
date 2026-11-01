@@ -176,6 +176,71 @@ def assert_optional_modern_core_gate(source):
 
 
 
+
+# A named mandatory step is not a gate if its run command was replaced by a
+# harmless Write-Host/echo. Validate executable script lines, not comments or
+# substrings inside other commands. Keep this deliberately strict: CI owners
+# must review any change to the verification commands before publishing a ZIP.
+REQUIRED_RELEASE_COMMANDS = {
+    'Guard release artifact upload policy (including negative fixtures)': (
+        'python scripts/test-release-upload-policy.py',
+    ),
+    'Verify committed source is present': (
+        "if (-not (Test-Path -LiteralPath 'recovered-source/LOGICA.csproj')) {",
+        "throw 'Authoritative committed project missing'",
+    ),
+    'Restore original runtime dependencies': (
+        'Expand-Archive input/LOGICA-dependencies.zip dependencies -Force',
+    ),
+    'Build original project on Windows': (
+        'dotnet build recovered-source/LOGICA.csproj -c Release --nologo -v:q -o dist *> results/build.log',
+        "if ($result -ne 0) { throw 'Windows build failed; see complete build.log' }",
+    ),
+    'Start isolated test database': ('./scripts/setup-test-db.ps1',),
+    'Exercise original POS on Windows': ('./scripts/test-pos.ps1',),
+    'Verify original recovered Access data on MySQL': ('./scripts/test-recovered-db.ps1',),
+    'Verify portable launcher with original data': (
+        '& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./dist/Launch-LOGICA.ps1 -ServerBin $bin -VerifyOnly *> results/portable-launcher.log',
+        "if($LASTEXITCODE -ne 0){throw 'Portable launcher validation failed'}",
+    ),
+    'Finalize portable runtime package': ('./scripts/package-runtime.ps1',),
+    'Gate unified beta candidate and generate file hashes': ('./scripts/test-release-candidate.ps1',),
+    'Test offline release verifier with isolated adversarial fixtures': ('./scripts/test-beta-release-verifier.ps1',),
+    'Build and independently verify beta RC ZIP': ('./scripts/package-beta-rc.ps1',),
+}
+
+
+def assert_mandatory_step_commands(source):
+    """Prevent named-but-no-op build, database, POS and release verification gates."""
+    lines = source.splitlines()
+    for name, commands in REQUIRED_RELEASE_COMMANDS.items():
+        marker = '      - name: ' + name
+        if lines.count(marker) != 1:
+            raise ValueError(f'Missing or duplicated mandatory release step: {name}')
+        start = lines.index(marker)
+        end = next((i for i in range(start + 1, len(lines))
+                    if lines[i].startswith('      - ')), len(lines))
+        block = lines[start + 1:end]
+        run_headers = [(i, line) for i, line in enumerate(block)
+                       if re.match(r'^        run:\\s*', line)]
+        if len(run_headers) != 1:
+            raise ValueError(f'{name}: missing or ambiguous run command')
+        run_index, run_header = run_headers[0]
+        value = run_header.strip()[len('run:'):].strip()
+        if value == '|':
+            script = [line.strip() for line in block[run_index + 1:]
+                      if line.startswith('          ')
+                      and line.strip() and not line.strip().startswith('#')]
+        elif value and not value.startswith(('|', '>', '#')):
+            script = [value]
+        else:
+            raise ValueError(f'{name}: unsupported run command form')
+        for command in commands:
+            if command not in script:
+                raise ValueError(f'{name}: missing executable verification command: {command}')
+    return True
+
+
 def assert_critical_release_gates(source):
     """A successful Windows artifact must imply every mandatory verification ran.
 
@@ -223,6 +288,7 @@ def assert_critical_release_gates(source):
     for index, line in enumerate(lines):
         if re.match(r'^\s+uses:\s*actions/upload-artifact@', line) and index < last_gate:
             raise ValueError('Release artifacts must be uploaded after verification')
+    assert_mandatory_step_commands(source)
     return True
 
 
@@ -420,6 +486,49 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
             assert_optional_modern_core_gate(modified)
 
 
+
+    def test_pos_gate_cannot_be_replaced_by_noop(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace('run: ./scripts/test-pos.ps1',
+                                  'run: Write-Host skipped-pos', 1)
+        with self.assertRaisesRegex(ValueError, 'missing executable verification command'):
+            assert_critical_release_gates(modified)
+
+    def test_database_gate_cannot_be_replaced_by_noop(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace('run: ./scripts/setup-test-db.ps1',
+                                  'run: Write-Host skipped-db', 1)
+        with self.assertRaisesRegex(ValueError, 'missing executable verification command'):
+            assert_critical_release_gates(modified)
+
+    def test_release_integrity_gate_cannot_be_replaced_by_noop(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace('run: ./scripts/test-release-candidate.ps1',
+                                  'run: Write-Host skipped-integrity', 1)
+        with self.assertRaisesRegex(ValueError, 'missing executable verification command'):
+            assert_critical_release_gates(modified)
+
+    def test_comment_does_not_count_as_executable_gate(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace('run: ./scripts/test-pos.ps1',
+                                  'run: |\\n          # ./scripts/test-pos.ps1\\n          Write-Host skipped-pos', 1)
+        with self.assertRaisesRegex(ValueError, 'missing executable verification command'):
+            assert_critical_release_gates(modified)
+
+    def test_windows_compiler_failure_check_cannot_be_removed(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace(
+            "if ($result -ne 0) { throw 'Windows build failed; see complete build.log' }",
+            "Write-Host 'Build failed but ignored'", 1)
+        with self.assertRaisesRegex(ValueError, 'missing executable verification command'):
+            assert_critical_release_gates(modified)
+
+    def test_release_package_command_cannot_be_replaced_by_noop(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace('run: ./scripts/package-beta-rc.ps1',
+                                  'run: Write-Host skipped-package', 1)
+        with self.assertRaisesRegex(ValueError, 'missing executable verification command'):
+            assert_critical_release_gates(modified)
 
     def test_repository_release_gates_cannot_be_skipped(self):
         self.assertTrue(assert_critical_release_gates(WORKFLOW.read_text(encoding='utf-8')))
