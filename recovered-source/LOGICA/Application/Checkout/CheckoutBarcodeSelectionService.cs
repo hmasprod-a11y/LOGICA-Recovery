@@ -49,11 +49,35 @@ namespace LOGICA.ApplicationLayer.Checkout
             // A refresh adapter that hands back the same mutable table cannot
             // guarantee fresh price/discount/tax data. Reject that misuse rather
             // than silently advertising an in-memory row as a live SQL read.
-            return CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
-                displayedMatches, chooseDuplicate, delegate {
-                    DataTable live = readCurrentMatches();
-                    return Object.ReferenceEquals(live, displayedMatches) ? null : live;
-                });
+            // Capture the scanned barcode BEFORE the modal: it can reorder or
+            // remove displayed rows. The original SQL query is exact-barcode,
+            // so a refreshed result containing unrelated codes is not safe to
+            // copy into the basket even if the chosen ID still exists.
+            CheckoutVariantSnapshotReadResult initial =
+                CheckoutVariantSnapshotService.EvaluateSnapshot(displayedMatches);
+            string scannedCode = initial.Status == CheckoutVariantSnapshotReadStatus.Ready &&
+                initial.Snapshots.Count > 0 ? initial.Snapshots[0].Code : null;
+            CheckoutVariantChoiceResult choice =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                    displayedMatches, chooseDuplicate, delegate {
+                        DataTable live = readCurrentMatches();
+                        return Object.ReferenceEquals(live, displayedMatches) ? null : live;
+                    });
+            if (choice.Status != CheckoutVariantChoiceStatus.Selected)
+                return choice;
+            if (String.IsNullOrWhiteSpace(scannedCode))
+                return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            foreach (DataRow row in choice.SelectedRow.Table.Rows)
+            {
+                if (row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached)
+                    continue;
+                if (row.IsNull("Code") ||
+                    !String.Equals(Convert.ToString(row["Code"]), scannedCode,
+                        StringComparison.Ordinal))
+                    return new CheckoutVariantChoiceResult(
+                        CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            }
+            return choice;
         }
 
     }
