@@ -1276,7 +1276,6 @@ class PosSmoke {
    if(File.Exists(corrupt))File.Delete(corrupt);
   }
  }
-}
 
  [STAThread] static int Main(string[] args) {
   try {
