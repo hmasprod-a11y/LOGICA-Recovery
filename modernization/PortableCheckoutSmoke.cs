@@ -1181,6 +1181,71 @@ internal static class PortableCheckoutSmoke
                 CheckoutArticleTileSelectionService.EvaluateExact(imageOnlyTileRows, imageOnlyTile).Status ==
                     CheckoutVariantChoiceStatus.Selected,
                 "Valid image-only article must retain blank barcode");
+            // The recovered TABLE_ARTICLES.Code column is nullable. An image
+            // tile with SQL NULL Code must remain selectable by ID_ARTICLE;
+            // scanner candidates must continue to reject that same NULL.
+            DataTable sqlNullImageRows = tiles.Clone();
+            sqlNullImageRows.Columns.Add("UnitPrice", typeof(decimal));
+            sqlNullImageRows.Columns.Add("Discount", typeof(decimal));
+            sqlNullImageRows.Columns.Add("TAUX_TVA", typeof(decimal));
+            sqlNullImageRows.Rows.Add("IMAGE-NULL", DBNull.Value, 12m, 0m, 20m);
+            CheckoutArticleTileReference sqlNullTile =
+                CheckoutArticleTileSelectionService.TagFor(sqlNullImageRows.Rows[0]);
+            Require(sqlNullTile.Code == "" && sqlNullTile.ArticleId == "IMAGE-NULL" &&
+                CheckoutArticleTileSelectionService.EvaluateExact(sqlNullImageRows, sqlNullTile).Status ==
+                    CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(
+                    CheckoutArticleTileSelectionService.FindExact(sqlNullImageRows, sqlNullTile),
+                    sqlNullImageRows.Rows[0]) && sqlNullImageRows.Rows[0].IsNull("Code"),
+                "SQL NULL barcode image tile retains original live row without modifying catalogue");
+            DataTable nullImageFresh = sqlNullImageRows.Copy();
+            nullImageFresh.Rows[0]["UnitPrice"] = 19m;
+            nullImageFresh.Rows[0]["Discount"] = 5m;
+            nullImageFresh.Rows[0]["TAUX_TVA"] = 7m;
+            int nullImageReads = 0;
+            CheckoutVariantChoiceResult nullImageRefresh =
+                CheckoutSelectionFlowService.ChooseImageWithRefresh(sqlNullTile,
+                    delegate { nullImageReads++; return nullImageFresh; });
+            Require(nullImageRefresh.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(nullImageRefresh.SelectedRow, nullImageFresh.Rows[0]) &&
+                (decimal)nullImageRefresh.SelectedRow["UnitPrice"] == 19m &&
+                (decimal)nullImageRefresh.SelectedRow["Discount"] == 5m &&
+                (decimal)nullImageRefresh.SelectedRow["TAUX_TVA"] == 7m && nullImageReads == 1,
+                "SQL NULL image tile refresh resolves current price, discount and tax by identity");
+            nullImageFresh.Rows[0]["Code"] = "";
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(nullImageFresh, sqlNullTile).Status ==
+                CheckoutVariantChoiceStatus.Selected,
+                "SQL NULL and empty barcode are equivalent only for image-tile identity");
+            DataTable twoNullImages = sqlNullImageRows.Copy();
+            twoNullImages.Rows.Add("OTHER-NULL", DBNull.Value, 9m, 0m, 20m);
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(twoNullImages, sqlNullTile).Status ==
+                CheckoutVariantChoiceStatus.Selected,
+                "Two image-only articles without barcodes stay distinct by article ID");
+            twoNullImages.Rows[1]["ID_ARTICLE"] = "IMAGE-NULL";
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(twoNullImages, sqlNullTile).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous,
+                "Repeated image-only article ID must fail closed even with SQL NULL barcode");
+            DataTable nullImageReused = sqlNullImageRows.Copy();
+            nullImageReused.Rows[0]["Code"] = "REASSIGNED-BARCODE";
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(nullImageReused, sqlNullTile).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous,
+                "Image-only article assigned a barcode after display cannot be silently selected");
+            Require(CheckoutVariantSnapshotService.EvaluateSnapshot(sqlNullImageRows).Status ==
+                CheckoutVariantSnapshotReadStatus.InvalidCandidates,
+                "SQL NULL barcode remains invalid for the scanner snapshot");
+            int nullScannerReads = 0;
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh(sqlNullImageRows, null,
+                delegate { nullScannerReads++; return sqlNullImageRows.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && nullScannerReads == 0,
+                "Scanner never treats SQL NULL barcode as a valid exact-barcode match");
+            DataTable nullImageDeleted = sqlNullImageRows.Copy();
+            nullImageDeleted.AcceptChanges();
+            nullImageDeleted.Rows[0].Delete();
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(nullImageDeleted, sqlNullTile).Status ==
+                CheckoutVariantChoiceStatus.Missing,
+                "Deleted SQL NULL image article must not be sold");
+            Console.WriteLine("PASS SQL NULL image-only catalogue identity: live prices, tax, discount, duplicates, stale, scanner separation and deletion");
+
             DataTable blankTileId = tiles.Clone();
             blankTileId.Rows.Add("", "DUP");
             bool blankTileTagRejected = false;
