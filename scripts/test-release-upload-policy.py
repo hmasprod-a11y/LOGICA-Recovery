@@ -129,6 +129,34 @@ def assert_optional_business_smoke_gate(source):
     return True
 
 
+def assert_optional_modern_core_gate(source):
+    """Release CI must compile Track A's shared production sources on both targets.
+
+    The conditional preserves the legacy release baseline before PR #70 lands;
+    after integration a failing netstandard2.0 or net10.0 compile blocks artifacts.
+    """
+    lines = source.splitlines()
+    name = '      - name: Compile shared modern core for dual targets when available'
+    if lines.count(name) != 1:
+        raise ValueError('Missing or duplicated dual-target modern core gate')
+    start = lines.index(name)
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i].startswith('      - ')), len(lines))
+    block = lines[start + 1:end]
+    expected_condition = "        if: ${{ hashFiles('modernization/LOGICA.CoreCompatibility.csproj') != '' }}"
+    expected_command = '        run: dotnet build modernization/LOGICA.CoreCompatibility.csproj -c Release --warnaserror'
+    if expected_condition not in block:
+        raise ValueError('Modern core gate must be conditional on project existence')
+    if expected_command not in block:
+        raise ValueError('Modern core dual-target compilation is not executed with warnings as errors')
+    if any('continue-on-error:' in line for line in block):
+        raise ValueError('Modern core gate must fail the release build on compiler errors')
+    business = '      - name: Exercise business operations .NET 10 smoke when available'
+    if business not in lines or start > lines.index(business):
+        raise ValueError('Modern core gate must run before business smoke and packaging')
+    return True
+
+
 FIXTURE = '''      - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -245,6 +273,40 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
         modified = before + '  push:\n' + after.replace("      - 'modernization/**'\n", '', 1)
         with self.assertRaisesRegex(ValueError, 'push: missing Windows CI paths'):
             assert_required_windows_triggers(modified)
+
+
+    def test_optional_modern_core_gate_is_wired(self):
+        self.assertTrue(assert_optional_modern_core_gate(WORKFLOW.read_text(encoding='utf-8')))
+
+    def test_modern_core_gate_cannot_be_removed(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace('      - name: Compile shared modern core for dual targets when available',
+                                  '      - name: Disabled modern core gate', 1)
+        with self.assertRaisesRegex(ValueError, 'Missing or duplicated'):
+            assert_optional_modern_core_gate(modified)
+
+    def test_modern_core_gate_must_remain_conditional(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace("if: ${{ hashFiles('modernization/LOGICA.CoreCompatibility.csproj') != '' }}",
+                                  'if: always()', 1)
+        with self.assertRaisesRegex(ValueError, 'conditional'):
+            assert_optional_modern_core_gate(modified)
+
+    def test_modern_core_gate_must_compile_with_warnings_as_errors(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace(
+            'dotnet build modernization/LOGICA.CoreCompatibility.csproj -c Release --warnaserror',
+            'Write-Host skipped-modern-core-compatibility', 1)
+        with self.assertRaisesRegex(ValueError, 'not executed'):
+            assert_optional_modern_core_gate(modified)
+
+    def test_modern_core_gate_must_not_ignore_errors(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace(
+            '      - name: Compile shared modern core for dual targets when available',
+            '      - name: Compile shared modern core for dual targets when available\n        continue-on-error: true', 1)
+        with self.assertRaisesRegex(ValueError, 'must fail'):
+            assert_optional_modern_core_gate(modified)
 
 
 
