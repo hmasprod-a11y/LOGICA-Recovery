@@ -10611,7 +10611,12 @@ public class Form_6_RECEPTIONS : Form
 		//IL_0064: Expected Obj, but got Unknown
 		try
 		{
-			if (Operators.ConditionalCompareObjectEqual(DataGridView_FAMILLES.Rows[((DataGridViewBand)DataGridView_FAMILLES.CurrentRow).Index].Cells[0].Value, "TOUT", TextCompare: false))
+			if (e == null || e.RowIndex < 0 || e.RowIndex >= DataGridView_FAMILLES.Rows.Count ||
+				DataGridView_FAMILLES.Rows[e.RowIndex].IsNewRow)
+				return;
+			// The clicked family may differ from the old CurrentRow while sorting.
+			DataGridViewRow clickedFamilyRow = DataGridView_FAMILLES.Rows[e.RowIndex];
+			if (Operators.ConditionalCompareObjectEqual(clickedFamilyRow.Cells[0].Value, "TOUT", TextCompare: false))
 			{
 				dt_ARTICLE_FIND.Clear();
 				da_ARTICLE_FIND = new MySqlDataAdapter("select    ID_ARTICLE,Code,Article    from   TABLE_ARTICLES     ", Module1.cn_SQL);
@@ -10620,7 +10625,7 @@ public class Form_6_RECEPTIONS : Form
 			else
 			{
 				dt_ARTICLE_FIND.Clear();
-				da_ARTICLE_FIND = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("select    ID_ARTICLE,Code,Article    from   TABLE_ARTICLES    Where   Famille = '", DataGridView_FAMILLES.Rows[((DataGridViewBand)DataGridView_FAMILLES.CurrentRow).Index].Cells[0].Value), "'  ")), Module1.cn_SQL);
+				da_ARTICLE_FIND = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("select    ID_ARTICLE,Code,Article    from   TABLE_ARTICLES    Where   Famille = '", clickedFamilyRow.Cells[0].Value), "'  ")), Module1.cn_SQL);
 				((DbDataAdapter)(object)da_ARTICLE_FIND).Fill(dt_ARTICLE_FIND);
 			}
 			DataGridView_ARTICLES.AutoGenerateColumns = false;
