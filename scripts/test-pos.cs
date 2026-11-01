@@ -1470,6 +1470,9 @@ class PosSmoke {
       throw new Exception("Ctrl+F must be consumed when product search is available");
      if(!Object.Equals(tabs.Tag,originalTag))
       throw new Exception("Ctrl+F must not toggle the legacy on-screen keyboard");
+     args=new object[]{new Message(),Keys.Control|Keys.G};
+     if(Object.Equals(method.Invoke(form,args),true))
+      throw new Exception("Unrelated Ctrl+G must remain available to legacy controls");
      probe.ReadOnly=true;
      args=new object[]{new Message(),Keys.Control|Keys.F};
      if(Object.Equals(method.Invoke(form,args),true))
