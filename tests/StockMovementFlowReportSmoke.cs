@@ -161,12 +161,13 @@ internal static class StockMovementFlowReportSmoke
                 StockMovementFlowReportService.Summarize(one, empty,
                     new[] { new StockBaselineLine("A", 10m), new StockBaselineLine("A", 10m) });
             }, "duplicate closing article");
-            Throws<OverflowException>(delegate {
-                StockMovementFlowReportService.Summarize(
-                    new[] { new StockBaselineLine("A", 0m) },
-                    new[] { new StockMovementAuditEvent("min", "A", decimal.MinValue) },
-                    new[] { new StockBaselineLine("A", decimal.MinValue) });
-            }, "absolute value of decimal.MinValue fails closed");
+            var minimum = StockMovementFlowReportService.Summarize(
+                new[] { new StockBaselineLine("A", 0m) },
+                new[] { new StockMovementAuditEvent("min", "A", decimal.MinValue) },
+                new[] { new StockBaselineLine("A", decimal.MinValue) });
+            Require(minimum.IsReconciled && minimum.Lines[0].IssuedQuantity == decimal.MaxValue &&
+                minimum.Lines[0].NetQuantity == decimal.MinValue,
+                "decimal minimum issue magnitude is representable");
             Throws<OverflowException>(delegate {
                 StockMovementFlowReportService.Summarize(
                     new[] { new StockBaselineLine("A", 0m), new StockBaselineLine("B", 0m) },
