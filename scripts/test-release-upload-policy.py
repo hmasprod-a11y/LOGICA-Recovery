@@ -60,6 +60,9 @@ def assert_release_upload_policy(source):
         'LOGICA-2.0-Beta-RC1-Windows-x86': {'if': 'success()', 'if-no-files-found': 'error', 'path': 'release/'},
         'LOGICA-Windows-complete': {'if': 'success()', 'if-no-files-found': 'error', 'path': 'dist/'},
     }
+    missing = set(required) - set(uploads)
+    if missing:
+        raise ValueError(f'Missing required artifact upload: {sorted(missing)}')
     unexpected = set(uploads) - set(required)
     if unexpected:
         raise ValueError(f'Unapproved artifact uploads: {sorted(unexpected)}')
@@ -232,32 +235,41 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
 
     def test_name_first_upload_cannot_bypass_success_gate(self):
         modified = FIXTURE.replace(
-            '      - uses: actions/upload-artifact@v4\\n        if: success()\\n'
-            '        with:\\n          name: LOGICA-2.0-Beta-RC1-Windows-x86',
-            '      - name: Publish beta\\n        uses: actions/upload-artifact@v4\\n'
-            '        if: always()\\n        with:\\n'
+            '      - uses: actions/upload-artifact@v4\n        if: success()\n'
+            '        with:\n          name: LOGICA-2.0-Beta-RC1-Windows-x86',
+            '      - name: Publish beta\n        uses: actions/upload-artifact@v4\n'
+            '        if: always()\n        with:\n'
             '          name: LOGICA-2.0-Beta-RC1-Windows-x86')
         with self.assertRaisesRegex(ValueError, 'LOGICA-2.0-Beta-RC1-Windows-x86: if'):
             assert_release_upload_policy(modified)
 
+    def test_valid_name_first_upload_is_recognized(self):
+        modified = FIXTURE.replace(
+            '      - uses: actions/upload-artifact@v4\n        if: success()\n'
+            '        with:\n          name: LOGICA-2.0-Beta-RC1-Windows-x86',
+            '      - name: Publish beta\n        uses: actions/upload-artifact@v4\n'
+            '        if: success()\n        with:\n'
+            '          name: LOGICA-2.0-Beta-RC1-Windows-x86')
+        self.assertTrue(assert_release_upload_policy(modified))
+
     def test_extra_name_first_upload_is_rejected(self):
         modified = FIXTURE + (
-            '      - name: Publish unverified runtime\\n'
-            '        uses: actions/upload-artifact@v4\\n'
-            '        if: always()\\n'
-            '        with:\\n'
-            '          name: LOGICA-unverified\\n'
-            '          path: dist/\\n')
+            '      - name: Publish unverified runtime\n'
+            '        uses: actions/upload-artifact@v4\n'
+            '        if: always()\n'
+            '        with:\n'
+            '          name: LOGICA-unverified\n'
+            '          path: dist/\n')
         with self.assertRaisesRegex(ValueError, 'Unapproved artifact uploads'):
             assert_release_upload_policy(modified)
 
     def test_extra_upload_with_other_action_version_is_rejected(self):
         modified = FIXTURE + (
-            '      - uses: actions/upload-artifact@v3\\n'
-            '        if: always()\\n'
-            '        with:\\n'
-            '          name: LOGICA-unverified\\n'
-            '          path: dist/\\n')
+            '      - uses: actions/upload-artifact@v3\n'
+            '        if: always()\n'
+            '        with:\n'
+            '          name: LOGICA-unverified\n'
+            '          path: dist/\n')
         with self.assertRaisesRegex(ValueError, 'Unapproved artifact uploads'):
             assert_release_upload_policy(modified)
 
