@@ -12543,7 +12543,7 @@ public class Form_3_VENTE : Form
 					}
 					LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference tileReference =
 						LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(dataTable.Rows[num2]);
-					if (tileReference == null)
+					if (tileReference == null || string.IsNullOrWhiteSpace(tileReference.ArticleId))
 					{
 						num2++;
 						continue;
@@ -15334,7 +15334,7 @@ public class Form_3_VENTE : Form
 						{
 							LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference tileReference =
 								LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(dt_PIC.Rows[num2]);
-							if (tileReference == null)
+							if (tileReference == null || string.IsNullOrWhiteSpace(tileReference.ArticleId))
 							{
 								num2++;
 								continue;
