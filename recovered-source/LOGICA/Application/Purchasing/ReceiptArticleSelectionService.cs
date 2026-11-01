@@ -56,6 +56,22 @@ namespace LOGICA.ApplicationLayer.Purchasing
     // against a stale binding position without changing transaction SQL.
     internal static class ReceiptDocumentSelectionGuard
     {
+        // A sorted/filtered WinForms DataGridView row does not necessarily have
+        // the same index as the underlying DataTable or BindingContext cursor.
+        // Resolve the actual bound record and verify the visible receipt ID;
+        // never consult, edit or delete a different receipt via DT.Rows[position].
+        internal static DataRow ResolveBoundRow(DataRowView clickedView, string displayedReceiptId)
+        {
+            if (clickedView == null || clickedView.Row == null ||
+                clickedView.Row.RowState == DataRowState.Deleted ||
+                clickedView.Row.RowState == DataRowState.Detached ||
+                !clickedView.Row.Table.Columns.Contains("ID_BR") ||
+                clickedView.Row.IsNull("ID_BR"))
+                return null;
+            string actualId = Convert.ToString(clickedView.Row["ID_BR"]);
+            return Matches(displayedReceiptId, actualId) ? clickedView.Row : null;
+        }
+
         internal static bool Matches(string confirmedReceiptId, string loadedReceiptId)
         {
             return !String.IsNullOrWhiteSpace(confirmedReceiptId) &&
