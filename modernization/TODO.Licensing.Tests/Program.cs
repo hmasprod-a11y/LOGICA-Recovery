@@ -15,7 +15,7 @@ internal static class Program
     {
         var result = OfflineLicensing.Verify(document, key, now, device);
         Check(result.Code == expected, expected + " got " + result.Code);
-        Check(result.IsValid == (expected == "valid"), "validity flag " + expected);
+        Check(result.IsValid == (expected == "valid" || expected == "clock-warning" || expected == "grace-period"), "validity flag " + expected);
     }
     private static int Main()
     {
@@ -31,8 +31,9 @@ internal static class Program
         Expect("valid", signed, publicOnly, now, device);
         Expect("device-mismatch", signed, publicOnly, now);
         Expect("device-mismatch", signed, publicOnly, now, OfflineLicensing.HashDeviceIdentifier("other"));
-        Expect("not-yet-valid", signed, publicOnly, now.AddDays(-2), device);
-        Expect("expired", signed, publicOnly, now.AddDays(31), device);
+        Expect("clock-warning", signed, publicOnly, now.AddDays(-2), device);
+        Expect("grace-period", signed, publicOnly, now.AddDays(31), device);
+        Expect("expired", signed, publicOnly, now.AddDays(34), device);
         Expect("untrusted-key", signed, wrongIssuer, now, device);
         Expect("invalid-document", "not json", publicOnly, now);
         Expect("invalid-document", "", publicOnly, now);
@@ -49,6 +50,12 @@ internal static class Program
         var perpetual = claims with { DeviceHash = null, ExpiresUtc = null };
         Expect("valid", OfflineLicensing.Issue(perpetual, issuer), publicOnly,
             now.AddYears(25));
+        Expect("clock-warning", OfflineLicensing.Issue(perpetual, issuer), publicOnly,
+            now.AddYears(-10));
+        var invoiceWarning = OfflineLicensing.Verify(OfflineLicensing.Issue(perpetual, issuer),
+            publicOnly, now, lastInvoiceUtc: now.AddDays(5));
+        Check(invoiceWarning.IsValid && invoiceWarning.Code == "clock-warning",
+            "perpetual clock rollback after invoice is advisory");
         foreach (var invalid in new[]
         {
             claims with { Product = "LOGICA" },
