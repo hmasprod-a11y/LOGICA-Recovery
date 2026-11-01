@@ -20,38 +20,28 @@ namespace LOGICA.ApplicationLayer.Checkout
                    legacyEquals(basketLine["ID_ARTICLE"], selectedArticleId);
         }
 
+        // This is called by the existing Form_3_VENTE handler. Keep the original
+        // DataTable modal callback and nullable DataRow result; centralize its
+        // identity rules in the same flow used by the refreshed adapter.
         internal static DataRow Select(DataTable matches, Func<DataTable, int> chooseDuplicate)
         {
-            if (matches == null) throw new ArgumentNullException("matches");
-            if (matches.Rows.Count == 0) return null;
-
-            // This is the real Form_3_VENTE barcode path. The modal chooser
-            // receives the original DataTable, so its row index describes the
-            // rows displayed BEFORE ShowDialog, not a potentially reordered
-            // or edited table AFTER the dialog. Reuse the modern identity guard
-            // rather than returning matches.Rows[index] after user interaction.
-            CheckoutVariantSnapshotReadResult displayed =
-                CheckoutVariantSnapshotService.EvaluateSnapshot(matches);
-            // A deleted row still occupies DataRowCollection but is not shown
-            // by the modern snapshot. Refuse index drift instead of guessing.
-            if (displayed.Status != CheckoutVariantSnapshotReadStatus.Ready ||
-                displayed.Snapshots.Count != matches.Rows.Count)
-                return null;
-            if (displayed.Snapshots.Count == 0) return null;
-            if (displayed.Snapshots.Count > 1 && chooseDuplicate == null)
-                throw new ArgumentNullException("chooseDuplicate");
-
-            int index = displayed.Snapshots.Count == 1 ? 0 : chooseDuplicate(matches);
-            if (index == -1) return null;
-            if (index < 0 || index >= displayed.Snapshots.Count)
-                throw new ArgumentOutOfRangeException("index", "Duplicate barcode selection is outside the result set.");
-
-            // Resolve by exact ID_ARTICLE + Code from the displayed snapshot.
-            // A removed, changed, duplicated or malformed live article never
-            // reaches Button_GO_Click. A reordering alone keeps the intended
-            // variant. No SQL, price, quantity or posting semantics change.
-            return CheckoutVariantSnapshotService.EvaluateChoice(
-                matches, displayed.Snapshots, index).SelectedRow;
+            return SelectWithRefresh(matches, chooseDuplicate,
+                delegate { return matches; }).SelectedRow;
         }
+
+        // Drop-in bridge for the Windows barcode handler once its local SQL
+        // reader is available: show the existing modal over the displayed
+        // table, then requery by exact barcode BEFORE copying current price,
+        // discount, tax or stock fields to the legacy sale screen. The core
+        // never performs SQL, basket mutations or monetary conversions.
+        // The caller owns the fresh local query and handles non-Selected status.
+        internal static CheckoutVariantChoiceResult SelectWithRefresh(
+            DataTable displayedMatches, Func<DataTable, int> chooseDuplicate,
+            Func<DataTable> readCurrentMatches)
+        {
+            return CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                displayedMatches, chooseDuplicate, readCurrentMatches);
+        }
+
     }
 }
