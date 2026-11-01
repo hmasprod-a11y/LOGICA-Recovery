@@ -184,7 +184,7 @@ def assert_critical_release_gates(source):
     Reject both rather than trusting the artifact's upload condition alone.
     """
     lines = source.splitlines()
-    if re.search(r'(?m)^\\s+continue-on-error\\s*:', source):
+    if re.search(r'(?m)^\s+continue-on-error\s*:', source):
         raise ValueError('Release job must not suppress failures with continue-on-error')
     mandatory = (
         'Guard release artifact upload policy (including negative fixtures)',
@@ -210,7 +210,7 @@ def assert_critical_release_gates(source):
                     if lines[i].startswith('      - ')), len(lines))
         block = lines[start + 1:end]
         conditions = [line.strip() for line in block
-                      if re.match(r'^        if\\s*:', line)]
+                      if re.match(r'^        if\s*:', line)]
         if name == 'Finalize portable runtime package':
             if conditions != ['if: always()']:
                 raise ValueError('Runtime finalizer must run even after failed builds')
@@ -221,7 +221,7 @@ def assert_critical_release_gates(source):
         raise ValueError('Mandatory release steps must retain verification order')
     last_gate = positions[-1]
     for index, line in enumerate(lines):
-        if re.match(r'^\\s+uses:\\s*actions/upload-artifact@', line) and index < last_gate:
+        if re.match(r'^\s+uses:\s*actions/upload-artifact@', line) and index < last_gate:
             raise ValueError('Release artifacts must be uploaded after verification')
     return True
 
@@ -427,21 +427,21 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
     def test_pos_failure_cannot_be_ignored(self):
         source = WORKFLOW.read_text(encoding='utf-8')
         modified = source.replace('      - name: Exercise original POS on Windows',
-                                  '      - name: Exercise original POS on Windows\\n        continue-on-error: true', 1)
+                                  '      - name: Exercise original POS on Windows\n        continue-on-error: true', 1)
         with self.assertRaisesRegex(ValueError, 'continue-on-error'):
             assert_critical_release_gates(modified)
 
     def test_database_check_cannot_be_skipped(self):
         source = WORKFLOW.read_text(encoding='utf-8')
         modified = source.replace('      - name: Verify original recovered Access data on MySQL',
-                                  '      - name: Verify original recovered Access data on MySQL\\n        if: false', 1)
+                                  '      - name: Verify original recovered Access data on MySQL\n        if: false', 1)
         with self.assertRaisesRegex(ValueError, 'must not be skipped'):
             assert_critical_release_gates(modified)
 
     def test_job_failure_cannot_be_ignored(self):
         source = WORKFLOW.read_text(encoding='utf-8')
-        modified = source.replace('  build-test:\\n',
-                                  '  build-test:\\n    continue-on-error: true\\n', 1)
+        modified = source.replace('  build-test:\n',
+                                  '  build-test:\n    continue-on-error: true\n', 1)
         with self.assertRaisesRegex(ValueError, 'continue-on-error'):
             assert_critical_release_gates(modified)
 
