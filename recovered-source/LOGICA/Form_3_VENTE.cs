@@ -16952,12 +16952,20 @@ public class Form_3_VENTE : Form
 
 	private void Button_qte1_Click(object sender, EventArgs e)
 	{
-		if (((Control)Label_QTE).BackColor == Color.White)
+		string key = Conversions.ToString(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null));
+		string current = ((Control)Label_QTE).BackColor == Color.White ? "" : Label_QTE.Text;
+		// A second decimal point creates a quantity that cannot be converted at checkout.
+		// Preserve the existing numeric keypad and reset semantics for valid input.
+		if (key == "." && current.IndexOf('.') >= 0)
 		{
-			Label_QTE.Text = "";
+			return;
+		}
+		if (key == "." && current.Length == 0)
+		{
+			current = "0";
 		}
 		((Control)Label_QTE).BackColor = Color.Yellow;
-		Label_QTE.Text += Conversions.ToString(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null));
+		Label_QTE.Text = current + key;
 	}
 
 	private void Button_qteBACK_Click(object sender, EventArgs e)
