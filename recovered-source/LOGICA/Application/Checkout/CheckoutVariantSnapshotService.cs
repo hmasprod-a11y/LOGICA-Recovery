@@ -48,7 +48,12 @@ namespace LOGICA.ApplicationLayer.Checkout
             var result = new List<CheckoutVariantSnapshot>(matches.Rows.Count);
             foreach (DataRow row in matches.Rows)
             {
-                if (row.IsNull("Code") || row.IsNull("ID_ARTICLE"))
+                // DataRowCollection still contains rows marked Deleted until
+                // AcceptChanges. A displayed snapshot must never include them.
+                if (row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached)
+                    continue;
+                if (row.IsNull("Code") || row.IsNull("ID_ARTICLE") ||
+                    String.IsNullOrEmpty(Convert.ToString(row["ID_ARTICLE"])))
                     throw new InvalidOperationException("Article identity is incomplete.");
                 result.Add(new CheckoutVariantSnapshot(
                     Convert.ToString(row["Code"]), Convert.ToString(row["ID_ARTICLE"])));
@@ -88,24 +93,40 @@ namespace LOGICA.ApplicationLayer.Checkout
                     "The chosen article is outside the displayed variant list.");
             CheckoutVariantSnapshot selected = displayed[selectedIndex];
             if (selected == null) throw new ArgumentException("The chosen variant cannot be null.", "displayed");
+            if (String.IsNullOrEmpty(selected.ArticleId) || selected.Code == null)
+                return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
 
             DataRow found = null;
+            bool ambiguous = false;
+            bool invalidCandidates = false;
             foreach (DataRow row in currentMatches.Rows)
             {
                 // Deleted rows may still be present until AcceptChanges; they
                 // must not be offered to the modern checkout.
                 if (row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached)
                     continue;
-                if (row.IsNull("Code") || row.IsNull("ID_ARTICLE"))
-                    return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
-                if (String.Equals(row["Code"].ToString(), selected.Code, StringComparison.Ordinal) &&
-                    String.Equals(row["ID_ARTICLE"].ToString(), selected.ArticleId, StringComparison.Ordinal))
+                if (row.IsNull("Code") || row.IsNull("ID_ARTICLE") ||
+                    String.IsNullOrEmpty(Convert.ToString(row["ID_ARTICLE"])))
                 {
-                    if (found != null)
-                        return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.Ambiguous, null);
-                    found = row;
+                    invalidCandidates = true;
+                    continue;
+                }
+                // ID_ARTICLE is the catalogue identity. A second row with the
+                // same ID but a different barcode is also unsafe to select.
+                if (String.Equals(row["ID_ARTICLE"].ToString(), selected.ArticleId, StringComparison.Ordinal))
+                {
+                    if (found != null || !String.Equals(row["Code"].ToString(), selected.Code, StringComparison.Ordinal))
+                        ambiguous = true;
+                    else
+                        found = row;
                 }
             }
+            // Examine every active candidate before returning an outcome:
+            // corrupt data must not be masked by an earlier duplicate match.
+            if (invalidCandidates)
+                return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            if (ambiguous)
+                return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.Ambiguous, null);
             return found == null
                 ? new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.Missing, null)
                 : new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.Selected, found);
