@@ -75,7 +75,7 @@ try {
     Assert-Rejected 'missing manifest size property'
     [IO.File]::WriteAllText($manifest, $originalManifest)
     $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
-    foreach ($collision in @('LOGICA.exe/child.dll', 'LOGICA.exe/empty/child.txt')) {
+    foreach ($collision in @('LOGICA.exe/child.dll', 'LOGICA.exe/empty/child.txt', 'logica.EXE/child.dll')) {
         $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
         $entries[1].path = $collision
         $entries | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding UTF8
