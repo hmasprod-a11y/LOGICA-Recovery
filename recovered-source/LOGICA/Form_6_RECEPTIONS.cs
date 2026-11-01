@@ -9729,7 +9729,12 @@ public class Form_6_RECEPTIONS : Form
 				// Clear the previous article before any read, including an empty scan
 				// or a failed local SQL query. Never add a stale receipt line.
 				ClearReceiptArticleEntry();
-				if (Operators.CompareString(Text_CODE_FIND.Text.Trim(), "", TextCompare: false) == 0)
+				// A scanner with no code must not select an arbitrary blank-code
+				// product. An explicit catalogue-grid click carries ID_ARTICLE and
+				// may legitimately choose a product whose Code is empty. Continue
+				// through the existing local query and exact-ID resolver for it.
+				if (!LOGICA.ApplicationLayer.Purchasing.ReceiptArticleSelectionService.ShouldLookupBarcode(
+					Text_CODE_FIND.Text, _receiptSelectedArticleId))
 				{
 					return;
 				}
