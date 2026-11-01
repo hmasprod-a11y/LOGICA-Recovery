@@ -154,6 +154,19 @@ try {
     $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
     Assert-Rejected 'ZIP symbolic-link directory'
+    foreach ($directoryNames in @(
+        @('EmptyDir/', 'emptydir/'),
+        @('LOGICA.exe/'),
+        @('LOGICA.exe/nested/')
+    )) {
+        Write-FixtureZip
+        $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
+        try { foreach ($directoryName in $directoryNames) { $null = $archive.CreateEntry($directoryName) } }
+        finally { $archive.Dispose() }
+        $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+        "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
+        Assert-Rejected "invalid ZIP directories $($directoryNames -join ',')"
+    }
     # Highly compressible payloads must fail before content is streamed or extracted.
     Write-FixtureZip
     $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
