@@ -7696,6 +7696,18 @@ public class Form_3_VENTE : Form
 		ApplyProductListSelectionContrast();
 	}
 
+	// Ctrl+F jumps to product search without opening/closing the on-screen keyboard.
+	// The original search button remains unchanged, including its layout toggle.
+	protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+	{
+		if (keyData == (Keys.Control | Keys.F) && Text_FIND != null && Text_FIND.CanFocus)
+		{
+			Text_FIND.Focus();
+			return true;
+		}
+		return base.ProcessCmdKey(ref msg, keyData);
+	}
+
 	// Family colors come from shop configuration and can be very light or dark.
 	// Choose the higher-contrast text color without changing the configured background.
 	private static Color ReadableFamilyCaptionColor(Color background)
