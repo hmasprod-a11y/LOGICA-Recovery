@@ -595,6 +595,188 @@ internal static class PortableCheckoutSmoke
                 "Checkout selection-to-basket preview must never mutate source or legacy basket");
             Console.WriteLine("PASS modern selection-to-basket flow: barcode variants, stale choice, image-only, pricing, returns and totals");
 
+            // The real sales screen queries the local catalogue before showing
+            // the barcode chooser. A second local read must be authoritative
+            // AFTER the cashier chooses, not the earlier displayed DataTable.
+            DataTable refreshedBarcode = flowMatches.Copy();
+            refreshedBarcode.Rows[0]["UnitPrice"] = 8.75m;
+            refreshedBarcode.Rows[0]["Discount"] = 0m;
+            refreshedBarcode.Rows[1]["UnitPrice"] = 99m;
+            DataTable reorderedBarcode = refreshedBarcode.Clone();
+            reorderedBarcode.ImportRow(refreshedBarcode.Rows[1]);
+            reorderedBarcode.ImportRow(refreshedBarcode.Rows[0]);
+            int liveChooserCalls = 0;
+            int liveReadCalls = 0;
+            CheckoutVariantChoiceResult liveChoice =
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                    flowMatches, delegate(IList<CheckoutVariantSnapshot> displayed) {
+                        liveChooserCalls++;
+                        Require(displayed.Count == 2 && displayed[0].ArticleId == "A" &&
+                            displayed[1].ArticleId == "B",
+                            "Refresh chooser must use original displayed identities");
+                        return 0;
+                    }, delegate {
+                        liveReadCalls++;
+                        return reorderedBarcode;
+                    });
+            Require(liveChooserCalls == 1 && liveReadCalls == 1 &&
+                liveChoice.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(liveChoice.SelectedRow, reorderedBarcode.Rows[1]),
+                "Live refresh must select exact article ID despite changed result ordering");
+            CheckoutBasketPreview liveNet = CheckoutSelectionFlowService.Preview(
+                liveChoice, 2.50m, delegate(DataRow article) {
+                    return SalesLinePricing.CalculateNetAmount(
+                        (decimal)article["UnitPrice"], 2m, (decimal)article["Discount"]);
+                }, "20", port);
+            Require(liveNet.LineNet == 17.50m && liveNet.BasketNet == 20m &&
+                liveNet.DisplayedTotalDiffers == false,
+                "Refresh-to-basket uses LIVE price and original total rule, not stale displayed price");
+            CheckoutBasketPreview liveReturn = CheckoutSelectionFlowService.Preview(
+                liveChoice, 20m, delegate(DataRow article) {
+                    return SalesLinePricing.CalculateNetAmount(
+                        (decimal)article["UnitPrice"], -2m, (decimal)article["Discount"]);
+                }, "2", port);
+            Require(liveReturn.LineNet == -17.50m && liveReturn.BasketNet == 2.50m &&
+                liveReturn.DisplayedTotalDiffers == false,
+                "Live refresh preserves negative return and midpoint total rounding");
+
+            int cancelledReads = 0;
+            CheckoutVariantChoiceResult cancelledRefresh =
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                    flowMatches, delegate(IList<CheckoutVariantSnapshot> displayed) { return -1; },
+                    delegate { cancelledReads++; throw new Exception("Cancelled must not query"); });
+            Require(cancelledRefresh.Status == CheckoutVariantChoiceStatus.Cancelled &&
+                cancelledReads == 0, "Cancellation must not requery or enter pricing");
+            CheckoutBasketPreview cancelledNet = CheckoutSelectionFlowService.Preview(
+                cancelledRefresh, 10m, delegate(DataRow article) {
+                    throw new Exception("Cancelled must not read price");
+                }, "10", port);
+            Require(!cancelledNet.LineNet.HasValue && !cancelledNet.BasketNet.HasValue,
+                "Cancelled refreshed selection cannot add a basket line");
+
+            DataTable refreshedMissing = flowMatches.Clone();
+            refreshedMissing.Rows.Add("DUP", "A", 10m, 0m);
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 1; },
+                delegate { return refreshedMissing; }).Status == CheckoutVariantChoiceStatus.Missing,
+                "Article removed after chooser cannot be sold");
+            DataTable refreshedReused = flowMatches.Copy();
+            refreshedReused.Rows[1]["Code"] = "NEW-BARCODE";
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 1; },
+                delegate { return refreshedReused; }).Status == CheckoutVariantChoiceStatus.Ambiguous,
+                "Reused article ID with changed barcode fails closed");
+            DataTable refreshedDuplicate = flowMatches.Copy();
+            refreshedDuplicate.Rows.Add("OTHER", "A", 1m, 0m);
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 1; },
+                delegate { return refreshedDuplicate; }).Status == CheckoutVariantChoiceStatus.Ambiguous,
+                "Duplicate ID elsewhere in refreshed catalogue invalidates selection");
+            refreshedDuplicate.Rows.Add(DBNull.Value, "BAD", 1m, 0m);
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 1; },
+                delegate { return refreshedDuplicate; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Invalid refreshed row takes precedence over duplicate IDs");
+            DataTable refreshedDeleted = flowMatches.Copy();
+            refreshedDeleted.AcceptChanges();
+            refreshedDeleted.Rows[1].Delete();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 1; },
+                delegate { return refreshedDeleted; }).Status == CheckoutVariantChoiceStatus.Missing,
+                "Pending-deleted refreshed article is not selectable");
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 1; },
+                delegate { return null; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Null refresh result fails closed instead of using stale row");
+
+            int singleReadCalls = 0;
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowSingle, null, delegate { singleReadCalls++; return flowSingle.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.Selected && singleReadCalls == 1,
+                "Single barcode match is also revalidated against live local catalogue");
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowSingle, null, delegate { return flowMatches.Clone(); }).Status ==
+                CheckoutVariantChoiceStatus.Missing,
+                "Single barcode match removed before basket must fail closed");
+            int emptyReadCalls = 0;
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowEmpty, null, delegate { emptyReadCalls++; return flowMatches; }).Status ==
+                CheckoutVariantChoiceStatus.Missing && emptyReadCalls == 0,
+                "Initial no-match does not trigger an unnecessary refresh");
+            bool missingReaderRejected = false;
+            try {
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(flowMatches,
+                    delegate(IList<CheckoutVariantSnapshot> d) { return 0; }, null);
+            }
+            catch (ArgumentNullException) { missingReaderRejected = true; }
+            Require(missingReaderRejected, "Refresh callback is mandatory");
+            int badIndexReads = 0;
+            bool badIndexRejected = false;
+            try {
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                    flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 99; },
+                    delegate { badIndexReads++; return flowMatches; });
+            }
+            catch (ArgumentOutOfRangeException) { badIndexRejected = true; }
+            Require(badIndexRejected && badIndexReads == 0,
+                "Invalid displayed choice must not reach local store");
+            Exception liveDbFailure = new InvalidOperationException("local query failed");
+            Exception observedDbFailure = null;
+            try {
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                    flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 0; },
+                    delegate { throw liveDbFailure; });
+            }
+            catch (Exception error) { observedDbFailure = error; }
+            Require(Object.ReferenceEquals(observedDbFailure, liveDbFailure),
+                "Local-store query errors must propagate unmodified to Windows handler");
+
+            DataTable imageDisplayed = flowMatches.Clone();
+            imageDisplayed.Rows.Add("", "IMAGE-LIVE", 6m, 0m);
+            CheckoutArticleTileReference imageRef =
+                CheckoutArticleTileSelectionService.TagFor(imageDisplayed.Rows[0]);
+            DataTable imageCurrent = imageDisplayed.Copy();
+            imageCurrent.Rows[0]["UnitPrice"] = 11m;
+            imageCurrent.Rows[0]["Discount"] = 10m;
+            int imageReadCalls = 0;
+            CheckoutVariantChoiceResult refreshedImage =
+                CheckoutSelectionFlowService.ChooseImageWithRefresh(imageRef, delegate {
+                    imageReadCalls++;
+                    return imageCurrent;
+                });
+            Require(imageReadCalls == 1 && refreshedImage.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(refreshedImage.SelectedRow, imageCurrent.Rows[0]),
+                "Image-only blank-barcode tile re-queries by exact article identity");
+            CheckoutBasketPreview refreshedImageNet = CheckoutSelectionFlowService.Preview(
+                refreshedImage, 0m, delegate(DataRow article) {
+                    return SalesLinePricing.CalculateNetAmount(
+                        (decimal)article["UnitPrice"], 1m, (decimal)article["Discount"]);
+                }, "10", port);
+            Require(refreshedImageNet.LineNet == 9.9m && refreshedImageNet.BasketNet == 9.9m &&
+                refreshedImageNet.DisplayedTotalDiffers == false,
+                "Image tile refresh flows through production discount and total rounding");
+            imageCurrent.Rows[0]["ID_ARTICLE"] = "REUSED";
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                imageRef, delegate { return imageCurrent; }).Status == CheckoutVariantChoiceStatus.Missing,
+                "Image tile replaced after display must not be added to basket");
+            imageCurrent.Rows[0]["ID_ARTICLE"] = "IMAGE-LIVE";
+            imageCurrent.Rows[0]["Code"] = "REASSIGNED";
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                imageRef, delegate { return imageCurrent; }).Status == CheckoutVariantChoiceStatus.Ambiguous,
+                "Image tile reused with different barcode fails closed");
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                imageRef, delegate { return null; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Null image refresh never uses stale tile identity");
+            bool imageReaderRejected = false;
+            try { CheckoutSelectionFlowService.ChooseImageWithRefresh(imageRef, null); }
+            catch (ArgumentNullException) { imageReaderRejected = true; }
+            Require(imageReaderRejected, "Image refresh requires a live catalogue reader");
+            Require(flowMatches.Rows[0]["UnitPrice"].Equals(12.50m) &&
+                flowMatches.Rows[1]["UnitPrice"].Equals(7.50m) &&
+                flowMatches.Rows[0].RowState == DataRowState.Unchanged,
+                "Refresh orchestration never mutates displayed prices or original rows");
+            Console.WriteLine("PASS modern live local-store refresh: barcode choice, image tile, stale identities, pricing, returns, rounding and read-only basket");
+
             int quantities = 0;
             var lookup = new Lookup();
             var rows = new[] {
