@@ -108,55 +108,49 @@ namespace LOGICA.ApplicationLayer.Checkout
                 return new CheckoutVariantChoiceResult(
                     CheckoutVariantChoiceStatus.InvalidCandidates, null);
 
-            // The legacy modal returns a DataTable row index, not an article ID.
-            // If it sorts, removes or reassigns rows while open, that index can
-            // point at another article even though the live SQL refresh succeeds.
-            // Preserve cancellation and invalid-index behavior; fail closed on
-            // a changed identity/order before any second database read.
+            // The dialog index refers to the ORIGINAL displayed rows, even if
+            // an unrelated row is removed or moved while the modal is open.
+            // Preserve that safe legacy behavior: snapshot ID resolution still
+            // finds the originally chosen article. Reject only when the chosen
+            // DataRow itself was deleted, replaced, or reassigned to another ID
+            // or barcode. A lookalike replacement must never inherit its index.
             DataRow[] originalRows = new DataRow[displayedMatches.Rows.Count];
             for (int i = 0; i < originalRows.Length; i++)
                 originalRows[i] = displayedMatches.Rows[i];
-            bool dialogChanged = false;
+            bool selectedRowChanged = false;
             CheckoutVariantChoiceResult result = ChooseBarcodeWithRefresh(displayedMatches,
                 chooseDuplicate == null ? null :
                     new Func<IList<CheckoutVariantSnapshot>, int>(
                         delegate(IList<CheckoutVariantSnapshot> ignored) {
                             int selectedIndex = chooseDuplicate(displayedMatches);
                             if (selectedIndex >= 0 && selectedIndex < initial.Snapshots.Count &&
-                                !MatchesOriginalDialogOrder(displayedMatches, initial.Snapshots, originalRows))
+                                !MatchesOriginalSelectedRow(displayedMatches,
+                                    initial.Snapshots[selectedIndex], originalRows[selectedIndex]))
                             {
-                                dialogChanged = true;
+                                selectedRowChanged = true;
                                 return -1;
                             }
                             return selectedIndex;
                         }),
                 readCurrentMatches);
-            return dialogChanged
+            return selectedRowChanged
                 ? new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null)
                 : result;
         }
 
-        private static bool MatchesOriginalDialogOrder(
-            DataTable displayed, IList<CheckoutVariantSnapshot> snapshots, DataRow[] originalRows)
+        private static bool MatchesOriginalSelectedRow(
+            DataTable displayed, CheckoutVariantSnapshot selected, DataRow originalRow)
         {
-            if (displayed.Rows.Count != snapshots.Count ||
-                !displayed.Columns.Contains("Code") ||
-                !displayed.Columns.Contains("ID_ARTICLE"))
-                return false;
-            for (int i = 0; i < snapshots.Count; i++)
-            {
-                DataRow row = displayed.Rows[i];
-                if (!Object.ReferenceEquals(row, originalRows[i]) ||
-                    row.RowState == DataRowState.Deleted ||
-                    row.RowState == DataRowState.Detached ||
-                    row.IsNull("Code") || row.IsNull("ID_ARTICLE") ||
-                    !String.Equals(Convert.ToString(row["Code"]), snapshots[i].Code,
-                        StringComparison.Ordinal) ||
-                    !String.Equals(Convert.ToString(row["ID_ARTICLE"]), snapshots[i].ArticleId,
-                        StringComparison.Ordinal))
-                    return false;
-            }
-            return true;
+            return originalRow.RowState != DataRowState.Deleted &&
+                originalRow.RowState != DataRowState.Detached &&
+                displayed.Rows.IndexOf(originalRow) >= 0 &&
+                displayed.Columns.Contains("Code") &&
+                displayed.Columns.Contains("ID_ARTICLE") &&
+                !originalRow.IsNull("Code") && !originalRow.IsNull("ID_ARTICLE") &&
+                String.Equals(Convert.ToString(originalRow["Code"]), selected.Code,
+                    StringComparison.Ordinal) &&
+                String.Equals(Convert.ToString(originalRow["ID_ARTICLE"]), selected.ArticleId,
+                    StringComparison.Ordinal);
         }
 
         // Image tiles must be resolved from a live catalogue result by article
