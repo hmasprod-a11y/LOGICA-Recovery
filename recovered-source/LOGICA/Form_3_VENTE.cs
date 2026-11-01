@@ -15632,6 +15632,11 @@ public class Form_3_VENTE : Form
 
 	private void DataGridView100_DoubleClick(object sender, EventArgs e)
 	{
+		// Match PerformClick's disabled-button behavior on both lookup paths.
+		if (!Button_FIND.Enabled)
+		{
+			return;
+		}
 		DataRow row = SelectedProductListRow();
 		if (row == null || !row.Table.Columns.Contains("Code"))
 		{
