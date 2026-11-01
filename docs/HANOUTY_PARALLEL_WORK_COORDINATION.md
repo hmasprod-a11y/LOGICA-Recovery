@@ -1,10 +1,12 @@
 # Hanouty V2 — Parallel Work Coordination
 
-Updated: 2026-11-01. Shared coordination reference for both hourly development tracks.
+Updated: 2026-11-01. Shared coordination reference for four independent development tracks.
 
 ## Ownership
 - Track A — Modern Core / Checkout: PR #70, branch `feature/hanouty-modern-core-dual-target`. Owns `modernization/LOGICA.CoreCompatibility.csproj`, `modernization/CoreSources.props`, `modernization/PortableCheckoutSmoke.cs`, `recovered-source/LOGICA/Application/Checkout/CheckoutVariantSnapshotService.cs`, `scripts/test-checkout-core.ps1`, and `.github/workflows/hanouty-modern-core-compatibility.yml`.
-- Track B — Commercial workflows: Inventory/Catalogue, purchase/supplier workflows and related tests. Create a different branch and PR. Do not edit Track A-owned files without explicit PR coordination.
+- Track B — Commercial workflows: Inventory/Catalogue, purchase/supplier workflows and related tests. PR #72, branch `feature/hanouty-business-receipts-stockcount-20261101`. Do not edit Track A-owned files without explicit PR coordination.
+- Track C — Desktop WinForms and UI/UX: PR #71, branch `feature/hanouty-desktop-sales-contrast`. Owns screen presentation and UI regression scripts; do not modify checkout core without Track A review.
+- Track D — QA, Windows verification, CI and packaging: PR #73, branch `qa/release-artifact-success-gate-20261101`. Owns release verification and artifact gates; coordinate workflow changes before editing.
 - Shared areas (checkout/inventory stock posting, SQL schemas, packaging, CI): announce intended files and dependencies in PR description before editing. One integration owner at a time; rebase on exact release HEAD before merge.
 
 ## Every hourly development cycle
@@ -19,3 +21,9 @@ Updated: 2026-11-01. Shared coordination reference for both hourly development t
 - Track A PR #70: https://github.com/hmasprod-a11y/LOGICA-Recovery/pull/70
 - Planning-only PR #69: https://github.com/hmasprod-a11y/LOGICA-Recovery/pull/69
 - Both tracks must check for newer PRs and update this coordination file through a reviewed change if ownership changes.
+
+## Checkout / inventory integration boundary (2026-11-01)
+- Track A added `CheckoutVariantSnapshotService.ResolveChosenVariant(currentMatches, displayed, selectedIndex)` on PR #70. The displayed variant list is a read-only snapshot, and the selected ID must be re-resolved against the current result set. Index -1 means cancellation; stale, missing or ambiguous identity yields no row. This service does not post sales, change stock or query a database.
+- Track B PR #72 has read-only purchasing/stock-count preview services. Do not wire their stock adjustments into Checkout or change posting semantics until a reviewed contract identifies the stock movement owner, transaction boundaries, and isolated MariaDB integration tests.
+- Track C may consume the snapshot selection contract in UI only after coordination on legacy barcode selection behavior; no silent first-match for duplicate barcodes.
+- Track D should verify .NET Framework independent checkout isolation, Windows POS, .NET 10 smoke and packaging for PR #70 before recommending merge. No cross-track files were edited in this batch.
