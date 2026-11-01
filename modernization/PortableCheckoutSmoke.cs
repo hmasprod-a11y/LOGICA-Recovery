@@ -474,6 +474,127 @@ internal static class PortableCheckoutSmoke
             Require(StockAvailability.IsBelowRequested(1m, 2m, port), "Stock shortage");
             Require(!StockAvailability.IsBelowRequested(2m, 2m, port), "Stock equality");
 
+            // Real sales-screen seam: the recovered Button_FIND_Click currently
+            // uses the legacy index chooser and then Button_GO_Click calculates
+            // the line net. Exercise modern identity -> production pricing ->
+            // basket total consistency without writing the legacy basket.
+            DataTable flowMatches = new DataTable();
+            flowMatches.Columns.Add("Code", typeof(string));
+            flowMatches.Columns.Add("ID_ARTICLE", typeof(string));
+            flowMatches.Columns.Add("UnitPrice", typeof(decimal));
+            flowMatches.Columns.Add("Discount", typeof(decimal));
+            flowMatches.Rows.Add("DUP", "A", 12.50m, 10m);
+            flowMatches.Rows.Add("DUP", "B", 7.50m, 0m);
+            flowMatches.AcceptChanges();
+            int flowChooserCalls = 0;
+            CheckoutVariantChoiceResult flowChoice = CheckoutSelectionFlowService.ChooseBarcode(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> displayed) {
+                    flowChooserCalls++;
+                    Require(displayed.Count == 2 && displayed[1].ArticleId == "B",
+                        "Duplicate chooser must receive exact immutable article identities");
+                    return 1;
+                });
+            Require(flowChooserCalls == 1 && flowChoice.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(flowChoice.SelectedRow, flowMatches.Rows[1]),
+                "Modern barcode chooser must select the second actual variant");
+            Require(Object.ReferenceEquals(
+                CheckoutBarcodeSelectionService.Select(flowMatches, delegate(DataTable ignored) { return 1; }),
+                flowChoice.SelectedRow), "Modern selection must agree with legacy chosen variant");
+            int flowPriceCalls = 0;
+            CheckoutBasketPreview flowPreview = CheckoutSelectionFlowService.Preview(
+                flowChoice, 5m, delegate(DataRow article) {
+                    flowPriceCalls++;
+                    return SalesLinePricing.CalculateNetAmount(
+                        (decimal)article["UnitPrice"], 2m, (decimal)article["Discount"]);
+                }, "20", port);
+            Require(flowPriceCalls == 1 && flowPreview.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(flowPreview.SelectedRow, flowMatches.Rows[1]) &&
+                flowPreview.LineNet == 15m && flowPreview.BasketNet == 20m &&
+                flowPreview.DisplayedTotalDiffers == false,
+                "Selected duplicate variant must flow through real pricing and basket consistency");
+            Require(flowPreview.LineNet == (7.50m * 2m - 7.50m * 2m * 0m / 100m),
+                "Simple sale sample matches recovered line arithmetic before formatting");
+            CheckoutBasketPreview flowReturn = CheckoutSelectionFlowService.Preview(
+                flowChoice, 20m, delegate(DataRow article) {
+                    return SalesLinePricing.CalculateNetAmount(
+                        (decimal)article["UnitPrice"], -2m, (decimal)article["Discount"]);
+                }, "5", port);
+            Require(flowReturn.LineNet == -15m && flowReturn.BasketNet == 5m &&
+                flowReturn.DisplayedTotalDiffers == false,
+                "Return sign must remain negative through preview without stock writes");
+            CheckoutBasketPreview flowMismatch = CheckoutSelectionFlowService.Preview(
+                flowChoice, 5m, delegate(DataRow article) { return 15m; }, "19", port);
+            Require(flowMismatch.DisplayedTotalDiffers == true,
+                "Preview must invoke production basket total consistency rule");
+            DataTable flowSingle = flowMatches.Clone();
+            flowSingle.ImportRow(flowMatches.Rows[0]);
+            Require(CheckoutSelectionFlowService.ChooseBarcode(flowSingle, null).Status ==
+                CheckoutVariantChoiceStatus.Selected, "Single barcode candidate needs no dialog");
+            DataTable flowEmpty = flowMatches.Clone();
+            Require(CheckoutSelectionFlowService.ChooseBarcode(flowEmpty, null).Status ==
+                CheckoutVariantChoiceStatus.Missing, "Empty exact barcode query is Missing");
+            bool flowMissingChooserRejected = false;
+            try { CheckoutSelectionFlowService.ChooseBarcode(flowMatches, null); }
+            catch (ArgumentNullException) { flowMissingChooserRejected = true; }
+            Require(flowMissingChooserRejected, "Duplicate barcode must require explicit choice");
+            CheckoutVariantChoiceResult flowCancel = CheckoutSelectionFlowService.ChooseBarcode(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> displayed) { return -1; });
+            Require(flowCancel.Status == CheckoutVariantChoiceStatus.Cancelled,
+                "Cancel must not silently choose first barcode variant");
+            CheckoutBasketPreview flowCancelledPreview = CheckoutSelectionFlowService.Preview(
+                flowCancel, 5m, delegate(DataRow row) {
+                    throw new Exception("Cancelled checkout must never read price");
+                }, "5", port);
+            Require(flowCancelledPreview.SelectedRow == null && !flowCancelledPreview.LineNet.HasValue &&
+                !flowCancelledPreview.BasketNet.HasValue &&
+                !flowCancelledPreview.DisplayedTotalDiffers.HasValue,
+                "Cancelled selection must not compute or post a basket line");
+            DataTable flowStale = flowMatches.Copy();
+            CheckoutVariantChoiceResult flowStaleChoice = CheckoutSelectionFlowService.ChooseBarcode(
+                flowStale, delegate(IList<CheckoutVariantSnapshot> displayed) {
+                    flowStale.Rows[1]["ID_ARTICLE"] = "CHANGED";
+                    return 1;
+                });
+            Require(flowStaleChoice.Status == CheckoutVariantChoiceStatus.Missing &&
+                flowStaleChoice.SelectedRow == null,
+                "Catalogue mutation during chooser must fail closed before pricing");
+            DataTable flowDuplicates = flowMatches.Copy();
+            flowDuplicates.Rows.Add("DUP", "A", 12m, 0m);
+            Require(CheckoutSelectionFlowService.ChooseBarcode(flowDuplicates, null).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous,
+                "Duplicate catalogue IDs must not enter checkout even without a chooser");
+            flowDuplicates.Rows.Add(DBNull.Value, "BROKEN", 12m, 0m);
+            Require(CheckoutSelectionFlowService.ChooseBarcode(flowDuplicates, null).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Corrupt catalogue row takes precedence over duplicate identity");
+            DataTable flowImages = flowMatches.Clone();
+            flowImages.Rows.Add("", "IMAGE-ONLY", 10m, 5m);
+            flowImages.AcceptChanges();
+            CheckoutArticleTileReference flowTile =
+                CheckoutArticleTileSelectionService.TagFor(flowImages.Rows[0]);
+            CheckoutVariantChoiceResult flowImageChoice =
+                CheckoutSelectionFlowService.ChooseImage(flowImages, flowTile);
+            Require(flowImageChoice.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(flowImageChoice.SelectedRow, flowImages.Rows[0]),
+                "Image-only article must select by ID without requiring a barcode");
+            CheckoutBasketPreview flowImagePreview = CheckoutSelectionFlowService.Preview(
+                flowImageChoice, 0m, delegate(DataRow article) {
+                    return SalesLinePricing.CalculateNetAmount(
+                        (decimal)article["UnitPrice"], 1m, (decimal)article["Discount"]);
+                }, "10", port);
+            Require(flowImagePreview.LineNet == 9.5m && flowImagePreview.BasketNet == 9.5m &&
+                flowImagePreview.DisplayedTotalDiffers == false,
+                "Image-only selection reaches net pricing and original rounded total check");
+            flowImages.Rows[0]["ID_ARTICLE"] = "REPLACED";
+            Require(CheckoutSelectionFlowService.ChooseImage(flowImages, flowTile).Status ==
+                CheckoutVariantChoiceStatus.Missing,
+                "Image tile must fail closed if identity changed after display");
+            Require(flowMatches.Rows[0].RowState == DataRowState.Unchanged &&
+                flowMatches.Rows[1].RowState == DataRowState.Unchanged &&
+                flowMatches.Rows[1]["ID_ARTICLE"].ToString() == "B",
+                "Checkout selection-to-basket preview must never mutate source or legacy basket");
+            Console.WriteLine("PASS modern selection-to-basket flow: barcode variants, stale choice, image-only, pricing, returns and totals");
+
             int quantities = 0;
             var lookup = new Lookup();
             var rows = new[] {
