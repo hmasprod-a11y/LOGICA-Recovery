@@ -10277,7 +10277,9 @@ public class Form_6_RECEPTIONS : Form
 					((Control)Button_VALIDER).Enabled = true;
 					return;
 				}
-				if (Operators.ConditionalCompareObjectEqual(confirmedReceiptRow.Cells["ETAT"].Value, "VALIDER", TextCompare: false))
+				// Only an unvalidated receipt is eligible for stock posting.
+				if (!String.Equals(Convert.ToString(confirmedReceiptRow.Cells["ETAT"].Value),
+					"ENREGISTRER", StringComparison.Ordinal))
 				{
 					((Control)Button_VALIDER).Enabled = true;
 					return;
@@ -10300,11 +10302,12 @@ public class Form_6_RECEPTIONS : Form
 					DataGridView1_CellClick(DataGridView1, e2);
 					// Consultation populates Text_ID_BR and DataGrid_BODY. If the
 					// binding cursor was stale or the read failed, abort before SQL.
-					if (!LOGICA.ApplicationLayer.Purchasing.ReceiptDocumentSelectionGuard.Matches(
-						confirmedReceiptId, Text_ID_BR.Text))
+					if (!LOGICA.ApplicationLayer.Purchasing.ReceiptDocumentSelectionGuard.MayValidate(
+						confirmedReceiptId, Text_ID_BR.Text,
+						Convert.ToString(confirmedReceiptRow.Cells["ETAT"].Value), Text_ETAT.Text))
 					{
 						((Control)Button_VALIDER).Enabled = true;
-						MessageBox.Show("Le bon sélectionné a changé. Rechargez la réception.",
+						MessageBox.Show("Le bon sélectionné a changé ou est déjà validé. Rechargez la réception.",
 							"Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 						return;
 					}
