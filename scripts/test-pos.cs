@@ -1326,8 +1326,31 @@ class PosSmoke {
     if(code.Text!="PREVIOUS-SCAN")
      throw new Exception("Image tile without article ID reached scanner lookup");
    }
+   // Hidden/zero-height image scrollbar occurs before first layout and at DPI resize.
+   var scrollbar=(ScrollBar)Get(sale,"vScrollBar1");
+   var imageGrid=(FlowLayoutPanel)Get(sale,"FlowLayout_ARTICLES");
+   var refresh=saleType.GetMethod("RefreshArticleImageScrollbar",Flags);
+   if(scrollbar==null||imageGrid==null||refresh==null)
+    throw new Exception("Image scrollbar refresh boundary missing");
+   int previousHeight=scrollbar.Height;
+   try {
+    scrollbar.Height=0;
+    refresh.Invoke(sale,null);
+    if(scrollbar.LargeChange<1||scrollbar.Value<scrollbar.Minimum||scrollbar.Value>scrollbar.Maximum)
+     throw new Exception("Zero-height DPI image scrollbar produced invalid range");
+    using(var largeTile=new Button(){Width=120,Height=500}) {
+     imageGrid.Controls.Add(largeTile);
+     refresh.Invoke(sale,null);
+     if(scrollbar.Value<scrollbar.Minimum||scrollbar.Value>scrollbar.Maximum)
+      throw new Exception("Image scrollbar overflowed after catalogue expansion");
+     imageGrid.Controls.Remove(largeTile);
+    }
+    refresh.Invoke(sale,null);
+    if(scrollbar.Value<scrollbar.Minimum||scrollbar.Value>scrollbar.Maximum)
+     throw new Exception("Image scrollbar retained an invalid offset after clearing tiles");
+   } finally {scrollbar.Height=previousHeight;}
   }
-  Console.WriteLine("PASS image tile refresh disposes bitmaps and unsafe tile clicks fail closed offline");
+  Console.WriteLine("PASS image tile disposal, safe clicks, and zero-height DPI scrollbar bounds offline");
  }
 
  static void CheckoutImageGrid(Assembly assembly) {
