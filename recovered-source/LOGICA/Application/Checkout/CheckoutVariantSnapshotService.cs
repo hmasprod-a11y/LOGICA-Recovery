@@ -17,6 +17,29 @@ namespace LOGICA.ApplicationLayer.Checkout
         }
     }
 
+    // The modern shell needs to distinguish a deliberate cancellation from a
+    // stale or ambiguous variant. No sale, stock, price or database side effects.
+    internal enum CheckoutVariantChoiceStatus
+    {
+        Selected,
+        Cancelled,
+        Missing,
+        Ambiguous,
+        InvalidCandidates
+    }
+
+    internal sealed class CheckoutVariantChoiceResult
+    {
+        internal CheckoutVariantChoiceStatus Status { get; private set; }
+        internal DataRow SelectedRow { get; private set; }
+
+        internal CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus status, DataRow selectedRow)
+        {
+            Status = status;
+            SelectedRow = selectedRow;
+        }
+    }
+
     internal static class CheckoutVariantSnapshotService
     {
         internal static IList<CheckoutVariantSnapshot> Read(DataTable matches)
@@ -47,6 +70,45 @@ namespace LOGICA.ApplicationLayer.Checkout
                 throw new ArgumentOutOfRangeException("selectedIndex",
                     "The chosen article is outside the displayed variant list.");
             return Resolve(currentMatches, displayed[selectedIndex]);
+        }
+
+        // Read-only modern UI outcome. Unlike a null-only API, a cancelled
+        // chooser is never mistaken for a stale, ambiguous or corrupt result.
+        // Resolve against the *current* query, not the displayed row index.
+        internal static CheckoutVariantChoiceResult EvaluateChoice(
+            DataTable currentMatches, IList<CheckoutVariantSnapshot> displayed,
+            int selectedIndex)
+        {
+            if (currentMatches == null) throw new ArgumentNullException("currentMatches");
+            if (displayed == null) throw new ArgumentNullException("displayed");
+            if (selectedIndex == -1)
+                return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.Cancelled, null);
+            if (selectedIndex < 0 || selectedIndex >= displayed.Count)
+                throw new ArgumentOutOfRangeException("selectedIndex",
+                    "The chosen article is outside the displayed variant list.");
+            CheckoutVariantSnapshot selected = displayed[selectedIndex];
+            if (selected == null) throw new ArgumentException("The chosen variant cannot be null.", "displayed");
+
+            DataRow found = null;
+            foreach (DataRow row in currentMatches.Rows)
+            {
+                // Deleted rows may still be present until AcceptChanges; they
+                // must not be offered to the modern checkout.
+                if (row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached)
+                    continue;
+                if (row.IsNull("Code") || row.IsNull("ID_ARTICLE"))
+                    return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
+                if (String.Equals(row["Code"].ToString(), selected.Code, StringComparison.Ordinal) &&
+                    String.Equals(row["ID_ARTICLE"].ToString(), selected.ArticleId, StringComparison.Ordinal))
+                {
+                    if (found != null)
+                        return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.Ambiguous, null);
+                    found = row;
+                }
+            }
+            return found == null
+                ? new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.Missing, null)
+                : new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.Selected, found);
         }
 
         internal static DataRow Resolve(DataTable matches, CheckoutVariantSnapshot selected)
