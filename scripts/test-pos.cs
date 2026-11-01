@@ -1582,6 +1582,7 @@ class PosSmoke {
       tabs==null||keyboard==null||panel==null)
     throw new Exception("Sales quantity keypad or keyboard layout is missing");
    if(qtyKeyPress==null)throw new Exception("Quantity keyboard handler missing");
+   var oldQty=quantity.Text;
    quantity.Text="23.5";
    var duplicateDecimal=new KeyPressEventArgs('.');
    qtyKeyPress.Invoke(form,new object[]{quantity,duplicateDecimal});
@@ -1594,7 +1595,6 @@ class PosSmoke {
    var invalidKey=new KeyPressEventArgs('X');
    qtyKeyPress.Invoke(form,new object[]{quantity,invalidKey});
    if(!invalidKey.Handled)throw new Exception("Quantity keyboard accepted nonnumeric input");
-   var oldQty=quantity.Text;
    var oldColor=quantity.BackColor;
    var oldHeight=tabs.Height;
    var oldTag=tabs.Tag;
