@@ -1205,6 +1205,18 @@ class PosSmoke {
     if(!found || result!=expected)throw new Exception("Duplicate chooser modal result mismatch: "+result+" expected "+expected);
    }
   }
+  // Exercise the exact production Application service via the compiled net48 POS.
+  // This is a non-posting fixture; no shop data or checkout rows are modified.
+  var selection=assembly.GetType("LOGICA.ApplicationLayer.Checkout.CheckoutBarcodeSelectionService",true);
+  var identity=selection.GetMethod("IsSameBasketArticle",Flags);
+  Func<object,object,bool> identityEquals=delegate(object left,object right) {
+   return Object.Equals(left,right);
+  };
+  bool same=(bool)identity.Invoke(null,new object[]{rows.Rows[0],"SAME-001","11",identityEquals});
+  bool otherVariant=(bool)identity.Invoke(null,new object[]{rows.Rows[0],"SAME-001","12",identityEquals});
+  bool otherCode=(bool)identity.Invoke(null,new object[]{rows.Rows[0],"OTHER","11",identityEquals});
+  if(!same||otherVariant||otherCode)
+   throw new Exception("Windows compiled checkout merges a different variant or loses same article identity");
   Console.WriteLine("PASS Windows duplicate barcode chooser: two variants, active price, selected row and Cancel");
  }
 
