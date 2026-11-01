@@ -203,6 +203,70 @@ internal static class PortableCheckoutSmoke
             Require(selectedOutcome.Status == CheckoutVariantChoiceStatus.Selected &&
                 Object.ReferenceEquals(selectedOutcome.SelectedRow, outcomeRows.Rows[1]),
                 "Typed outcome must preserve selected article identity");
+            // A modern caller can construct or modify an IList after the
+            // snapshot was displayed. Do not trust only the selected entry:
+            // duplicate IDs elsewhere in the displayed list make it unsafe.
+            var duplicateDisplayed = new List<CheckoutVariantSnapshot> {
+                new CheckoutVariantSnapshot("123", "A"),
+                new CheckoutVariantSnapshot("123", "B"),
+                new CheckoutVariantSnapshot("OTHER", "B")
+            };
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(
+                outcomeRows, duplicateDisplayed, 0).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous,
+                "Duplicate displayed ID must invalidate even an unrelated selected entry");
+            Require(CheckoutVariantSnapshotService.ResolveChosenVariant(
+                outcomeRows, duplicateDisplayed, 1) == null,
+                "Null-returning chooser must reject duplicate displayed identities");
+            var malformedDisplayed = new List<CheckoutVariantSnapshot> {
+                new CheckoutVariantSnapshot("123", "B"),
+                new CheckoutVariantSnapshot(null, "BROKEN")
+            };
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(
+                outcomeRows, malformedDisplayed, 0).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Malformed unrelated displayed barcode must invalidate selection");
+            Require(CheckoutVariantSnapshotService.ResolveChosenVariant(
+                outcomeRows, malformedDisplayed, 0) == null,
+                "Null-returning chooser must reject malformed displayed barcode");
+            var nullDisplayedEntry = new List<CheckoutVariantSnapshot> {
+                new CheckoutVariantSnapshot("123", "B"), null
+            };
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(
+                outcomeRows, nullDisplayedEntry, 0).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Null unrelated displayed entry must invalidate the whole chooser");
+            var emptyDisplayedId = new List<CheckoutVariantSnapshot> {
+                new CheckoutVariantSnapshot("123", "B"),
+                new CheckoutVariantSnapshot("123", "")
+            };
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(
+                outcomeRows, emptyDisplayedId, 0).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Blank unrelated displayed ID must fail closed");
+            var corruptAndDuplicateDisplayed = new List<CheckoutVariantSnapshot> {
+                new CheckoutVariantSnapshot("123", "B"),
+                new CheckoutVariantSnapshot("OTHER", "B"),
+                new CheckoutVariantSnapshot(null, "INVALID")
+            };
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(
+                outcomeRows, corruptAndDuplicateDisplayed, 0).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Malformed displayed entry must take precedence over duplicate ID");
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(
+                outcomeRows, duplicateDisplayed, -1).Status ==
+                CheckoutVariantChoiceStatus.Cancelled &&
+                CheckoutVariantSnapshotService.ResolveChosenVariant(
+                    outcomeRows, duplicateDisplayed, -1) == null,
+                "Explicit cancellation must remain independent of displayed list validation");
+            Require(Object.ReferenceEquals(CheckoutVariantSnapshotService.ResolveChosenVariant(
+                outcomeRows, snapshots, 1), outcomeRows.Rows[1]),
+                "Distinct displayed IDs sharing one barcode must remain selectable");
+            Require(outcomeRows.Rows.Count == 2 &&
+                outcomeRows.Rows[0]["ID_ARTICLE"].ToString() == "A" &&
+                outcomeRows.Rows[1]["ID_ARTICLE"].ToString() == "B",
+                "Displayed list validation must not mutate the live query");
+            Console.WriteLine("PASS modern displayed variant validation: duplicate IDs, malformed entries, precedence and cancellation");
             var cancelledOutcome = CheckoutVariantSnapshotService.EvaluateChoice(outcomeRows, snapshots, -1);
             Require(cancelledOutcome.Status == CheckoutVariantChoiceStatus.Cancelled &&
                 cancelledOutcome.SelectedRow == null, "Explicit cancellation outcome");
