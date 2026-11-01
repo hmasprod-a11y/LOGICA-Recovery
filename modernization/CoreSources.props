@@ -55,5 +55,13 @@
     <Compile Include="../recovered-source/LOGICA/Domain/StockAvailability.cs" Link="Domain/StockAvailability.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Checkout/StockValidationModels.cs" Link="Application/Checkout/StockValidationModels.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Checkout/StockValidationService.cs" Link="Application/Checkout/StockValidationService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Domain/ILegacyClientSearchSemantics.cs" Link="Domain/ILegacyClientSearchSemantics.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Clients/IClientSettlementSearchContext.cs" Link="Application/Clients/IClientSettlementSearchContext.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Clients/ClientSettlementSearchService.cs" Link="Application/Clients/ClientSettlementSearchService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Clients/IClientSettlementRefreshContext.cs" Link="Application/Clients/IClientSettlementRefreshContext.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Clients/ClientSettlementRefreshService.cs" Link="Application/Clients/ClientSettlementRefreshService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Clients/IClientSettlementFilterLayoutContext.cs" Link="Application/Clients/IClientSettlementFilterLayoutContext.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Clients/ClientSettlementFilterLayoutService.cs" Link="Application/Clients/ClientSettlementFilterLayoutService.cs" />
+    <Compile Include="../recovered-source/LOGICA/Infrastructure/Clients/ClientSettlementQueryText.cs" Link="Infrastructure/Clients/ClientSettlementQueryText.cs" />
   </ItemGroup>
 </Project>
