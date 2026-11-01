@@ -19,40 +19,43 @@ Scope: LOGICA remains the behavior reference; Hanouty V2 is the modern product. 
 6. Protect real shop DB, configuration, licensing, keys, ticket numbering, tax, stock, transaction and price/rounding behavior. No production activation bypass.
 7. Every functional change has isolated regression + Windows build + MariaDB integration + .NET 10 smoke + license/package safety gates. No automatic merge to main or live deployment.
 
+## NO-REWORK RULE — 2026-11-01 correction
+PR #56 and PRs #61–#68 already cover much of the original W0/W1 and parts of W2. Do not reimplement them. First make a compact evidence matrix: DONE (merged + green on exact SHA), PENDING (PR/CI outstanding), GAP (absent). W0 is a short verification gate, W1 is integration of only missing PRs, and W2 is limited to uncovered invariants. The main implementation capacity must move to W3–W5 and unimplemented purchase/supplier workflows. Never interpret a PR description alone as proof of merge or successful CI.
+
 ## High-impact execution wave (parallel reviewable tracks, sequential safe integration)
-### W0 — Baseline & release gates (P0)
+### W0 — FAST evidence checkpoint ONLY, not a new implementation phase (P0)
 - [ ] Record exact current release head SHA, integration base, PR #56 and #61–#68 merge state and required CI conclusions; avoid stale descriptions.
 - [ ] Produce dependency/branch map; identify duplicated or superseded PRs. Merge only verified green, non-overlapping changes into release candidate.
 - [ ] Rebuild Windows x86 EXE + all DLLs, .NET 10 portable core, Domain characterization and isolated MariaDB; publish SHA256 manifest, safe update candidate, reproducible logs.
 - [ ] Add regression gate verifying no overwritten settings/license/database and a rollback rehearsal using synthetic shop data.
 Acceptance: all relevant gates green on SAME SHA; artifact hashes verified; main unchanged.
 
-### W1 — Checkout correctness & security (P0)
+### W1 — Finish only pending checkout gaps; DO NOT repeat completed PRs (P0)
 - [ ] Integrate and validate parameterized list/image search, family filter, exact barcode lookup (PRs #62, #64, #67).
 - [ ] Verify only real decodable images appear in image tiles; ordinary list includes image-less items (PR #63).
 - [ ] Verify duplicate barcode chooser, exact ID_ARTICLE basket identity and image tile identity (PRs #65, #66, #68).
 - [ ] Regression matrix: keyboard/scanner emulation, repeated scan, cancel/escape, sale/return, price tier, quantity, weighing, stale ID, zero/one/many matches, SQL special characters, fr-MA/fr-FR/en-US.
 Acceptance: zero cross-variant stock/price/basket contamination; no unexpected posting on cancellation; original transaction behavior preserved.
 
-### W2 — Financial and inventory invariants (P0)
+### W2 — Test ONLY uncovered financial/inventory invariants (P0)
 - [ ] Characterize cash/tender/change, discounts, VAT, rounding, returns and ticket sequence against original executable semantics.
 - [ ] Test stock movement posting and rollback under each simulated failure stage; no double post or partial sale.
 - [ ] Validate customer debts, partial settlements, supplier balances, export and audit trail under multi-culture inputs.
 Acceptance: exact parity with documented original or explicitly approved bug fix, isolated MariaDB fixtures and durable rollback evidence.
 
-### W3 — Portable core expansion (P1)
+### W3 — PRIMARY BUILD TRACK: Portable core expansion (P0)
 - [ ] Inventory remaining WinForms business logic dependencies; prioritize checkout, purchase, inventory, customer and supplier workflows.
 - [ ] Extract one behavior-preserving service per PR with legacy oracle tests and net48 + net10 compilation.
 - [ ] Keep UI, SQL access and VisualBasic compatibility behind explicit adapters. No broad formatting-only churn.
 Acceptance: measurable decrease in UI-owned business logic, stable API contracts and green CI per PR.
 
-### W4 — New UI feasibility spike (P1, no replacement yet)
+### W4 — PRIMARY BUILD TRACK: New UI feasibility spike (P0, no replacement yet)
 - [ ] Compare WPF / Avalonia / WinUI options against actual printer, barcode, cash drawer, x86 and offline packaging constraints.
 - [ ] Implement a small separate .NET 10 proof of concept for catalog browsing + basket rendering using read-only/synthetic data.
 - [ ] Benchmark cold start, memory, 1k/10k product search and keyboard-only checkout ergonomics.
 Acceptance: evidence-based UI choice and no regression to legacy checkout.
 
-### W5 — Data architecture & release hardening (P1)
+### W5 — PRIMARY BUILD TRACK: Data architecture & release hardening (P0)
 - [ ] Write MariaDB-to-SQLite feasibility report; do not migrate live data.
 - [ ] Validate backup/restore, corrupt DB recovery, versioned migrations, safe updater and local data retention.
 - [ ] Create physical hardware acceptance checklist and shop-copy anonymization protocol; manual signoff required.
