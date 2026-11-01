@@ -75,6 +75,14 @@ try {
     Assert-Rejected 'missing manifest size property'
     [IO.File]::WriteAllText($manifest, $originalManifest)
     $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
+    foreach ($collision in @('LOGICA.exe/child.dll', 'LOGICA.exe/empty/child.txt')) {
+        $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
+        $entries[1].path = $collision
+        $entries | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding UTF8
+        Assert-Rejected "manifest file/directory collision $collision"
+        [IO.File]::WriteAllText($manifest, $originalManifest)
+    }
+    $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
     $entries[0].path = '../escape.txt'
     $entries | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding UTF8
     Assert-Rejected 'manifest path traversal'
