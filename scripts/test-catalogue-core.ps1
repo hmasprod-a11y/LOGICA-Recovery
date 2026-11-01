@@ -14,10 +14,13 @@ try {
         'recovered-source/LOGICA/Application/Catalogue/CatalogueRowMapper.cs',
         'recovered-source/LOGICA/Application/Catalogue/CatalogueCreationService.cs',
         'recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptPreviewService.cs',
+        'recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptCatalogueValidationService.cs',
         'recovered-source/LOGICA/Application/Inventory/StockCountVarianceService.cs',
         'tests/BusinessOperationsSmoke.cs',
         'recovered-source/LOGICA/Application/Inventory/StockCountCoverageService.cs',
+        'recovered-source/LOGICA/Application/Inventory/StockCountAdjustmentProposalService.cs',
         'tests/StockCountCoverageSmoke.cs',
+        'tests/BusinessOperationsSafetySmoke.cs',
         'modernization/PortableCatalogueSmoke.cs',
         'tests/CatalogueCoreIsolationEntry.cs'
     ) | ForEach-Object { Join-Path $root $_ }
