@@ -45,14 +45,7 @@ foreach ($file in $files) {
   $relative = $file.FullName.Substring($dist.Length + 1).Replace([char]92, '/')
   if (-not $seen.Add($relative)) { throw "Case-colliding release file: $relative" }
   foreach ($segment in $relative.Split('/')) {
-    if ($segment -match '[\x00-\x1F]' -or $segment -match '[. ]
-$manifest = foreach ($file in $files) {
-  [pscustomobject]@{ path = $file.FullName.Substring($dist.Length + 1).Replace([char]92, '/'); size = $file.Length; sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash }
-}
-New-Item -ItemType Directory -Force results | Out-Null
-$manifest | Sort-Object path | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath results/release-candidate-manifest.json -Encoding UTF8
-Write-Host "PASS: release candidate contains LOGICA.exe, $($dlls.Count) DLLs and $($files.Count) files, without persisted test database credentials"
- -or
+    if ($segment -match '[\x00-\x1F]' -or $segment -match '[. ]$' -or
         $segment -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)') {
       throw "Unsafe Windows release filename: $relative"
     }
