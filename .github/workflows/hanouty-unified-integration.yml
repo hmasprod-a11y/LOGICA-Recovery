@@ -1,0 +1,92 @@
+name: Hanouty isolated combined Windows integration
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/hanouty-unified-integration.yml'
+      - 'docs/HANOUTY_UNIFIED_WINDOWS_INTEGRATION.md'
+permissions:
+  contents: read
+jobs:
+  combined-windows:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Assemble exact reviewed track heads in temporary runner workspace
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config user.name "Hanouty Integration CI"
+          git config user.email "integration-ci@users.noreply.github.com"
+          $heads = @(
+            '0fe389df94513af19e0e400451e237b03979578a',
+            'b03bd3ee089cef8a6409a23c0e54b695197fe9ff',
+            '9a62646b24dd4ac77aaa60c9a69b98bc879ecfc2',
+            '8ce8e8ad62d9f189f94ee215411c9ee3c9a2150e'
+          )
+          git fetch origin --no-tags '+refs/heads/*:refs/remotes/origin/*'
+          if ($LASTEXITCODE -ne 0) { throw 'Fetch integration inputs failed' }
+          foreach ($head in $heads) {
+            git merge --no-ff --no-edit $head
+            if ($LASTEXITCODE -ne 0) {
+              git status --short
+              throw "Integration conflict while merging $head; do not resolve automatically"
+            }
+          }
+          git rev-parse HEAD | Set-Content integration-head.txt
+          git log -4 --format='%h %s'
+      - name: Build original Windows POS and modern compatibility
+        shell: pwsh
+        run: |
+          Expand-Archive input/LOGICA-dependencies.zip dependencies -Force
+          New-Item -ItemType Directory -Force results | Out-Null
+          dotnet build recovered-source/LOGICA.csproj -c Release --nologo -v:q -o dist *> results/integration-build.log
+          if ($LASTEXITCODE -ne 0) { Get-Content results/integration-build.log | Select-Object -Last 100; throw 'Legacy Windows build failed' }
+          Get-ChildItem dependencies -Recurse -File | ForEach-Object {
+            $target=Join-Path dist $_.Name
+            if(-not (Test-Path $target)) { Copy-Item $_.FullName $target }
+          }
+          dotnet build modernization/LOGICA.CoreCompatibility.csproj -c Release --warnaserror
+          if ($LASTEXITCODE -ne 0) { throw '.NET 10 / legacy core compatibility failed' }
+          dotnet run --project modernization/LOGICA.CoreSmoke.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Modern core smoke failed' }
+      - name: Isolated MariaDB and end-to-end POS regressions
+        shell: pwsh
+        run: |
+          ./scripts/setup-test-db.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Isolated MariaDB setup failed' }
+          ./scripts/test-pos.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'POS regression failed' }
+          ./scripts/test-recovered-db.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Recovered DB integration failed' }
+          ./scripts/test-domain.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Domain regression failed' }
+          ./scripts/test-catalogue-core.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Inventory catalogue regression failed' }
+      - name: Verify Windows package and offline integrity
+        shell: pwsh
+        run: |
+          ./scripts/package-runtime.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime packaging failed' }
+          ./scripts/test-release-candidate.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Release candidate gate failed' }
+          ./scripts/package-beta-rc.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Beta packaging failed' }
+          Get-ChildItem dist -File | Get-FileHash -Algorithm SHA256 | Select-Object Hash,Path | ConvertTo-Json | Set-Content results/integration-sha256.json
+      - name: Upload diagnostic and package evidence only after successful tests
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hanouty-Integrated-Windows-Test
+          path: |
+            dist/**
+            results/**
+            integration-head.txt
+          if-no-files-found: error
+          retention-days: 7
