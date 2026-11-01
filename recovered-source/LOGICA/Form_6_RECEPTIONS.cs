@@ -682,6 +682,20 @@ public class Form_6_RECEPTIONS : Form
 	// Only set during an explicit purchase article-grid choice.
 	private string _receiptSelectedArticleId;
 
+	// A failed/empty catalogue lookup must never leave a previously selected
+	// article available for addition to the current purchase receipt.
+	private void ClearReceiptArticleEntry()
+	{
+		Text_ID_ARTICLE.Text = "";
+		Text_CODE.Text = "";
+		Text_ARTICLE.Text = "";
+		Text_STOCK_ACTUEL.Text = "";
+		Text_PRIX_A.Text = "";
+		Text_PRIX_V.Text = "";
+		Text_UNITE.Text = "";
+		Text_QTE.Text = "";
+	}
+
 	internal virtual Button Button_ADD
 	{
 		[DebuggerNonUserCode]
@@ -9092,12 +9106,7 @@ public class Form_6_RECEPTIONS : Form
 			Text_NOTES.Text = "";
 			Text_CODE_FIND.Text = "";
 			Text_ARTICLE_FIND.Text = "";
-			Text_CODE.Text = "";
-			Text_ARTICLE.Text = "";
-			Text_STOCK_ACTUEL.Text = "";
-			Text_PRIX_A.Text = "";
-			Text_PRIX_V.Text = "";
-			Text_UNITE.Text = "";
+			ClearReceiptArticleEntry();
 			DateTimePicker_PEREMPTION.Value = DateTime.Now.Date;
 			Text_N_LOT.Text = "";
 			Text_QTE.Text = "0";
@@ -9688,6 +9697,9 @@ public class Form_6_RECEPTIONS : Form
 		{
 			try
 			{
+				// Clear the previous article before any read, including an empty scan
+				// or a failed local SQL query. Never add a stale receipt line.
+				ClearReceiptArticleEntry();
 				if (Operators.CompareString(Text_CODE_FIND.Text.Trim(), "", TextCompare: false) == 0)
 				{
 					return;
@@ -9703,14 +9715,6 @@ public class Form_6_RECEPTIONS : Form
 				{
 					// Never silently receive stock against the first duplicate barcode variant.
 					// Clear any prior choice so a stale article cannot be added.
-					Text_ID_ARTICLE.Text = "";
-					Text_CODE.Text = "";
-					Text_ARTICLE.Text = "";
-					Text_STOCK_ACTUEL.Text = "";
-					Text_PRIX_A.Text = "";
-					Text_PRIX_V.Text = "";
-					Text_UNITE.Text = "";
-					Text_QTE.Text = "";
 					MessageBox.Show("Plusieurs articles partagent ce code ou l'article choisi a changé. Sélectionnez l'article exact dans la liste.", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					((Control)Text_ARTICLE_FIND).Focus();
 					return;
@@ -9726,6 +9730,15 @@ public class Form_6_RECEPTIONS : Form
 					Text_UNITE.Text = receiptArticle["UNITE"].ToString();
 					Text_QTE.Text = "";
 					((Control)Text_QTE).Focus();
+					return;
+				}
+				// An explicit grid choice may disappear between the display and
+				// the fresh lookup. Do not offer to create a new article in its place.
+				if (!LOGICA.ApplicationLayer.Purchasing.ReceiptArticleSelectionService.CanOfferCreation(
+					dataTable, _receiptSelectedArticleId))
+				{
+					MessageBox.Show("L'article sélectionné n'est plus disponible. Actualisez la liste.", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					((Control)Text_ARTICLE_FIND).Focus();
 					return;
 				}
 				if (unchecked((int)MessageBox.Show("Article inconnu\r\nvoulez-vous le créer ?", "Erreur", (MessageBoxButtons)4, (MessageBoxIcon)64, (MessageBoxDefaultButton)0)) == 6)
