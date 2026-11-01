@@ -29,6 +29,7 @@ namespace LOGICA.ApplicationLayer.Purchasing
             var seenIds = new HashSet<string>(StringComparer.Ordinal);
             DataRow selected = null;
             int validCount = 0;
+            string exactBarcode = null;
             foreach (DataRow row in barcodeMatches.Rows)
             {
                 if (row == null || row.RowState == DataRowState.Deleted ||
@@ -36,8 +37,14 @@ namespace LOGICA.ApplicationLayer.Purchasing
                     row.IsNull("ID_ARTICLE") || row.IsNull("Code"))
                     return null;
                 string id = Convert.ToString(row["ID_ARTICLE"]);
-                if (String.IsNullOrWhiteSpace(id) || !seenIds.Add(id))
+                string code = Convert.ToString(row["Code"]);
+                // The receipt barcode lookup must return candidates for one
+                // exact Code. A mixed result cannot be trusted even when a
+                // grid-selected ID happens to match; fail before copying prices.
+                if (String.IsNullOrWhiteSpace(id) || !seenIds.Add(id) ||
+                    (exactBarcode != null && !String.Equals(exactBarcode, code, StringComparison.Ordinal)))
                     return null;
+                exactBarcode = code;
                 validCount++;
                 if (selectedArticleId == null ||
                     String.Equals(selectedArticleId, id, StringComparison.Ordinal))
