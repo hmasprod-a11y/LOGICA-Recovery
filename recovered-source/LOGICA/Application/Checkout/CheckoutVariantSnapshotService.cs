@@ -40,25 +40,88 @@ namespace LOGICA.ApplicationLayer.Checkout
         }
     }
 
+    // The modern chooser can render a useful error instead of crashing when
+    // the catalogue query returns an incomplete schema or duplicate article IDs.
+    internal enum CheckoutVariantSnapshotReadStatus
+    {
+        Ready,
+        Ambiguous,
+        InvalidCandidates
+    }
+
+    internal sealed class CheckoutVariantSnapshotReadResult
+    {
+        internal CheckoutVariantSnapshotReadStatus Status { get; private set; }
+        internal IList<CheckoutVariantSnapshot> Snapshots { get; private set; }
+
+        internal CheckoutVariantSnapshotReadResult(
+            CheckoutVariantSnapshotReadStatus status, IList<CheckoutVariantSnapshot> snapshots)
+        {
+            Status = status;
+            Snapshots = snapshots;
+        }
+    }
+
     internal static class CheckoutVariantSnapshotService
     {
+        // Keep the historical throw-on-invalid snapshot API for existing
+        // callers; modern shells can use EvaluateSnapshot for typed outcomes.
         internal static IList<CheckoutVariantSnapshot> Read(DataTable matches)
+        {
+            CheckoutVariantSnapshotReadResult read = EvaluateSnapshot(matches);
+            if (read.Status != CheckoutVariantSnapshotReadStatus.Ready)
+                throw new InvalidOperationException(read.Status == CheckoutVariantSnapshotReadStatus.Ambiguous
+                    ? "Article identities are ambiguous."
+                    : "Article identity is incomplete.");
+            return read.Snapshots;
+        }
+
+        // Read-only, all-or-nothing projection. A repeated ID_ARTICLE is unsafe
+        // even when the barcodes differ. Scan all active rows before deciding:
+        // malformed rows take precedence over duplicates, as in EvaluateChoice.
+        // Never expose a partial snapshot after any validation failure.
+        internal static CheckoutVariantSnapshotReadResult EvaluateSnapshot(DataTable matches)
         {
             if (matches == null) throw new ArgumentNullException("matches");
             var result = new List<CheckoutVariantSnapshot>(matches.Rows.Count);
+            if (!matches.Columns.Contains("Code") || !matches.Columns.Contains("ID_ARTICLE"))
+                return new CheckoutVariantSnapshotReadResult(
+                    CheckoutVariantSnapshotReadStatus.InvalidCandidates, result.AsReadOnly());
+
+            var seenIds = new HashSet<string>(StringComparer.Ordinal);
+            bool ambiguous = false;
+            bool invalid = false;
             foreach (DataRow row in matches.Rows)
             {
-                // DataRowCollection still contains rows marked Deleted until
-                // AcceptChanges. A displayed snapshot must never include them.
+                // Pending-deleted rows still exist in DataRowCollection; never
+                // inspect their inaccessible current-version values.
                 if (row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached)
                     continue;
-                if (row.IsNull("Code") || row.IsNull("ID_ARTICLE") ||
-                    String.IsNullOrEmpty(Convert.ToString(row["ID_ARTICLE"])))
-                    throw new InvalidOperationException("Article identity is incomplete.");
-                result.Add(new CheckoutVariantSnapshot(
-                    Convert.ToString(row["Code"]), Convert.ToString(row["ID_ARTICLE"])));
+                if (row.IsNull("Code") || row.IsNull("ID_ARTICLE"))
+                {
+                    invalid = true;
+                    continue;
+                }
+                string articleId = Convert.ToString(row["ID_ARTICLE"]);
+                if (String.IsNullOrEmpty(articleId))
+                {
+                    invalid = true;
+                    continue;
+                }
+                if (!seenIds.Add(articleId))
+                {
+                    ambiguous = true;
+                    continue;
+                }
+                result.Add(new CheckoutVariantSnapshot(Convert.ToString(row["Code"]), articleId));
             }
-            return result.AsReadOnly();
+            if (invalid || ambiguous)
+                return new CheckoutVariantSnapshotReadResult(
+                    invalid ? CheckoutVariantSnapshotReadStatus.InvalidCandidates
+                            : CheckoutVariantSnapshotReadStatus.Ambiguous,
+                    new List<CheckoutVariantSnapshot>().AsReadOnly());
+            return new CheckoutVariantSnapshotReadResult(
+                CheckoutVariantSnapshotReadStatus.Ready, result.AsReadOnly());
         }
 
         // Modern selection boundary: -1 is explicit cancellation; no implicit first
