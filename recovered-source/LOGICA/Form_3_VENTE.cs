@@ -17070,6 +17070,8 @@ public class Form_3_VENTE : Form
 		e.Graphics.DrawString(" - ", new Font("Inconsolata Condensed", 11f, (FontStyle)0), Brushes.Black, 0f, 40f, new StringFormat((StringFormatFlags)8192));
 	}
 
+	private int _productListHeightBeforeKeyboard;
+
 	private void Button_876_Click(object sender, EventArgs e)
 	{
 		((Control)Text_FIND).Focus();
@@ -17081,13 +17083,18 @@ public class Form_3_VENTE : Form
 			{
 				return;
 			}
+			_productListHeightBeforeKeyboard = ((Control)TabControl2).Height;
 			((Control)TabControl2).Height = checked(((Control)TabControl2).Height - ((Control)Panel_CLAVIER).Height - 10);
 			((Control)TabControl2).Tag = "1";
 		}
 		else
 		{
 			((Control)TabControl2).Tag = "";
-			((Control)TabControl2).Height = ((Control)Panel9).Height;
+			// Preserve the exact pre-keyboard list height under DPI scaling.
+			// Keep the original Panel9 fallback if this form had no saved height.
+			((Control)TabControl2).Height = _productListHeightBeforeKeyboard > 0
+				? _productListHeightBeforeKeyboard : ((Control)Panel9).Height;
+			_productListHeightBeforeKeyboard = 0;
 		}
 	}
 
