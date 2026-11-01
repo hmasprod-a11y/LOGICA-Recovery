@@ -88,7 +88,25 @@ namespace LOGICA.ApplicationLayer.Checkout
                 CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
                     displayedMatches, chooseDuplicate, delegate {
                         DataTable live = readCurrentMatches();
-                        return Object.ReferenceEquals(live, displayedMatches) ? null : live;
+                        if (live == null || Object.ReferenceEquals(live, displayedMatches) ||
+                            !live.Columns.Contains("Code"))
+                            return null;
+                        // Validate the ENTIRE exact-barcode SQL result before
+                        // resolving the selected ID. Otherwise an unrelated
+                        // result with the chosen ID missing is reported as
+                        // Missing instead of an unsafe query/filter mismatch.
+                        // No stale row may be used for price, discount or tax.
+                        foreach (DataRow row in live.Rows)
+                        {
+                            if (row.RowState == DataRowState.Deleted ||
+                                row.RowState == DataRowState.Detached)
+                                continue;
+                            if (row.IsNull("Code") ||
+                                !String.Equals(Convert.ToString(row["Code"]), scannedCode,
+                                    StringComparison.Ordinal))
+                                return null;
+                        }
+                        return live;
                     });
             if (choice.Status != CheckoutVariantChoiceStatus.Selected)
                 return choice;
