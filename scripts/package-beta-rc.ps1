@@ -39,6 +39,17 @@ if ($metadata.target -ne 'net48' -or $metadata.architecture -ne 'x86' -or $metad
 }
 $commit = (& git rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $metadata.sourceCommit -ne $commit) { throw 'Package does not match checked-out commit' }
+# GitHub PR runs default to a synthetic merge ref; package the reviewed head only.
+if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+  if (-not $env:GITHUB_EVENT_PATH -or -not (Test-Path -LiteralPath $env:GITHUB_EVENT_PATH)) {
+    throw 'Missing GitHub PR event metadata for release provenance'
+  }
+  $event = Get-Content -LiteralPath $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+  $expectedHead = [string]$event.pull_request.head.sha
+  if ([string]::IsNullOrWhiteSpace($expectedHead) -or $expectedHead.Length -ne 40 -or $commit -ne $expectedHead) {
+    throw "Refusing release ZIP from synthetic merge commit: checkout $commit; PR head $expectedHead"
+  }
+}
 
 $releaseDir = Join-Path $root 'release'
 New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null

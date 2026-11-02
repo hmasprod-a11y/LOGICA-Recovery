@@ -14,6 +14,7 @@ on:
       - 'scripts/repair-source.py'
       - 'scripts/Start-LOGICA.cmd'
       - 'scripts/Launch-LOGICA.ps1'
+      - 'scripts/test-launcher-auth-guard.py'
       - 'scripts/test-recovered-db.ps1'
       - 'scripts/setup-test-db.ps1'
       - 'recovered-source/**'
@@ -22,11 +23,17 @@ on:
       - 'docs/RUNNING.md'
       - 'scripts/test-pos*'
       - 'scripts/test-release-candidate.ps1'
+      - 'scripts/test-release-private-state.ps1'
       - 'scripts/package-beta-rc.ps1'
       - 'scripts/package-runtime.ps1'
       - 'scripts/verify-beta-rc.ps1'
       - 'scripts/test-beta-release-verifier.ps1'
+      - 'scripts/test-extracted-release.ps1'
       - 'scripts/test-release-upload-policy.py'
+      - '.github/workflows/domain-tests.yml'
+      - '.github/workflows/portable-core.yml'
+      - '.github/workflows/hanouty-modern-core-compatibility.yml'
+      - 'scripts/test-ci-exact-head.py'
       - '.github/workflows/windows-reference-diagnostic.yml'
   push:
     paths:
@@ -40,6 +47,7 @@ on:
       - 'tests/**'
       - 'scripts/Start-LOGICA.cmd'
       - 'scripts/Launch-LOGICA.ps1'
+      - 'scripts/test-launcher-auth-guard.py'
       - 'scripts/test-recovered-db.ps1'
       - 'scripts/setup-test-db.ps1'
       - 'recovered-source/**'
@@ -48,13 +56,19 @@ on:
       - 'scripts/test-pos*'
       - 'scripts/test-recovered*'
       - 'scripts/test-release-candidate.ps1'
+      - 'scripts/test-release-private-state.ps1'
       - 'scripts/package-beta-rc.ps1'
       - 'scripts/package-runtime.ps1'
       - 'scripts/verify-beta-rc.ps1'
       - 'scripts/test-beta-release-verifier.ps1'
+      - 'scripts/test-extracted-release.ps1'
       - 'scripts/test-release-upload-policy.py'
       - 'input/recovered-original.sql'
       - 'input/mysql-compatibility.sql'
+      - '.github/workflows/domain-tests.yml'
+      - '.github/workflows/portable-core.yml'
+      - '.github/workflows/hanouty-modern-core-compatibility.yml'
+      - 'scripts/test-ci-exact-head.py'
       - '.github/workflows/windows-reference-diagnostic.yml'
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -67,15 +81,59 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          # PR default is a synthetic merge commit; never package that as the
+          # reviewed integration branch head or report its CI as exact-head.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Assert exact candidate source SHA before build
+        shell: pwsh
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $actual = (& git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:EXPECTED_SHA) {
+            throw "Checkout provenance mismatch: expected $env:EXPECTED_SHA; actual $actual"
+          }
+          Write-Host "PASS: building exact candidate source commit $actual"
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Parse release PowerShell scripts before expensive Windows POS tests
+        shell: pwsh
+        run: |
+          foreach ($path in @('scripts/Launch-LOGICA.ps1', 'scripts/package-beta-rc.ps1', 'scripts/test-extracted-release.ps1',
+                              'scripts/verify-beta-rc.ps1', 'scripts/test-beta-release-verifier.ps1',
+                              'scripts/test-release-candidate.ps1', 'scripts/test-release-private-state.ps1',
+                              'scripts/probe-activation-ui.ps1', 'scripts/test-activation-ui-probe.ps1')) {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path -LiteralPath $path).Path, [ref]$tokens, [ref]$parseErrors)
+            if ($parseErrors.Count -gt 0) {
+              $parseErrors | ForEach-Object { Write-Error "$path : $_" }
+              throw "Invalid PowerShell release script syntax: $path"
+            }
+            Write-Host "PASS: parsed $path"
+          }
+      - name: Regression test activation UI inspection with synthetic WinForms (no license state)
+        shell: pwsh
+        run: ./scripts/test-activation-ui-probe.ps1
+      - name: Reject MariaDB authentication failures before launch (negative fixtures)
+        shell: pwsh
+        run: python scripts/test-launcher-auth-guard.py
       - name: Guard release artifact upload policy (including negative fixtures)
         shell: pwsh
         run: python scripts/test-release-upload-policy.py
+      - name: Guard exact reviewed SHA across all four CI workflows (negative fixtures)
+        shell: pwsh
+        run: python scripts/test-ci-exact-head.py
+      - name: Guard release private-state candidate gate with isolated fixtures
+        shell: pwsh
+        run: ./scripts/test-release-private-state.ps1
       - name: Compile shared modern core for dual targets when available
         if: ${{ hashFiles('modernization/LOGICA.CoreCompatibility.csproj') != '' }}
         shell: pwsh
@@ -141,6 +199,9 @@ jobs:
       - name: Build and independently verify beta RC ZIP
         shell: pwsh
         run: ./scripts/package-beta-rc.ps1
+      - name: Smoke-test extracted customer ZIP with isolated MariaDB and real EXE
+        shell: pwsh
+        run: ./scripts/test-extracted-release.ps1
       - name: Inspect original dependency types
         if: always()
         shell: powershell

@@ -24,13 +24,34 @@ namespace LOGICA.ApplicationLayer.Checkout
         {
             if (matches == null) throw new ArgumentNullException("matches");
             if (matches.Rows.Count == 0) return null;
-            if (matches.Rows.Count == 1) return matches.Rows[0];
-            if (chooseDuplicate == null) throw new ArgumentNullException("chooseDuplicate");
-            int index = chooseDuplicate(matches);
+
+            // This is the real Form_3_VENTE barcode path. The modal chooser
+            // receives the original DataTable, so its row index describes the
+            // rows displayed BEFORE ShowDialog, not a potentially reordered
+            // or edited table AFTER the dialog. Reuse the modern identity guard
+            // rather than returning matches.Rows[index] after user interaction.
+            CheckoutVariantSnapshotReadResult displayed =
+                CheckoutVariantSnapshotService.EvaluateSnapshot(matches);
+            // A deleted row still occupies DataRowCollection but is not shown
+            // by the modern snapshot. Refuse index drift instead of guessing.
+            if (displayed.Status != CheckoutVariantSnapshotReadStatus.Ready ||
+                displayed.Snapshots.Count != matches.Rows.Count)
+                return null;
+            if (displayed.Snapshots.Count == 0) return null;
+            if (displayed.Snapshots.Count > 1 && chooseDuplicate == null)
+                throw new ArgumentNullException("chooseDuplicate");
+
+            int index = displayed.Snapshots.Count == 1 ? 0 : chooseDuplicate(matches);
             if (index == -1) return null;
-            if (index < 0 || index >= matches.Rows.Count)
+            if (index < 0 || index >= displayed.Snapshots.Count)
                 throw new ArgumentOutOfRangeException("index", "Duplicate barcode selection is outside the result set.");
-            return matches.Rows[index];
+
+            // Resolve by exact ID_ARTICLE + Code from the displayed snapshot.
+            // A removed, changed, duplicated or malformed live article never
+            // reaches Button_GO_Click. A reordering alone keeps the intended
+            // variant. No SQL, price, quantity or posting semantics change.
+            return CheckoutVariantSnapshotService.EvaluateChoice(
+                matches, displayed.Snapshots, index).SelectedRow;
         }
     }
 }

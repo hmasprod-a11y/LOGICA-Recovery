@@ -43,10 +43,25 @@ foreach ($item in $expected) {
     $name = [string]$item.path
     Assert-SafePath $name
     if ($byPath.ContainsKey($name)) { throw "Duplicate manifest path (including case collision): $name" }
-    if ([string]$item.sha256 -notmatch '^[a-fA-F0-9]{64}$' -or [long]$item.size -lt 0) {
+    # Do not allow Windows extraction to replace a packaged file with a nested directory.
+    $segments = $name.Split('/')
+    for ($i = 1; $i -lt $segments.Length; $i++) {
+        $parent = [string]::Join('/', $segments, 0, $i)
+        if ($byPath.ContainsKey($parent)) { throw "Manifest file/directory collision: $name" }
+    }
+    foreach ($previous in $byPath.Keys) {
+        if ($previous.StartsWith($name + '/', [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Manifest file/directory collision: $name"
+        }
+    }
+
+    [long]$validatedSize = 0
+    if ($null -eq $item.size -or [string]$item.size -notmatch '^[0-9]+$' -or
+        -not [long]::TryParse([string]$item.size, [ref]$validatedSize) -or
+        [string]$item.sha256 -notmatch '^[a-fA-F0-9]{64}$') {
         throw "Invalid manifest hash or size: $name"
     }
-    if ($name -match '(^|/)(mysql-credential\.xml|mysql-import-complete\.txt)$' -or $name -match '^bd/mysql-data(/|$)') {
+    if ($name -match '(^|/)(mysql-credential\.xml|mysql-import-complete\.txt|mysql-client-temporary\.ini)$' -or $name -match '^bd/mysql-data(/|$)') {
         throw "Forbidden persisted test data in manifest: $name"
     }
     $byPath.Add($name, $item)
@@ -55,16 +70,33 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
 try {
     $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $zipDirectories = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $metadata = $null
     [long]$totalUncompressed = 0
+    if ($archive.Entries.Count -gt 12000) { throw 'Beta ZIP entry count exceeds safety limit' }
     foreach ($entry in $archive.Entries) {
         $name = $entry.FullName
         if ($name.EndsWith('/')) {
             Assert-SafePath $name.TrimEnd('/')
+            $directory = $name.TrimEnd('/')
+            if (-not $zipDirectories.Add($directory)) { throw "Duplicate ZIP directory (including case collision): $name" }
+            if ($seen.Contains($directory)) { throw "ZIP directory collides with previously seen file: $name" }
+            if ($byPath.ContainsKey($directory)) { throw "ZIP directory collides with manifest file: $name" }
+            $dirParts = $directory.Split('/')
+            for ($i = 1; $i -lt $dirParts.Length; $i++) {
+                $parent = [string]::Join('/', $dirParts, 0, $i)
+                if ($byPath.ContainsKey($parent)) { throw "ZIP directory nested beneath file: $name" }
+            }
             if ((($entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000) { throw "Symbolic-link directory forbidden in beta ZIP: $name" }
             continue
         }
         Assert-SafePath $name
+        if ($zipDirectories.Contains($name)) { throw "ZIP file collides with directory: $name" }
+        $parts = $name.Split('/')
+        for ($i = 1; $i -lt $parts.Length; $i++) {
+            $parent = [string]::Join('/', $parts, 0, $i)
+            if ($seen.Contains($parent)) { throw "ZIP file/directory collision: $name" }
+        }
         if ((($entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000) { throw "Symbolic link forbidden in beta ZIP: $name" }
         if (-not $seen.Add($name)) { throw "Duplicate ZIP entry (including case collision): $name" }
         if (-not $byPath.ContainsKey($name)) { throw "Unexpected ZIP file: $name" }

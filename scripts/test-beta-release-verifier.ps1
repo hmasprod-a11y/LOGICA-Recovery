@@ -25,10 +25,14 @@ function Write-FixtureZip {
     $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
 }
-function Assert-Rejected([string]$label) {
+function Assert-Rejected([string]$label, [string]$expectedError = '') {
     $rejected = $false
     try { & $verifier -ZipPath $zip -ManifestPath $manifest -SumsPath $sums -ExpectedCommit $commit | Out-Null }
-    catch { $rejected = $true; Write-Host "PASS: verifier rejected $label" }
+    catch {
+        if ($expectedError -and $_.Exception.Message -notlike "*$expectedError*") { throw }
+        $rejected = $true
+        Write-Host "PASS: verifier rejected $label"
+    }
     if (-not $rejected) { throw "Release verifier accepted invalid fixture: $label" }
 }
 try {
@@ -62,6 +66,27 @@ try {
     Assert-Rejected 'modified manifest file digest'
     [IO.File]::WriteAllText($manifest, $originalManifest)
     $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
+    foreach ($invalidSize in @($null, 'not-a-number', '-1', '1.5', '9223372036854775808')) {
+        $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
+        $entries[0].size = $invalidSize
+        $entries | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding UTF8
+        Assert-Rejected "invalid manifest size $invalidSize"
+        [IO.File]::WriteAllText($manifest, $originalManifest)
+    }
+    $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
+    $entries[0].PSObject.Properties.Remove('size')
+    $entries | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding UTF8
+    Assert-Rejected 'missing manifest size property'
+    [IO.File]::WriteAllText($manifest, $originalManifest)
+    $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
+    foreach ($collision in @('LOGICA.exe/child.dll', 'LOGICA.exe/empty/child.txt', 'logica.EXE/child.dll')) {
+        $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
+        $entries[1].path = $collision
+        $entries | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding UTF8
+        Assert-Rejected "manifest file/directory collision $collision"
+        [IO.File]::WriteAllText($manifest, $originalManifest)
+    }
+    $entries = @(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json)
     $entries[0].path = '../escape.txt'
     $entries | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifest -Encoding UTF8
     Assert-Rejected 'manifest path traversal'
@@ -93,6 +118,24 @@ try {
     Write-FixtureZip
     Assert-Rejected 'nonempty license state'
     [IO.File]::WriteAllText((Join-Path $src 'hash_licence.sni'), '')
+    # These are dummy bytes only; ensure no temporary plaintext DB credentials can ship.
+    foreach ($private in @('bd/mysql-client-temporary.ini', 'nested/MYSQL-CLIENT-TEMPORARY.INI',
+                           'bd/mysql-credential.xml', 'bd/mysql-import-complete.txt')) {
+        $privatePath = Join-Path $src $private
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $privatePath) | Out-Null
+        [IO.File]::WriteAllText($privatePath, 'CI dummy private state')
+        try {
+            Write-FixtureManifest
+            Write-FixtureZip
+            Assert-Rejected "bundled private database state $private" "Forbidden persisted test data in manifest"
+        } finally {
+            Remove-Item -LiteralPath $privatePath -Force
+        }
+    }
+    Write-FixtureManifest
+    Write-FixtureZip
+    & $verifier -ZipPath $zip -ManifestPath $manifest -SumsPath $sums -ExpectedCommit $commit | Out-Null
+    Write-Host 'PASS: clean fixture accepted after private-state rejection probes'
     [IO.File]::WriteAllText((Join-Path $src 'CHEMIN_DB.sni'), '192.0.2.1')
     Write-FixtureManifest
     Write-FixtureZip
@@ -133,6 +176,30 @@ try {
     $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
     Assert-Rejected 'ZIP symbolic-link directory'
+    foreach ($directoryNames in @(
+        ,@('EmptyDir/', 'emptydir/')
+        ,@('LOGICA.exe/')
+        ,@('LOGICA.exe/nested/')
+    )) {
+        Write-FixtureZip
+        $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
+        try { foreach ($directoryName in $directoryNames) { $null = $archive.CreateEntry($directoryName) } }
+        finally { $archive.Dispose() }
+        $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+        "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
+        Assert-Rejected "invalid ZIP directories $($directoryNames -join ',')"
+    }
+    # Bound malicious ZIP metadata growth before reading file streams.
+    Write-FixtureZip
+    $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
+    try {
+        for ($i = 0; $i -lt 12001; $i++) {
+            $null = $archive.CreateEntry(('extra-{0:D5}/' -f $i))
+        }
+    } finally { $archive.Dispose() }
+    $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
+    Assert-Rejected 'excessive ZIP entry count' 'Beta ZIP entry count exceeds safety limit'
     # Highly compressible payloads must fail before content is streamed or extracted.
     Write-FixtureZip
     $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
