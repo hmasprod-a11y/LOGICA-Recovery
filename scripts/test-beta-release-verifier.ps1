@@ -25,10 +25,14 @@ function Write-FixtureZip {
     $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
 }
-function Assert-Rejected([string]$label) {
+function Assert-Rejected([string]$label, [string]$expectedError = '') {
     $rejected = $false
     try { & $verifier -ZipPath $zip -ManifestPath $manifest -SumsPath $sums -ExpectedCommit $commit | Out-Null }
-    catch { $rejected = $true; Write-Host "PASS: verifier rejected $label" }
+    catch {
+        if ($expectedError -and $_.Exception.Message -notlike "*$expectedError*") { throw }
+        $rejected = $true
+        Write-Host "PASS: verifier rejected $label"
+    }
     if (-not $rejected) { throw "Release verifier accepted invalid fixture: $label" }
 }
 try {
@@ -123,7 +127,7 @@ try {
         try {
             Write-FixtureManifest
             Write-FixtureZip
-            Assert-Rejected "bundled private database state $private"
+            Assert-Rejected "bundled private database state $private" "Forbidden persisted test data in manifest"
         } finally {
             Remove-Item -LiteralPath $privatePath -Force
         }
