@@ -1538,73 +1538,37 @@ public class FormDialog_QUANTITE : Form
 
 	private void Butt_Click(object sender, EventArgs e)
 	{
-		Text_NUM.Text = Conversions.ToString(Operators.AddObject(Text_NUM.Text, NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null)));
+		// This is the actual editable quantity dialog; the sales-screen quantity is
+		// a Label, not a TextBox. Never append malformed keypad captions to a sale.
+		Control keyButton = sender as Control;
+		if (keyButton == null || string.IsNullOrEmpty(keyButton.Text) || keyButton.Text.Length != 1)
+		{
+			return;
+		}
+		char key = keyButton.Text[0];
+		if (key >= '0' && key <= '9')
+		{
+			Text_NUM.Text += key;
+		}
+		else if (key == '.' && Text_NUM.Text.IndexOf('.') < 0)
+		{
+			// A leading decimal point is a valid fraction only once a digit follows.
+			Text_NUM.Text += Text_NUM.Text.Length == 0 || Text_NUM.Text == "-" ? "0." : ".";
+		}
+		else if (key == '-' && Text_NUM.Text.Length == 0)
+		{
+			// Preserve the original negative quantity/return entry at the start only.
+			Text_NUM.Text = "-";
+		}
 	}
 
 	private void Butt_BACK_Click(object sender, EventArgs e)
 	{
-		int try0001_dispatch = -1;
-		int num3 = default;
-		int num = default;
-		int num2 = default;
-		while (true)
+		// The decompiled legacy handler attempted Remove(-1) on an empty input.
+		// Backspace on an empty quantity must be harmless for a cashier.
+		if (Text_NUM.Text.Length > 0)
 		{
-			try
-			{
-				/*Note: ILSpy has introduced the following switch to emulate a goto from catch-block to try-block*/;
-				switch (try0001_dispatch)
-				{
-				default:
-					ProjectData.ClearProjectError();
-					num3 = -2;
-					break;
-				case 90:
-					{
-						num = num2;
-						switch ((num3 <= -2) ? 1 : num3)
-						{
-						case 1:
-							break;
-						default:
-							goto end_IL_0001;
-						}
-						int num4 = num + 1;
-						num = 0;
-						switch (num4)
-						{
-						case 1:
-							break;
-						case 2:
-							goto end_IL_0001_2;
-						default:
-							goto end_IL_0001;
-						case 3:
-							goto end_IL_0001_3;
-						}
-						goto default;
-					}
-					end_IL_0001_2:
-					break;
-				}
-				num2 = 2;
-				Text_NUM.Text = Text_NUM.Text.Remove(checked(Text_NUM.Text.Length - 1));
-				break;
-				end_IL_0001:;
-			}
-			catch (Exception ex) when ((num3 != 0) & (num == 0))
-			{
-				ProjectData.SetProjectError(ex);
-				try0001_dispatch = 90;
-				continue;
-			}
-			throw ProjectData.CreateProjectError(-2146828237);
-			continue;
-			end_IL_0001_3:
-			break;
-		}
-		if (num != 0)
-		{
-			ProjectData.ClearProjectError();
+			Text_NUM.Text = Text_NUM.Text.Substring(0, Text_NUM.Text.Length - 1);
 		}
 	}
 
@@ -1615,10 +1579,22 @@ public class FormDialog_QUANTITE : Form
 
 	private void Text_NUM_KeyPress(object sender, KeyPressEventArgs e)
 	{
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
+		// Keep numeric input and editing shortcuts. Check the text *after*
+		// replacing the selection so selecting all then retyping a decimal works.
+		if (char.IsControl(e.KeyChar) || (e.KeyChar >= '0' && e.KeyChar <= '9'))
 		{
-			e.Handled = true;
+			return;
 		}
+		string remaining = Text_NUM.Text.Remove(Text_NUM.SelectionStart, Text_NUM.SelectionLength);
+		if (e.KeyChar == '.' && remaining.IndexOf('.') < 0)
+		{
+			return;
+		}
+		if (e.KeyChar == '-' && Text_NUM.SelectionStart == 0 && remaining.IndexOf('-') < 0)
+		{
+			return;
+		}
+		e.Handled = true;
 	}
 
 	private void Radio_UNITE_CheckedChanged(object sender, EventArgs e)
