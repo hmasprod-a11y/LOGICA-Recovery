@@ -12269,6 +12269,7 @@ public class Form_3_VENTE : Form
 					int fileLineNumber = frame.GetFileLineNumber();
 					ProjectData.ClearProjectError();
 				}
+				EnsureCheckoutQuantityColumn();
 				Module1.da1 = new MySqlDataAdapter("select * from TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + " order by ID asc", Module1.cn_SQL);
 				Module1.dt1 = new DataTable();
 				Module1.dt1.Clear();
@@ -14707,6 +14708,61 @@ public class Form_3_VENTE : Form
 
 	// Tile lookup is a parameterized identity query, never a barcode search.
 	// The returned row is still checked against the original tile ID AND Code.
+    // A shop's TABLE_<POSTE> schema may predate the original POS sale fields.
+    // Fix the required quantity column at POS startup, before binding the cart.
+    // A complete table snapshot is created FIRST; never alter a live shop table
+    // if the backup cannot be completed. No existing column or value is removed.
+    private static void EnsureCheckoutQuantityColumn()
+    {
+        string poste = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text;
+        if (string.IsNullOrWhiteSpace(poste) ||
+            !System.Text.RegularExpressions.Regex.IsMatch(poste, @"^[A-Za-z0-9_]{1,32}$"))
+            throw new InvalidOperationException("Invalid POS workstation table identifier.");
+
+        string table = "TABLE_" + poste;
+        MySqlConnection connection = Module1.cn_SQL;
+        bool openedHere = connection.State != ConnectionState.Open;
+        if (openedHere) connection.Open();
+        try
+        {
+            bool hasQuantity = false;
+            string alternate = null;
+            using (MySqlCommand inspect = new MySqlCommand("SHOW COLUMNS FROM `" + table + "`", connection))
+            using (MySqlDataReader reader = inspect.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    string col = reader.GetString(0);
+                    if (string.Equals(col, "Qté", StringComparison.OrdinalIgnoreCase))
+                        hasQuantity = true;
+                    if (string.Equals(col, "Qte", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(col, "Quantite", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(col, "QtÃ©", StringComparison.OrdinalIgnoreCase))
+                        alternate = col;
+                }
+            }
+            if (hasQuantity) return;
+
+            string backup = table + "_BACKUP_" + DateTime.Now.ToString("yyyyMMddHHmmss");
+            using (MySqlCommand create = new MySqlCommand("CREATE TABLE `" + backup + "` LIKE `" + table + "`", connection))
+                create.ExecuteNonQuery();
+            using (MySqlCommand copy = new MySqlCommand("INSERT INTO `" + backup + "` SELECT * FROM `" + table + "`", connection))
+                copy.ExecuteNonQuery();
+            using (MySqlCommand add = new MySqlCommand("ALTER TABLE `" + table + "` ADD COLUMN `Qté` DOUBLE NOT NULL DEFAULT 0", connection))
+                add.ExecuteNonQuery();
+            if (alternate != null)
+            {
+                using (MySqlCommand preserve = new MySqlCommand(
+                    "UPDATE `" + table + "` SET `Qté` = COALESCE(`" + alternate + "`, 0)", connection))
+                    preserve.ExecuteNonQuery();
+            }
+        }
+        finally
+        {
+            if (openedHere) connection.Close();
+        }
+    }
+
 	private static string ExactImageArticleSql()
 	{
 		return "select * from TABLE_ARTICLES WHERE ID_ARTICLE = @id";
