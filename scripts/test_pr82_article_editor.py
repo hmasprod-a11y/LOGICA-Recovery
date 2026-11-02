@@ -110,7 +110,7 @@ print("Catalogue parameterized duplicate-lookup regression: 22 SQL cases passed"
 # initial TABLE_MOUVEMENTS_STOCK entry. A quoted barcode or article name must
 # not break that second SQL write (and leave a partially created article).
 movement = Path("recovered-source/LOGICA/Infrastructure/Catalogue/CatalogueCreationMovementWriter.cs").read_text(encoding="utf-8")
-movement_sql = re.search(r'command\\.CommandText = "([^"]+)" \\+\\s*"([^"]+)";', movement)
+movement_sql = re.search(r'command\.CommandText = "([^"]+)" \+\s*"([^"]+)";', movement)
 assert movement_sql, "movement INSERT must use fixed SQL with no form values concatenated"
 insert_sql = movement_sql.group(1) + movement_sql.group(2)
 assert insert_sql.startswith("INSERT INTO TABLE_MOUVEMENTS_STOCK")
