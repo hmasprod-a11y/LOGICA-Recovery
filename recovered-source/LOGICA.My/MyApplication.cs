@@ -78,7 +78,7 @@ internal class MyApplication : WindowsFormsApplicationBase
 				try
 				{
 					var start = new ProcessStartInfo("powershell.exe",
-						"-NoLogo -NoProfile -ExecutionPolicy Bypass -File \\"" + launcher + "\\"")
+						"-NoLogo -NoProfile -ExecutionPolicy Bypass -File \""+ launcher + "\"")
 					{
 						WorkingDirectory = Application.StartupPath,
 						UseShellExecute = false
