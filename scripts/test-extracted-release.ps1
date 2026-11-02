@@ -80,7 +80,7 @@ try {
             throw "Extracted release is missing $required"
         }
     }
-    foreach ($private in @('bd/mysql-data','bd/mysql-credential.xml','bd/mysql-import-complete.txt')) {
+    foreach ($private in @('bd/mysql-data','bd/mysql-credential.xml','bd/mysql-import-complete.txt','bd/mysql-client-temporary.ini')) {
         if (Test-Path -LiteralPath (Join-Path $extract $private)) {
             throw "Extracted release includes private database state: $private"
         }
