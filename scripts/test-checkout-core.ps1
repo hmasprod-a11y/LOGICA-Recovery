@@ -9,6 +9,7 @@ New-Item -ItemType Directory -Path $temporary | Out-Null
 try {
     $sources = @(
         'recovered-source/LOGICA/Domain/ILegacyCheckoutSemantics.cs',
+        'recovered-source/LOGICA/Domain/ILegacyCheckoutPaymentReadSemantics.cs',
         'recovered-source/LOGICA/Domain/ILegacyCheckoutCompletionSemantics.cs',
         'recovered-source/LOGICA/Domain/ILegacyCheckoutTicketSequenceSemantics.cs',
         'recovered-source/LOGICA/Domain/ILegacyTicketPostingSemantics.cs',
@@ -33,6 +34,7 @@ try {
         'recovered-source/LOGICA/Application/Checkout/CheckoutStockPostingService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutTicketPostingService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutPaymentPostingService.cs',
+        'recovered-source/LOGICA/Application/Checkout/CheckoutPaymentReadService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutTransactionFinalizationService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutTransactionBoundaryService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutTicketSequenceService.cs',
