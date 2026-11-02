@@ -99,7 +99,67 @@ internal static class CheckoutTransactionFinalizationTests
             AssertEvents(scenario.Events, expected, "failure at " + Stages[failure]);
         }
 
-        Console.WriteLine("PASS checkout transaction finalization: 19 ordered stages, commit/close failures and caller-owned rollback");
+        // The real WinForms SOLDER entry point uses this production finalizer.
+        // Track the commit boundary without changing legacy rollback behavior.
+        // A failed Commit is ambiguous; a failed Close is AFTER a confirmed Commit.
+        foreach (string stage in new[] { "stock.write.1", "payment.write.1", "print", "commit", "close", "" })
+        {
+            var tracked = new Scenario { FailAt = stage };
+            var progress = new CheckoutCommitProgress();
+            bool threw = false;
+            try
+            {
+                CheckoutTransactionFinalizationService.PostAndFinalize(
+                    tracked, tracked.Input(), tracked, progress);
+            }
+            catch (InjectedFailure) { threw = true; }
+            if (threw != (stage != ""))
+                throw new Exception("Commit progress did not propagate " + stage);
+            CheckoutCommitStage expected = stage == "" ? CheckoutCommitStage.Closed :
+                stage == "commit" ? CheckoutCommitStage.CommitAttempted :
+                stage == "close" ? CheckoutCommitStage.CommitConfirmed : CheckoutCommitStage.Posting;
+            if (progress.Stage != expected ||
+                progress.CommitOutcomeUnknown != (expected == CheckoutCommitStage.CommitAttempted) ||
+                progress.CommitWasConfirmed != (expected == CheckoutCommitStage.CommitConfirmed ||
+                                                expected == CheckoutCommitStage.Closed))
+                throw new Exception("Unsafe SOLDER commit outcome classification at " + stage);
+            int commits = 0, closes = 0;
+            foreach (string item in tracked.Events)
+            {
+                if (item == "commit") commits++;
+                if (item == "close") closes++;
+            }
+            if (commits != (expected == CheckoutCommitStage.Posting ? 0 : 1) ||
+                closes != (expected == CheckoutCommitStage.CommitConfirmed ||
+                           expected == CheckoutCommitStage.Closed ? 1 : 0))
+                throw new Exception("Commit/Close called more than once at " + stage);
+
+            // A progress object from any completed/failed attempt is not
+            // reusable; rejecting it must not invoke any store callback.
+            var accidentalRetry = new Scenario();
+            bool retryRejected = false;
+            try
+            {
+                CheckoutTransactionFinalizationService.PostAndFinalize(
+                    accidentalRetry, accidentalRetry.Input(), accidentalRetry, progress);
+            }
+            catch (InvalidOperationException) { retryRejected = true; }
+            if (!retryRejected || accidentalRetry.Events.Count != 0)
+                throw new Exception("Reused SOLDER progress reached database callbacks");
+        }
+
+        var missingProgress = new Scenario();
+        bool missingProgressRejected = false;
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                missingProgress, missingProgress.Input(), missingProgress, null);
+        }
+        catch (ArgumentNullException ex) { missingProgressRejected = ex.ParamName == "progress"; }
+        if (!missingProgressRejected || missingProgress.Events.Count != 0)
+            throw new Exception("Null SOLDER progress must fail before stock mutation");
+
+        Console.WriteLine("PASS checkout transaction finalization: 19 ordered stages, commit ambiguity/confirmed close, progress reuse and caller-owned rollback");
         return 0;
     }
 }
