@@ -3128,7 +3128,7 @@ public class FormDialog_calc : Form
 				val.PerformClick();
 				Button_REFRESH.PerformClick();
 			}
-			if (DataGridView_CALC.CurrentRow == null) return;
+			if (DataGridView_CALC.CurrentRow == null || DataGridView_CALC.CurrentRow.IsNewRow) return;
 			int rowIndex = DataGridView_CALC.CurrentRow.Index;
 			DataGridView_CALC.Rows[rowIndex].Cells[1].Value = Operators.AddObject(DataGridView_CALC.Rows[rowIndex].Cells[1].Value, Conversion.Val(RuntimeHelpers.GetObjectValue(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null))));
 			Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
@@ -3370,7 +3370,7 @@ public class FormDialog_calc : Form
 
 	private void Button_NUMERIQUE_Click(object sender, EventArgs e)
 	{
-		if (DataGridView_CALC.Rows.Count != 0)
+		if (SelectedPaymentRowCount() > 0)
 		{
 			((Control)Panel_CLAVIER).Visible = true;
 			((Control)Panel_CLAVIER).BringToFront();
@@ -3385,7 +3385,7 @@ public class FormDialog_calc : Form
 		//IL_00fb: Expected Obj, but got Unknown
 		try
 		{
-			if (DataGridView_CALC.Rows.Count != 0 && DataGridView_CALC.CurrentRow != null)
+			if (SelectedPaymentRowCount() > 0 && DataGridView_CALC.CurrentRow != null && !DataGridView_CALC.CurrentRow.IsNewRow)
 			{
 				DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = "0";
 				((Control)DataGridView_CALC).Focus();
@@ -3439,7 +3439,7 @@ public class FormDialog_calc : Form
 				val.PerformClick();
 				Button_REFRESH.PerformClick();
 			}
-			if (DataGridView_CALC.CurrentRow == null) return;
+			if (DataGridView_CALC.CurrentRow == null || DataGridView_CALC.CurrentRow.IsNewRow) return;
 			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = Conversion.Val(((ButtonBase)Button_RESTE).Text);
 			Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 			((Control)DataGridView_CALC).Focus();
