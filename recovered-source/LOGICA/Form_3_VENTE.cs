@@ -12341,7 +12341,10 @@ public class Form_3_VENTE : Form
 					num12++;
 				}
 				dataTable2.Clear();
-				val2 = new MySqlDataAdapter("select  Famille   from TABLE_FAMILLES     Where     TYPE = 'IMAGE'          order by Ordre,Famille asc ", Module1.cn_SQL);
+				// Older shops may not classify image families with TYPE='IMAGE'.
+				// Show only families containing products with named images; the image loader
+				// still verifies that the physical photo exists before adding each tile.
+				val2 = new MySqlDataAdapter("select distinct f.Famille from TABLE_FAMILLES f inner join TABLE_ARTICLES a on a.Famille = f.Famille where a.Images is not null and trim(a.Images) <> '' and a.Images not in ('0','0.png','0X.png') order by f.Famille asc", Module1.cn_SQL);
 				((DbDataAdapter)(object)val2).Fill(dataTable2);
 				((Control)FlowLayoutPanel2).Controls.Clear();
 				int num14 = dataTable2.Rows.Count - 1;
@@ -12518,8 +12521,8 @@ public class Form_3_VENTE : Form
 					{
 						break;
 					}
-					Bitmap articleImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.Load(
-						Module1._CHEMIN_FOLDER + "\\bd\\images", dataTable.Rows[num2]["Images"].ToString());
+					Bitmap articleImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.LoadWithFallback(
+						Module1._CHEMIN_FOLDER, Application.StartupPath, dataTable.Rows[num2]["Images"].ToString());
 					if (articleImage == null)
 					{
 						num2++;
@@ -15372,8 +15375,8 @@ public class Form_3_VENTE : Form
 						int num4 = num;
 						if (num3 <= num4)
 						{
-							Bitmap articleImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.Load(
-								Module1._CHEMIN_FOLDER + "\\bd\\images", dt_PIC.Rows[num2]["Images"].ToString());
+							Bitmap articleImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.LoadWithFallback(
+								Module1._CHEMIN_FOLDER, Application.StartupPath, dt_PIC.Rows[num2]["Images"].ToString());
 							if (articleImage == null)
 							{
 								num2++;
