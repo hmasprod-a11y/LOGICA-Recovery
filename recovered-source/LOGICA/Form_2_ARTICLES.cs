@@ -14084,8 +14084,26 @@ public class Form_2_ARTICLES : Form
 				((ListControl)Combo_TAILLES).ValueMember = "Key";
 				((ListControl)Combo_TAILLES).DisplayMember = "Value";
 				dataTable.Clear();
-				val = new MySqlDataAdapter("select   *    from TABLE_LISTE_COULEURS ", Module1.cn_SQL);
-				((DbDataAdapter)(object)val).Fill(dataTable);
+				// Color variants are optional in recovered local database snapshots.
+                // Use the existing authenticated connection and leave the controls empty
+                // when TABLE_LISTE_COULEURS was not part of the recovered schema.
+                bool hasColorTable;
+                bool colorConnectionWasOpen = Module1.cn_SQL.State == ConnectionState.Open;
+                try
+                {
+                    if (!colorConnectionWasOpen) Module1.cn_SQL.Open();
+                    using (var check = new MySqlCommand("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'TABLE_LISTE_COULEURS'", Module1.cn_SQL))
+                        hasColorTable = Convert.ToInt32(check.ExecuteScalar()) != 0;
+                }
+                finally
+                {
+                    if (!colorConnectionWasOpen) Module1.cn_SQL.Close();
+                }
+                if (hasColorTable)
+                {
+                    val = new MySqlDataAdapter("select * from TABLE_LISTE_COULEURS", Module1.cn_SQL);
+                    ((DbDataAdapter)(object)val).Fill(dataTable);
+                }
 				Combo_COULEURS.Items.Clear();
 				DataGridView_COULEURS.Rows.Clear();
 				int num14 = dataTable.Rows.Count - 1;
