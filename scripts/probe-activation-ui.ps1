@@ -71,8 +71,9 @@ try {
         for ($j = 0; $j -lt [math]::Min($nodes.Count, 30); $j++) {
             $element = $nodes.Item($j)
             try {
-                Write-Host ("SYNTHETIC_FIXTURE_UIA id={0}; name={1}; offscreen={2}" -f
-                    $element.Current.AutomationId, $element.Current.Name, $element.Current.IsOffscreen)
+                Write-Host ("SYNTHETIC_FIXTURE_UIA id={0}; name={1}; offscreen={2}; type={3}; password={4}" -f
+                    $element.Current.AutomationId, $element.Current.Name, $element.Current.IsOffscreen,
+                    $element.Current.ControlType.ProgrammaticName, $element.Current.IsPassword)
             } catch {}
         }
     }
