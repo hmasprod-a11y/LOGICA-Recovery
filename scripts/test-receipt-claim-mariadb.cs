@@ -94,11 +94,11 @@ internal static class ReceiptClaimMariaDbSmoke
         }
     }
 
-    private static void Seed(MySqlConnection connection, string receiptId, string articleId)
+    private static void Seed(MySqlConnection connection, string receiptId, string articleId, string state = "ENREGISTRER")
     {
         Execute(connection, null,
-            "INSERT INTO TABLE_RECEPTIONS_ENTETE (ID_BR, ETAT) VALUES (@id, 'EN_COURS')",
-            "@id", receiptId);
+            "INSERT INTO TABLE_RECEPTIONS_ENTETE (ID_BR, ETAT) VALUES (@id, @state)",
+            "@id", receiptId, "@state", state);
         Execute(connection, null,
             "INSERT INTO TABLE_ARTICLES (ID_ARTICLE, STOCK) VALUES (@id, 0)",
             "@id", articleId);
@@ -126,6 +126,9 @@ internal static class ReceiptClaimMariaDbSmoke
             Seed(connection, "BR'1", "ART-1");
             Seed(connection, "BR-2", "ART-2");
             Seed(connection, "BR-3", "ART-3");
+            Seed(connection, "BR-CANCEL", "ART-CANCEL", "ANNULE");
+            Seed(connection, "BR-DRAFT", "ART-DRAFT", "EN COURS");
+            Seed(connection, "BR-UNKNOWN", "ART-UNKNOWN", "OTHER");
 
             using (var transaction = connection.BeginTransaction())
             {
@@ -183,7 +186,7 @@ internal static class ReceiptClaimMariaDbSmoke
                 Post(connection, transaction, "BR-3", "ART-3", 4m);
                 transaction.Rollback();
             }
-            Check(scratch, "BR-3", "ART-3", 0m, 0, "EN_COURS");
+            Check(scratch, "BR-3", "ART-3", 0m, 0, "ENREGISTRER");
             using (var transaction = connection.BeginTransaction())
             {
                 Require(Claim(method, connection, transaction, "BR-3"), "Retry after rollback failed");
@@ -200,6 +203,25 @@ internal static class ReceiptClaimMariaDbSmoke
                 catch (ArgumentException) { rejected = true; }
                 Require(rejected, "Blank receipt ID was not rejected");
                 transaction.Rollback();
+            }
+
+            // Only the actual legacy pending state ENREGISTRER may post stock.
+            // Cancelled/draft/unknown receipts must remain unchanged even if
+            // a caller erroneously attempts to validate them.
+            string[] blocked = { "BR-CANCEL", "BR-DRAFT", "BR-UNKNOWN" };
+            string[] blockedArticles = { "ART-CANCEL", "ART-DRAFT", "ART-UNKNOWN" };
+            string[] blockedStates = { "ANNULE", "EN COURS", "OTHER" };
+            for (int i = 0; i < blocked.Length; i++)
+            {
+                using (var transaction = connection.BeginTransaction())
+                {
+                    bool rejected = false;
+                    try { Claim(method, connection, transaction, blocked[i]); }
+                    catch (InvalidOperationException) { rejected = true; }
+                    Require(rejected, "Unsafe receipt state was accepted: " + blockedStates[i]);
+                    transaction.Rollback();
+                }
+                Check(scratch, blocked[i], blockedArticles[i], 0m, 0, blockedStates[i]);
             }
 
             // Nontransactional legacy tables cannot guarantee rollback.
@@ -228,7 +250,7 @@ internal static class ReceiptClaimMariaDbSmoke
                 Require(rejected, "Duplicate receipt header was accepted");
                 transaction.Rollback();
             }
-            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, rollback/retry, invalid/duplicate headers, MyISAM rejection");
+            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, rollback/retry, blocked states, invalid/duplicate headers, MyISAM rejection");
         }
     }
 
