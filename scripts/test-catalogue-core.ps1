@@ -19,6 +19,7 @@ try {
         'tests/PurchaseReceiptStockProjectionSmoke.cs',
         'recovered-source/LOGICA/Application/Purchasing/ReceiptArticleSelectionService.cs',
         'tests/ReceiptArticleSelectionSmoke.cs',
+        'tests/CatalogueArticleIdentitySmoke.cs',
         'recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptSupplierValidationService.cs',
         'recovered-source/LOGICA/Application/Inventory/StockCountFreshnessService.cs',
         'tests/BusinessSnapshotFreshnessSmoke.cs',

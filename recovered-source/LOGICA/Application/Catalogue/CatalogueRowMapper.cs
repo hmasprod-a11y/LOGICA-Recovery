@@ -19,6 +19,54 @@ namespace LOGICA.ApplicationLayer.Catalogue
             PopulateFields(row, input, false, semantics);
         }
 
+        // The article identifier is editable in LOGICA. On Save, the immutable
+        // database row ID selects the original record; ID_ARTICLE is validated
+        // separately by the existing duplicate lookup before it is changed.
+        internal static DataRow ResolveUniqueByDatabaseId(DataTable table, string id)
+        {
+            if (table == null || string.IsNullOrWhiteSpace(id) ||
+                !table.Columns.Contains("ID") || !table.Columns.Contains("ID_ARTICLE"))
+                return null;
+            DataRow match = null;
+            foreach (DataRow row in table.Rows)
+            {
+                if (row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached)
+                    continue;
+                if (!string.Equals(System.Convert.ToString(row["ID"]), id, System.StringComparison.Ordinal))
+                    continue;
+                if (match != null)
+                    return null;
+                match = row;
+            }
+            return match;
+        }
+
+        // The WinForms grid can be sorted or filtered independently of DataTable.Rows.
+        // Never identify an edited/deleted product by a displayed row index.
+        internal static DataRow ResolveUniqueExistingRow(DataTable table, string id, string articleId)
+        {
+            if (table == null || string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(articleId) ||
+                !table.Columns.Contains("ID") || !table.Columns.Contains("ID_ARTICLE"))
+                return null;
+
+            DataRow match = null;
+            foreach (DataRow row in table.Rows)
+            {
+                if (row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached)
+                    continue;
+                bool sameId = string.Equals(System.Convert.ToString(row["ID"]), id, System.StringComparison.Ordinal);
+                bool sameArticleId = string.Equals(System.Convert.ToString(row["ID_ARTICLE"]), articleId, System.StringComparison.Ordinal);
+                if (!sameId && !sameArticleId)
+                    continue;
+                // A duplicate or partially mismatched identity is unsafe, even if
+                // the grid hides the conflicting row with a filter.
+                if (!sameId || !sameArticleId || match != null)
+                    return null;
+                match = row;
+            }
+            return match;
+        }
+
         private static void PopulateFields(DataRow row, ICatalogueRowInput input, bool creating, ILegacyCatalogueSemantics semantics)
         {
             // Read each value at its original assignment, preserving partial writes on failure.

@@ -13731,21 +13731,37 @@ public class Form_2_ARTICLES : Form
 			if ((Operators.ConditionalCompareObjectEqual(e.ColumnIndex, Operators.SubtractObject(NewLateBinding.LateGet(sender, null, "ColumnCount", new object[0], null, null, null), 2), TextCompare: false) && e.RowIndex >= 0) ? true : false)
 			{
 				((Control)Panel_INFO).Hide();
+				DataRowView deleteView = DataGridView1.Rows[e.RowIndex].DataBoundItem as DataRowView;
+				DataRow deleteRow = deleteView == null ? null : deleteView.Row;
+				if (deleteRow == null || !object.ReferenceEquals(
+					LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.ResolveUniqueExistingRow(
+						DT, deleteRow["ID"].ToString(), deleteRow["ID_ARTICLE"].ToString()), deleteRow))
+				{
+					MessageBox.Show("Article introuvable ou identité ambiguë. Actualisez la liste.");
+					return;
+				}
 				if ((int)MessageBox.Show("Voulez-vous vraiment supprimer ??", "Suppression", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
 				{
-					string right = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("SUPPRESION | ", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_ARTICLE"].Value), DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ARTICLE"].Value));
+					if (!object.ReferenceEquals(
+						LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.ResolveUniqueExistingRow(
+							DT, deleteRow["ID"].ToString(), deleteRow["ID_ARTICLE"].ToString()), deleteRow))
+					{
+						MessageBox.Show("Article modifié pendant la confirmation. Actualisez la liste.");
+						return;
+					}
+					string right = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("SUPPRESION | ", deleteRow["ID_ARTICLE"]), deleteRow["Article"]));
 					File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
 					MySqlCommand val = new MySqlCommand();
 					if (Module1.cn_SQL.State != ConnectionState.Open)
 					{
 						Module1.cn_SQL.Open();
 					}
-					val.CommandText = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat("INSERT  INTO   TABLE_MOUVEMENTS_STOCK               ( DATES , HEURE , LIBELLE,ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE)         values           ( '" + DateTime.Now.ToString("yyyy-MM-dd"), "' ,  '"), DateTime.Now.ToString("HH:mm:ss")), "'  ,'Suppression d''article'   ,'"), DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_ARTICLE"].Value), "'    ,'"), DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["Code"].Value), "' ,'"), DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["Article"].Value), "'  ,    CONCAT('-','"), DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["STOCK"].Value), "')         )        "));
+					val.CommandText = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat("INSERT  INTO   TABLE_MOUVEMENTS_STOCK               ( DATES , HEURE , LIBELLE,ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE)         values           ( '" + DateTime.Now.ToString("yyyy-MM-dd"), "' ,  '"), DateTime.Now.ToString("HH:mm:ss")), "'  ,'Suppression d''article'   ,'"), deleteRow["ID_ARTICLE"]), "'    ,'"), deleteRow["Code"]), "' ,'"), deleteRow["Article"]), "'  ,    CONCAT('-','"), deleteRow["STOCK"]), "')         )        "));
 					val.Connection = Module1.cn_SQL;
 					val.ExecuteNonQuery();
 					Module1.cn_SQL.Close();
-					int position = ((ContainerControl)this).BindingContext[(object)DT].Position;
-					DT.Rows[position].Delete();
+					int position = DT.Rows.IndexOf(deleteRow);
+					deleteRow.Delete();
 					MySqlCommandBuilder val2 = new MySqlCommandBuilder(DA);
 					((DbDataAdapter)(object)DA).Update(DT);
 					DT.AcceptChanges();
@@ -13757,37 +13773,45 @@ public class Form_2_ARTICLES : Form
 			{
 				((Control)Panel_INFO).Visible = true;
 				((Control)Panel_INFO).BringToFront();
-				Label_INDEX.Text = Conversions.ToString(((DataGridViewBand)DataGridView1.CurrentRow).Index);
+				DataRowView editView = DataGridView1.Rows[e.RowIndex].DataBoundItem as DataRowView;
+				DataRow editRow = editView == null ? null : editView.Row;
+				if (editRow == null || !object.ReferenceEquals(
+					LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.ResolveUniqueExistingRow(
+						DT, editRow["ID"].ToString(), editRow["ID_ARTICLE"].ToString()), editRow))
+				{
+					MessageBox.Show("Article introuvable ou identité ambiguë. Actualisez la liste.");
+					return;
+				}
+				Label_INDEX.Text = Conversions.ToString(e.RowIndex);
 				Label_TOP.Text = "MODIFICATION";
 				((Control)Button_SAVE).Visible = true;
-				int position2 = ((ContainerControl)this).BindingContext[(object)DT].Position;
-				Text_ID.Text = DT.Rows[position2]["ID"].ToString();
-				Text_ID_ARTICLE.Text = DT.Rows[position2]["ID_ARTICLE"].ToString();
-				Text_CODE.Text = DT.Rows[position2]["Code"].ToString();
-				Text_ARTICLE.Text = DT.Rows[position2]["Article"].ToString();
-				Combo_FAMILLE.Text = DT.Rows[position2]["Famille"].ToString();
-				Text_SOUS_FAMILLE.Text = DT.Rows[position2]["Sous_Famille"].ToString();
-				Combo_GROUPES.Text = (DT.Columns.Contains("GROUPE") ? DT.Rows[position2]["GROUPE"].ToString() : "");
-				Text_DESCRIPTION.Text = DT.Rows[position2]["Description"].ToString();
-				Text_PRIX_A.Text = DT.Rows[position2]["Prix_A"].ToString();
-				Text_PRIX_MP.Text = DT.Rows[position2]["PRIX_MP"].ToString();
-				Text_PRIX_V.Text = DT.Rows[position2]["PRIX_V_1"].ToString();
-				Text_PRIX_V_2.Text = DT.Rows[position2]["PRIX_V_2"].ToString();
-				Text_PRIX_QTE.Text = (DT.Columns.Contains("PRIX_QTE") ? DT.Rows[position2]["PRIX_QTE"].ToString() : "");
-				Text_PRIX_QTE_MIN.Text = (DT.Columns.Contains("PRIX_QTE_MIN") ? DT.Rows[position2]["PRIX_QTE_MIN"].ToString() : "");
-				Text_STOCK.Text = DT.Rows[position2]["STOCK"].ToString();
-				Text_ALERT.Text = DT.Rows[position2]["Alert"].ToString();
-				Text_DATE_CREATION.Text = DT.Rows[position2]["DATES"].ToString();
-				Text_DATE_INVENTAIRE.Text = DT.Rows[position2]["DATE_INVENTAIRE"].ToString();
-				Text_STOCK_INITIAL.Text = DT.Rows[position2]["STOCK_INITIAL"].ToString();
-				Combo_TAUX_TVA.Text = DT.Rows[position2]["TAUX_TVA"].ToString();
-				Combo_UNITE.Text = DT.Rows[position2]["UNITE"].ToString();
-				Text_REFERENCE.Text = DT.Rows[position2]["REFERENCE"].ToString();
-				Combo_FOURNISSEUR.Text = DT.Rows[position2]["FOURNISSEUR"].ToString();
-				Combo_MODE_STOCK.Text = DT.Rows[position2]["MODE_STOCK"].ToString();
-				Combo_PRINTER.Text = DT.Rows[position2]["PRINTER"].ToString();
-				Combo_PRINTER_DUPLICATA.Text = DT.Rows[position2]["PRINTER_DUPLICATA"].ToString();
-				Text_LIEN_PICTURE.Text = DT.Rows[position2]["Images"].ToString();
+				Text_ID.Text = editRow["ID"].ToString();
+				Text_ID_ARTICLE.Text = editRow["ID_ARTICLE"].ToString();
+				Text_CODE.Text = editRow["Code"].ToString();
+				Text_ARTICLE.Text = editRow["Article"].ToString();
+				Combo_FAMILLE.Text = editRow["Famille"].ToString();
+				Text_SOUS_FAMILLE.Text = editRow["Sous_Famille"].ToString();
+				Combo_GROUPES.Text = (DT.Columns.Contains("GROUPE") ? editRow["GROUPE"].ToString() : "");
+				Text_DESCRIPTION.Text = editRow["Description"].ToString();
+				Text_PRIX_A.Text = editRow["Prix_A"].ToString();
+				Text_PRIX_MP.Text = editRow["PRIX_MP"].ToString();
+				Text_PRIX_V.Text = editRow["PRIX_V_1"].ToString();
+				Text_PRIX_V_2.Text = editRow["PRIX_V_2"].ToString();
+				Text_PRIX_QTE.Text = (DT.Columns.Contains("PRIX_QTE") ? editRow["PRIX_QTE"].ToString() : "");
+				Text_PRIX_QTE_MIN.Text = (DT.Columns.Contains("PRIX_QTE_MIN") ? editRow["PRIX_QTE_MIN"].ToString() : "");
+				Text_STOCK.Text = editRow["STOCK"].ToString();
+				Text_ALERT.Text = editRow["Alert"].ToString();
+				Text_DATE_CREATION.Text = editRow["DATES"].ToString();
+				Text_DATE_INVENTAIRE.Text = editRow["DATE_INVENTAIRE"].ToString();
+				Text_STOCK_INITIAL.Text = editRow["STOCK_INITIAL"].ToString();
+				Combo_TAUX_TVA.Text = editRow["TAUX_TVA"].ToString();
+				Combo_UNITE.Text = editRow["UNITE"].ToString();
+				Text_REFERENCE.Text = editRow["REFERENCE"].ToString();
+				Combo_FOURNISSEUR.Text = editRow["FOURNISSEUR"].ToString();
+				Combo_MODE_STOCK.Text = editRow["MODE_STOCK"].ToString();
+				Combo_PRINTER.Text = editRow["PRINTER"].ToString();
+				Combo_PRINTER_DUPLICATA.Text = editRow["PRINTER_DUPLICATA"].ToString();
+				Text_LIEN_PICTURE.Text = editRow["Images"].ToString();
 				string articleImagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", Text_LIEN_PICTURE.Text);
 				Picture_IMAGE.Image = null;
 				if (!string.IsNullOrWhiteSpace(Text_LIEN_PICTURE.Text) && Text_LIEN_PICTURE.Text != "0" && File.Exists(articleImagePath))
@@ -13797,13 +13821,13 @@ public class Form_2_ARTICLES : Form
 						Picture_IMAGE.Image = (Image)new Bitmap(articleImage);
 					}
 				}
-				Text_LIEN_PICTURE_ANC.Text = DT.Rows[position2]["Images"].ToString();
-				Combo_TAILLES.Text = (DT.Columns.Contains("Taille") ? DT.Rows[position2]["Taille"].ToString() : "");
-				Combo_COULEURS.Text = (DT.Columns.Contains("Couleur") ? DT.Rows[position2]["Couleur"].ToString() : "");
-				Text_EMPLACEMENT.Text = (DT.Columns.Contains("Emplacement") ? DT.Rows[position2]["Emplacement"].ToString() : "");
-				Text_PROMOTION.Text = DT.Rows[position2]["PROMOTION"].ToString();
-				Combo_BALANCE.Text = DT.Rows[position2]["BALANCE"].ToString();
-				Combo_FENETRE_PESEE.Text = DT.Rows[position2]["FENETRE_PESAGE"].ToString();
+				Text_LIEN_PICTURE_ANC.Text = editRow["Images"].ToString();
+				Combo_TAILLES.Text = (DT.Columns.Contains("Taille") ? editRow["Taille"].ToString() : "");
+				Combo_COULEURS.Text = (DT.Columns.Contains("Couleur") ? editRow["Couleur"].ToString() : "");
+				Text_EMPLACEMENT.Text = (DT.Columns.Contains("Emplacement") ? editRow["Emplacement"].ToString() : "");
+				Text_PROMOTION.Text = editRow["PROMOTION"].ToString();
+				Combo_BALANCE.Text = editRow["BALANCE"].ToString();
+				Combo_FENETRE_PESEE.Text = editRow["FENETRE_PESAGE"].ToString();
 				if (!Conversions.ToBoolean(TextBox_MODIF_STOCK_MANUEL.Text))
 				{
 					((Control)Text_STOCK).Enabled = false;
@@ -14435,6 +14459,14 @@ public class Form_2_ARTICLES : Form
 					}
 					Text_CODE.Text = LOGICA.Domain.BalanceCodeFormatting.Format(TextBox_NBR_CODE_BALANCE.Text, () => Text_CODE.Text);
 				}
+				// Do not write an image file for a stale or ambiguous edit.
+				if (Operators.CompareString(Label_TOP.Text, "MODIFICATION", TextCompare: false) == 0 &&
+					LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.ResolveUniqueByDatabaseId(
+						DT, Text_ID.Text) == null)
+				{
+					MessageBox.Show("Article modifié ou identité ambiguë. Actualisez la liste avant d'enregistrer.");
+					return;
+				}
 				try
 				{
 					if (Operators.CompareString(Text_LIEN_PICTURE.Text, Text_LIEN_PICTURE_ANC.Text, TextCompare: false) != 0)
@@ -14469,8 +14501,13 @@ public class Form_2_ARTICLES : Form
 				}
 				else if (Operators.CompareString(Label_TOP.Text, "MODIFICATION", TextCompare: false) == 0)
 				{
-					DataGridView1.CurrentCell = DataGridView1.Rows[Conversions.ToInteger(Label_INDEX.Text)].Cells[0];
-					DataGridView1.Rows[Conversions.ToInteger(Label_INDEX.Text)].Selected = true;
+					DataRow editTarget = LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.ResolveUniqueByDatabaseId(
+						DT, Text_ID.Text);
+					if (editTarget == null)
+					{
+						MessageBox.Show("Article modifié ou identité ambiguë. Actualisez la liste avant d'enregistrer.");
+						return;
+					}
 					DataTable dataTable2 = new DataTable();
 					dataTable2.Clear();
 					LOGICA.Infrastructure.Catalogue.CatalogueDuplicateLookup.FillEditedCode(dataTable2, Text_CODE.Text, Text_ID.Text, Module1.cn_SQL);
@@ -14486,8 +14523,7 @@ public class Form_2_ARTICLES : Form
 						MessageBox.Show("Cet ID est déja utilisé", "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
 						return;
 					}
-					int position = ((ContainerControl)this).BindingContext[(object)DT].Position;
-					LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.PopulateEdited(DT.Rows[position],
+					LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.PopulateEdited(editTarget,
                         new LOGICA.Presentation.Catalogue.CatalogueFormRowInput(this),
                         LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance);
                     LOGICA.Infrastructure.Catalogue.CatalogueRowPersistence.UpdateAndAccept(DA, DT);
