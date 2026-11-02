@@ -2886,7 +2886,7 @@ public class FormDialog_calc : Form
 					// A missing image must not prevent payment method buttons from existing.
 					object imageValue = paymentRow.Cells.Count > 1 ? paymentRow.Cells[1].Value : null;
 					string imageName = imageValue == null || imageValue == DBNull.Value ? "" : Convert.ToString(imageValue);
-					if (!string.IsNullOrWhiteSpace(imageName) && imageName == Path.GetFileName(imageName))
+					if (!string.IsNullOrWhiteSpace(Module1._CHEMIN_FOLDER) && !string.IsNullOrWhiteSpace(imageName) && imageName == Path.GetFileName(imageName))
 					{
 						string imagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", imageName);
 						if (File.Exists(imagePath))
