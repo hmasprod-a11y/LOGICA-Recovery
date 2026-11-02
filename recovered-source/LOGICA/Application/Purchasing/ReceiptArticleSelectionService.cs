@@ -149,8 +149,38 @@ namespace LOGICA.ApplicationLayer.Purchasing
                 !clickedView.Row.Table.Columns.Contains("ID_BR") ||
                 clickedView.Row.IsNull("ID_BR"))
                 return null;
-            string actualId = Convert.ToString(clickedView.Row["ID_BR"]);
-            return Matches(displayedReceiptId, actualId) ? clickedView.Row : null;
+            DataRow selectedRow = clickedView.Row;
+            string actualId = Convert.ToString(selectedRow["ID_BR"]);
+            if (!Matches(displayedReceiptId, actualId))
+                return null;
+
+            // The legacy detail DELETE/UPDATE and consultation SQL use ID_BR,
+            // not the DataGridView row index. If two active headers share that
+            // number, selecting either could mutate BOTH sets of detail rows.
+            // Check the entire bound table, including rows hidden by a filter.
+            bool hasRecordId = selectedRow.Table.Columns.Contains("ID");
+            string recordId = hasRecordId && !selectedRow.IsNull("ID")
+                ? Convert.ToString(selectedRow["ID"]) : null;
+            if (hasRecordId && String.IsNullOrWhiteSpace(recordId))
+                return null;
+            foreach (DataRow other in selectedRow.Table.Rows)
+            {
+                if (Object.ReferenceEquals(other, selectedRow) ||
+                    other.RowState == DataRowState.Deleted ||
+                    other.RowState == DataRowState.Detached)
+                    continue;
+                if (!other.IsNull("ID_BR") &&
+                    String.Equals(actualId, Convert.ToString(other["ID_BR"]),
+                        StringComparison.Ordinal))
+                    return null;
+                // An inconsistent header snapshot must not allow a second
+                // database record with the same primary ID to be edited.
+                if (hasRecordId && !other.IsNull("ID") &&
+                    String.Equals(recordId, Convert.ToString(other["ID"]),
+                        StringComparison.Ordinal))
+                    return null;
+            }
+            return selectedRow;
         }
 
         internal static bool Matches(string confirmedReceiptId, string loadedReceiptId)
@@ -176,24 +206,30 @@ namespace LOGICA.ApplicationLayer.Purchasing
                 return null;
             DataRow found = null;
             int matchingReceiptNumbers = 0;
+            int matchingRecordIds = 0;
             foreach (DataRow row in receipts.Rows)
             {
                 if (row.RowState == DataRowState.Deleted ||
-                    row.RowState == DataRowState.Detached ||
-                    row.IsNull("ID") || row.IsNull("ID_BR") || row.IsNull("ETAT"))
+                    row.RowState == DataRowState.Detached)
                     continue;
-                if (String.Equals(Convert.ToString(row["ID_BR"]), receiptId,
-                    StringComparison.Ordinal))
+                // Count duplicate identities even when another field is NULL:
+                // a malformed duplicate must never make a corrupt snapshot
+                // appear uniquely editable.
+                if (!row.IsNull("ID_BR") &&
+                    String.Equals(Convert.ToString(row["ID_BR"]), receiptId,
+                        StringComparison.Ordinal))
                     matchingReceiptNumbers++;
-                if (!String.Equals(Convert.ToString(row["ID"]), recordId,
-                    StringComparison.Ordinal))
-                    continue;
-                // Duplicate record IDs are unsafe even if only one has the
-                // requested receipt number; never mutate either record.
-                if (found != null) return null;
-                found = row;
+                if (!row.IsNull("ID") &&
+                    String.Equals(Convert.ToString(row["ID"]), recordId,
+                        StringComparison.Ordinal))
+                {
+                    matchingRecordIds++;
+                    found = row;
+                }
             }
-            if (found == null || matchingReceiptNumbers != 1 ||
+            if (found == null || matchingRecordIds != 1 ||
+                matchingReceiptNumbers != 1 || found.IsNull("ID_BR") ||
+                found.IsNull("ETAT") ||
                 !Matches(receiptId, Convert.ToString(found["ID_BR"])) ||
                 String.IsNullOrWhiteSpace(Convert.ToString(found["ETAT"])) ||
                 String.Equals(Convert.ToString(found["ETAT"]), "VALIDER",
