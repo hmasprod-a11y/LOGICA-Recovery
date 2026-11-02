@@ -59,6 +59,42 @@ try {
             } catch {}
         }
     }
+    # Some .NET WinForms labels/panels are absent from the UIA control tree.
+    # Check visible native child-window captions as a read-only fallback.
+    Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class LogicaActivationCaptionProbe {
+    public delegate bool ChildCallback(IntPtr hwnd, IntPtr param);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+    public static extern bool EnumChildWindows(IntPtr parent, ChildCallback callback, IntPtr param);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+    public static extern int GetWindowText(IntPtr hwnd, StringBuilder buffer, int capacity);
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr hwnd);
+    public static bool HasVisibleActivationLabel(IntPtr parent) {
+        bool detected = false;
+        ChildCallback callback = (hwnd, param) => {
+            if (!IsWindowVisible(hwnd)) return true;
+            var text = new StringBuilder(256);
+            GetWindowText(hwnd, text, text.Capacity);
+            string caption = text.ToString();
+            if (caption.IndexOf("Cl\u00e9 d'activation", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                caption.IndexOf("Cle d'activation", StringComparison.OrdinalIgnoreCase) >= 0) {
+                detected = true;
+            }
+            return true;
+        };
+        EnumChildWindows(parent, callback, IntPtr.Zero);
+        return detected;
+    }
+}
+'@
+    if ([LogicaActivationCaptionProbe]::HasVisibleActivationLabel($target.MainWindowHandle)) {
+        $report.activationLabelLocated = $true
+        $report.activationLabelVisible = $true
+    }
     $report.inspectionStatus = 'inspected'
     if ($report.activationPanelVisible -eq $true -or $report.activationLabelVisible -eq $true) {
         $report.activationScreenVisible = $true
