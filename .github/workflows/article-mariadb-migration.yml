@@ -25,7 +25,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          MYSQL="docker exec $(docker ps -q --filter ancestor=mariadb:11.4) mariadb -uroot -ptestroot logica_test"
+          MYSQL="docker exec -i $(docker ps -q --filter ancestor=mariadb:11.4) mariadb -uroot -ptestroot logica_test"
           $MYSQL -e "CREATE TABLE TABLE_ARTICLES (ID INT PRIMARY KEY, Article VARCHAR(255)); INSERT INTO TABLE_ARTICLES VALUES (1,'Existing product');"
           $MYSQL < input/migrations/20261102-article-add-compatibility.sql
           $MYSQL < input/migrations/20261102-article-add-compatibility.sql
