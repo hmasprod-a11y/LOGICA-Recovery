@@ -175,12 +175,16 @@ namespace LOGICA.ApplicationLayer.Purchasing
                 !receipts.Columns.Contains("ETAT"))
                 return null;
             DataRow found = null;
+            int matchingReceiptNumbers = 0;
             foreach (DataRow row in receipts.Rows)
             {
                 if (row.RowState == DataRowState.Deleted ||
                     row.RowState == DataRowState.Detached ||
                     row.IsNull("ID") || row.IsNull("ID_BR") || row.IsNull("ETAT"))
                     continue;
+                if (String.Equals(Convert.ToString(row["ID_BR"]), receiptId,
+                    StringComparison.Ordinal))
+                    matchingReceiptNumbers++;
                 if (!String.Equals(Convert.ToString(row["ID"]), recordId,
                     StringComparison.Ordinal))
                     continue;
@@ -189,8 +193,9 @@ namespace LOGICA.ApplicationLayer.Purchasing
                 if (found != null) return null;
                 found = row;
             }
-            if (found == null ||
+            if (found == null || matchingReceiptNumbers != 1 ||
                 !Matches(receiptId, Convert.ToString(found["ID_BR"])) ||
+                String.IsNullOrWhiteSpace(Convert.ToString(found["ETAT"])) ||
                 String.Equals(Convert.ToString(found["ETAT"]), "VALIDER",
                     StringComparison.Ordinal))
                 return null;
