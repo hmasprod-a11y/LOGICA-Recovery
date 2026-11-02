@@ -1090,9 +1090,8 @@ internal static class PortableCheckoutSmoke
             DataTable reassignedSelectedBarcode = legacyLive.Copy();
             reassignedSelectedBarcode.Rows[0]["Code"] = "REASSIGNED";
             CheckoutVariantChoiceResult rawReassignment =
-                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
-                    flowMatches, delegate(DataTable shown) { return 1; },
-                    delegate { return reassignedSelectedBarcode; });
+                CheckoutVariantSnapshotService.EvaluateChoice(reassignedSelectedBarcode,
+                    CheckoutVariantSnapshotService.Read(flowMatches), 1);
             CheckoutVariantChoiceResult scannerReassignment =
                 CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", flowMatches,
                     delegate(DataTable shown) { return 1; },
