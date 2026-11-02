@@ -78,7 +78,7 @@ namespace LOGICA.ApplicationLayer.Checkout
 
         // Read-only, all-or-nothing projection. A repeated ID_ARTICLE is unsafe
         // even when the barcodes differ. Scan all active rows before deciding:
-        // malformed rows take precedence over duplicates, as in EvaluateChoice.
+        // malformed rows (including whitespace-only IDs) take precedence over duplicates, as in EvaluateChoice.
         // Never expose a partial snapshot after any validation failure.
         internal static CheckoutVariantSnapshotReadResult EvaluateSnapshot(DataTable matches)
         {
@@ -103,7 +103,7 @@ namespace LOGICA.ApplicationLayer.Checkout
                     continue;
                 }
                 string articleId = Convert.ToString(row["ID_ARTICLE"]);
-                if (String.IsNullOrEmpty(articleId))
+                if (String.IsNullOrWhiteSpace(articleId))
                 {
                     invalid = true;
                     continue;
@@ -196,7 +196,7 @@ namespace LOGICA.ApplicationLayer.Checkout
             bool invalid = false;
             foreach (CheckoutVariantSnapshot snapshot in displayed)
             {
-                if (snapshot == null || String.IsNullOrEmpty(snapshot.ArticleId) ||
+                if (snapshot == null || String.IsNullOrWhiteSpace(snapshot.ArticleId) ||
                     snapshot.Code == null)
                 {
                     invalid = true;
@@ -216,7 +216,7 @@ namespace LOGICA.ApplicationLayer.Checkout
         private static CheckoutVariantChoiceResult EvaluateSelected(
             DataTable currentMatches, CheckoutVariantSnapshot selected, bool allowNullImageBarcode)
         {
-            if (String.IsNullOrEmpty(selected.ArticleId) || selected.Code == null ||
+            if (String.IsNullOrWhiteSpace(selected.ArticleId) || selected.Code == null ||
                 !currentMatches.Columns.Contains("Code") ||
                 !currentMatches.Columns.Contains("ID_ARTICLE"))
                 return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
@@ -237,7 +237,7 @@ namespace LOGICA.ApplicationLayer.Checkout
                 bool nullBarcode = row.IsNull("Code");
                 if ((nullBarcode && !(allowNullImageBarcode && selected.Code.Length == 0)) ||
                     row.IsNull("ID_ARTICLE") ||
-                    String.IsNullOrEmpty(Convert.ToString(row["ID_ARTICLE"])))
+                    String.IsNullOrWhiteSpace(Convert.ToString(row["ID_ARTICLE"])))
                 {
                     invalidCandidates = true;
                     continue;
