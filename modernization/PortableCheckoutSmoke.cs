@@ -719,10 +719,10 @@ internal static class PortableCheckoutSmoke
             refreshedReused.Rows[1]["Code"] = "NEW-BARCODE";
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
                 flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 1; },
-                delegate { return refreshedReused; }).Status == CheckoutVariantChoiceStatus.Ambiguous,
-                "Reused article ID with changed barcode fails closed");
+                delegate { return refreshedReused; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Wrong exact-barcode SQL result is invalid before resolving reused article ID");
             DataTable refreshedDuplicate = flowMatches.Copy();
-            refreshedDuplicate.Rows.Add("OTHER", "A", 1m, 0m);
+            refreshedDuplicate.Rows.Add("DUP", "A", 1m, 0m);
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
                 flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 1; },
                 delegate { return refreshedDuplicate; }).Status == CheckoutVariantChoiceStatus.Ambiguous,
@@ -732,6 +732,52 @@ internal static class PortableCheckoutSmoke
                 flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 1; },
                 delegate { return refreshedDuplicate; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
                 "Invalid refreshed row takes precedence over duplicate IDs");
+            // The modern snapshot-based chooser is also an exact-barcode
+            // adapter. Reject a broken SQL WHERE clause even when a correct
+            // selected ID is still present with a plausible current price.
+            DataTable wrongFilterWithSelected = reorderedBarcode.Copy();
+            wrongFilterWithSelected.Rows[0]["Code"] = "WRONG-FILTER";
+            CheckoutVariantChoiceResult wrongFilterResult =
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                    flowMatches, delegate(IList<CheckoutVariantSnapshot> variants) { return 0; },
+                    delegate { return wrongFilterWithSelected; });
+            Require(wrongFilterResult.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                wrongFilterResult.SelectedRow == null,
+                "Modern exact-barcode refresh cannot accept an unrelated row beside selected ID");
+            int rejectedPriceCalls = 0;
+            CheckoutBasketPreview rejectedPrice = CheckoutSelectionFlowService.Preview(
+                wrongFilterResult, 5m, delegate(DataRow article) {
+                    rejectedPriceCalls++;
+                    throw new Exception("Unsafe SQL result must never be priced");
+                }, "5", port);
+            Require(rejectedPriceCalls == 0 && !rejectedPrice.LineNet.HasValue &&
+                !rejectedPrice.BasketNet.HasValue,
+                "Rejected modern scanner refresh cannot calculate or mutate a basket preview");
+            DataTable wrongFilterWithoutSelected = refreshedMissing.Copy();
+            wrongFilterWithoutSelected.Rows[0]["Code"] = "WRONG-FILTER";
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> variants) { return 1; },
+                delegate { return wrongFilterWithoutSelected; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Wrong exact-barcode SQL filter takes precedence over missing selected ID");
+            DataTable nullCodeLive = reorderedBarcode.Copy();
+            nullCodeLive.Rows[0]["Code"] = DBNull.Value;
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> variants) { return 0; },
+                delegate { return nullCodeLive; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "SQL NULL barcode cannot enter the scanner refresh path");
+            DataTable deletedUnrelatedCode = reorderedBarcode.Copy();
+            deletedUnrelatedCode.Rows.Add("WRONG-FILTER", "DELETED-ROW", 2m, 0m);
+            deletedUnrelatedCode.AcceptChanges();
+            deletedUnrelatedCode.Rows[2].Delete();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> variants) { return 0; },
+                delegate { return deletedUnrelatedCode; }).Status ==
+                CheckoutVariantChoiceStatus.Selected,
+                "Deleted unrelated SQL row does not invalidate otherwise exact active matches");
+            Console.WriteLine("PASS modern scanner exact-barcode SQL integrity, stale-price guard, null and deleted rows");
+
             DataTable refreshedDeleted = flowMatches.Copy();
             refreshedDeleted.AcceptChanges();
             refreshedDeleted.Rows[1].Delete();
