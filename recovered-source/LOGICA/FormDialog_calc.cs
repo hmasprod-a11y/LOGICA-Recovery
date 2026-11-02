@@ -3014,6 +3014,10 @@ public class FormDialog_calc : Form
 		{
 			try
 			{
+				// A pending edit must be committed before reading the remaining balance.
+				// Otherwise a second method inherits a stale amount from the previous row.
+				if (!DataGridView_CALC.EndEdit()) return;
+				Button_calc_Click(sender, e);
 				// Ignore stale or blank controls instead of inserting an unusable payment row.
 				Button selectedMethod = sender as Button;
 				if (selectedMethod == null || string.IsNullOrWhiteSpace(selectedMethod.Text)) return;
@@ -3158,6 +3162,9 @@ public class FormDialog_calc : Form
 		//IL_0036: Expected Obj, but got Unknown
 		try
 		{
+			// Cash denominations must use the latest edited amount, not the old cell.
+			if (!DataGridView_CALC.EndEdit()) return;
+			Button_calc_Click(sender, e);
 			if (SelectedPaymentRowCount() == 0)
 			{
 				Button val = CashPaymentButton();
@@ -3374,15 +3381,14 @@ public class FormDialog_calc : Form
 		{
 			try
 			{
-				if (e.RowIndex >= 0 && e.RowIndex < DataGridView_CALC.Rows.Count && ((e.ColumnIndex == 0) | (e.ColumnIndex == 2) | (e.ColumnIndex == 3)))
+				if (e.RowIndex >= 0 && e.RowIndex < DataGridView_CALC.Rows.Count &&
+					(e.ColumnIndex == 0 || e.ColumnIndex == 2 || e.ColumnIndex == 3))
 				{
-					// The last grid row may be an uncommitted new-row placeholder.
-					for (int i = DataGridView_CALC.Rows.Count - 1; i >= 0; i--)
-					{
-						if (DataGridView_CALC.Rows[i].IsNewRow) continue;
-						DataGridView_CALC.CurrentCell = DataGridView_CALC.Rows[i].Cells[1];
-						break;
-					}
+					// Editing the clicked method must never jump to the last row:
+					// split cash/card settlements otherwise change the wrong amount.
+					DataGridViewRow clicked = DataGridView_CALC.Rows[e.RowIndex];
+					if (!clicked.IsNewRow)
+						DataGridView_CALC.CurrentCell = clicked.Cells[1];
 				}
 			}
 			catch (Exception ex)
@@ -3512,6 +3518,10 @@ public class FormDialog_calc : Form
 		//IL_0036: Expected Obj, but got Unknown
 		try
 		{
+			// Reconcile the active editor before filling RESTE. The displayed
+			// remainder may predate the cashier's last uncommitted keystroke.
+			if (!DataGridView_CALC.EndEdit()) return;
+			Button_calc_Click(sender, e);
 			// Blank/invalid remainder means the last edit has not been validated.
 			// Do not silently turn that state into a zero cash payment.
 			decimal remainder;
@@ -3608,9 +3618,13 @@ public class FormDialog_calc : Form
 			if (DataGridView_CALC.CurrentRow == null || DataGridView_CALC.CurrentRow.IsNewRow) return;
 			decimal entered;
 			if (!TryGetPaymentNumber(Label_NUM.Text, out entered)) return;
-			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = entered;
+			// The on-screen keypad replaces the editor deliberately. Cancel the
+			// old text editor first so its focus-loss cannot overwrite the new sum.
+			int rowIndex = DataGridView_CALC.CurrentRow.Index;
+			DataGridView_CALC.CancelEdit();
+			DataGridView_CALC.Rows[rowIndex].Cells[1].Value = entered;
+			Button_calc_Click(sender, e);
 			((Control)DataGridView_CALC).Focus();
-			SendKeys.Send("{RIGHT}{LEFT}");
 			Label_NUM.Text = "";
 			((Control)Panel_CLAVIER).Visible = false;
 		}
