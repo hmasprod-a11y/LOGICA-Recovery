@@ -176,6 +176,52 @@ internal static class CheckoutTransactionFinalizationTests
         if (starts != 1 || sharedProgress.Stage != CheckoutCommitStage.Posting)
             throw new Exception("Concurrent SOLDER progress was admitted more than once");
 
+        // P0 regression: malformed SOLDER input must fail before the
+        // persistent per-form gate is acquired. The same progress/gate must
+        // remain usable after the UI fixes its payload, without fake rollback.
+        var preflightGate = new CheckoutAttemptGate();
+        var preflightProgress = new CheckoutCommitProgress();
+        var preflightScenario = new Scenario();
+        var missingCallbackInput = preflightScenario.Input();
+        missingCallbackInput.ReadPayments = null;
+        int rejectedPreflight = 0;
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                null, preflightScenario.Input(), preflightScenario,
+                preflightProgress, preflightGate);
+        }
+        catch (ArgumentNullException ex) { if (ex.ParamName == "store") rejectedPreflight++; }
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                preflightScenario, null, preflightScenario,
+                preflightProgress, preflightGate);
+        }
+        catch (ArgumentNullException ex) { if (ex.ParamName == "input") rejectedPreflight++; }
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                preflightScenario, missingCallbackInput, preflightScenario,
+                preflightProgress, preflightGate);
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (ex.Message == "Checkout posting requires all callbacks before stock writes.")
+                rejectedPreflight++;
+        }
+        if (rejectedPreflight != 3 || preflightGate.IsBlocked ||
+            preflightProgress.Stage != CheckoutCommitStage.NotStarted ||
+            preflightScenario.Events.Count != 0)
+            throw new Exception("Malformed SOLDER payload locked cashier or invoked DB callbacks");
+        CheckoutTransactionFinalizationService.PostAndFinalize(
+            preflightScenario, preflightScenario.Input(), preflightScenario,
+            preflightProgress, preflightGate);
+        AssertEvents(preflightScenario.Events, Stages, "cashier retry after preflight");
+        preflightGate.ReleaseAfterBasketReset(preflightProgress);
+        if (preflightGate.IsBlocked)
+            throw new Exception("Preflight retry gate did not release after verified basket reset");
+
         // A single per-cashier gate must stay blocked until the UI has either
         // cleared the committed basket or verified rollback/reconciliation.
         var gate = new CheckoutAttemptGate();
