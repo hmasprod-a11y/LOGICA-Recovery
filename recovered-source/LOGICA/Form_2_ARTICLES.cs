@@ -14449,7 +14449,7 @@ public class Form_2_ARTICLES : Form
 					MessageBox.Show("Veuillez remplir le champ -GROUPE- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				// Preserve apostrophes in article names (e.g. L\'eau): catalogue\n\t\t\t\t// persistence uses MySqlCommandBuilder parameters and the creation\n\t\t\t\t// movement INSERT now binds @article rather than concatenating SQL.
+				Text_ARTICLE.Text = Text_ARTICLE.Text.ToString().Replace("'", " ");
 				if (Operators.CompareString(Combo_BALANCE.Text, "OUI", TextCompare: false) == 0)
 				{
 					if (!LOGICA.Domain.BalanceCodeFormatting.IsNumeric(Text_CODE.Text))
