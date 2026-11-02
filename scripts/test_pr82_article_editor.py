@@ -104,3 +104,46 @@ assert ids(queries[2], articleId="IMG-B", excludedId=4) == [5]
 assert ids(queries[0], code=normalize("ABC'123")) == [1, 2], "nonempty duplicate behavior retained"
 db.close()
 print("Catalogue parameterized duplicate-lookup regression: 22 SQL cases passed")
+
+
+# The actual article-create path persists TABLE_ARTICLES before writing its
+# initial TABLE_MOUVEMENTS_STOCK entry. A quoted barcode or article name must
+# not break that second SQL write (and leave a partially created article).
+movement = Path("recovered-source/LOGICA/Infrastructure/Catalogue/CatalogueCreationMovementWriter.cs").read_text(encoding="utf-8")
+movement_sql = re.search(r'command\\.CommandText = "([^"]+)" \\+\\s*"([^"]+)";', movement)
+assert movement_sql, "movement INSERT must use fixed SQL with no form values concatenated"
+insert_sql = movement_sql.group(1) + movement_sql.group(2)
+assert insert_sql.startswith("INSERT INTO TABLE_MOUVEMENTS_STOCK")
+for parameter in ("@dates", "@heure", "@articleId", "@code", "@article", "@quantity"):
+    assert insert_sql.count(parameter) == 1, parameter
+    assert 'Parameters.AddWithValue("' + parameter + '"' in movement, parameter
+assert movement.count("Parameters.AddWithValue(") == 6
+assert movement.count("DateTime.Now.ToString(") == 2, "preserve the legacy date/time read sequence"
+assert movement.count("command.ExecuteNonQuery();") == 1
+assert movement.index("command.ExecuteNonQuery();") < movement.index("connection.Close();")
+assert "readCode() + " not in movement and "readArticle() + " not in movement
+assert "readStock() + " not in movement
+
+stock_db = sqlite3.connect(":memory:")
+stock_db.execute("""CREATE TABLE TABLE_MOUVEMENTS_STOCK (
+    DATES TEXT, HEURE TEXT, LIBELLE TEXT, ID_ARTICLE TEXT,
+    CODE_ARTICLE TEXT, ARTICLE TEXT, QUANTITE TEXT)""")
+movement_rows = (
+    ("ART000001", "ABC'123", "L'eau d'orange", "1"),
+    ("ART000002", "' OR 1=1 --", "x'); DROP TABLE TABLE_MOUVEMENTS_STOCK; --", "0"),
+    ("ART000003", "باركود-١", "منتوج مغربي", "-2,5"),
+    ("ART000004", "", "Image-only article", "0"),
+)
+for article_id, barcode, article, quantity in movement_rows:
+    stock_db.execute(insert_sql, {
+        "dates": "2026-11-02", "heure": "12:00:00", "articleId": article_id,
+        "code": barcode, "article": article, "quantity": quantity,
+    })
+actual = stock_db.execute(
+    "SELECT ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE FROM TABLE_MOUVEMENTS_STOCK ORDER BY ID_ARTICLE"
+).fetchall()
+assert actual == list(movement_rows), "quotes, Unicode, empty barcode and signed legacy stock must round-trip"
+assert stock_db.execute("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK").fetchone()[0] == 4
+assert stock_db.execute("SELECT DISTINCT LIBELLE FROM TABLE_MOUVEMENTS_STOCK").fetchall() == [("Création d'article",)]
+stock_db.close()
+print("Catalogue creation stock movement parameter-binding regression: 4 SQL cases passed")
