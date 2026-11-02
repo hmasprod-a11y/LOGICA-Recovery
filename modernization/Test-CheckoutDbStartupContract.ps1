@@ -14,7 +14,11 @@ $launcherFixture = @'
 param([int]$Port=3308)
 $process=Start-Process "mariadbd.exe" -ArgumentList @('--bind-address=127.0.0.1',"--port=$Port")
 $probe.Connect('127.0.0.1',$Port)
+$ready=$true
+if(-not $ready){throw 'local server not ready'}
 $env:LOGICA_DB_CONNECTION_STRING="Server=127.0.0.1;Port=$Port;Database=local;"
+$counts=& "$ServerBin/mariadb.exe" -e 'SELECT 1'
+if($LASTEXITCODE -ne 0){throw 'authenticated SQL failed'}
 Start-Process (Join-Path $root 'LOGICA.exe') -Wait
 '@
 $contract = Get-CheckoutDbStartupContract $moduleFixture $launcherFixture
@@ -26,6 +30,10 @@ Assert-Contract (-not $contract.BareExeEndpointProvenEquivalent) 'dynamic EXE ho
 Assert-Contract $contract.LauncherPassesEndpoint 'launcher must export loopback endpoint before child EXE'
 Assert-Contract $contract.LauncherStartsExeAfterExport 'launcher export must precede EXE start'
 Assert-Contract $contract.LauncherUsesLoopbackEndpoint 'launcher must bind, probe and export same loopback host'
+Assert-Contract $contract.LauncherStartsAndProbesBeforeExport 'local server and TCP readiness must precede child override'
+Assert-Contract $contract.LauncherWaitsForExe 'launcher must wait for child before stopping local DB'
+Assert-Contract $contract.LauncherRunsAuthenticatedQueryBeforeExe 'authenticated SQL query must precede EXE'
+Assert-Contract $contract.LauncherRejectsFailedAuthenticatedQuery 'failed authenticated SQL must stop launch'
 
 $matching = Get-CheckoutDbStartupContract ($moduleFixture.Replace('3306','3308')) $launcherFixture
 Assert-Contract $matching.BareExeMatchesLauncher 'matching ports must be reported'
@@ -57,6 +65,26 @@ Assert-Contract (-not $wrongBind.LauncherPassesEndpoint) 'non-loopback bind must
 $wrongProbe = Get-CheckoutDbStartupContract $moduleFixture ($launcherFixture.Replace(
     "Connect('127.0.0.1',", "Connect('localhost',"))
 Assert-Contract (-not $wrongProbe.LauncherPassesEndpoint) 'different readiness probe host must fail'
+$missingServer = Get-CheckoutDbStartupContract $moduleFixture ($launcherFixture.Replace(
+    '$process=Start-Process "mariadbd.exe" -ArgumentList @(''--bind-address=127.0.0.1'',"--port=$Port")', ''))
+Assert-Contract (-not $missingServer.LauncherPassesEndpoint) 'TCP probe without local server launch must fail'
+$wrongServerPort = Get-CheckoutDbStartupContract $moduleFixture ($launcherFixture.Replace(
+    '"--port=$Port"', '"--port=3306"'))
+Assert-Contract (-not $wrongServerPort.LauncherPassesEndpoint) 'local server port differs from exported port'
+$missingReadyGuard = Get-CheckoutDbStartupContract $moduleFixture ($launcherFixture.Replace(
+    "if(-not `$ready){throw 'local server not ready'}", ''))
+Assert-Contract (-not $missingReadyGuard.LauncherPassesEndpoint) 'export without checked TCP readiness must fail'
+$missingWait = Get-CheckoutDbStartupContract $moduleFixture ($launcherFixture.Replace(
+    "Start-Process (Join-Path `$root 'LOGICA.exe') -Wait",
+    "Start-Process (Join-Path `$root 'LOGICA.exe')"))
+Assert-Contract (-not $missingWait.LauncherPassesEndpoint) 'launcher must not stop DB before child exits'
+$missingAuthGuard = Get-CheckoutDbStartupContract $moduleFixture ($launcherFixture.Replace(
+    "if(`$LASTEXITCODE -ne 0){throw 'authenticated SQL failed'}", ''))
+Assert-Contract (-not $missingAuthGuard.LauncherRejectsFailedAuthenticatedQuery) 'missing authenticated SQL failure guard must be detected'
+Assert-Contract $missingAuthGuard.LauncherPassesEndpoint 'auth-query guard is reported separately from endpoint forwarding'
+$missingAuthQuery = Get-CheckoutDbStartupContract $moduleFixture ($launcherFixture.Replace(
+    '$counts=& "$ServerBin/mariadb.exe" -e ''SELECT 1''', ''))
+Assert-Contract (-not $missingAuthQuery.LauncherRunsAuthenticatedQueryBeforeExe) 'missing authenticated SQL query must be detected'
 $missingLaunch = Get-CheckoutDbStartupContract $moduleFixture ($launcherFixture.Replace(
     "Start-Process (Join-Path `$root 'LOGICA.exe') -Wait", ''))
 Assert-Contract (-not $missingLaunch.LauncherPassesEndpoint) 'export without child EXE launch must fail'
@@ -66,6 +94,13 @@ $module = [IO.File]::ReadAllText((Join-Path $root 'recovered-source/LOGICA/Modul
 $launcher = [IO.File]::ReadAllText((Join-Path $root 'scripts/Launch-LOGICA.ps1'))
 $actual = Get-CheckoutDbStartupContract $module $launcher
 Assert-Contract $actual.LauncherPassesEndpoint 'production launcher no longer passes the local endpoint'
+Assert-Contract $actual.LauncherStartsAndProbesBeforeExport 'production server/readiness/export order changed'
+Assert-Contract $actual.LauncherWaitsForExe 'production launcher no longer waits for EXE'
+Assert-Contract $actual.LauncherRunsAuthenticatedQueryBeforeExe 'production authenticated SQL query missing'
+# Known launch risk: the existing launcher does not test LASTEXITCODE after
+# the final authenticated SELECT before starting the EXE. Do not modify this
+# QA/launcher-owned script from Track A; flag the gap for its owner.
+Assert-Contract (-not $actual.LauncherRejectsFailedAuthenticatedQuery) 'launcher auth-failure behavior changed; review and update contract'
 Assert-Contract $actual.DirectExeServerIsDynamic 'production direct EXE host source changed; review startup'
 Assert-Contract (-not $actual.BareExeEndpointProvenEquivalent) 'production bare EXE is not proven equivalent'
 Assert-Contract ($actual.DirectExeFallbackPort -gt 0 -and $actual.DirectExeFallbackPort -le 65535) 'invalid EXE port'
@@ -73,4 +108,7 @@ Assert-Contract ($actual.LauncherDefaultPort -gt 0 -and $actual.LauncherDefaultP
 if (-not $actual.BareExeEndpointProvenEquivalent) {
     Write-Warning ("Bare LOGICA.exe defaults to port {0} and its server comes from a UI label; Start-LOGICA.cmd defaults to loopback port {1} and exports LOGICA_DB_CONNECTION_STRING before starting the child. Bare EXE startup is NOT proven equivalent. No database or licence was changed." -f $actual.DirectExeFallbackPort, $actual.LauncherDefaultPort)
 }
-Write-Host 'PASS checkout local database endpoint contract (host, port, export ordering, 9 negative/positive fixtures and production source; no DB access)'
+if (-not $actual.LauncherRejectsFailedAuthenticatedQuery) {
+    Write-Warning 'Launcher performs authenticated MariaDB SELECT before EXE but does not check its exit code. A listening non-MariaDB service or failed credentials may still reach LOGICA.exe. QA/launcher owner must guard LASTEXITCODE before launch.'
+}
+Write-Host 'PASS checkout local database endpoint contract (host, port, server/readiness/auth sequencing, failure-path fixtures and production source; no DB access)'
