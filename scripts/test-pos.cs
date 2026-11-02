@@ -2489,10 +2489,14 @@ class PosSmoke {
      fam.Invoke(form,new object[]{empty,EventArgs.Empty});
     if(grid.Rows.Count!=0)throw new Exception("Invalid payment click created settlement");
     int blank=grid.Rows.Add();
+    grid.Rows[blank].Cells[0].Value=10m;
+    grid.Rows[blank].Cells[1].Value=10m;
     grid.Rows[blank].Cells[3].Value=DBNull.Value;
     if((bool)selected.Invoke(form,null))
      throw new Exception("Incomplete payment row accepted as settlement");
     int valid=grid.Rows.Add();
+    grid.Rows[valid].Cells[0].Value=79m;
+    grid.Rows[valid].Cells[1].Value=79m;
     grid.Rows[valid].Cells[3].Value="CARTE";
     if((bool)selected.Invoke(form,null))
      throw new Exception("Mixed blank and valid settlement rows were accepted");
