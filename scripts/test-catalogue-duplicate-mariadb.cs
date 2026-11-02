@@ -33,6 +33,7 @@ internal static class CatalogueDuplicateMariaDbSmoke
         System.Collections.Generic.List<string> ids = new System.Collections.Generic.List<string>();
         foreach (DataRow row in table.Rows)
             ids.Add(row.IsNull("ID") ? "NULL" : Convert.ToString(row["ID"], CultureInfo.InvariantCulture));
+        ids.Sort(StringComparer.Ordinal); // SQL result order is unspecified without ORDER BY.
         string actual = string.Join(",", ids.ToArray());
         Require(actual == expected, description + ": expected [" + expected + "] got [" + actual + "]");
         Console.WriteLine("PASS " + description);
