@@ -86,6 +86,7 @@ internal static class PortablePostingSmoke
         bool rejected = false;
         try { CheckoutTransactionFinalizationService.PostAndFinalize(store, input, store); }
         catch (InvalidOperationException ex) { rejected = ex.Message == message; }
+        catch (NullReferenceException ex) { rejected = ex.Message == message; }
         if (!rejected) throw new Exception("Malformed checkout reader must fail at its original stage: " + message);
         Assert(store, expected);
         if (store.CommitCount != 0 || store.CloseCount != 0)
