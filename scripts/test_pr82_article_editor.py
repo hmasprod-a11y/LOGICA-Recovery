@@ -88,7 +88,7 @@ assert ids(queries[0], code="NORMAL") == [3], "ordinary barcodes unchanged"
 # bypass duplicate detection and save an already-used barcode.
 assert 'Strings.Trim(code ?? "")' in lookup
 assert lookup.count('NormalizeCode(code)') == 2
-assert 'NormalizeCode(Conversions.ToString(code))' in lookup
+assert 'NormalizeCode(code == null || code == DBNull.Value ? "" : Conversions.ToString(code))' in lookup, "NULL collection barcode must not throw in VB conversion"
 assert lookup.count("AND @code <> ''") == 3, "empty barcodes are not unique keys"
 normalize = lambda code: (code or "").strip(" ")
 assert ids(queries[0], code=normalize(" NORMAL ")) == [3]
