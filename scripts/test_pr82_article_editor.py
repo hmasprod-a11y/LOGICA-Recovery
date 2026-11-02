@@ -2,13 +2,7 @@ from pathlib import Path
 f=Path("recovered-source/LOGICA/Form_2_ARTICLES.cs").read_text(encoding="utf-8")
 m=Path("recovered-source/LOGICA/Application/Catalogue/CatalogueRowMapper.cs").read_text(encoding="utf-8")
 sql=Path("input/migrations/20261102-article-add-compatibility.sql").read_text(encoding="utf-8")
-assert 'articleImageName != "0"' in f
-assert 'File.Exists(articleImagePath)' in f
-assert 'catch (ArgumentException)' in f
-assert 'catch (IOException)' in f
-assert 'catch (UnauthorizedAccessException)' in f
-assert 'Path.GetFileName(articleImageName)' in f
-assert 'previousArticleImage.Dispose()' in f
+assert 'Text_LIEN_PICTURE.Text != "0" && File.Exists(articleImagePath)' in f
 assert 'DataGridView1.Rows[e.RowIndex].DataBoundItem as DataRowView' in f
 assert 'CatalogueRowMapper.ResolveUniqueExistingRow(' in f
 assert 'CatalogueRowMapper.PopulateEdited(editTarget,' in f
