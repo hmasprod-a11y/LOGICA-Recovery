@@ -2913,8 +2913,9 @@ public class FormDialog_calc : Form
 					((Control)val).Font = new Font("Calibri", 12f, (FontStyle)1);
 					// Fit long payment captions without clipping on scaled displays.
 					int preferredWidth = TextRenderer.MeasureText(methodName, val.Font).Width + 22;
-					int availableWidth = Math.Max(85, FlowLayoutPanel_MODE_P.ClientSize.Width - 10);
-					val.Width = Math.Min(availableWidth, Math.Max(85, preferredWidth));
+					// The flow panel can report zero client width during Load; do not
+					// collapse a readable caption to 85px before the first layout pass.
+					val.Width = Math.Max(85, Math.Min(320, preferredWidth));
 					((Control)val).ForeColor = Color.FromArgb(2, 45, 162);
 					((Control)val).Click += FAM_click;
 					((Control)FlowLayoutPanel_MODE_P).Controls.Add((Control)(object)val);
