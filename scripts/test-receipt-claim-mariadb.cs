@@ -115,6 +115,9 @@ internal static class ReceiptClaimMariaDbSmoke
                 "ID_BR VARCHAR(96) NOT NULL, ETAT VARCHAR(32) NOT NULL, " +
                 "UNIQUE KEY uq_receipt (ID_BR)) ENGINE=InnoDB");
             Execute(connection, null,
+                "CREATE TABLE TABLE_RECEPTIONS_DETAILS (" +
+                "SEQ BIGINT AUTO_INCREMENT PRIMARY KEY, ID_BR VARCHAR(96)) ENGINE=InnoDB");
+            Execute(connection, null,
                 "CREATE TABLE TABLE_ARTICLES (ID_ARTICLE VARCHAR(96) PRIMARY KEY, " +
                 "STOCK DECIMAL(18,3) NOT NULL) ENGINE=InnoDB");
             Execute(connection, null,
