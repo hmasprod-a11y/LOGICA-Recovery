@@ -297,6 +297,66 @@ internal static class ReceiptArticleSelectionSmoke
             Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(missingReceiptId.DefaultView[0], "BR-001") == null,
                 "missing receipt ID schema fails closed");
 
+            // Actual receipt Add button: reject invalid text before legacy VB
+            // decimal conversion and before a line can be inserted. The core
+            // accepts caller-supplied parsing so the Windows edge keeps its
+            // Microsoft.VisualBasic culture and numeric semantics unchanged.
+            int receiptConversions = 0;
+            Func<string, bool> isReceiptNumeric = delegate(string input) {
+                decimal ignored;
+                return Decimal.TryParse(input, System.Globalization.NumberStyles.Number,
+                    System.Globalization.CultureInfo.InvariantCulture, out ignored);
+            };
+            Func<string, decimal> convertReceipt = delegate(string input) {
+                receiptConversions++;
+                return Decimal.Parse(input, System.Globalization.NumberStyles.Number,
+                    System.Globalization.CultureInfo.InvariantCulture);
+            };
+            decimal parsedReceiptNumber;
+            Check(!ReceiptLineGridGuard.TryReadReceiptNumber(null, true, isReceiptNumeric,
+                convertReceipt, out parsedReceiptNumber) && parsedReceiptNumber == 0m && receiptConversions == 0,
+                "missing receipt quantity is rejected before conversion");
+            Check(!ReceiptLineGridGuard.TryReadReceiptNumber("  ", true, isReceiptNumeric,
+                convertReceipt, out parsedReceiptNumber) && receiptConversions == 0,
+                "whitespace receipt quantity is rejected before conversion");
+            Check(!ReceiptLineGridGuard.TryReadReceiptNumber("bad", true, isReceiptNumeric,
+                convertReceipt, out parsedReceiptNumber) && receiptConversions == 0,
+                "malformed receipt quantity cannot reach VB decimal conversion");
+            Check(!ReceiptLineGridGuard.TryReadReceiptNumber("-0.01", true, isReceiptNumeric,
+                convertReceipt, out parsedReceiptNumber) && parsedReceiptNumber == 0m,
+                "negative fractional quantity is rejected even when legacy Val truncates to zero");
+            Check(!ReceiptLineGridGuard.TryReadReceiptNumber("-2", true, isReceiptNumeric,
+                convertReceipt, out parsedReceiptNumber), "negative whole receipt quantity is rejected");
+            Check(ReceiptLineGridGuard.TryReadReceiptNumber("0", true, isReceiptNumeric,
+                convertReceipt, out parsedReceiptNumber) && parsedReceiptNumber == 0m,
+                "legacy zero quantity remains accepted");
+            Check(ReceiptLineGridGuard.TryReadReceiptNumber("2.75", true, isReceiptNumeric,
+                convertReceipt, out parsedReceiptNumber) && parsedReceiptNumber == 2.75m,
+                "positive fractional receipt quantity is preserved exactly");
+            Check(ReceiptLineGridGuard.TryReadReceiptNumber("-1.25", false, isReceiptNumeric,
+                convertReceipt, out parsedReceiptNumber) && parsedReceiptNumber == -1.25m,
+                "legacy signed purchase and sale prices remain accepted");
+            Check(!ReceiptLineGridGuard.TryReadReceiptNumber("", false, isReceiptNumeric,
+                convertReceipt, out parsedReceiptNumber), "empty receipt price is rejected");
+            Check(!ReceiptLineGridGuard.TryReadReceiptNumber("N/A", false, isReceiptNumeric,
+                convertReceipt, out parsedReceiptNumber), "malformed receipt price is rejected");
+            int invalidReceiptDelegates = 0;
+            try { ReceiptLineGridGuard.TryReadReceiptNumber("1", true, null,
+                convertReceipt, out parsedReceiptNumber); }
+            catch (ArgumentNullException) { invalidReceiptDelegates++; }
+            try { ReceiptLineGridGuard.TryReadReceiptNumber("1", true, isReceiptNumeric,
+                null, out parsedReceiptNumber); }
+            catch (ArgumentNullException) { invalidReceiptDelegates++; }
+            Check(invalidReceiptDelegates == 2, "missing numeric callbacks fail closed");
+            var receiptConversionError = new InvalidOperationException("legacy conversion failure");
+            Exception observedReceiptConversionError = null;
+            try { ReceiptLineGridGuard.TryReadReceiptNumber("1", true, isReceiptNumeric,
+                delegate(string input) { throw receiptConversionError; }, out parsedReceiptNumber); }
+            catch (Exception error) { observedReceiptConversionError = error; }
+            Check(Object.ReferenceEquals(receiptConversionError, observedReceiptConversionError),
+                "unexpected VB numeric conversion errors propagate without inserting a line");
+            Console.WriteLine("PASS receipt add numeric preflight: invalid, fractional, zero, prices and conversion errors");
+
             // Save preflight: the original UI checked stale total labels before
             // EndEdit/recalculation, rejecting a valid first line or saving a
             // previous amount. The production button now uses this sequence.
