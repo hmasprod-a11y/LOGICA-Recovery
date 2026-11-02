@@ -2528,6 +2528,17 @@ class PosSmoke {
   Directory.CreateDirectory(root);
   try {
    folder.SetValue(null,root);
+   var galleryMethod=assembly.GetType("LOGICA.Form_2_ARTICLES",true).GetMethod("ResolveArticleGalleryDirectory",Flags);
+   if(galleryMethod==null)throw new Exception("Article gallery portable fallback missing");
+   string gallery=Path.Combine(root,"bd","Galerie");
+   if(Convert.ToString(galleryMethod.Invoke(null,new object[]{root,root}))!=root)
+    throw new Exception("Missing gallery did not fall back to existing application folder");
+   Directory.CreateDirectory(gallery);
+   if(Convert.ToString(galleryMethod.Invoke(null,new object[]{root,root}))!=gallery)
+    throw new Exception("Existing shop gallery was not preferred");
+   string missingShop=Path.Combine(root,"absent-shop");
+   if(Convert.ToString(galleryMethod.Invoke(null,new object[]{missingShop,root}))!=gallery)
+    throw new Exception("Missing shop root did not use portable application gallery");
    using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_2_ARTICLES",true))) {
     var preview=(PictureBox)Get(form,"Picture_IMAGE");
     var persist=form.GetType().GetMethod("TryPersistArticleImage",Flags);
