@@ -63,6 +63,8 @@ db.executemany("INSERT INTO TABLE_ARTICLES VALUES (?, ?, ?, ?)", [
     (1, "ABC'123", "First", "A'1"),
     (2, "ABC'123", "Second", "B"),
     (3, "NORMAL", "Third", "C"),
+    (4, "", "No barcode A", "IMG-A"),
+    (5, "", "No barcode B", "IMG-B"),
 ])
 def ids(sql, **params):
     return [row[0] for row in db.execute(sql, params)]
@@ -81,5 +83,24 @@ for query, params in (
 ):
     assert ids(query, **params) == [], "malformed input must not widen the predicate"
 assert ids(queries[0], code="NORMAL") == [3], "ordinary barcodes unchanged"
+# The real create/edit mapper trims Code before persistence. Prechecks must
+# normalize to the same value; otherwise a user-entered trailing space could
+# bypass duplicate detection and save an already-used barcode.
+assert 'Strings.Trim(code ?? "")' in lookup
+assert lookup.count('NormalizeCode(code)') == 2
+assert 'NormalizeCode(Conversions.ToString(code))' in lookup
+assert lookup.count("AND @code <> ''") == 3, "empty barcodes are not unique keys"
+normalize = lambda code: (code or "").strip(" ")
+assert ids(queries[0], code=normalize(" NORMAL ")) == [3]
+assert ids(queries[1], code=normalize(" NORMAL "), excludedId=1) == [3]
+assert ids(queries[3], code=normalize(" NORMAL ")) == [3]
+assert ids(queries[0], code=normalize("")) == [], "image-only products can coexist"
+assert ids(queries[0], code=normalize("   ")) == [], "space-only barcode is blank"
+assert ids(queries[1], code=normalize(""), excludedId=4) == [], "edit without barcode allowed"
+assert ids(queries[1], code=normalize("  "), excludedId=5) == []
+assert ids(queries[3], code=normalize("")) == [], "collection blank barcode allowed"
+assert ids(queries[2], articleId="IMG-A", excludedId=5) == [4], "article ID uniqueness still enforced"
+assert ids(queries[2], articleId="IMG-B", excludedId=4) == [5]
+assert ids(queries[0], code=normalize("ABC'123")) == [1, 2], "nonempty duplicate behavior retained"
 db.close()
-print("Catalogue parameterized duplicate-lookup regression: 11 SQL cases passed")
+print("Catalogue parameterized duplicate-lookup regression: 22 SQL cases passed")
