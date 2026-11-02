@@ -91,6 +91,25 @@ public static class LogicaActivationCaptionProbe {
     public static extern int GetWindowText(IntPtr hwnd, StringBuilder buffer, int capacity);
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+    public static extern int GetClassName(IntPtr hwnd, StringBuilder buffer, int capacity);
+    [DllImport("user32.dll", EntryPoint="GetWindowLongW")]
+    public static extern int GetWindowStyle(IntPtr hwnd, int index);
+    public static bool HasVisiblePasswordEdit(IntPtr parent) {
+        bool found = false;
+        ChildCallback callback = (hwnd, param) => {
+            if (!IsWindowVisible(hwnd)) return true;
+            var cls = new StringBuilder(256);
+            GetClassName(hwnd, cls, cls.Capacity);
+            if (cls.ToString().IndexOf("EDIT", StringComparison.OrdinalIgnoreCase) < 0) return true;
+            const int GWL_STYLE = -16;
+            const int ES_PASSWORD = 0x20;
+            if ((GetWindowStyle(hwnd, GWL_STYLE) & ES_PASSWORD) != 0) found = true;
+            return true;
+        };
+        EnumChildWindows(parent, callback, IntPtr.Zero);
+        return found;
+    }
     public static bool HasVisibleActivationLabel(IntPtr parent) {
         bool detected = false;
         ChildCallback callback = (hwnd, param) => {
@@ -112,6 +131,12 @@ public static class LogicaActivationCaptionProbe {
     if ([LogicaActivationCaptionProbe]::HasVisibleActivationLabel($target.MainWindowHandle)) {
         $report.activationLabelLocated = $true
         $report.activationLabelVisible = $true
+    }
+    # Native WinForms edit controls can appear as ControlType.Pane with a numeric
+    # AutomationId. Read-only Win32 ES_PASSWORD detection is the fallback.
+    if ([LogicaActivationCaptionProbe]::HasVisiblePasswordEdit($target.MainWindowHandle)) {
+        $report.loginPinInputLocated = $true
+        $report.loginPinInputVisible = $true
     }
     $report.inspectionStatus = 'inspected'
     # A visible PIN input establishes the login screen only; it is NOT proof
