@@ -24,6 +24,8 @@ NOT_FIELD_VERIFIED = (
     "printerHardwareVerified",
     "cashDrawerHardwareVerified",
     "realPrinterAndScannerVerified",
+    # No server-side trace links the child EXE to a successful DB authentication.
+    "directExeWithoutOverrideDatabaseConnectionVerified",
 )
 STARTUP_VERIFIED = (
     "extractedExeResponsive",
@@ -33,13 +35,13 @@ STARTUP_VERIFIED = (
     "directExeWithoutConnectionOverrideVerified",
     "directExeWithoutOverrideResponsiveWindow",
     "startupReadOnlyDatabaseCountsVerified",
+    "isolatedArticleTicketContentStableAcrossEntrypoints",
     "temporaryMariaDbClientCredentialsCleaned",
     "launcherLoginPinScreenVisible",
     "startCmdLoginPinScreenVisible",
     "directExeLoginPinScreenVisible",
     "startCmdOfflineMariaDbPreprovisioned",
     "directExeWithoutOverrideAttempted",
-    "directExeWithoutOverrideDatabaseConnectionVerified",
     "injectedExecutableProbeRejected",
     "immutableTamperProbeRejected",
     "immutableDeletionProbeRejected",
@@ -61,6 +63,8 @@ def validate(report, expected_commit=None):
         raise ValueError("Missing or invalid exact source SHA")
     if expected_commit is not None and sha.lower() != expected_commit.lower():
         raise ValueError("Smoke evidence source SHA differs from checked-out release")
+    if type(report.get("isolatedSalesDigestCheckCount")) is not int or report["isolatedSalesDigestCheckCount"] != 3:
+        raise ValueError("Expected independent article/ticket content fingerprints after all three entrypoints")
     for name in NOT_FIELD_VERIFIED:
         if report.get(name) is not False:
             raise ValueError(f"Unproven field acceptance was promoted or omitted: {name}")
@@ -102,6 +106,7 @@ def self_test():
         "originalShopDatabaseTouched": False,
         "isolatedMariaDbPort": 3308,
         "sourceCommit": "a" * 40,
+        "isolatedSalesDigestCheckCount": 3,
         "launcherActivationScreenVisible": None,
         "startCmdActivationScreenVisible": False,
         "directExeWithoutOverrideActivationScreenVisible": None,
@@ -132,6 +137,9 @@ def self_test():
         ("originalShopDatabaseTouched", True),
         ("isolatedMariaDbPort", 3306),
         ("sourceCommit", "unknown"),
+        ("isolatedSalesDigestCheckCount", 2),
+        ("isolatedSalesDigestCheckCount", True),
+        ("isolatedSalesDigestCheckCount", None),
         ("launcherActivationScreenVisible", True),
         ("startCmdActivationScreenVisible", True),
         ("launcherActivationScreenVisible", "unknown"),
