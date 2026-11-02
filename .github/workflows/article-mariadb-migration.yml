@@ -1,0 +1,35 @@
+name: Article MariaDB migration integration
+on:
+  pull_request:
+    paths:
+      - input/migrations/20261102-article-add-compatibility.sql
+      - .github/workflows/article-mariadb-migration.yml
+  workflow_dispatch:
+jobs:
+  migration:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: testroot
+          MARIADB_DATABASE: logica_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify additive migration and group persistence
+        shell: bash
+        run: |
+          set -euo pipefail
+          MYSQL="docker exec $(docker ps -q --filter ancestor=mariadb:11.4) mariadb -uroot -ptestroot logica_test"
+          $MYSQL -e "CREATE TABLE TABLE_ARTICLES (ID INT PRIMARY KEY, Article VARCHAR(255)); INSERT INTO TABLE_ARTICLES VALUES (1,'Existing product');"
+          $MYSQL < input/migrations/20261102-article-add-compatibility.sql
+          $MYSQL < input/migrations/20261102-article-add-compatibility.sql
+          $MYSQL -e "UPDATE TABLE_ARTICLES SET GROUPE='BOISSONS' WHERE ID=1;"
+          value="$($MYSQL -N -e "SELECT CONCAT(ID, ':', Article, ':', GROUPE) FROM TABLE_ARTICLES WHERE ID=1")"
+          test "$value" = '1:Existing product:BOISSONS'
+          echo "Migration is repeatable; preserved original row and persisted group."
