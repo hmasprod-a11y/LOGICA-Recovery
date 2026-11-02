@@ -12,3 +12,9 @@ print("PR82 article editor static regression checks passed")
 # Editing an existing row must tolerate every missing column from the recovered schema.
 for field in ("GROUPE","PRIX_QTE","PRIX_QTE_MIN","Taille","Couleur","Emplacement"):
     assert 'DT.Columns.Contains("'+field+'") ? DT.Rows[position2]["'+field+'"]' in f,field
+
+# Sales-list and barcode selection must tolerate legacy TABLE_ARTICLES columns too.
+sales = Path("recovered-source/LOGICA/Form_3_VENTE.cs").read_text(encoding="utf-8")
+for field in ("GROUPE", "PRIX_QTE", "PRIX_QTE_MIN"):
+    assert 'selectedArticle.Table.Columns.Contains("'+field+'")' in sales,field
+assert 'Module1.dt1.Columns.Contains("GROUPE")' in sales
