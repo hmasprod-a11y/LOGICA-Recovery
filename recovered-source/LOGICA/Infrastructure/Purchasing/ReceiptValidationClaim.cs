@@ -95,10 +95,14 @@ namespace LOGICA.Infrastructure.Purchasing
                 throw new InvalidOperationException("Receipt header has no valid state.");
             if (String.Equals(state, "VALIDER", StringComparison.OrdinalIgnoreCase))
                 return false;
+            // The legacy receipt editor persists a pending receipt as ENREGISTRER.
+            // Do not turn cancelled, draft or unknown states into a stock posting.
+            if (!String.Equals(state, "ENREGISTRER", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Only registered receipts can be validated.");
 
             using (var update = new MySqlCommand(
                 "UPDATE TABLE_RECEPTIONS_ENTETE SET ETAT = 'VALIDER' " +
-                "WHERE ID_BR = @receiptId AND ETAT <> 'VALIDER'",
+                "WHERE ID_BR = @receiptId AND ETAT = 'ENREGISTRER'",
                 connection, transaction))
             {
                 update.Parameters.AddWithValue("@receiptId", receiptId);
