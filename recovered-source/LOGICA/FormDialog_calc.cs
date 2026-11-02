@@ -2807,6 +2807,40 @@ public class FormDialog_calc : Form
 		((Control)FlowLayoutPanel_MODE_P).Left = checked((int)Math.Round((double)((Control)Panel_MODE_P).Width / 2.0 - (double)((Control)FlowLayoutPanel_MODE_P).Width / 2.0));
 	}
 
+	// Reopening payment must release the previous icon bitmaps and controls.
+	// Controls.Clear() detaches children but does not dispose them.
+	private void ClearPaymentMethodButtons()
+	{
+		while (FlowLayoutPanel_MODE_P.Controls.Count > 0)
+		{
+			Control control = FlowLayoutPanel_MODE_P.Controls[0];
+			FlowLayoutPanel_MODE_P.Controls.Remove(control);
+			Button button = control as Button;
+			if (button != null && button.Image != null)
+			{
+				Image ownedImage = button.Image;
+				button.Image = null;
+				ownedImage.Dispose();
+			}
+			control.Dispose();
+		}
+	}
+
+	// A blank/new payment grid row must never count as a chosen settlement.
+	// The actual payment method is in column 3 of the legacy calculation grid.
+	private bool HasSelectedPaymentMethod()
+	{
+		foreach (DataGridViewRow row in DataGridView_CALC.Rows)
+		{
+			if (row.IsNewRow || row.Cells.Count <= 3) continue;
+			object method = row.Cells[3].Value;
+			if (method != null && method != DBNull.Value &&
+				!string.IsNullOrWhiteSpace(Convert.ToString(method)))
+				return true;
+		}
+		return false;
+	}
+
 	private void FormDialog_calc_Load(object sender, EventArgs e)
 	{
 		//IL_034e: Unknown result type (might be due to invalid IL or missing references)
@@ -2822,7 +2856,7 @@ public class FormDialog_calc : Form
 			try
 			{
 				Text_TOTAL_NET.Text = Conversions.ToString(Conversions.ToDouble(MyProject.Forms.Form_3_VENTE.Text_TOTAL_NET.Text));
-				((Control)FlowLayoutPanel_MODE_P).Controls.Clear();
+				ClearPaymentMethodButtons();
 				int num = MyProject.Forms.Form_3_VENTE.DataGridView_MODE_P.Rows.Count - 1;
 				int num2 = 0;
 				while (true)
@@ -2874,6 +2908,10 @@ public class FormDialog_calc : Form
 					((ButtonBase)val).FlatAppearance.BorderSize = 0;
 					((Control)val).Cursor = Cursors.Hand;
 					((Control)val).Font = new Font("Calibri", 12f, (FontStyle)1);
+					// Fit long payment captions without clipping on scaled displays.
+					int preferredWidth = TextRenderer.MeasureText(methodName, val.Font).Width + 22;
+					int availableWidth = Math.Max(85, FlowLayoutPanel_MODE_P.ClientSize.Width - 10);
+					val.Width = Math.Min(availableWidth, Math.Max(85, preferredWidth));
 					((Control)val).ForeColor = Color.FromArgb(2, 45, 162);
 					((Control)val).Click += FAM_click;
 					((Control)FlowLayoutPanel_MODE_P).Controls.Add((Control)(object)val);
@@ -2931,6 +2969,9 @@ public class FormDialog_calc : Form
 		{
 			try
 			{
+				// Ignore stale or blank controls instead of inserting an unusable payment row.
+				Button selectedMethod = sender as Button;
+				if (selectedMethod == null || string.IsNullOrWhiteSpace(selectedMethod.Text)) return;
 				DataGridView_CALC.Rows.Add(new object[4]
 				{
 					Conversion.Val(((ButtonBase)Button_RESTE).Text),
@@ -2980,7 +3021,7 @@ public class FormDialog_calc : Form
 		//IL_00c1: Unknown result type (might be due to invalid IL or missing references)
 		try
 		{
-			if (DataGridView_CALC.Rows.Count == 0)
+			if (!HasSelectedPaymentMethod())
 			{
 				MessageBox.Show("Choisissez une mode de paiement", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 				return;
