@@ -12605,10 +12605,13 @@ public class Form_3_VENTE : Form
 
 	private void vScrollBar1_Scroll(object sender, ScrollEventArgs e)
 	{
-		FlowLayoutPanel flowLayout_ARTICLES = FlowLayout_ARTICLES;
-		Point autoScrollPosition = new Point(0, ((ScrollBar)vScrollBar1).Value);
-		((ScrollableControl)flowLayout_ARTICLES).AutoScrollPosition = autoScrollPosition;
-		Application.DoEvents();
+		if (FlowLayout_ARTICLES == null || vScrollBar1 == null) return;
+		// Scroll events can arrive with an old position after search replaced the
+		// image tiles. Clamp to the live viewport and avoid DoEvents reentrancy:
+		// nested search/scroll callbacks could dispose tiles still being painted.
+		int maxValue = Math.Max(0, vScrollBar1.Maximum - vScrollBar1.LargeChange + 1);
+		int requested = e == null ? vScrollBar1.Value : e.NewValue;
+		FlowLayout_ARTICLES.AutoScrollPosition = new Point(0, Math.Max(0, Math.Min(maxValue, requested)));
 	}
 
 	public void B_article2_click(object sender, EventArgs e)
