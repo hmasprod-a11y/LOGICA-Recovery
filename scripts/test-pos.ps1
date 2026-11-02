@@ -39,6 +39,25 @@ Write-Host "desktop-payment-culture $cultureStatus"
 Get-Content $cultureLog | Select-Object -First 30 | ForEach-Object{Write-Host $_}
 if($cultureStatus -ne 'PASS') { Get-Content $cultureError | Select-Object -First 40 | ForEach-Object{Write-Host $_} }
 
+# Verify the article delete movement SQL against a TEMPORARY table in isolated CI MariaDB.
+$deleteExe=Join-Path $dist 'DesktopArticleDeleteSmoke.exe'
+& $csc /nologo /platform:x86 /target:exe /r:System.Windows.Forms.dll /r:System.Data.dll "/out:$deleteExe" (Join-Path $PSScriptRoot 'test-desktop-article-delete.cs')
+if ($LASTEXITCODE -ne 0) { throw 'Desktop deletion harness compilation failed' }
+Copy-Item dist/LOGICA.exe.config (Join-Path $dist 'DesktopArticleDeleteSmoke.exe.config') -Force
+$deleteLog=Join-Path (Resolve-Path results).Path 'desktop-article-delete.log'
+$deleteError=Join-Path (Resolve-Path results).Path 'desktop-article-delete.stderr.log'
+$deleteProcess=Start-Process $deleteExe -WorkingDirectory $dist -RedirectStandardOutput $deleteLog -RedirectStandardError $deleteError -PassThru
+if(-not $deleteProcess.WaitForExit(60000)) {
+  $deleteProcess.Kill()
+  $deleteStatus='TIMEOUT'
+} else {
+  $deleteStatus=if($deleteProcess.ExitCode -eq 0){'PASS'}else{'FAIL'}
+}
+$results+= [pscustomobject]@{test='desktop-article-delete';status=$deleteStatus;exitCode=$deleteProcess.ExitCode}
+Write-Host "desktop-article-delete $deleteStatus"
+Get-Content $deleteLog | Select-Object -First 30 | ForEach-Object{Write-Host $_}
+if($deleteStatus -ne 'PASS') { Get-Content $deleteError | Select-Object -First 40 | ForEach-Object{Write-Host $_} }
+
 # Launch the real Windows entry point as well as exercising forms through the harness.
 $app=Start-Process (Join-Path $dist 'LOGICA.exe') -WorkingDirectory $dist -PassThru
 # Windows cold-start may take longer than the former fixed eight seconds.
