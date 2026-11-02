@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Windows.Forms;
@@ -2808,7 +2809,10 @@ public class FormDialog_calc : Form
 
 	private void Form_Shown(object sender, EventArgs e)
 	{
-		((Control)FlowLayoutPanel_MODE_P).Left = checked((int)Math.Round((double)((Control)Panel_MODE_P).Width / 2.0 - (double)((Control)FlowLayoutPanel_MODE_P).Width / 2.0));
+		// When many methods or large DPI make the flow wider than the panel,
+		// a negative Left hides the first (often cash) button off-screen.
+		((Control)FlowLayoutPanel_MODE_P).Left = Math.Max(0,
+			checked((int)Math.Round(((Control)Panel_MODE_P).ClientSize.Width - ((Control)FlowLayoutPanel_MODE_P).Width) / 2.0)));
 	}
 
 	// Reopening payment must release the previous icon bitmaps and controls.
@@ -3153,7 +3157,18 @@ public class FormDialog_calc : Form
 			}
 			if (DataGridView_CALC.CurrentRow == null || DataGridView_CALC.CurrentRow.IsNewRow) return;
 			int rowIndex = DataGridView_CALC.CurrentRow.Index;
-			DataGridView_CALC.Rows[rowIndex].Cells[1].Value = Operators.AddObject(DataGridView_CALC.Rows[rowIndex].Cells[1].Value, Conversion.Val(RuntimeHelpers.GetObjectValue(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null))));
+			// The 0.5 denomination caption uses an invariant dot, even on fr-FR
+			// workstations. VB Val/AddObject can truncate or concatenate money.
+			Button denominationButton = sender as Button;
+			decimal denomination, paid;
+			if (denominationButton == null ||
+				!decimal.TryParse(denominationButton.Text, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out denomination) ||
+				denomination <= 0m ||
+				!TryGetPaymentNumber(DataGridView_CALC.Rows[rowIndex].Cells[1].Value, out paid)) return;
+			decimal updated;
+			try { updated = checked(paid + denomination); }
+			catch (OverflowException) { return; }
+			DataGridView_CALC.Rows[rowIndex].Cells[1].Value = updated;
 			Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 			((Control)DataGridView_CALC).Focus();
 		}
@@ -3401,20 +3416,21 @@ public class FormDialog_calc : Form
 	private void TextBox_keyPress(object sender, KeyPressEventArgs e)
 	{
 		TextBox input = sender as TextBox;
-		if (input != null && (e.KeyChar == '.' || e.KeyChar == '-'))
-		{
-			string remaining = input.Text.Remove(input.SelectionStart, input.SelectionLength);
-			if ((e.KeyChar == '.' && remaining.IndexOf('.') >= 0) ||
-				(e.KeyChar == '-' && (input.SelectionStart != 0 || remaining.IndexOf('-') >= 0)))
-			{
-				e.Handled = true;
-				return;
-			}
-		}
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
-		{
+		if (input == null) return;
+		char separator = CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator[0];
+		// Both the physical numeric keypad (.) and the French comma must
+		// produce a value understood by the current cashier culture.
+		if (e.KeyChar == '.' || e.KeyChar == ',') e.KeyChar = separator;
+		string remaining = input.Text.Remove(input.SelectionStart, input.SelectionLength);
+		if (e.KeyChar == separator &&
+			(remaining.IndexOf(separator) >= 0 || remaining.IndexOf('.') >= 0 || remaining.IndexOf(',') >= 0))
 			e.Handled = true;
-		}
+		else if (e.KeyChar == '-' &&
+			(input.SelectionStart != 0 || remaining.IndexOf('-') >= 0))
+			e.Handled = true;
+		else if ((e.KeyChar < '0' || e.KeyChar > '9') &&
+			e.KeyChar != '\b' && e.KeyChar != separator && e.KeyChar != '-')
+			e.Handled = true;
 	}
 
 	private void DataGridView1_CellValueChanged(object sender, DataGridViewCellEventArgs e)
@@ -3549,8 +3565,9 @@ public class FormDialog_calc : Form
 		string current = Label_NUM.Text ?? "";
 		if (character >= '0' && character <= '9')
 			Label_NUM.Text = current + character;
-		else if (character == '.' && current.IndexOf('.') < 0)
-			Label_NUM.Text = (current.Length == 0 || current == "-" ? current + "0" : current) + ".";
+		else if (character == '.' && current.IndexOf('.') < 0 && current.IndexOf(',') < 0)
+			Label_NUM.Text = (current.Length == 0 || current == "-" ? current + "0" : current) +
+				CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator;
 		else if (character == '-' && current.Length == 0)
 			Label_NUM.Text = "-";
 		// Reject duplicate decimal points, misplaced minus and nonnumeric captions.
