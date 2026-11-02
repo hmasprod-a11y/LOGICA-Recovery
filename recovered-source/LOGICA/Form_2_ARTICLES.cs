@@ -13812,27 +13812,13 @@ public class Form_2_ARTICLES : Form
 				Combo_PRINTER.Text = editRow["PRINTER"].ToString();
 				Combo_PRINTER_DUPLICATA.Text = editRow["PRINTER_DUPLICATA"].ToString();
 				Text_LIEN_PICTURE.Text = editRow["Images"].ToString();
-				// A missing or damaged legacy photo must not block article editing.
-				Image previousArticleImage = Picture_IMAGE.Image;
+				string articleImagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", Text_LIEN_PICTURE.Text);
 				Picture_IMAGE.Image = null;
-				if (previousArticleImage != null) previousArticleImage.Dispose();
-				string articleImageName = Text_LIEN_PICTURE.Text;
-				if (!string.IsNullOrWhiteSpace(articleImageName) && articleImageName != "0" &&
-					string.Equals(Path.GetFileName(articleImageName), articleImageName, StringComparison.Ordinal))
+				if (!string.IsNullOrWhiteSpace(Text_LIEN_PICTURE.Text) && Text_LIEN_PICTURE.Text != "0" && File.Exists(articleImagePath))
 				{
-					string articleImagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", articleImageName);
-					if (File.Exists(articleImagePath))
+					using (Image articleImage = Image.FromFile(articleImagePath))
 					{
-						try
-						{
-							using (Image articleImage = Image.FromFile(articleImagePath))
-							{
-								Picture_IMAGE.Image = (Image)new Bitmap(articleImage);
-							}
-						}
-						catch (ArgumentException) { /* Invalid image bytes: blank preview. */ }
-						catch (IOException) { /* Unreadable legacy image: blank preview. */ }
-						catch (UnauthorizedAccessException) { /* Optional image unavailable. */ }
+						Picture_IMAGE.Image = (Image)new Bitmap(articleImage);
 					}
 				}
 				Text_LIEN_PICTURE_ANC.Text = editRow["Images"].ToString();
