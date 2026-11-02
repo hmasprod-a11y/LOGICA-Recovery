@@ -70,6 +70,19 @@ function Assert-PackagedCodeHashes([string]$directory, [hashtable]$baseline) {
         if (-not $baseline.ContainsKey($relative)) { throw "Unexpected packaged code file: $relative" }
     }
 }
+# The activation UI probe is read-only and never supplies or modifies a license.
+$activationProbe = Join-Path $PSScriptRoot 'probe-activation-ui.ps1'
+if (-not (Test-Path -LiteralPath $activationProbe -PathType Leaf)) {
+    throw 'Read-only activation UI probe missing'
+}
+function Inspect-ActivationUI([Diagnostics.Process]$target, [string]$name) {
+    $output = Join-Path $results $name
+    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $activationProbe -TargetProcessId $target.Id -OutputPath $output
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $output -PathType Leaf)) {
+        throw "Activation UI inspection failed to produce a report: $name"
+    }
+    return (Get-Content -LiteralPath $output -Raw | ConvertFrom-Json)
+}
 $app = $null
 $started = [Diagnostics.Stopwatch]::StartNew()
 try {
@@ -206,6 +219,10 @@ try {
             throw "Extracted customer launcher did not open responsive LOGICA.exe on local MariaDB 3308: $details"
         }
         Write-Host 'PASS: extracted customer launcher started actual LOGICA.exe with local MariaDB 3308'
+        $launcherActivation = Inspect-ActivationUI $launcherApp 'extracted-release-launcher-activation.json'
+        if ($launcherActivation.activationScreenVisible -eq $true) {
+            Write-Warning 'BLOCKED: the extracted launcher displayed the legacy activation screen; licensed cashier not verified.'
+        }
     } finally {
         if ($launcherApp) {
             try { $launcherApp.Refresh(); if (-not $launcherApp.HasExited) { $launcherApp.Kill(); $launcherApp.WaitForExit(10000) | Out-Null } } catch { Write-Warning "Could not stop launcher child EXE: $_" }
@@ -253,6 +270,10 @@ try {
             throw "Extracted Start-LOGICA.cmd did not open responsive LOGICA.exe with offline local MariaDB: $details"
         }
         Write-Host 'PASS: extracted Start-LOGICA.cmd started actual LOGICA.exe using preprovisioned offline MariaDB'
+        $cmdActivation = Inspect-ActivationUI $cmdApp 'extracted-release-cmd-activation.json'
+        if ($cmdActivation.activationScreenVisible -eq $true) {
+            Write-Warning 'BLOCKED: Start-LOGICA.cmd displayed the legacy activation screen; licensed cashier not verified.'
+        }
     } finally {
         if ($cmdApp) {
             try { $cmdApp.Refresh(); if (-not $cmdApp.HasExited) { $cmdApp.Kill(); $cmdApp.WaitForExit(10000) | Out-Null } } catch { Write-Warning "Could not stop CMD child EXE: $_" }
@@ -291,6 +312,10 @@ try {
         extractedStartCmdActualExeResponsive = $cmdResponsive
         startCmdOfflineMariaDbPreprovisioned = $true
         licensedCashierScreenVerified = $false
+        launcherActivationInspectionStatus = $launcherActivation.inspectionStatus
+        launcherActivationScreenVisible = $launcherActivation.activationScreenVisible
+        startCmdActivationInspectionStatus = $cmdActivation.inspectionStatus
+        startCmdActivationScreenVisible = $cmdActivation.activationScreenVisible
         directExeWithoutConnectionOverrideVerified = $false
         realPrinterAndScannerVerified = $false
         immutableRuntimeFilesVerified = $baseline.Count
