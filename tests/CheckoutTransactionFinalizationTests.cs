@@ -119,6 +119,15 @@ internal static class CheckoutTransactionFinalizationTests
             CheckoutCommitStage expected = stage == "" ? CheckoutCommitStage.Closed :
                 stage == "commit" ? CheckoutCommitStage.CommitAttempted :
                 stage == "close" ? CheckoutCommitStage.CommitConfirmed : CheckoutCommitStage.Posting;
+            CheckoutAttemptRecoveryAction recovery =
+                expected == CheckoutCommitStage.Posting
+                    ? CheckoutAttemptRecoveryAction.VerifyRollback :
+                expected == CheckoutCommitStage.CommitAttempted ||
+                expected == CheckoutCommitStage.CommitConfirmed
+                    ? CheckoutAttemptRecoveryAction.ReconcileDatabase :
+                    CheckoutAttemptRecoveryAction.ResetBasket;
+            if (progress.RecoveryAction != recovery)
+                throw new Exception("Unsafe SOLDER recovery decision at " + stage);
             if (progress.Stage != expected ||
                 progress.CommitOutcomeUnknown != (expected == CheckoutCommitStage.CommitAttempted) ||
                 progress.CommitWasConfirmed != (expected == CheckoutCommitStage.CommitConfirmed ||
@@ -148,6 +157,10 @@ internal static class CheckoutTransactionFinalizationTests
             if (!retryRejected || accidentalRetry.Events.Count != 0)
                 throw new Exception("Reused SOLDER progress reached database callbacks");
         }
+
+        if (new CheckoutCommitProgress().RecoveryAction !=
+            CheckoutAttemptRecoveryAction.None)
+            throw new Exception("Unused checkout progress must not request rollback or reset");
 
         var missingProgress = new Scenario();
         bool missingProgressRejected = false;
