@@ -51,7 +51,7 @@ try {
             }
             if (-not $ready) { throw "Synthetic $mode WinForms fixture did not open" }
             $json = Join-Path $work ("activation-$mode.json")
-            & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'probe-activation-ui.ps1') -TargetProcessId $process.Id -OutputPath $json
+            & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'probe-activation-ui.ps1') -TargetProcessId $process.Id -OutputPath $json -SyntheticFixtureDiagnostic
             if ($LASTEXITCODE -ne 0) { throw "Activation UI probe failed: $mode" }
             $report = Get-Content -LiteralPath $json -Raw | ConvertFrom-Json
             if ($report.inspectionStatus -ne 'inspected' -or $report.licensedCashierVerified -ne $false) {
