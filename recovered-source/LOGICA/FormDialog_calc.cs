@@ -2860,6 +2860,14 @@ public class FormDialog_calc : Form
 		catch (OverflowException) { return false; }
 	}
 
+	// Do not round-trip monetary totals through Double (loses cents above 2^53).
+	// Invalid legacy totals remain blank so SOLDER fails closed.
+	private static string NormalizePaymentTotal(object value)
+	{
+		decimal amount;
+		return TryGetPaymentNumber(value, out amount) ? Conversions.ToString(amount) : "";
+	}
+
 	private bool HasSelectedPaymentMethod()
 	{
 		bool hasPayment = false;
@@ -2915,7 +2923,7 @@ public class FormDialog_calc : Form
 		{
 			try
 			{
-				Text_TOTAL_NET.Text = Conversions.ToString(Conversions.ToDouble(MyProject.Forms.Form_3_VENTE.Text_TOTAL_NET.Text));
+				Text_TOTAL_NET.Text = NormalizePaymentTotal(MyProject.Forms.Form_3_VENTE.Text_TOTAL_NET.Text);
 				ClearPaymentMethodButtons();
 				int num = MyProject.Forms.Form_3_VENTE.DataGridView_MODE_P.Rows.Count - 1;
 				int num2 = 0;
@@ -3029,6 +3037,12 @@ public class FormDialog_calc : Form
 					Button_calc_Click(sender, e);
 					if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out remainingDue)) return;
 				}
+				decimal transactionTotal;
+				if (!TryGetPaymentNumber(Text_TOTAL_NET.Text, out transactionTotal) ||
+					(transactionTotal >= 0m && remainingDue < 0m) ||
+					(transactionTotal < 0m && remainingDue > 0m) ||
+					(remainingDue == 0m && SelectedPaymentRowCount() > 0))
+					return; // Do not create negative/over-refund or redundant settled rows.
 				int insertedRow = DataGridView_CALC.Rows.Add(new object[4]
 				{
 					remainingDue,
@@ -3088,6 +3102,8 @@ public class FormDialog_calc : Form
 				MessageBox.Show("Choisissez une mode de paiement", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 				return;
 			}
+			decimal outstanding;
+			if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out outstanding)) return;
 			if (Operators.CompareString(((ButtonBase)MyProject.Forms.Form_3_VENTE.Button_OPERATION).Text, "RETOUR REMBOURSEMENT", TextCompare: false) == 0)
 			{
 				if (SelectedPaymentRowCount() > 1)
@@ -3095,13 +3111,13 @@ public class FormDialog_calc : Form
 					MessageBox.Show("Choisissez un seul mode de paiement pour le retour", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Conversions.ToDouble(((ButtonBase)Button_RESTE).Text) != 0.0)
+				if (outstanding != 0m)
 				{
 					MessageBox.Show("Le Reste doit être à zéro (0)", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
 			}
-			if (decimal.Compare(Conversions.ToDecimal(((ButtonBase)Button_RESTE).Text), 0m) > 0)
+			if (outstanding > 0m)
 			{
 				MessageBox.Show("Solder le Reste", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 				return;
@@ -3527,6 +3543,11 @@ public class FormDialog_calc : Form
 			if (!DataGridView_CALC.EndEdit()) return;
 			Button_calc_Click(sender, e);
 			if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out remainder)) return;
+			decimal transactionTotal;
+			if (!TryGetPaymentNumber(Text_TOTAL_NET.Text, out transactionTotal) ||
+				(transactionTotal >= 0m && remainder <= 0m) ||
+				(transactionTotal < 0m && remainder >= 0m))
+				return; // RESTE must never erase change or hide an over-refund.
 			if (SelectedPaymentRowCount() == 0)
 			{
 				Button val = CashPaymentButton();
