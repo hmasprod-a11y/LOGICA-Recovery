@@ -353,6 +353,22 @@ internal static class ReceiptArticleSelectionSmoke
             Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveEditableRow(
                 editableReceipts, "10", "BR-RENUMBERED"), editableReceipts.Rows[0]),
                 "fresh receipt number permits exact edit of original record");
+            editableReceipts.Rows.Add("99", "BR-RENUMBERED", "ENREGISTRER");
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "10", "BR-RENUMBERED") == null,
+                "duplicate receipt numbers block detail-row overwrite");
+            editableReceipts.Rows[4].Delete();
+            Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "10", "BR-RENUMBERED"), editableReceipts.Rows[0]),
+                "deleted duplicate receipt number no longer blocks exact edit");
+            editableReceipts.Rows[0]["ETAT"] = "";
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "10", "BR-RENUMBERED") == null,
+                "missing receipt state blocks stale modification");
+            editableReceipts.Rows[0]["ETAT"] = "ENREGISTRER";
+            Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "10", "BR-RENUMBERED"), editableReceipts.Rows[0]),
+                "restored original editable state remains supported");
             var missingEditableSchema = new DataTable();
             missingEditableSchema.Columns.Add("ID");
             missingEditableSchema.Rows.Add("10");
