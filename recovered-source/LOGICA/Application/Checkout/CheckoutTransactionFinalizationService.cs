@@ -154,6 +154,11 @@ namespace LOGICA.ApplicationLayer.Checkout
             // stock/ticket/payment side effects.
             if (finalizer == null) throw new ArgumentNullException("finalizer");
             if (progress == null) throw new ArgumentNullException("progress");
+            // A malformed legacy/ungated call must not consume its progress
+            // token before any database callback has run. The gated overload
+            // already validates before acquiring its per-cashier gate.
+            // Validation is pure: no lazy reader is evaluated here.
+            CheckoutPostingService.Validate(store, input);
             if (!progress.TryStart())
                 throw new InvalidOperationException("Checkout commit progress cannot be reused.");
 
