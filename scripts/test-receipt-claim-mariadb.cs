@@ -244,7 +244,8 @@ internal static class ReceiptClaimMariaDbSmoke
             Type module = assembly.GetType("LOGICA.Module1", true);
             var configured = (MySqlConnection)module.GetField("cn_SQL",
                 BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
-            var original = new MySqlConnectionStringBuilder(configured.ConnectionString);
+            var original = new MySqlConnectionStringBuilder();
+            original.ConnectionString = configured.ConnectionString;
             Require((String.Equals(original.Server, "127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
                 String.Equals(original.Server, "localhost", StringComparison.OrdinalIgnoreCase)) &&
                 String.Equals(original.Database, "logica_ci", StringComparison.OrdinalIgnoreCase) &&
@@ -253,7 +254,8 @@ internal static class ReceiptClaimMariaDbSmoke
             administration.Open();
             Execute(administration, null, "CREATE DATABASE `" + scratchName + "` CHARACTER SET utf8mb4");
             created = true;
-            var scratch = new MySqlConnectionStringBuilder(original.ConnectionString);
+            var scratch = new MySqlConnectionStringBuilder();
+            scratch.ConnectionString = original.ConnectionString;
             scratch.Database = scratchName;
             Type helper = assembly.GetType("LOGICA.Infrastructure.Purchasing.ReceiptValidationClaim", true);
             MethodInfo method = helper.GetMethod("TryClaim",
