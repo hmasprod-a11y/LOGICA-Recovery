@@ -1136,13 +1136,70 @@ internal static class PortableCheckoutSmoke
                 "Image tile refresh flows through production discount and total rounding");
             imageCurrent.Rows[0]["ID_ARTICLE"] = "REUSED";
             Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
-                imageRef, delegate { return imageCurrent; }).Status == CheckoutVariantChoiceStatus.Missing,
-                "Image tile replaced after display must not be added to basket");
+                imageRef, delegate { return imageCurrent; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Wrong-ID exact image SQL refresh must not masquerade as a missing article");
             imageCurrent.Rows[0]["ID_ARTICLE"] = "IMAGE-LIVE";
             imageCurrent.Rows[0]["Code"] = "REASSIGNED";
             Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
                 imageRef, delegate { return imageCurrent; }).Status == CheckoutVariantChoiceStatus.Ambiguous,
                 "Image tile reused with different barcode fails closed");
+            // The local image reader is an exact ID_ARTICLE query. A wrong
+            // WHERE filter can return a plausible price for an unrelated item.
+            // It must be rejected BEFORE any price/basket preview, even when
+            // the intended article is also present in the result set.
+            imageCurrent.Rows[0]["Code"] = "";
+            DataTable mixedImageSql = imageCurrent.Copy();
+            mixedImageSql.Rows.Add("", "UNRELATED-IMAGE", 99m, 0m);
+            CheckoutVariantChoiceResult mixedImageResult =
+                CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                    imageRef, delegate { return mixedImageSql; });
+            Require(mixedImageResult.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                mixedImageResult.SelectedRow == null,
+                "Exact-ID image SQL callback cannot include an unrelated article");
+            Require(CheckoutSelectionFlowService.ChooseImage(mixedImageSql, imageRef).Status ==
+                CheckoutVariantChoiceStatus.Selected,
+                "Existing broad-catalogue image lookup keeps its legacy contract");
+            DataTable emptyExactImageSql = imageCurrent.Clone();
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                imageRef, delegate { return emptyExactImageSql; }).Status ==
+                CheckoutVariantChoiceStatus.Missing,
+                "Genuinely empty exact-ID image query remains Missing");
+            DataTable duplicateExactImageSql = imageCurrent.Copy();
+            duplicateExactImageSql.Rows.Add("", "IMAGE-LIVE", 20m, 0m);
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                imageRef, delegate { return duplicateExactImageSql; }).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous,
+                "Duplicate exact image identity cannot be added to basket");
+            DataTable corruptExactImageSql = imageCurrent.Copy();
+            corruptExactImageSql.Rows[0]["ID_ARTICLE"] = DBNull.Value;
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                imageRef, delegate { return corruptExactImageSql; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Null identity in exact image SQL query fails closed");
+            int malformedImageReads = 0;
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                new CheckoutArticleTileReference("", "  "),
+                delegate { malformedImageReads++; return imageCurrent; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && malformedImageReads == 0,
+                "Malformed image Tag must not issue a local SQL read");
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                new CheckoutArticleTileReference(null, "IMAGE-LIVE"),
+                delegate { malformedImageReads++; return imageCurrent; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && malformedImageReads == 0,
+                "Null image Tag barcode must not issue a local SQL read");
+            Exception imageStoreError = new InvalidOperationException("image local store unavailable");
+            Exception observedImageStoreError = null;
+            try {
+                CheckoutSelectionFlowService.ChooseImageWithRefresh(imageRef,
+                    delegate { throw imageStoreError; });
+            } catch (Exception error) { observedImageStoreError = error; }
+            Require(Object.ReferenceEquals(imageStoreError, observedImageStoreError),
+                "Image exact-ID SQL failures propagate without a stale-price fallback");
+            Require(imageCurrent.Rows[0]["ID_ARTICLE"].ToString() == "IMAGE-LIVE" &&
+                (decimal)imageCurrent.Rows[0]["UnitPrice"] == 11m,
+                "Exact-ID refresh safety checks never mutate catalogue or price");
+            Console.WriteLine("PASS exact-ID image refresh SQL integrity, malformed Tag, duplicate, missing, and no stale-price fallback");
+
             Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
                 imageRef, delegate { return null; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
                 "Null image refresh never uses stale tile identity");
