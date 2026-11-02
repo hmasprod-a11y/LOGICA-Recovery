@@ -2263,10 +2263,60 @@ public class FormDialog_2_Configuration : Form
 		{
 			if (string.Equals(item.Text, key, StringComparison.OrdinalIgnoreCase))
 			{
-				return item.SubItems.Count > 1 ? item.SubItems[1].Text : fallback;
+				return item.SubItems.Count > 1 && !string.IsNullOrWhiteSpace(item.SubItems[1].Text) ? item.SubItems[1].Text : fallback;
 			}
 		}
 		return fallback;
+	}
+
+	// Incomplete optional rows are not valid updates. Never rewrite a setting
+	// to a guessed value when its UI row lacks the value subitem.
+	private static bool TryGetSettingUpdate(ListViewItem item, out string key, out string value)
+	{
+		key = item == null ? "" : item.Text;
+		value = "";
+		if (string.IsNullOrWhiteSpace(key) || item.SubItems.Count < 2) return false;
+		value = item.SubItems[1].Text ?? "";
+		return true;
+	}
+
+	// Portable installs may omit optional UI preferences. Read them without
+	// creating files or overwriting a cashier's existing choices.
+	private static string ReadLocalOption(string fileName, string fallback)
+	{
+		try
+		{
+			string path = Path.Combine(Application.StartupPath, fileName);
+			return File.Exists(path) ? File.ReadAllText(path).Trim() : fallback;
+		}
+		catch (IOException) { return fallback; }
+		catch (UnauthorizedAccessException) { return fallback; }
+	}
+
+	private static bool ReadLocalBooleanOption(string fileName)
+	{
+		string value = ReadLocalOption(fileName, "False");
+		bool enabled;
+		if (bool.TryParse(value, out enabled)) return enabled;
+		return value == "1";
+	}
+
+	// Keep the displayed model and selected row consistent (the legacy
+	// FR_4C/FR_2L indices were shifted, and AR_4C was never restored).
+	private void SelectTicketModel(string model)
+	{
+		int index;
+		switch (model)
+		{
+			case "FR_4C": index = 1; break;
+			case "FR_2L": index = 2; break;
+			case "AR":
+			case "AR_3C": index = 3; break;
+			case "AR_4C": index = 4; break;
+			default: index = 0; break;
+		}
+		if (DataGridView_MODELE_TICKET.Rows.Count > index && DataGridView_MODELE_TICKET.Columns.Count > 0)
+			DataGridView_MODELE_TICKET.CurrentCell = DataGridView_MODELE_TICKET.Rows[index].Cells[0];
 	}
 
 	private void FormDialog_2_Configuration_Load(object sender, EventArgs e)
@@ -2276,6 +2326,7 @@ public class FormDialog_2_Configuration : Form
 		//IL_0165: Unknown result type (might be due to invalid IL or missing references)
 		//IL_016b: Expected Obj, but got Unknown
 		DataGridView_MODELE_TICKET.Columns[0].DefaultCellStyle.WrapMode = (DataGridViewTriState)1;
+		DataGridView_MODELE_TICKET.Rows.Clear();
 		DataGridView_MODELE_TICKET.Rows.Add(new object[1] { "FR_3C" });
 		DataGridView_MODELE_TICKET.Rows.Add(new object[1] { "FR_4C" });
 		DataGridView_MODELE_TICKET.Rows.Add(new object[1] { "FR_2L" });
@@ -2286,7 +2337,7 @@ public class FormDialog_2_Configuration : Form
 			foreach (DataGridViewRow item in (IEnumerable)DataGridView_MODELE_TICKET.Rows)
 			{
 				DataGridViewRow val = item;
-				val.Height = (int)Math.Round((double)(((Control)DataGridView_MODELE_TICKET).Height - DataGridView_MODELE_TICKET.ColumnHeadersHeight - 3) / (double)DataGridView_MODELE_TICKET.Rows.Count);
+				val.Height = Math.Max(24, (int)Math.Round((double)(((Control)DataGridView_MODELE_TICKET).Height - DataGridView_MODELE_TICKET.ColumnHeadersHeight - 3) / (double)DataGridView_MODELE_TICKET.Rows.Count));
 			}
 			MySqlCommand val2 = new MySqlCommand();
 			if (Module1.cn_SQL.State != ConnectionState.Open)
@@ -2319,27 +2370,13 @@ public class FormDialog_2_Configuration : Form
 			CheckBox_me_CLOTURE_CAISSIER_OBLIGER.Checked = Conversions.ToBoolean(ReadOptionalSetting("CLOTURE_CAISSIER_OBLIGER", "False"));
 			CheckBox_me_GESTION_GROUPE_FAMILLE.Checked = Conversions.ToBoolean(ReadOptionalSetting("GROUPES", "False"));
 			Combo_BRANCHEMENT.Text = ReadOptionalSetting("BRANCHEMENT", "USB");
-			switch (ReadOptionalSetting("MODELE_TICKET", "FR_3C"))
-			{
-			case "FR_3C":
-				DataGridView_MODELE_TICKET.CurrentCell = DataGridView_MODELE_TICKET.Rows[0].Cells[0];
-				break;
-			case "AR":
-				DataGridView_MODELE_TICKET.CurrentCell = DataGridView_MODELE_TICKET.Rows[1].Cells[0];
-				break;
-			case "FR_4C":
-				DataGridView_MODELE_TICKET.CurrentCell = DataGridView_MODELE_TICKET.Rows[2].Cells[0];
-				break;
-			case "FR_2L":
-				DataGridView_MODELE_TICKET.CurrentCell = DataGridView_MODELE_TICKET.Rows[3].Cells[0];
-				break;
-			}
-			CheckBox_me_RFID.Checked = Conversions.ToBoolean(File.ReadAllText(Application.StartupPath + "/acces_rfid.sni"));
-			CheckBox_me_VENDEUR.Checked = Conversions.ToBoolean(File.ReadAllText(Application.StartupPath + "/choix_vendeur.sni"));
-			CheckBox_me_CLIENT.Checked = Conversions.ToBoolean(File.ReadAllText(Application.StartupPath + "/choix_client.sni"));
-			CheckBox_me_GESTION_CREDIT.Checked = Conversions.ToBoolean(File.ReadAllText(Application.StartupPath + "/gestion_credit.sni"));
-			CheckBox_me_MODE_WINDOWS.Checked = Conversions.ToBoolean(File.ReadAllText(Application.StartupPath + "/mode_windows.sni"));
-			CheckBox_me_ECRAN_PUB.Checked = Conversions.ToBoolean(File.ReadAllText(Application.StartupPath + "/afficher_ecran_pub.sni"));
+			SelectTicketModel(ReadOptionalSetting("MODELE_TICKET", "FR_3C"));
+			CheckBox_me_RFID.Checked = ReadLocalBooleanOption("acces_rfid.sni");
+			CheckBox_me_VENDEUR.Checked = ReadLocalBooleanOption("choix_vendeur.sni");
+			CheckBox_me_CLIENT.Checked = ReadLocalBooleanOption("choix_client.sni");
+			CheckBox_me_GESTION_CREDIT.Checked = ReadLocalBooleanOption("gestion_credit.sni");
+			CheckBox_me_MODE_WINDOWS.Checked = ReadLocalBooleanOption("mode_windows.sni");
+			CheckBox_me_ECRAN_PUB.Checked = ReadLocalBooleanOption("afficher_ecran_pub.sni");
 			Combo_PRINTER_RAPPORT.Items.Clear();
 			Combo_PRINTER_SOLDER.Items.Clear();
 			Combo_PRINTER_ADDITION.Items.Clear();
@@ -2372,13 +2409,13 @@ public class FormDialog_2_Configuration : Form
 				Combo_PRINTER_C3.Items.Add((object)text);
 				Combo_PRINTER_C4.Items.Add((object)text);
 			}
-			Combo_PRINTER_RAPPORT.Text = File.ReadAllText(Application.StartupPath + "/PRINTER_RAPPORT.sni");
-			Combo_PRINTER_SOLDER.Text = File.ReadAllText(Application.StartupPath + "/PRINTER_CL.sni");
-			Combo_PRINTER_ADDITION.Text = File.ReadAllText(Application.StartupPath + "/PRINTER_ADD.sni");
-			Combo_PRINTER_C1.Text = File.ReadAllText(Application.StartupPath + "/PRINTER_C1.sni");
-			Combo_PRINTER_C2.Text = File.ReadAllText(Application.StartupPath + "/PRINTER_C2.sni");
-			Combo_PRINTER_C3.Text = File.ReadAllText(Application.StartupPath + "/PRINTER_C3.sni");
-			Combo_PRINTER_C4.Text = File.ReadAllText(Application.StartupPath + "/PRINTER_C4.sni");
+			Combo_PRINTER_RAPPORT.Text = ReadLocalOption("PRINTER_RAPPORT.sni", "");
+			Combo_PRINTER_SOLDER.Text = ReadLocalOption("PRINTER_CL.sni", "");
+			Combo_PRINTER_ADDITION.Text = ReadLocalOption("PRINTER_ADD.sni", "");
+			Combo_PRINTER_C1.Text = ReadLocalOption("PRINTER_C1.sni", "");
+			Combo_PRINTER_C2.Text = ReadLocalOption("PRINTER_C2.sni", "");
+			Combo_PRINTER_C3.Text = ReadLocalOption("PRINTER_C3.sni", "");
+			Combo_PRINTER_C4.Text = ReadLocalOption("PRINTER_C4.sni", "");
 			CheckBox_me_STOCK.Checked = true;
 			((Control)CheckBox_me_STOCK).Enabled = false;
 		}
@@ -2391,7 +2428,7 @@ public class FormDialog_2_Configuration : Form
 	private void CheckBox_me_MODEP_CheckedChanged(object sender, EventArgs e)
 	{
 		ListViewItem val = ListView1.FindItemWithText(Conversions.ToString(NewLateBinding.LateGet(sender, null, "tag", new object[0], null, null, null)), false, 0);
-		if (val != null)
+		if (val != null && val.SubItems.Count > 1)
 		{
 			ListView1.Items[val.Index].Selected = true;
 			ListView1.Items[val.Index].SubItems[1].Text = Conversions.ToString(NewLateBinding.LateGet(sender, null, "Checked", new object[0], null, null, null));
@@ -2401,7 +2438,7 @@ public class FormDialog_2_Configuration : Form
 	private void Combo_BRANCHEMENT_TextChanged(object sender, EventArgs e)
 	{
 		ListViewItem val = ListView1.FindItemWithText(Conversions.ToString(NewLateBinding.LateGet(sender, null, "tag", new object[0], null, null, null)), false, 0);
-		if (val != null)
+		if (val != null && val.SubItems.Count > 1)
 		{
 			ListView1.Items[val.Index].Selected = true;
 			ListView1.Items[val.Index].SubItems[1].Text = Conversions.ToString(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null));
@@ -2618,11 +2655,19 @@ public class FormDialog_2_Configuration : Form
 					{
 						break;
 					}
-					val.CommandText = "UPDATE     TABLE_PARAMETRES    SET    VALEUR = N'" + ListView1.Items[num2].SubItems[1].Text + "'     where  OBJET = '" + ListView1.Items[num2].Text + "'      ";
-					val.Connection = Module1.cn_SQL;
-					val.ExecuteNonQuery();
+					string settingKey, settingValue;
+					if (TryGetSettingUpdate(ListView1.Items[num2], out settingKey, out settingValue))
+					{
+						val.Parameters.Clear();
+						val.CommandText = "UPDATE TABLE_PARAMETRES SET VALEUR = @value WHERE OBJET = @key";
+						val.Parameters.AddWithValue("@value", settingValue);
+						val.Parameters.AddWithValue("@key", settingKey);
+						val.Connection = Module1.cn_SQL;
+						val.ExecuteNonQuery();
+					}
 					num2++;
 				}
+				val.Parameters.Clear();
 				val.CommandText = "select    *     from     TABLE_PARAMETRES       ";
 				val.Connection = Module1.cn_SQL;
 				val.ExecuteNonQuery();
@@ -2638,7 +2683,7 @@ public class FormDialog_2_Configuration : Form
 				}
 				val2.Close();
 				Module1.cn_SQL.Close();
-				MyProject.Forms.Form_0_TEMPLATE.TextBox_BRANCHEMENT.Text = ListView1.Items[ListView1.FindItemWithText("BRANCHEMENT", false, 0).Index].SubItems[1].Text;
+				MyProject.Forms.Form_0_TEMPLATE.TextBox_BRANCHEMENT.Text = ReadOptionalSetting("BRANCHEMENT", Combo_BRANCHEMENT.Text);
 				File.WriteAllText(Application.StartupPath + "/acces_rfid.sni", Conversions.ToString(CheckBox_me_RFID.Checked));
 				File.WriteAllText(Application.StartupPath + "/choix_vendeur.sni", Conversions.ToString(CheckBox_me_VENDEUR.Checked));
 				File.WriteAllText(Application.StartupPath + "/choix_client.sni", Conversions.ToString(CheckBox_me_CLIENT.Checked));
