@@ -226,7 +226,7 @@ try {
         Write-Host 'PASS: extracted customer launcher started actual LOGICA.exe with local MariaDB 3308'
         $launcherActivation = Inspect-ActivationUI $launcherApp 'extracted-release-launcher-activation.json'
         if ($launcherActivation.activationScreenVisible -eq $true) {
-            Write-Warning 'BLOCKED: the extracted launcher displayed the legacy activation screen; licensed cashier not verified.'
+            throw 'REGRESSION: packaged launcher displayed legacy activation screen'
         }
     } finally {
         if ($launcherApp) {
@@ -277,7 +277,7 @@ try {
         Write-Host 'PASS: extracted Start-LOGICA.cmd started actual LOGICA.exe using preprovisioned offline MariaDB'
         $cmdActivation = Inspect-ActivationUI $cmdApp 'extracted-release-cmd-activation.json'
         if ($cmdActivation.activationScreenVisible -eq $true) {
-            Write-Warning 'BLOCKED: Start-LOGICA.cmd displayed the legacy activation screen; licensed cashier not verified.'
+            throw 'REGRESSION: Start-LOGICA.cmd displayed legacy activation screen'
         }
     } finally {
         if ($cmdApp) {
