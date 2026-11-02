@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using LOGICA.ApplicationLayer.Checkout;
+using LOGICA.Domain;
 
 internal static class PortablePostingSmoke
 {
@@ -76,6 +77,46 @@ internal static class PortablePostingSmoke
                 return new CheckoutCompletionRecord { TicketNumber = "T-1" }; }
         };
     }
+    // Compose the real production payment reader with the real posting and
+    // transaction-finalization services. The store is deliberately fake:
+    // this verifies exact-once cash/refund semantics without shop DB writes.
+    private sealed class PaymentSemantics : ILegacyCheckoutPaymentReadSemantics
+    {
+        public int CompareOperation(string actual, string expected)
+        {
+            return String.CompareOrdinal(actual, expected);
+        }
+        public bool IsNegativeChange(string value)
+        {
+            return value != null && value.StartsWith("-", StringComparison.Ordinal);
+        }
+    }
+
+    private static CheckoutPostingInput ProjectedCashInput(
+        Store store, string operation, string quantity, string amount,
+        bool missingContext)
+    {
+        CheckoutPostingInput input = SingleCashInput(store, quantity, amount);
+        input.ReadPayments = delegate {
+            store.Events.Add("readPayments");
+            return CheckoutPaymentReadService.Read(
+                delegate { store.Events.Add("operation"); return operation; },
+                delegate {
+                    store.Events.Add("context");
+                    return missingContext ? null :
+                        new TicketPaymentContext { TicketNumber = "T-1" };
+                },
+                delegate { store.Events.Add("access"); return false; },
+                delegate { throw new Exception("Cash sale must not read tender count"); },
+                delegate(int index) { throw new Exception("Cash sale must not read tender amount"); },
+                delegate(int index) { throw new Exception("Cash sale must not read tender mode"); },
+                delegate { store.Events.Add("cash"); return amount; },
+                delegate { throw new Exception("Cash sale must not read change"); },
+                new PaymentSemantics());
+        };
+        return input;
+    }
+
     private static void Assert(Store store, string expected)
     {
         string actual = String.Join(",", store.Events.ToArray());
@@ -125,6 +166,42 @@ internal static class PortablePostingSmoke
             refund.LastPayment.AmountText != "-10.00" ||
             refund.CommitCount != 1 || refund.CloseCount != 1)
             throw new Exception("Cash refund must preserve negative stock/payment signs");
+
+        // P0: the *production* payment projection must post exactly one cash
+        // row through the posting/finalization pipeline for both signs.
+        var projectedSale = new Store();
+        CheckoutTransactionFinalizationService.PostAndFinalize(projectedSale,
+            ProjectedCashInput(projectedSale, "VENTE", "1", "12.35", false),
+            projectedSale);
+        Assert(projectedSale,
+            "readStock,stock:CASH-ITEM,readHeader,header,readJournal,journal,readPayments,operation,context,access,cash,payment:12.35,print,readCompletion,complete,commit,close");
+        if (projectedSale.StockCount != 1 || projectedSale.PaymentCount != 1 ||
+            projectedSale.LastPayment.Kind != TicketPaymentKind.Cash ||
+            projectedSale.LastPayment.Context.TicketNumber != "T-1" ||
+            projectedSale.LastPayment.AmountText != "12.35" ||
+            projectedSale.CommitCount != 1 || projectedSale.CloseCount != 1)
+            throw new Exception("Projected cash sale must write stock/payment once");
+
+        var projectedRefund = new Store();
+        CheckoutTransactionFinalizationService.PostAndFinalize(projectedRefund,
+            ProjectedCashInput(projectedRefund, "RETOUR REMBOURSEMENT", "-1", "-12.35", false),
+            projectedRefund);
+        Assert(projectedRefund,
+            "readStock,stock:CASH-ITEM,readHeader,header,readJournal,journal,readPayments,operation,operation,context,access,cash,payment:-12.35,print,readCompletion,complete,commit,close");
+        if (projectedRefund.StockCount != 1 || projectedRefund.PaymentCount != 1 ||
+            projectedRefund.LastPayment.Kind != TicketPaymentKind.Cash ||
+            projectedRefund.LastPayment.AmountText != "-12.35" ||
+            Convert.ToString(projectedRefund.LastStock.BasketQuantity) != "-1" ||
+            projectedRefund.CommitCount != 1 || projectedRefund.CloseCount != 1)
+            throw new Exception("Projected cash refund must preserve the negative sign");
+
+        var missingPaymentContext = new Store();
+        CheckInvalidReader(missingPaymentContext,
+            ProjectedCashInput(missingPaymentContext, "VENTE", "1", "12.35", true),
+            "Checkout payment context reader returned null.",
+            "readStock,stock:CASH-ITEM,readHeader,header,readJournal,journal,readPayments,operation,context");
+        if (missingPaymentContext.PaymentCount != 0 || missingPaymentContext.StockCount != 1)
+            throw new Exception("Missing payment context must not write any cash payment");
 
         // A missing late callback used to fail only AFTER stock and payment
         // writes. Reject it before the first mutation, without eagerly reading
