@@ -2166,21 +2166,28 @@ class PosSmoke {
  static void LoginCategorySql(Assembly assembly) {
   var module=assembly.GetType("LOGICA.Module1",true);
   var connection=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
-  var cs=new System.Data.Common.DbConnectionStringBuilder(); cs.ConnectionString=connection.ConnectionString;
+  var cs=new System.Data.Common.DbConnectionStringBuilder();cs.ConnectionString=connection.ConnectionString;
   if(connection.Database!="logica_ci" || Convert.ToString(cs["server"])!="127.0.0.1" || Convert.ToInt32(cs["port"])!=3307)
    throw new Exception("Login SQL test requires isolated MariaDB 127.0.0.1:3307/logica_ci");
   connection.Open();
   try {
-   using(var command=connection.CreateCommand()) {
-    command.CommandText="SELECT `ListUser`, `Catégorie` AS `Categorie` FROM `TABLE_PASS` WHERE `ListPass` = @password";
-    var parameter=command.CreateParameter();parameter.ParameterName="@password";parameter.Value="0000";command.Parameters.Add(parameter);
-    using(var reader=command.ExecuteReader()) {
-     var table=new DataTable();table.Load(reader);
-     if(!table.Columns.Contains("Categorie") || !table.Columns.Contains("ListUser"))throw new Exception("Missing login role alias");
-     if(table.Rows.Count<1 || Convert.ToString(table.Rows[0]["Categorie"])!="ADMIN")throw new Exception("Admin role lookup failed");
-    }
+   // Session-local shadow fixture: never change or read a real TABLE_PASS.
+   using(var fixture=connection.CreateCommand()) {
+    fixture.CommandText="CREATE TEMPORARY TABLE TABLE_PASS (`ListUser` VARCHAR(100),`ListPass` VARCHAR(100),`Catégorie` VARCHAR(100))";
+    fixture.ExecuteNonQuery();
+    fixture.CommandText="INSERT INTO TABLE_PASS (`ListUser`,`ListPass`,`Catégorie`) VALUES ('CI_ADMIN','CI_SAFE_PIN','ADMIN')";
+    fixture.ExecuteNonQuery();
    }
-   Console.WriteLine("PASS MariaDB login category alias from recovered role");
+   var adapterType=connection.GetType().Assembly.GetType("MySql.Data.MySqlClient.MySqlDataAdapter",true);
+   using(var adapter=(System.Data.Common.DbDataAdapter)Activator.CreateInstance(adapterType,
+      new object[]{"SELECT `ListUser`, `Catégorie` AS `Categorie` FROM `TABLE_PASS` WHERE `ListPass` = 'CI_SAFE_PIN'",connection})) {
+    var table=new DataTable();adapter.Fill(table);
+    if(!table.Columns.Contains("Categorie") || !table.Columns.Contains("ListUser"))
+     throw new Exception("Missing category alias in DataAdapter projection");
+    if(table.Rows.Count!=1 || Convert.ToString(table.Rows[0]["Categorie"])!="ADMIN")
+     throw new Exception("Login DataTable cannot read ADMIN role through alias");
+   }
+   Console.WriteLine("PASS real MariaDB DataAdapter category alias with session-local user fixture");
   } finally { connection.Close(); }
  }
  [STAThread] static int Main(string[] args) {
