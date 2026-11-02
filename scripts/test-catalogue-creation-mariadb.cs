@@ -34,7 +34,10 @@ internal static class CatalogueCreationMariaDbSmoke
     private static string WithDatabase(Type connectionType, string original, string database)
     {
         Type builderType = connectionType.Assembly.GetType("MySql.Data.MySqlClient.MySqlConnectionStringBuilder", true);
-        object builder = Activator.CreateInstance(builderType, new object[] { original });
+        // Recovered MySql.Data exposes a parameterless builder, not a string constructor.
+        // Parsing via the base class preserves strict target validation on x86.
+        DbConnectionStringBuilder builder = (DbConnectionStringBuilder)Activator.CreateInstance(builderType);
+        builder.ConnectionString = original;
         builderType.GetProperty("Database").SetValue(builder, database, null);
         return builder.ToString();
     }
@@ -113,7 +116,10 @@ internal static class CatalogueCreationMariaDbSmoke
             string original = configured.ConnectionString;
             Type connectionType = configured.GetType();
             Type builderType = connectionType.Assembly.GetType("MySql.Data.MySqlClient.MySqlConnectionStringBuilder", true);
-            object builder = Activator.CreateInstance(builderType, new object[] { original });
+            // Recovered MySql.Data exposes a parameterless builder, not a string constructor.
+        // Parsing via the base class preserves strict target validation on x86.
+        DbConnectionStringBuilder builder = (DbConnectionStringBuilder)Activator.CreateInstance(builderType);
+        builder.ConnectionString = original;
             string server = Convert.ToString(builderType.GetProperty("Server").GetValue(builder, null));
             string database = Convert.ToString(builderType.GetProperty("Database").GetValue(builder, null));
             uint port = Convert.ToUInt32(builderType.GetProperty("Port").GetValue(builder, null),
