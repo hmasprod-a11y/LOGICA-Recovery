@@ -374,7 +374,7 @@ try {
         directExeWithoutConnectionOverrideVerified = $false
         directExeWithoutOverrideAttempted = $directWithoutOverrideAttempted
         directExeWithoutOverrideResponsiveWindow = $directWithoutOverrideResponsive
-        directExeWithoutOverrideActivationScreenVisible = if ($directWithoutOverrideActivation) { $directWithoutOverrideActivation.activationScreenVisible } else { $null }
+        directExeWithoutOverrideActivationScreenVisible = $(if ($directWithoutOverrideActivation) { $directWithoutOverrideActivation.activationScreenVisible } else { $null })
         directExeWithoutOverrideDatabaseConnectionVerified = $false
         realPrinterAndScannerVerified = $false
         immutableRuntimeFilesVerified = $baseline.Count
