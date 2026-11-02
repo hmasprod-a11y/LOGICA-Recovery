@@ -90,6 +90,7 @@ REQUIRED_WINDOWS_INPUTS = {
     'scripts/test-extracted-release.ps1',
     'scripts/test-beta-release-verifier.ps1',
     'scripts/test-release-candidate.ps1',
+    'scripts/test-release-private-state.ps1',
     'scripts/package-beta-rc.ps1',
     'scripts/verify-beta-rc.ps1',
     'scripts/test-pos*',
@@ -198,6 +199,9 @@ REQUIRED_RELEASE_COMMANDS = {
     'Guard release artifact upload policy (including negative fixtures)': (
         'python scripts/test-release-upload-policy.py',
     ),
+    'Guard release private-state candidate gate with isolated fixtures': (
+        './scripts/test-release-private-state.ps1',
+    ),
     'Verify committed source is present': (
         "if (-not (Test-Path -LiteralPath 'recovered-source/LOGICA.csproj')) {",
         "throw 'Authoritative committed project missing'",
@@ -269,6 +273,7 @@ def assert_critical_release_gates(source):
         raise ValueError('Release job must not suppress failures with continue-on-error')
     mandatory = (
         'Guard release artifact upload policy (including negative fixtures)',
+        'Guard release private-state candidate gate with isolated fixtures',
         'Verify committed source is present',
         'Restore original runtime dependencies',
         'Build original project on Windows',
