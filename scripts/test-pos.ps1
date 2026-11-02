@@ -8,7 +8,7 @@ $csc=Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
 & $csc /nologo /platform:x86 /target:exe /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Data.dll "/out:$dist\PosSmoke.exe" (Join-Path $PSScriptRoot 'test-pos.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Test harness compilation failed' }
 Copy-Item dist/LOGICA.exe.config dist/PosSmoke.exe.config -Force
-$cases=@('desktop-startup-settings-flags','desktop-payment-placeholder','desktop-settings-save-dpi','desktop-payment-input','desktop-image-preview','desktop-image-grid-dpi','settings-optional-events','article-image-editor-safety','cashier-payment-reload-selection','cashier-incomplete-payment-rows','settings-portable-options','stock-recovered-schema','legacy-zero-date','article-missing-settings','cashier-missing-payment-image','checkout-missing-stock-setting','payment-missing-icon','settings-missing-rows','settings-ticket-null','login-category-sql','checkout-blank-barcode-live-sql','checkout-blank-barcode-stock','checkout-blank-barcode-posting','checkout-list-selection','checkout-quantity-keypad-dpi','checkout-scanner-enter','checkout-search-shortcut','checkout-barcode-chooser','checkout-article-search-sql','checkout-image-grid','checkout-contrast','checkout-keyboard-contrast','checkout-basket-selection-contrast','checkout-basket-header-dpi','checkout-product-list-header-dpi','checkout-family-caption-contrast','checkout-product-list-selection-contrast','checkout-product-name-row-dpi','checkout-white-buttons-contrast','catalogue-keys','catalogue-barcodes','catalogue-save-guards','collection-save-guards','collection-duplicate-code','collection-duplicate-later','collection-variant-insert','collection-quantity-totals','catalogue-aggregate-refresh','catalogue-aggregate-failure','catalogue-create','catalogue-edit','catalogue-duplicates','catalogue-movement-failure','catalogue-sequence-failure','catalogue-insert-failure','catalogue-update-failure','catalogue-create-empty','catalogue-create-null-sequence','catalogue-create-empty-null','catalogue-balance-reject','catalogue-balance-format','cash-counting','stock-movement-search','stock-movement-search-failure','shared-export-projection','inventory-decline-validation','inventory-empty-validation','inventory-transaction-preflight','basket','checkout','checkout-rollback','checkout-late-rollback','checkout-fractional','checkout-stock-off','checkout-reject-sale','checkout-reject-return','checkout-reject-empty','checkout-reject-total','checkout-reject-stock','checkout-reject-stock-off','checkout-stock-exact','checkout-missing-stock-lookup','checkout-rounding-window','checkout-select-seller','checkout-select-client','checkout-credit-client','checkout-mixed','checkout-change','checkout-credit','rounding','Form_0_TEMPLATE','Form_1_LOGIN','Form_3_VENTE','Form_2_ARTICLES','Form_6_MOUVEMENTS_STOCK','FormDialog_MODE_P','Report_TICKET_A4')
+$cases=@('desktop-payment-fail-closed','desktop-settlement-scroll','desktop-startup-settings-flags','desktop-payment-placeholder','desktop-settings-save-dpi','desktop-payment-input','desktop-image-preview','desktop-image-grid-dpi','settings-optional-events','article-image-editor-safety','cashier-payment-reload-selection','cashier-incomplete-payment-rows','cashier-partial-amount-keypad','settings-portable-options','stock-recovered-schema','legacy-zero-date','article-missing-settings','cashier-missing-payment-image','checkout-missing-stock-setting','payment-missing-icon','settings-missing-rows','settings-ticket-null','login-category-sql','checkout-blank-barcode-live-sql','checkout-blank-barcode-stock','checkout-blank-barcode-posting','checkout-list-selection','checkout-quantity-keypad-dpi','checkout-scanner-enter','checkout-search-shortcut','checkout-barcode-chooser','checkout-article-search-sql','checkout-image-grid','checkout-contrast','checkout-keyboard-contrast','checkout-basket-selection-contrast','checkout-basket-header-dpi','checkout-product-list-header-dpi','checkout-family-caption-contrast','checkout-product-list-selection-contrast','checkout-product-name-row-dpi','checkout-white-buttons-contrast','catalogue-keys','catalogue-barcodes','catalogue-save-guards','collection-save-guards','collection-duplicate-code','collection-duplicate-later','collection-variant-insert','collection-quantity-totals','catalogue-aggregate-refresh','catalogue-aggregate-failure','catalogue-create','catalogue-edit','catalogue-duplicates','catalogue-movement-failure','catalogue-sequence-failure','catalogue-insert-failure','catalogue-update-failure','catalogue-create-empty','catalogue-create-null-sequence','catalogue-create-empty-null','catalogue-balance-reject','catalogue-balance-format','cash-counting','stock-movement-search','stock-movement-search-failure','shared-export-projection','inventory-decline-validation','inventory-empty-validation','inventory-transaction-preflight','basket','checkout','checkout-rollback','checkout-late-rollback','checkout-fractional','checkout-stock-off','checkout-reject-sale','checkout-reject-return','checkout-reject-empty','checkout-reject-total','checkout-reject-stock','checkout-reject-stock-off','checkout-stock-exact','checkout-missing-stock-lookup','checkout-rounding-window','checkout-select-seller','checkout-select-client','checkout-credit-client','checkout-mixed','checkout-change','checkout-credit','rounding','Form_0_TEMPLATE','Form_1_LOGIN','Form_3_VENTE','Form_2_ARTICLES','Form_6_MOUVEMENTS_STOCK','FormDialog_MODE_P','Report_TICKET_A4')
 $results=@()
 foreach($case in $cases) {
   $log=Join-Path (Resolve-Path results).Path ($case+'.log')
@@ -19,6 +19,45 @@ foreach($case in $cases) {
   Write-Host "$case $status"
   Get-Content $log | Select-Object -First 30 | ForEach-Object{Write-Host $_}
 }
+# Separate WinForms culture regression avoids modifying the shared QA/Inventory test-pos.cs harness.
+# Run it in the same isolated x86 Windows package as the legacy POS tests.
+$cultureExe=Join-Path $dist 'DesktopPaymentCultureSmoke.exe'
+& $csc /nologo /platform:x86 /target:exe /r:System.Windows.Forms.dll /r:System.Drawing.dll "/out:$cultureExe" (Join-Path $PSScriptRoot 'test-desktop-payment-culture.cs')
+if ($LASTEXITCODE -ne 0) { throw 'Desktop culture harness compilation failed' }
+Copy-Item dist/LOGICA.exe.config (Join-Path $dist 'DesktopPaymentCultureSmoke.exe.config') -Force
+$cultureLog=Join-Path (Resolve-Path results).Path 'desktop-payment-culture.log'
+$cultureError=Join-Path (Resolve-Path results).Path 'desktop-payment-culture.stderr.log'
+$cultureProcess=Start-Process $cultureExe -WorkingDirectory $dist -RedirectStandardOutput $cultureLog -RedirectStandardError $cultureError -PassThru
+if(-not $cultureProcess.WaitForExit(60000)) {
+  $cultureProcess.Kill()
+  $cultureStatus='TIMEOUT'
+} else {
+  $cultureStatus=if($cultureProcess.ExitCode -eq 0){'PASS'}else{'FAIL'}
+}
+$results+= [pscustomobject]@{test='desktop-payment-culture';status=$cultureStatus;exitCode=$cultureProcess.ExitCode}
+Write-Host "desktop-payment-culture $cultureStatus"
+Get-Content $cultureLog | Select-Object -First 30 | ForEach-Object{Write-Host $_}
+if($cultureStatus -ne 'PASS') { Get-Content $cultureError | Select-Object -First 40 | ForEach-Object{Write-Host $_} }
+
+# Verify the article delete movement SQL against a TEMPORARY table in isolated CI MariaDB.
+$deleteExe=Join-Path $dist 'DesktopArticleDeleteSmoke.exe'
+& $csc /nologo /platform:x86 /target:exe /r:System.Windows.Forms.dll /r:System.Data.dll "/out:$deleteExe" (Join-Path $PSScriptRoot 'test-desktop-article-delete.cs')
+if ($LASTEXITCODE -ne 0) { throw 'Desktop deletion harness compilation failed' }
+Copy-Item dist/LOGICA.exe.config (Join-Path $dist 'DesktopArticleDeleteSmoke.exe.config') -Force
+$deleteLog=Join-Path (Resolve-Path results).Path 'desktop-article-delete.log'
+$deleteError=Join-Path (Resolve-Path results).Path 'desktop-article-delete.stderr.log'
+$deleteProcess=Start-Process $deleteExe -WorkingDirectory $dist -RedirectStandardOutput $deleteLog -RedirectStandardError $deleteError -PassThru
+if(-not $deleteProcess.WaitForExit(60000)) {
+  $deleteProcess.Kill()
+  $deleteStatus='TIMEOUT'
+} else {
+  $deleteStatus=if($deleteProcess.ExitCode -eq 0){'PASS'}else{'FAIL'}
+}
+$results+= [pscustomobject]@{test='desktop-article-delete';status=$deleteStatus;exitCode=$deleteProcess.ExitCode}
+Write-Host "desktop-article-delete $deleteStatus"
+Get-Content $deleteLog | Select-Object -First 30 | ForEach-Object{Write-Host $_}
+if($deleteStatus -ne 'PASS') { Get-Content $deleteError | Select-Object -First 40 | ForEach-Object{Write-Host $_} }
+
 # Launch the real Windows entry point as well as exercising forms through the harness.
 $app=Start-Process (Join-Path $dist 'LOGICA.exe') -WorkingDirectory $dist -PassThru
 # Windows cold-start may take longer than the former fixed eight seconds.
