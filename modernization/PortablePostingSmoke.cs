@@ -121,7 +121,7 @@ internal static class PortablePostingSmoke
 
     // Exercise the actual payment-grid projection, not only a hand-built
     // TicketPaymentWrite. The modal supplies a single selected tender method.
-    private static CheckoutPostingInput ProjectedTenderInput(Store store, string mode)
+    private static CheckoutPostingInput ProjectedTenderInput(Store store, object mode)
     {
         CheckoutPostingInput input = SingleCashInput(store, "1", "10.00");
         input.ReadPayments = delegate {
@@ -373,6 +373,23 @@ internal static class PortablePostingSmoke
         if (projectedBlankMode.PaymentCount != 0 ||
             projectedBlankMode.CommitCount != 0 || projectedBlankMode.CloseCount != 0)
             throw new Exception("Blank payment-grid mode must not reach SQL or commit");
+
+        // Desktop's incomplete rows may contain DBNull.Value or a whitespace
+        // caption, not only null. All are invalid payment methods.
+        var projectedDbNullMode = new Store();
+        CheckInvalidReader(projectedDbNullMode,
+            ProjectedTenderInput(projectedDbNullMode, DBNull.Value),
+            "Checkout tendered payment has no mode.",
+            "readStock,stock:CASH-ITEM,readHeader,header,readJournal,journal,readPayments,operation,context,access,access,count,paid0,mode0");
+        if (projectedDbNullMode.PaymentCount != 0)
+            throw new Exception("DBNull payment-grid mode reached the SQL writer");
+        var projectedWhitespaceMode = new Store();
+        CheckInvalidReader(projectedWhitespaceMode,
+            ProjectedTenderInput(projectedWhitespaceMode, "   "),
+            "Checkout tendered payment has no mode.",
+            "readStock,stock:CASH-ITEM,readHeader,header,readJournal,journal,readPayments,operation,context,access,access,count,paid0,mode0");
+        if (projectedWhitespaceMode.PaymentCount != 0)
+            throw new Exception("Whitespace payment-grid mode reached the SQL writer");
 
         var projectedCard = new Store();
         CheckoutTransactionFinalizationService.PostAndFinalize(projectedCard,
