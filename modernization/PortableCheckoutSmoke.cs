@@ -1455,6 +1455,52 @@ internal static class PortableCheckoutSmoke
                 "Deleted SQL NULL image article must not be sold");
             Console.WriteLine("PASS SQL NULL image-only catalogue identity: live prices, tax, discount, duplicates, stale, scanner separation and deletion");
 
+            // P0: a whitespace-only ID_ARTICLE is not a saleable identity.
+            // SQL may return it as a non-NULL string; the scanner, modal
+            // chooser and image tile must all reject it before copying prices.
+            DataTable whitespaceScanner = tiles.Clone();
+            whitespaceScanner.Rows.Add("   ", "DUP");
+            Require(CheckoutVariantSnapshotService.EvaluateSnapshot(whitespaceScanner).Status ==
+                CheckoutVariantSnapshotReadStatus.InvalidCandidates,
+                "Whitespace-only article ID must invalidate scanner snapshot");
+            bool whitespaceReadRejected = false;
+            try { CheckoutVariantSnapshotService.Read(whitespaceScanner); }
+            catch (InvalidOperationException) { whitespaceReadRejected = true; }
+            Require(whitespaceReadRejected &&
+                CheckoutBarcodeSelectionService.Select(whitespaceScanner, null) == null,
+                "Legacy scanner must never return whitespace-only article identity");
+            DataTable validScanner = tiles.Clone();
+            validScanner.Rows.Add("VALID-1", "DUP");
+            DataTable whitespaceLive = validScanner.Copy();
+            whitespaceLive.Rows.Add("   ", "DUP");
+            CheckoutVariantSnapshot selectedValid = new CheckoutVariantSnapshot("DUP", "VALID-1");
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(whitespaceLive,
+                new[] { selectedValid }, 0).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates &&
+                CheckoutVariantSnapshotService.Resolve(whitespaceLive, selectedValid) == null,
+                "Unrelated whitespace live identity must invalidate otherwise valid selection");
+            int whitespaceRefreshReads = 0;
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", validScanner,
+                null, delegate { whitespaceRefreshReads++; return whitespaceLive; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && whitespaceRefreshReads == 1,
+                "Fresh SQL barcode selection must reject whitespace ID before pricing");
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(validScanner,
+                new[] { new CheckoutVariantSnapshot("DUP", "   ") }, 0).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Caller-supplied displayed whitespace identity must fail closed");
+            bool whitespaceTileRejected = false;
+            try { CheckoutArticleTileSelectionService.TagFor(whitespaceScanner.Rows[0]); }
+            catch (InvalidOperationException) { whitespaceTileRejected = true; }
+            Require(whitespaceTileRejected &&
+                CheckoutArticleTileSelectionService.EvaluateExact(whitespaceLive,
+                    new CheckoutArticleTileReference("DUP", "VALID-1")).Status ==
+                    CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Image tile tag and live exact selection must reject whitespace identities");
+            Require(validScanner.Rows[0]["ID_ARTICLE"].ToString() == "VALID-1" &&
+                whitespaceLive.Rows[1]["ID_ARTICLE"].ToString() == "   ",
+                "Identity rejection must not mutate catalogue or basket");
+            Console.WriteLine("PASS whitespace-only article identity fail-closed: scanner, refresh, modal and image tile");
+
             DataTable blankTileId = tiles.Clone();
             blankTileId.Rows.Add("", "DUP");
             bool blankTileTagRejected = false;
