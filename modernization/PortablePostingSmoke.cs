@@ -123,6 +123,11 @@ internal static class PortablePostingSmoke
     // TicketPaymentWrite. The modal supplies a single selected tender method.
     private static CheckoutPostingInput ProjectedTenderInput(Store store, object mode)
     {
+        return ProjectedTenderInput(store, mode, "10.00");
+    }
+
+    private static CheckoutPostingInput ProjectedTenderInput(Store store, object mode, object amount)
+    {
         CheckoutPostingInput input = SingleCashInput(store, "1", "10.00");
         input.ReadPayments = delegate {
             store.Events.Add("readPayments");
@@ -132,7 +137,7 @@ internal static class PortablePostingSmoke
                     return new TicketPaymentContext { TicketNumber = "T-1" }; },
                 delegate { store.Events.Add("access"); return true; },
                 delegate { store.Events.Add("count"); return 1; },
-                delegate(int index) { store.Events.Add("paid" + index); return "10.00"; },
+                delegate(int index) { store.Events.Add("paid" + index); return amount; },
                 delegate(int index) { store.Events.Add("mode" + index); return mode; },
                 delegate { throw new Exception("Tendered sale must not read cash total"); },
                 delegate { store.Events.Add("change"); return "0"; },
@@ -390,6 +395,20 @@ internal static class PortablePostingSmoke
             "readStock,stock:CASH-ITEM,readHeader,header,readJournal,journal,readPayments,operation,context,access,access,count,paid0,mode0");
         if (projectedWhitespaceMode.PaymentCount != 0)
             throw new Exception("Whitespace payment-grid mode reached the SQL writer");
+
+        // The actual payment-grid projection also carries blank PAYER values
+        // unchanged; the posting boundary must reject them before SQL.
+        foreach (object blankPaid in new object[] { null, DBNull.Value, "", "  " })
+        {
+            var projectedBlankPaid = new Store();
+            CheckInvalidReader(projectedBlankPaid,
+                ProjectedTenderInput(projectedBlankPaid, "CARTE", blankPaid),
+                "Checkout tendered payment has no amount.",
+                "readStock,stock:CASH-ITEM,readHeader,header,readJournal,journal,readPayments,operation,context,access,access,count,paid0,mode0");
+            if (projectedBlankPaid.PaymentCount != 0 ||
+                projectedBlankPaid.CommitCount != 0 || projectedBlankPaid.CloseCount != 0)
+                throw new Exception("Blank projected PAYER value reached SQL/commit");
+        }
 
         var projectedCard = new Store();
         CheckoutTransactionFinalizationService.PostAndFinalize(projectedCard,
