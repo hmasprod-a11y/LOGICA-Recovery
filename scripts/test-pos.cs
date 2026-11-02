@@ -2305,15 +2305,44 @@ class PosSmoke {
      var activation=(Control)Get(form,"Panel_FICHE");
      if(connect==null||error==null||activation==null)
       throw new Exception("Startup connection or activation UI controls missing");
+     var endpoint=type.GetMethod("DatabaseEndpointHint",Flags);
+     var windowMode=type.GetMethod("UseBorderedWindowMode",Flags);
+     if(endpoint==null||windowMode==null)throw new Exception("Startup diagnostics and window-mode compatibility missing");
+     foreach(string mode in new string[]{"True"," true ","1"}) {
+      if(!(bool)windowMode.Invoke(null,new object[]{mode}))throw new Exception("Legacy bordered window mode was lost: "+mode);
+     }
+     foreach(string mode in new string[]{"False","0","NORMAL","","unknown"}) {
+      if((bool)windowMode.Invoke(null,new object[]{mode}))throw new Exception("Unknown or normal window mode must not change the display: "+mode);
+     }
+     foreach(int port in new int[]{3306,3308}) {
+      connection.ConnectionString="Server=127.0.0.1;Port="+port+";Database=logica_ci;Uid=invalid;Pwd=secret-not-for-ui";
+      var hint=(string)endpoint.Invoke(null,null);
+      if(!hint.Contains("127.0.0.1:"+port)||hint.Contains("secret-not-for-ui")||hint.Contains("Uid="))
+       throw new Exception("Startup endpoint diagnostic must identify the port without leaking credentials");
+     }
+     connection.ConnectionString=originalConnectionString;
      error.Text="stale connection error";
      connect.Invoke(form,null);
      if(error.Text!="")throw new Exception("Valid isolated MariaDB was blocked by missing bd folder or stale error");
      if(connection.State!=ConnectionState.Closed)throw new Exception("Startup probe leaked an open MariaDB connection");
-     connection.ConnectionString="Server=127.0.0.1;Port=1;Database=logica_ci;Uid=invalid;Pwd=invalid;Connection Timeout=1";
+     connection.ConnectionString="Server=127.0.0.1;Port=1;Database=logica_ci;Uid=invalid;Pwd=secret-not-for-ui;Connection Timeout=1";
      connect.Invoke(form,null);
      if(error.Text.IndexOf("MariaDB",StringComparison.OrdinalIgnoreCase)<0)
       throw new Exception("Failed MariaDB startup must show a database error, not an activation message: "+error.Text);
      if(activation.Visible)throw new Exception("Database failure unexpectedly opened activation fiche");
+     if(!error.Text.Contains("127.0.0.1:1")||error.Text.Contains("secret-not-for-ui"))
+      throw new Exception("MariaDB failure must show the safe endpoint, never its credentials");
+     // Missing connection initialization must remain a database UI error,
+     // not a null-reference crash or a false activation prompt.
+     dbField.SetValue(null,null);
+     try {
+      connect.Invoke(form,null);
+      if(error.Text.IndexOf("base de données",StringComparison.OrdinalIgnoreCase)<0)
+       throw new Exception("Missing MariaDB connection was not reported as a startup error");
+      if(activation.Visible)throw new Exception("Missing MariaDB connection displayed activation fiche");
+      if((string)endpoint.Invoke(null,null)!="")
+       throw new Exception("Missing MariaDB connection unexpectedly has an endpoint");
+     } finally { dbField.SetValue(null,connection); }
      if(connection.State!=ConnectionState.Closed)throw new Exception("Failed startup probe leaked a connection");
      // Recovery must clear the stale database error before the unchanged
      // license check is allowed to run on the next successful startup.
