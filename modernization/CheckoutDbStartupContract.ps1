@@ -9,7 +9,7 @@ function Get-CheckoutDbStartupContract {
     $launcherPort = [regex]::Match($LauncherSource, '\[int\]\s*\$Port\s*=\s*(?<port>\d+)')
     $envRead = $ModuleSource.Contains('Environment.GetEnvironmentVariable("LOGICA_DB_CONNECTION_STRING")')
     $envExport = [regex]::Match($LauncherSource, '(?m)^\s*\$env:LOGICA_DB_CONNECTION_STRING\s*=\s*"(?<value>[^"\r\n]*)"')
-    $exeStart = [regex]::Match($LauncherSource, 'Start-Process[^\r\n]*LOGICA\.exe')
+    $exeStart = [regex]::Match($LauncherSource, 'Start-Process[^\r\n]*LOGICA\.exe[^\r\n]*')
     $launcherLoopback = $LauncherSource.Contains('--bind-address=127.0.0.1') -and
         $LauncherSource.Contains('Connect(''127.0.0.1'',$Port)')
     $exportEndpoint = $envExport.Success -and
@@ -20,7 +20,7 @@ function Get-CheckoutDbStartupContract {
     # the launcher credentials. Model startup ordering separately from the
     # authenticated SQL probe, without executing either command here.
     $serverStart = [regex]::Match($LauncherSource,
-        '(?m)^\s*\$process\s*=\s*Start-Process[^\r\n]*mariadbd\.exe')
+        '(?m)^\s*\$process\s*=\s*Start-Process[^\r\n]*mariadbd\.exe[^\r\n]*')
     $probe = [regex]::Match($LauncherSource,
         'Connect\(''127\.0\.0\.1'',\s*\$Port\)')
     $readyGuard = [regex]::Match($LauncherSource,
