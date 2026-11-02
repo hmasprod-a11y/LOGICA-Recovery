@@ -45,6 +45,27 @@ try {
             $count = @(Invoke-CiSql "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$target' AND TABLE_NAME='TABLE_ARTICLES' AND COLUMN_NAME='$name';")[0]
             if ($count -ne '1') { throw "PR84 migration did not create exactly one $name column on pass $pass" }
         }
+        # Validate the actual column contract, not only that the names exist.
+        foreach ($spec in @(@('GROUPE','varchar'),@('PRIX_QTE','double'),
+                            @('PRIX_QTE_MIN','double'),@('Taille','varchar'),
+                            @('Couleur','varchar'),@('Emplacement','varchar'))) {
+            $kind = @(Invoke-CiSql "SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$target' AND TABLE_NAME='TABLE_ARTICLES' AND COLUMN_NAME='$($spec[0])';")
+            if ($kind.Count -ne 1 -or $kind[0] -ne $spec[1]) {
+                throw "PR84 migration produced wrong SQL type for $($spec[0]): $($kind -join ',')"
+            }
+        }
+        if ($pass -eq 1) {
+            # All 120 recovered rows must receive safe defaults. Only the disposable
+            # copy is modified; no real shop data or license state is accessed.
+            $badDefaults = @(Invoke-CiSql "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE COALESCE(GROUPE,'!') <> '' OR COALESCE(PRIX_QTE,-1) <> 0 OR COALESCE(PRIX_QTE_MIN,-1) <> 0 OR COALESCE(Taille,'!') <> '' OR COALESCE(Couleur,'!') <> '' OR COALESCE(Emplacement,'!') <> '';" $target)[0]
+            if ($badDefaults -ne '0') { throw "PR84 migration left $badDefaults recovered rows with unsafe defaults" }
+            # Regression: a subsequent migration must NEVER reset values entered
+            # by a cashier in the newly introduced article fields.
+            Invoke-CiSql "UPDATE TABLE_ARTICLES SET GROUPE='qa-fixture-group', PRIX_QTE=12.5, PRIX_QTE_MIN=3.25, Taille='XL', Couleur='bleu', Emplacement='A-7' LIMIT 1;" $target | Out-Null
+        } else {
+            $preserved = @(Invoke-CiSql "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE GROUPE='qa-fixture-group' AND PRIX_QTE=12.5 AND PRIX_QTE_MIN=3.25 AND Taille='XL' AND Couleur='bleu' AND Emplacement='A-7';" $target)[0]
+            if ($preserved -ne '1') { throw 'PR84 second migration erased or changed saved article fields' }
+        }
         Write-Host "PASS: PR84 additive schema migration pass $pass preserved $rowCount recovered article rows and original columns"
     }
 } finally {
