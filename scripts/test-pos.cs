@@ -2416,9 +2416,13 @@ class PosSmoke {
     grid.Rows[blank].Cells[3].Value=DBNull.Value;
     if((bool)selected.Invoke(form,null))
      throw new Exception("Incomplete payment row accepted as settlement");
+    int valid=grid.Rows.Add();
+    grid.Rows[valid].Cells[3].Value="CARTE";
+    if((bool)selected.Invoke(form,null))
+     throw new Exception("Mixed blank and valid settlement rows were accepted");
     grid.Rows[blank].Cells[3].Value="ESPECES";
     if(!(bool)selected.Invoke(form,null))
-     throw new Exception("Valid legacy payment method was rejected");
+     throw new Exception("Valid legacy mixed payment methods were rejected");
    }
   } finally {root.SetValue(null,original);}
   Console.WriteLine("PASS cashier reload disposes icons, rootless payment, valid selection and long DPI caption");
