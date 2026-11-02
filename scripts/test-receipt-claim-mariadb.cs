@@ -135,6 +135,7 @@ internal static class ReceiptClaimMariaDbSmoke
             Seed(connection, "BR-DRAFT", "ART-DRAFT", "EN COURS");
             Seed(connection, "BR-UNKNOWN", "ART-UNKNOWN", "OTHER");
             Seed(connection, "BR-EMPTY", "ART-EMPTY", "ENREGISTRER", false);
+            Seed(connection, "BR-LOCK", "ART-LOCK");
 
             using (var transaction = connection.BeginTransaction())
             {
@@ -183,6 +184,48 @@ internal static class ReceiptClaimMariaDbSmoke
                 }
             }
             Check(scratch, "BR-2", "ART-2", 7m, 1, "VALIDER");
+
+            // The claim must lock persisted receipt details, not merely read
+            // their existence. A second client cannot delete a detail while
+            // the first claim transaction remains uncommitted.
+            using (var first = connection.BeginTransaction())
+            {
+                Require(Claim(method, connection, first, "BR-LOCK"),
+                    "Detail-lock fixture claim failed");
+                using (var started = new ManualResetEventSlim(false))
+                {
+                    Task<bool> deletion = Task.Factory.StartNew(delegate
+                    {
+                        using (var secondConnection = new MySqlConnection(scratch.ConnectionString))
+                        {
+                            secondConnection.Open();
+                            using (var second = secondConnection.BeginTransaction())
+                            {
+                                started.Set();
+                                Execute(secondConnection, second,
+                                    "DELETE FROM TABLE_RECEPTIONS_DETAILS WHERE ID_BR = @id",
+                                    "@id", "BR-LOCK");
+                                second.Rollback();
+                                return true;
+                            }
+                        }
+                    });
+                    Require(started.Wait(TimeSpan.FromSeconds(5)),
+                        "Detail deletion contender did not start");
+                    Thread.Sleep(300);
+                    Require(!deletion.IsCompleted,
+                        "Concurrent detail deletion bypassed receipt claim lock");
+                    first.Rollback();
+                    Require(deletion.Wait(TimeSpan.FromSeconds(15)),
+                        "Detail deletion contender remained blocked after rollback");
+                    Require(deletion.Result, "Detail deletion contender failed");
+                }
+            }
+            Check(scratch, "BR-LOCK", "ART-LOCK", 0m, 0, "ENREGISTRER");
+            Require(Convert.ToInt32(Scalar(connection,
+                "SELECT COUNT(*) FROM TABLE_RECEPTIONS_DETAILS WHERE ID_BR = 'BR-LOCK'"),
+                CultureInfo.InvariantCulture) == 1,
+                "Detail row was lost after both concurrent transactions rolled back");
 
             // Inject failure after header claim and stock mutation. Rollback must
             // restore header, stock and movements together, allowing one retry.
@@ -304,7 +347,7 @@ internal static class ReceiptClaimMariaDbSmoke
                 Require(rejected, "Duplicate receipt header was accepted");
                 transaction.Rollback();
             }
-            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, rollback/retry, blocked states, orphan header/recovery, invalid/duplicate headers, composite index, four MyISAM table rejections");
+            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, detail row locks, rollback/retry, blocked states, orphan header/recovery, invalid/duplicate headers, composite index, four MyISAM table rejections");
         }
     }
 
