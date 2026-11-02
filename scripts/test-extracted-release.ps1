@@ -383,6 +383,20 @@ try {
         extractedStartCmdActualExeResponsive = $cmdResponsive
         startCmdOfflineMariaDbPreprovisioned = $true
         licensedCashierScreenVerified = $false
+        # These require an authorized cashier session and/or real peripherals.
+        # Do not promote a green headless startup smoke to field acceptance.
+        releaseAcceptanceDecision = 'BLOCKED_FIELD_ACCEPTANCE'
+        authorizedCashierLoginVerified = $false
+        settingsScreenOpenedVerified = $false
+        articleCreatedViaUiVerified = $false
+        articleImageSavedViaUiVerified = $false
+        solderCashPaymentVerified = $false
+        salePostedExactlyOnceVerified = $false
+        returnPostedViaUiVerified = $false
+        stockMovementPostedViaUiVerified = $false
+        barcodeScannerHardwareVerified = $false
+        printerHardwareVerified = $false
+        cashDrawerHardwareVerified = $false
         launcherLoginPinScreenVisible = $launcherActivation.loginScreenVisible
         startCmdLoginPinScreenVisible = $cmdActivation.loginScreenVisible
         directExeLoginPinScreenVisible = $directWithoutOverrideActivation.loginScreenVisible
