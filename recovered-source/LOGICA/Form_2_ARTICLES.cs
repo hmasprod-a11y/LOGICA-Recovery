@@ -13714,6 +13714,30 @@ public class Form_2_ARTICLES : Form
 	{
 	}
 
+	// Preserve the original delete order and stock movement semantics while
+	// treating article names/codes as data, not SQL. Inventory owns the wider
+	// catalogue transaction lifecycle; this is a WinForms deletion-path hotfix.
+	private static void InsertDeletionStockMovement(MySqlConnection connection, DataGridViewRow selected)
+	{
+		if (connection == null || selected == null || selected.IsNewRow)
+			throw new InvalidOperationException("Aucune ligne d'article sélectionnée.");
+		using (MySqlCommand command = new MySqlCommand(
+			"INSERT INTO TABLE_MOUVEMENTS_STOCK " +
+			"(DATES, HEURE, LIBELLE, ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE) " +
+			"VALUES (@dates, @heure, @libelle, @id, @code, @article, CONCAT('-', @stock))", connection))
+		{
+			DateTime now = DateTime.Now;
+			command.Parameters.AddWithValue("@dates", now.ToString("yyyy-MM-dd"));
+			command.Parameters.AddWithValue("@heure", now.ToString("HH:mm:ss"));
+			command.Parameters.AddWithValue("@libelle", "Suppression d'article");
+			command.Parameters.AddWithValue("@id", Convert.ToString(selected.Cells["ID_ARTICLE"].Value));
+			command.Parameters.AddWithValue("@code", Convert.ToString(selected.Cells["Code"].Value));
+			command.Parameters.AddWithValue("@article", Convert.ToString(selected.Cells["Article"].Value));
+			command.Parameters.AddWithValue("@stock", Convert.ToString(selected.Cells["STOCK"].Value));
+			command.ExecuteNonQuery();
+		}
+	}
+
 	private void DataGridView1_CellClick(object sender, DataGridViewCellEventArgs e)
 	{
 		//IL_0be4: Unknown result type (might be due to invalid IL or missing references)
@@ -13735,14 +13759,13 @@ public class Form_2_ARTICLES : Form
 				{
 					string right = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("SUPPRESION | ", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_ARTICLE"].Value), DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ARTICLE"].Value));
 					File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
-					MySqlCommand val = new MySqlCommand();
 					if (Module1.cn_SQL.State != ConnectionState.Open)
 					{
 						Module1.cn_SQL.Open();
 					}
-					val.CommandText = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat("INSERT  INTO   TABLE_MOUVEMENTS_STOCK               ( DATES , HEURE , LIBELLE,ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE)         values           ( '" + DateTime.Now.ToString("yyyy-MM-dd"), "' ,  '"), DateTime.Now.ToString("HH:mm:ss")), "'  ,'Suppression d''article'   ,'"), DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_ARTICLE"].Value), "'    ,'"), DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["Code"].Value), "' ,'"), DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["Article"].Value), "'  ,    CONCAT('-','"), DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["STOCK"].Value), "')         )        "));
-					val.Connection = Module1.cn_SQL;
-					val.ExecuteNonQuery();
+					// Use bound values: apostrophes in the article name/barcode must
+					// never corrupt the original deletion movement record.
+					InsertDeletionStockMovement(Module1.cn_SQL, DataGridView1.CurrentRow);
 					Module1.cn_SQL.Close();
 					int position = ((ContainerControl)this).BindingContext[(object)DT].Position;
 					DT.Rows[position].Delete();
