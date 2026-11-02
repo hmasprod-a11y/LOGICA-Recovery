@@ -2807,6 +2807,51 @@ public class FormDialog_calc : Form
 		((Control)FlowLayoutPanel_MODE_P).Left = checked((int)Math.Round((double)((Control)Panel_MODE_P).Width / 2.0 - (double)((Control)FlowLayoutPanel_MODE_P).Width / 2.0));
 	}
 
+	// Reopening payment must release the previous icon bitmaps and controls.
+	// Controls.Clear() detaches children but does not dispose them.
+	private void ClearPaymentMethodButtons()
+	{
+		while (FlowLayoutPanel_MODE_P.Controls.Count > 0)
+		{
+			Control control = FlowLayoutPanel_MODE_P.Controls[0];
+			FlowLayoutPanel_MODE_P.Controls.Remove(control);
+			Button button = control as Button;
+			if (button != null && button.Image != null)
+			{
+				Image ownedImage = button.Image;
+				button.Image = null;
+				ownedImage.Dispose();
+			}
+			control.Dispose();
+		}
+	}
+
+	private int SelectedPaymentRowCount()
+	{
+		int count = 0;
+		foreach (DataGridViewRow row in DataGridView_CALC.Rows)
+			if (!row.IsNewRow) count++;
+		return count;
+	}
+
+	// A blank/new payment grid row must never count as a chosen settlement.
+	// The actual payment method is in column 3 of the legacy calculation grid.
+	private bool HasSelectedPaymentMethod()
+	{
+		bool hasPayment = false;
+		foreach (DataGridViewRow row in DataGridView_CALC.Rows)
+		{
+			if (row.IsNewRow) continue;
+			if (row.Cells.Count <= 3) return false;
+			object method = row.Cells[3].Value;
+			if (method == null || method == DBNull.Value ||
+				string.IsNullOrWhiteSpace(Convert.ToString(method)))
+				return false; // A mixed valid/blank grid is unsafe to post.
+			hasPayment = true;
+		}
+		return hasPayment;
+	}
+
 	private void FormDialog_calc_Load(object sender, EventArgs e)
 	{
 		//IL_034e: Unknown result type (might be due to invalid IL or missing references)
@@ -2822,7 +2867,7 @@ public class FormDialog_calc : Form
 			try
 			{
 				Text_TOTAL_NET.Text = Conversions.ToString(Conversions.ToDouble(MyProject.Forms.Form_3_VENTE.Text_TOTAL_NET.Text));
-				((Control)FlowLayoutPanel_MODE_P).Controls.Clear();
+				ClearPaymentMethodButtons();
 				int num = MyProject.Forms.Form_3_VENTE.DataGridView_MODE_P.Rows.Count - 1;
 				int num2 = 0;
 				while (true)
@@ -2852,7 +2897,7 @@ public class FormDialog_calc : Form
 					// A missing image must not prevent payment method buttons from existing.
 					object imageValue = paymentRow.Cells.Count > 1 ? paymentRow.Cells[1].Value : null;
 					string imageName = imageValue == null || imageValue == DBNull.Value ? "" : Convert.ToString(imageValue);
-					if (!string.IsNullOrWhiteSpace(imageName) && imageName == Path.GetFileName(imageName))
+					if (!string.IsNullOrWhiteSpace(Module1._CHEMIN_FOLDER) && !string.IsNullOrWhiteSpace(imageName) && imageName == Path.GetFileName(imageName))
 					{
 						string imagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", imageName);
 						if (File.Exists(imagePath))
@@ -2874,6 +2919,11 @@ public class FormDialog_calc : Form
 					((ButtonBase)val).FlatAppearance.BorderSize = 0;
 					((Control)val).Cursor = Cursors.Hand;
 					((Control)val).Font = new Font("Calibri", 12f, (FontStyle)1);
+					// Fit long payment captions without clipping on scaled displays.
+					int preferredWidth = TextRenderer.MeasureText(methodName, val.Font).Width + 22;
+					// The flow panel can report zero client width during Load; do not
+					// collapse a readable caption to 85px before the first layout pass.
+					val.Width = Math.Max(85, Math.Min(320, preferredWidth));
 					((Control)val).ForeColor = Color.FromArgb(2, 45, 162);
 					((Control)val).Click += FAM_click;
 					((Control)FlowLayoutPanel_MODE_P).Controls.Add((Control)(object)val);
@@ -2931,17 +2981,20 @@ public class FormDialog_calc : Form
 		{
 			try
 			{
-				DataGridView_CALC.Rows.Add(new object[4]
+				// Ignore stale or blank controls instead of inserting an unusable payment row.
+				Button selectedMethod = sender as Button;
+				if (selectedMethod == null || string.IsNullOrWhiteSpace(selectedMethod.Text)) return;
+				int insertedRow = DataGridView_CALC.Rows.Add(new object[4]
 				{
 					Conversion.Val(((ButtonBase)Button_RESTE).Text),
 					0,
 					0,
-					RuntimeHelpers.GetObjectValue(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null))
+					selectedMethod.Text
 				});
 				Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
-				DataGridView_CALC.CurrentCell = DataGridView_CALC.Rows[DataGridView_CALC.Rows.Count - 1].Cells[1];
+				DataGridView_CALC.CurrentCell = DataGridView_CALC.Rows[insertedRow].Cells[1];
 				((Control)DataGridView_CALC).Focus();
-				if (Operators.ConditionalCompareObjectNotEqual(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null), "ESPECES", TextCompare: false))
+				if (!string.Equals(selectedMethod.Text, "ESPECES", StringComparison.Ordinal))
 				{
 					Button_RESTE.PerformClick();
 					((Control)Panel_REMARQUE).Visible = true;
@@ -2980,14 +3033,14 @@ public class FormDialog_calc : Form
 		//IL_00c1: Unknown result type (might be due to invalid IL or missing references)
 		try
 		{
-			if (DataGridView_CALC.Rows.Count == 0)
+			if (!HasSelectedPaymentMethod())
 			{
 				MessageBox.Show("Choisissez une mode de paiement", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 				return;
 			}
 			if (Operators.CompareString(((ButtonBase)MyProject.Forms.Form_3_VENTE.Button_OPERATION).Text, "RETOUR REMBOURSEMENT", TextCompare: false) == 0)
 			{
-				if (DataGridView_CALC.Rows.Count > 1)
+				if (SelectedPaymentRowCount() > 1)
 				{
 					MessageBox.Show("Choisissez un seul mode de paiement pour le retour", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
@@ -3123,39 +3176,20 @@ public class FormDialog_calc : Form
 		//IL_0023: Expected Obj, but got Unknown
 		checked
 		{
-			foreach (DataGridViewRow item in (IEnumerable)DataGridView_CALC.Rows)
-			{
-				DataGridViewRow val = item;
-				val.Height = Math.Max(24, (int)Math.Round((double)(((Control)DataGridView_CALC).Height - DataGridView_CALC.ColumnHeadersHeight - 3) / (double)DataGridView_CALC.Rows.Count));
-			}
-			int num = DataGridView_CALC.Rows.Count - 1;
-			int num2 = 0;
-			while (true)
-			{
-				int num3 = num2;
-				int num4 = num;
-				if (num3 > num4)
-				{
-					break;
-				}
-				DataGridView_CALC.Rows[num2].Cells[2].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.SubtractObject(DataGridView_CALC.Rows[num2].Cells[1].Value, DataGridView_CALC.Rows[num2].Cells[0].Value)));
-				num2++;
-			}
+			// DataGridView may expose an uncommitted placeholder row when adding
+			// rows is enabled. It is not a payment and has no numeric cell values.
+			int paymentCount = 0;
+			foreach (DataGridViewRow row in DataGridView_CALC.Rows)
+				if (!row.IsNewRow) paymentCount++;
 			double num5 = 0.0;
 			double num6 = 0.0;
-			int num7 = DataGridView_CALC.Rows.Count - 1;
-			int num8 = 0;
-			while (true)
+			foreach (DataGridViewRow row in DataGridView_CALC.Rows)
 			{
-				int num9 = num8;
-				int num4 = num7;
-				if (num9 > num4)
-				{
-					break;
-				}
-				num5 = Conversions.ToDouble(Operators.AddObject(num5, DataGridView_CALC.Rows[num8].Cells[1].Value));
-				num6 = Conversions.ToDouble(Operators.AddObject(num6, DataGridView_CALC.Rows[num8].Cells[2].Value));
-				num8++;
+				if (row.IsNewRow) continue;
+				row.Height = Math.Max(24, (int)Math.Round((double)(((Control)DataGridView_CALC).Height - DataGridView_CALC.ColumnHeadersHeight - 3) / Math.Max(1, paymentCount)));
+				row.Cells[2].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.SubtractObject(row.Cells[1].Value, row.Cells[0].Value)));
+				num5 = Conversions.ToDouble(Operators.AddObject(num5, row.Cells[1].Value));
+				num6 = Conversions.ToDouble(Operators.AddObject(num6, row.Cells[2].Value));
 			}
 			((ButtonBase)Button_RESTE).Text = Conversions.ToString(Module1.FLOUSS(new decimal(Conversion.Val(Text_TOTAL_NET.Text) - Conversion.Val(num5))));
 			if (Conversion.Val(((ButtonBase)Button_RESTE).Text) > 0.0)
@@ -3166,9 +3200,14 @@ public class FormDialog_calc : Form
 			{
 				((Control)Button_SOLDER).Enabled = true;
 			}
-			if (DataGridView_CALC.Rows.Count > 0)
+			if (paymentCount > 0)
 			{
-				DataGridView_CALC.Rows[0].Cells[1].Style.BackColor = Color.Yellow;
+				foreach (DataGridViewRow row in DataGridView_CALC.Rows)
+				{
+					if (row.IsNewRow) continue;
+					row.Cells[1].Style.BackColor = Color.Yellow;
+					break;
+				}
 			}
 		}
 	}
@@ -3180,7 +3219,7 @@ public class FormDialog_calc : Form
 		try
 		{
 			if (e.ColumnIndex == 4 && e.RowIndex >= 0 && e.RowIndex < DataGridView_CALC.Rows.Count &&
-				DataGridView_CALC.CurrentCell != null)
+				!DataGridView_CALC.Rows[e.RowIndex].IsNewRow)
 			{
 				DataGridView_CALC.Rows.RemoveAt(e.RowIndex);
 				Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
@@ -3225,7 +3264,13 @@ public class FormDialog_calc : Form
 			{
 				if (e.RowIndex >= 0 && e.RowIndex < DataGridView_CALC.Rows.Count && ((e.ColumnIndex == 0) | (e.ColumnIndex == 2) | (e.ColumnIndex == 3)))
 				{
-					DataGridView_CALC.CurrentCell = DataGridView_CALC.Rows[DataGridView_CALC.Rows.Count - 1].Cells[1];
+					// The last grid row may be an uncommitted new-row placeholder.
+					for (int i = DataGridView_CALC.Rows.Count - 1; i >= 0; i--)
+					{
+						if (DataGridView_CALC.Rows[i].IsNewRow) continue;
+						DataGridView_CALC.CurrentCell = DataGridView_CALC.Rows[i].Cells[1];
+						break;
+					}
 				}
 			}
 			catch (Exception ex)
