@@ -13788,10 +13788,16 @@ public class Form_2_ARTICLES : Form
 				Combo_PRINTER.Text = DT.Rows[position2]["PRINTER"].ToString();
 				Combo_PRINTER_DUPLICATA.Text = DT.Rows[position2]["PRINTER_DUPLICATA"].ToString();
 				Text_LIEN_PICTURE.Text = DT.Rows[position2]["Images"].ToString();
-				Image val3 = Image.FromFile(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + Text_LIEN_PICTURE.Text);
-				Picture_IMAGE.Image = (Image)new Bitmap(val3);
+				string articleImagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", Text_LIEN_PICTURE.Text);
+				Picture_IMAGE.Image = null;
+				if (!string.IsNullOrWhiteSpace(Text_LIEN_PICTURE.Text) && Text_LIEN_PICTURE.Text != "0" && File.Exists(articleImagePath))
+				{
+					using (Image articleImage = Image.FromFile(articleImagePath))
+					{
+						Picture_IMAGE.Image = (Image)new Bitmap(articleImage);
+					}
+				}
 				Text_LIEN_PICTURE_ANC.Text = DT.Rows[position2]["Images"].ToString();
-				val3.Dispose();
 				Combo_TAILLES.Text = DT.Rows[position2]["Taille"].ToString();
 				Combo_COULEURS.Text = DT.Rows[position2]["Couleur"].ToString();
 				Text_EMPLACEMENT.Text = DT.Rows[position2]["Emplacement"].ToString();
@@ -14236,9 +14242,8 @@ public class Form_2_ARTICLES : Form
 			Combo_GROUPES.Text = null;
 			Text_LIEN_PICTURE.Text = "0";
 			Text_LIEN_PICTURE_ANC.Text = "0";
-			Image val = Image.FromFile(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + Text_LIEN_PICTURE.Text);
-			Picture_IMAGE.Image = (Image)new Bitmap(val);
-			val.Dispose();
+			// New articles have no image. The sentinel "0" is not a disk file.
+			Picture_IMAGE.Image = null;
 			Combo_TAILLES.Text = null;
 			Combo_COULEURS.Text = null;
 			Text_EMPLACEMENT.Text = "";
