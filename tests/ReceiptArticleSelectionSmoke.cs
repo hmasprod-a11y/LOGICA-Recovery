@@ -297,6 +297,47 @@ internal static class ReceiptArticleSelectionSmoke
             Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(missingReceiptId.DefaultView[0], "BR-001") == null,
                 "missing receipt ID schema fails closed");
 
+            // Production consultation/modification/delete uses the bound
+            // header's ID_BR to load or mutate receipt detail rows. Duplicate
+            // header numbers (even filtered out) would target multiple receipts.
+            var duplicateHeaders = new DataTable();
+            duplicateHeaders.Columns.Add("ID", typeof(string));
+            duplicateHeaders.Columns.Add("ID_BR", typeof(string));
+            duplicateHeaders.Columns.Add("ETAT", typeof(string));
+            duplicateHeaders.Rows.Add("1", "BR-100", "ENREGISTRER");
+            duplicateHeaders.Rows.Add("2", "BR-200", "ENREGISTRER");
+            duplicateHeaders.AcceptChanges();
+            var duplicateHeaderView = duplicateHeaders.DefaultView;
+            duplicateHeaderView.RowFilter = "ID = '1'";
+            Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveBoundRow(
+                duplicateHeaderView[0], "BR-100"), duplicateHeaders.Rows[0]),
+                "unique filtered receipt remains selectable");
+            duplicateHeaders.Rows.Add("3", "BR-100", "ENREGISTRER");
+            Check(duplicateHeaderView.Count == 1 &&
+                ReceiptDocumentSelectionGuard.ResolveBoundRow(
+                    duplicateHeaderView[0], "BR-100") == null,
+                "hidden duplicate receipt number blocks detail SQL by ID_BR");
+            duplicateHeaders.Rows[2].Delete();
+            Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveBoundRow(
+                duplicateHeaderView[0], "BR-100"), duplicateHeaders.Rows[0]),
+                "deleted duplicate receipt number no longer blocks selection");
+            duplicateHeaders.Rows.Add("1", "BR-OTHER", "ENREGISTRER");
+            Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(
+                duplicateHeaderView[0], "BR-100") == null,
+                "duplicate database record ID blocks bound receipt selection");
+            duplicateHeaders.Rows[2].Delete();
+            Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveBoundRow(
+                duplicateHeaderView[0], "BR-100"), duplicateHeaders.Rows[0]),
+                "deleted duplicate record ID restores exact bound selection");
+            duplicateHeaders.Rows[0]["ID"] = DBNull.Value;
+            Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(
+                duplicateHeaderView[0], "BR-100") == null,
+                "missing bound database record ID fails closed");
+            duplicateHeaders.Rows[0]["ID"] = "1";
+            Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveBoundRow(
+                duplicateHeaderView[0], "BR-100"), duplicateHeaders.Rows[0]),
+                "restored unique receipt remains selectable");
+
             // Real MODIFICATION save used Label_INDEX + BindingContext.Position,
             // which can target a different record after sorting/filtering.
             // Exact ID and receipt number must select one unvalidated DT row.
@@ -375,6 +416,46 @@ internal static class ReceiptArticleSelectionSmoke
             Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
                 missingEditableSchema, "10", "BR-A") == null,
                 "missing state/receipt schema cannot authorize edit");
+
+            // A corrupt header with a NULL state or number still occupies its
+            // primary identity. The old loop skipped it, allowing a different
+            // receipt with that ID to be edited and its detail rows overwritten.
+            var corruptHeaders = new DataTable();
+            corruptHeaders.Columns.Add("ID", typeof(string));
+            corruptHeaders.Columns.Add("ID_BR", typeof(string));
+            corruptHeaders.Columns.Add("ETAT", typeof(string));
+            corruptHeaders.Rows.Add("5", "BR-5", "ENREGISTRER");
+            corruptHeaders.AcceptChanges();
+            Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                corruptHeaders, "5", "BR-5"), corruptHeaders.Rows[0]),
+                "unique editable receipt baseline");
+            corruptHeaders.Rows.Add("5", "BR-OTHER", DBNull.Value);
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                corruptHeaders, "5", "BR-5") == null,
+                "NULL-state duplicate record ID cannot bypass edit identity check");
+            corruptHeaders.Rows[1].Delete();
+            corruptHeaders.Rows.Add("5", DBNull.Value, "ENREGISTRER");
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                corruptHeaders, "5", "BR-5") == null,
+                "NULL-number duplicate record ID cannot bypass edit identity check");
+            corruptHeaders.Rows[1].Delete();
+            corruptHeaders.Rows.Add(DBNull.Value, "BR-5", "ENREGISTRER");
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                corruptHeaders, "5", "BR-5") == null,
+                "NULL-ID duplicate receipt number cannot overwrite details");
+            corruptHeaders.Rows[1].Delete();
+            corruptHeaders.Rows[0]["ETAT"] = DBNull.Value;
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                corruptHeaders, "5", "BR-5") == null,
+                "NULL state on target receipt cannot authorize edit");
+            corruptHeaders.Rows[0]["ETAT"] = "ENREGISTRER";
+            Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                corruptHeaders, "5", "BR-5"), corruptHeaders.Rows[0]),
+                "restored target state allows unique edit");
+            corruptHeaders.Rows.Add("6", "BR-6", "VALIDER");
+            Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                corruptHeaders, "5", "BR-5"), corruptHeaders.Rows[0]),
+                "unrelated validated receipt does not block a valid edit");
 
             // Actual receipt Add button: reject invalid text before legacy VB
             // decimal conversion and before a line can be inserted. The core
