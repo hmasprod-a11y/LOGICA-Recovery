@@ -9890,17 +9890,38 @@ public class Form_6_RECEPTIONS : Form
 					MessageBox.Show("Veuillez remplir le champ -Prix_V- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Conversion.Val(Text_QTE.Text) < 0.0)
+				// Validate before VB conversion and FLOUSS. Previously an empty or
+				// malformed quantity reached ToDecimal and raised an exception; Val
+				// could also miss a negative fraction. Keep VB locale semantics.
+				Func<string, bool> isReceiptNumeric = delegate(string value) { return Versioned.IsNumeric(value); };
+				Func<string, decimal> convertReceiptNumber = delegate(string value) { return Conversions.ToDecimal(value); };
+				decimal parsedQuantity;
+				if (!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.TryReadReceiptNumber(
+					Text_QTE.Text, true, isReceiptNumeric, convertReceiptNumber, out parsedQuantity))
 				{
-					MessageBox.Show("Veuillez remplir le champ -Quantité- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					MessageBox.Show("Vérifier le champ -Quantité- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					return;
+				}
+				decimal parsedPurchasePrice;
+				if (!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.TryReadReceiptNumber(
+					Text_PRIX_A.Text, false, isReceiptNumeric, convertReceiptNumber, out parsedPurchasePrice))
+				{
+					MessageBox.Show("Vérifier le champ -Prix_A- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					return;
+				}
+				decimal parsedSalePrice;
+				if (!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.TryReadReceiptNumber(
+					Text_PRIX_V.Text, false, isReceiptNumeric, convertReceiptNumber, out parsedSalePrice))
+				{
+					MessageBox.Show("Vérifier le champ -PRIX_V- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
 				string text = Text_ID_ARTICLE.Text;
 				string text2 = Text_CODE.Text;
 				string text3 = Text_ARTICLE.Text;
-				decimal num = Module1.FLOUSS(Conversions.ToDecimal(Text_PRIX_A.Text));
-				decimal num2 = Module1.FLOUSS(Conversions.ToDecimal(Text_PRIX_V.Text));
-				decimal num3 = Conversions.ToDecimal(Text_QTE.Text);
+				decimal num = Module1.FLOUSS(parsedPurchasePrice);
+				decimal num2 = Module1.FLOUSS(parsedSalePrice);
+				decimal num3 = parsedQuantity;
 				decimal num4 = Module1.FLOUSS(decimal.Multiply(Module1.FLOUSS(Conversions.ToDecimal(Text_QTE.Text)), Module1.FLOUSS(Conversions.ToDecimal(Text_PRIX_A.Text))));
 				decimal num5 = Module1.FLOUSS(decimal.Multiply(Module1.FLOUSS(Conversions.ToDecimal(Text_QTE.Text)), Module1.FLOUSS(Conversions.ToDecimal(Text_PRIX_V.Text))));
 				string text4 = DateTimePicker_PEREMPTION.Text;
