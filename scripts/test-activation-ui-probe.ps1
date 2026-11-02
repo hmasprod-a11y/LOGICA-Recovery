@@ -31,6 +31,7 @@ public static class ActivationFixture {
             window.Controls.Add(panel);
             var pin = new TextBox();
             pin.Name = "Text_NUM";
+            pin.PasswordChar = '\u25cf';
             pin.Location = new Point(30, 240);
             pin.Visible = args.Length == 0 || args[0] != "no-login";
             window.Controls.Add(pin);
