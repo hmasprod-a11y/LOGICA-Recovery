@@ -1,6 +1,6 @@
 # LOGICA Windows recovery
 
-This package contains the recovered original LOGICA WinForms program, targeting .NET Framework 4.8, x86. Extract the entire ZIP to a writable local directory and keep LOGICA.exe, LOGICA.exe.config, all DLLs and the .sni configuration files together. Start LOGICA.exe on Windows with .NET Framework 4.8 installed.
+This package contains the recovered original LOGICA WinForms program, targeting .NET Framework 4.8, x86. Extract the entire ZIP to a writable local directory and keep LOGICA.exe, LOGICA.exe.config, all DLLs and the .sni configuration files together. For the isolated beta, use `Start-LOGICA.cmd` on Windows with .NET Framework 4.8 installed; double-clicking `LOGICA.exe` is **not yet a verified standalone startup path**.
 
 ## Existing installation
 
@@ -19,6 +19,14 @@ Do not replace the original database with CI fixtures. Test harness executables 
 ## LOGICA 2.0 Beta RC1 — isolated trial only
 
 This ZIP is **not an installer, upgrade, or production database migration**. Unzip it into a NEW, writable directory; never unpack it over an existing store installation. Before any trial involving a store, back up its original program folder, `.sni` files, license material and database, and test only with a separate copy of that database.
+
+### Known release-blocking startup differences (2 November 2026)
+
+The packaged `Start-LOGICA.cmd` starts the PowerShell launcher, which provisions local MariaDB on `127.0.0.1:3308` and passes `LOGICA_DB_CONNECTION_STRING` to its child `LOGICA.exe`. If the MariaDB server binaries are not already present, the launcher attempts to download MariaDB 10.11.14; **first use without Internet is not supported by this package**. The ZIP does not bundle the MariaDB server.
+
+Launching `LOGICA.exe` directly does **not** run that launcher and does not inherit its connection override. The preserved original fallback in `Module1.cs` still uses port `3306` and legacy database credentials. A direct launch may therefore fail with **MySQL Code 1042**, even when the launcher successfully starts MariaDB on `3308`. Do not treat a responsive WinForms window as proof of database connectivity.
+
+The recovered original activation mechanism is preserved. The isolated CI runner does not have a valid licensed store workstation, so the old activation panel may appear even when the local database starts. **CI has not proven that a legitimately licensed user can reach the cashier screen.** Do not bypass, copy, fabricate, or upload real license state for these tests. Real printer, scanner and cash-drawer tests also remain outstanding.
 
 The beta package deliberately sets `CHEMIN_DB.sni` to `127.0.0.1`, `CHEMIN_FOLDER.sni` to `Application.StartupPath`, and all `PRINTER_*.sni` entries to `0`; it contains no copied license hash or previous runtime error log. **These defaults are not the store's printer or license configuration.** They must not be used to overwrite an existing installation's settings.
 
