@@ -94,6 +94,25 @@ internal static class DesktopPaymentCultureSmoke
                 Expect(grid.CurrentCell.RowIndex == 1 && grid.CurrentCell.ColumnIndex == 1,
                     "Clicking second payment row did not select its amount");
 
+                // A completed/overpaid sale must retain its actual tendered cash.
+                // RESTE must not erase the change, and another method must not
+                // insert a negative due row after overpayment.
+                grid.Rows[1].Cells[1].Value = 11m;
+                Recalculate(form);
+                Expect(decimal.Parse(remainder.Text, CultureInfo.CurrentCulture) == -0.75m,
+                    "Overpaid split tender did not calculate change");
+                grid.CurrentCell = grid.Rows[1].Cells[1];
+                fillRemainder.Invoke(form, new object[] { remainder, EventArgs.Empty });
+                Expect(Convert.ToDecimal(grid.Rows[1].Cells[1].Value) == 11m,
+                    "RESTE silently erased cash change on an overpaid sale");
+                int beforeOverpaidMethod = grid.Rows.Count;
+                using (Button extra = new Button() { Text = "CARTE" })
+                    add.Invoke(form, new object[] { extra, EventArgs.Empty });
+                Expect(grid.Rows.Count == beforeOverpaidMethod,
+                    "Overpaid sale created a negative-due payment method");
+                grid.Rows[1].Cells[1].Value = 10.25m;
+                Recalculate(form);
+
                 // The real 0.5 coin button is captioned with a dot even under fr-FR.
                 // The original Val/AddObject path could lose the half-dirham.
                 MethodInfo coinClick = form.GetType().GetMethod("Button_DEVIS_Click", Flags);
@@ -210,6 +229,18 @@ internal static class DesktopPaymentCultureSmoke
                 Recalculate(form);
                 Expect(decimal.Parse(remainder.Text, CultureInfo.CurrentCulture) == 0m && solder.Enabled,
                     "Negative return payment no longer settles");
+                // Over-refunding must not be silently rewritten as an exact refund.
+                grid.Rows[0].Cells[1].Value = "-12,00";
+                Recalculate(form);
+                grid.CurrentCell = grid.Rows[0].Cells[1];
+                fillRemainder.Invoke(form, new object[] { remainder, EventArgs.Empty });
+                Expect(Convert.ToDecimal(grid.Rows[0].Cells[1].Value) == -12m,
+                    "RESTE silently erased an over-refund");
+                int beforeOverRefundMethod = grid.Rows.Count;
+                using (Button extraRefund = new Button() { Text = "CARTE" })
+                    add.Invoke(form, new object[] { extraRefund, EventArgs.Empty });
+                Expect(grid.Rows.Count == beforeOverRefundMethod,
+                    "Over-refund created a positive-due payment method");
                 // Partial refunds must also be completed additively by RESTE.
                 grid.Rows[0].Cells[1].Value = "-5,00";
                 Recalculate(form);
@@ -219,6 +250,17 @@ internal static class DesktopPaymentCultureSmoke
                     decimal.Parse(remainder.Text, CultureInfo.CurrentCulture) == 0m && solder.Enabled,
                     "RESTE failed to complete a partial negative refund");
 
+                // Total normalization must preserve all cents even above Double\u0027s
+                // exact integer range, and invalid input must remain invalid.
+                MethodInfo normalize = form.GetType().GetMethod("NormalizePaymentTotal",
+                    BindingFlags.NonPublic | BindingFlags.Static);
+                Expect(normalize != null, "Decimal total normalizer missing");
+                string exactLarge = (string)normalize.Invoke(null, new object[] { "9007199254740993,25" });
+                Expect(decimal.Parse(exactLarge, CultureInfo.CurrentCulture) == 9007199254740993.25m,
+                    "Payment dialog lost cents through a Double conversion");
+                Expect((string)normalize.Invoke(null, new object[] { "not a total" }) == "",
+                    "Malformed sale total was silently accepted");
+
                 // A malformed extreme payment must fail closed rather than crash the UI.
                 grid.Rows.Clear();
                 total.Text = "1";
@@ -227,7 +269,7 @@ internal static class DesktopPaymentCultureSmoke
                 Recalculate(form);
                 Expect(!solder.Enabled && remainder.Text == "", "Overflow left an actionable SOLDER state");
             }
-            Console.WriteLine("PASS French decimal SOLDER, stale-edit RESTE/method guards, clicked payment-row identity, keypad confirm, additive cash/refunds, half-dirham, dynamic DPI and overflow");
+            Console.WriteLine("PASS French decimal SOLDER, exact large totals, overpayment/change/refund guards, stale-edit RESTE/method guards, clicked payment-row identity, keypad confirm, additive cash/refunds, half-dirham, dynamic DPI and overflow");
             return 0;
         }
         catch (Exception exception)
