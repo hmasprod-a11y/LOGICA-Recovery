@@ -1447,6 +1447,9 @@ public class FormDialog_calc : Form
 		((Form)this).Shown += FormDialog_calc_Shown;
 		__ENCAddToList(this);
 		InitializeComponent();
+		// Keep payment-method buttons visible after runtime DPI/layout changes.
+		((Control)Panel_MODE_P).SizeChanged += Form_Shown;
+		((Control)FlowLayoutPanel_MODE_P).SizeChanged += Form_Shown;
 	}
 
 	[DebuggerNonUserCode]
@@ -3515,7 +3518,15 @@ public class FormDialog_calc : Form
 				Button_REFRESH.PerformClick();
 			}
 			if (DataGridView_CALC.CurrentRow == null || DataGridView_CALC.CurrentRow.IsNewRow) return;
-			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = remainder;
+			DataGridViewCell paidCell = DataGridView_CALC.CurrentRow.Cells[1];
+			decimal alreadyPaid;
+			// RESTE fills the outstanding balance, it must not overwrite a partial
+			// amount already entered for this method (including negative returns).
+			if (!TryGetPaymentNumber(paidCell.Value, out alreadyPaid)) return;
+			decimal completedPayment;
+			try { completedPayment = checked(alreadyPaid + remainder); }
+			catch (OverflowException) return; // Preserve the cashier's existing amount.
+			paidCell.Value = completedPayment;
 			Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 			((Control)DataGridView_CALC).Focus();
 		}
