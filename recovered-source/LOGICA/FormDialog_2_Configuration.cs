@@ -2254,6 +2254,21 @@ public class FormDialog_2_Configuration : Form
 		((Control)this).ResumeLayout(false);
 	}
 
+	// The recovered 1..20 configuration snapshot includes NULL placeholders and
+	// omits newer optional keys (notably GROUPES and BLOCAGE_STOCK_INSUFFISANT).
+	// Do not dereference a missing FindItemWithText result during settings Load.
+	private string ReadOptionalSetting(string key, string fallback)
+	{
+		foreach (ListViewItem item in ListView1.Items)
+		{
+			if (string.Equals(item.Text, key, StringComparison.OrdinalIgnoreCase))
+			{
+				return item.SubItems.Count > 1 ? item.SubItems[1].Text : fallback;
+			}
+		}
+		return fallback;
+	}
+
 	private void FormDialog_2_Configuration_Load(object sender, EventArgs e)
 	{
 		//IL_00f3: Unknown result type (might be due to invalid IL or missing references)
@@ -2287,23 +2302,24 @@ public class FormDialog_2_Configuration : Form
 			{
 				while (val3.Read())
 				{
-					ListView1.Items.Add(val3["OBJET"].ToString());
-					ListView1.Items[ListView1.Items.Count - 1].SubItems.Add(val3["VALEUR"].ToString());
+					if (val3.IsDBNull(val3.GetOrdinal("OBJET"))) continue;
+					ListViewItem settingRow = ListView1.Items.Add(val3["OBJET"].ToString());
+					settingRow.SubItems.Add(val3.IsDBNull(val3.GetOrdinal("VALEUR")) ? "" : val3["VALEUR"].ToString());
 				}
 			}
 			val3.Close();
 			Module1.cn_SQL.Close();
-			CheckBox_me_MODEP.Checked = Conversions.ToBoolean(ListView1.Items[ListView1.FindItemWithText("FENETRE_MODE_P", false, 0).Index].SubItems[1].Text);
-			CheckBox_me_STOCK.Checked = Conversions.ToBoolean(ListView1.Items[ListView1.FindItemWithText("GESTION_STOCK", false, 0).Index].SubItems[1].Text);
-			CheckBox_me_MODIF_STOCK.Checked = Conversions.ToBoolean(ListView1.Items[ListView1.FindItemWithText("MODIF_STOCK_MANUEL", false, 0).Index].SubItems[1].Text);
-			CheckBox_me_AJOUT_STOCK.Checked = Conversions.ToBoolean(ListView1.Items[ListView1.FindItemWithText("AJOUT_STOCK_MANUEL", false, 0).Index].SubItems[1].Text);
-			CheckBox_me_BLOCAGE_STOCK.Checked = Conversions.ToBoolean(ListView1.Items[ListView1.FindItemWithText("BLOCAGE_STOCK_INSUFFISANT", false, 0).Index].SubItems[1].Text);
-			CheckBox_me_SOLDER_SANS_TICKET.Checked = Conversions.ToBoolean(ListView1.Items[ListView1.FindItemWithText("SOLDER_SANS_TICKET", false, 0).Index].SubItems[1].Text);
-			CheckBox_me_GESTION_CLOTURE.Checked = Conversions.ToBoolean(ListView1.Items[ListView1.FindItemWithText("GESTION_CLOTURE", false, 0).Index].SubItems[1].Text);
-			CheckBox_me_CLOTURE_CAISSIER_OBLIGER.Checked = Conversions.ToBoolean(ListView1.Items[ListView1.FindItemWithText("CLOTURE_CAISSIER_OBLIGER", false, 0).Index].SubItems[1].Text);
-			CheckBox_me_GESTION_GROUPE_FAMILLE.Checked = Conversions.ToBoolean(ListView1.Items[ListView1.FindItemWithText("GROUPES", false, 0).Index].SubItems[1].Text);
-			Combo_BRANCHEMENT.Text = ListView1.Items[ListView1.FindItemWithText("BRANCHEMENT", false, 0).Index].SubItems[1].Text;
-			switch (ListView1.Items[ListView1.FindItemWithText("MODELE_TICKET", false, 0).Index].SubItems[1].Text)
+			CheckBox_me_MODEP.Checked = Conversions.ToBoolean(ReadOptionalSetting("FENETRE_MODE_P", "False"));
+			CheckBox_me_STOCK.Checked = Conversions.ToBoolean(ReadOptionalSetting("GESTION_STOCK", "False"));
+			CheckBox_me_MODIF_STOCK.Checked = Conversions.ToBoolean(ReadOptionalSetting("MODIF_STOCK_MANUEL", "False"));
+			CheckBox_me_AJOUT_STOCK.Checked = Conversions.ToBoolean(ReadOptionalSetting("AJOUT_STOCK_MANUEL", "False"));
+			CheckBox_me_BLOCAGE_STOCK.Checked = Conversions.ToBoolean(ReadOptionalSetting("BLOCAGE_STOCK_INSUFFISANT", "False"));
+			CheckBox_me_SOLDER_SANS_TICKET.Checked = Conversions.ToBoolean(ReadOptionalSetting("SOLDER_SANS_TICKET", "False"));
+			CheckBox_me_GESTION_CLOTURE.Checked = Conversions.ToBoolean(ReadOptionalSetting("GESTION_CLOTURE", "False"));
+			CheckBox_me_CLOTURE_CAISSIER_OBLIGER.Checked = Conversions.ToBoolean(ReadOptionalSetting("CLOTURE_CAISSIER_OBLIGER", "False"));
+			CheckBox_me_GESTION_GROUPE_FAMILLE.Checked = Conversions.ToBoolean(ReadOptionalSetting("GROUPES", "False"));
+			Combo_BRANCHEMENT.Text = ReadOptionalSetting("BRANCHEMENT", "USB");
+			switch (ReadOptionalSetting("MODELE_TICKET", "FR_3C"))
 			{
 			case "FR_3C":
 				DataGridView_MODELE_TICKET.CurrentCell = DataGridView_MODELE_TICKET.Rows[0].Cells[0];
@@ -2398,37 +2414,34 @@ public class FormDialog_2_Configuration : Form
 
 	private void DataGridView_MODELE_TICKET_CellClick(object sender, DataGridViewCellEventArgs e)
 	{
-		ListViewItem val = ListView1.FindItemWithText(Conversions.ToString(NewLateBinding.LateGet(sender, null, "tag", new object[0], null, null, null)), false, 0);
-		if (val != null)
+		// DataGridView raises CellClick for column headers and empty/new rows too.
+		// Those cells have no value and previously threw NullReferenceException.
+		if (e.RowIndex < 0 || e.ColumnIndex < 0 ||
+			e.RowIndex >= DataGridView_MODELE_TICKET.Rows.Count)
 		{
-			ListView1.Items[val.Index].Selected = true;
-			ListView1.Items[val.Index].SubItems[1].Text = DataGridView_MODELE_TICKET.Rows[((DataGridViewBand)DataGridView_MODELE_TICKET.CurrentRow).Index].Cells[0].Value.ToString();
+			return;
 		}
-		if (Operators.CompareString(DataGridView_MODELE_TICKET.Rows[((DataGridViewBand)DataGridView_MODELE_TICKET.CurrentRow).Index].Cells[0].Value.ToString(), "FR_3C", TextCompare: false) == 0)
+		DataGridViewRow row = DataGridView_MODELE_TICKET.Rows[e.RowIndex];
+		if (row.IsNewRow || row.Cells.Count == 0 || row.Cells[0].Value == null)
 		{
-			((Control)PictureBox_FR_3C).Visible = true;
-			((Control)PictureBox_FR_3C).BringToFront();
+			return;
 		}
-		else if (Operators.CompareString(DataGridView_MODELE_TICKET.Rows[((DataGridViewBand)DataGridView_MODELE_TICKET.CurrentRow).Index].Cells[0].Value.ToString(), "FR_4C", TextCompare: false) == 0)
+		string model = Convert.ToString(row.Cells[0].Value);
+		if (string.IsNullOrWhiteSpace(model))
 		{
-			((Control)PictureBox_FR_4C).Visible = true;
-			((Control)PictureBox_FR_4C).BringToFront();
+			return;
 		}
-		else if (Operators.CompareString(DataGridView_MODELE_TICKET.Rows[((DataGridViewBand)DataGridView_MODELE_TICKET.CurrentRow).Index].Cells[0].Value.ToString(), "FR_2L", TextCompare: false) == 0)
+		ListViewItem setting = ListView1.Items.Count > 0 ? ListView1.FindItemWithText("MODELE_TICKET", false, 0) : null;
+		if (setting != null && setting.SubItems.Count > 1)
 		{
-			((Control)PictureBox_FR_2L).Visible = true;
-			((Control)PictureBox_FR_2L).BringToFront();
+			setting.Selected = true;
+			setting.SubItems[1].Text = model;
 		}
-		else if (Operators.CompareString(DataGridView_MODELE_TICKET.Rows[((DataGridViewBand)DataGridView_MODELE_TICKET.CurrentRow).Index].Cells[0].Value.ToString(), "AR_3C", TextCompare: false) == 0)
-		{
-			((Control)PictureBox_AR_3C).Visible = true;
-			((Control)PictureBox_AR_3C).BringToFront();
-		}
-		else if (Operators.CompareString(DataGridView_MODELE_TICKET.Rows[((DataGridViewBand)DataGridView_MODELE_TICKET.CurrentRow).Index].Cells[0].Value.ToString(), "AR_4C", TextCompare: false) == 0)
-		{
-			((Control)PictureBox_AR_4C).Visible = true;
-			((Control)PictureBox_AR_4C).BringToFront();
-		}
+		PictureBox_FR_3C.Visible = model == "FR_3C";
+		PictureBox_FR_4C.Visible = model == "FR_4C";
+		PictureBox_FR_2L.Visible = model == "FR_2L";
+		PictureBox_AR_3C.Visible = model == "AR_3C";
+		PictureBox_AR_4C.Visible = model == "AR_4C";
 	}
 
 	private void Button20324_Click(object sender, EventArgs e)
