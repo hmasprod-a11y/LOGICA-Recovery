@@ -226,20 +226,43 @@ internal static class ReceiptClaimMariaDbSmoke
 
             // Nontransactional legacy tables cannot guarantee rollback.
             // Reject them before any receipt header or stock write.
-            Execute(connection, null, "ALTER TABLE TABLE_RECEPTIONS_DETAILS ENGINE=MyISAM");
+            string[] protectedTables = {
+                "TABLE_RECEPTIONS_ENTETE", "TABLE_RECEPTIONS_DETAILS",
+                "TABLE_ARTICLES", "TABLE_MOUVEMENTS_STOCK"
+            };
+            foreach (string tableName in protectedTables)
+            {
+                // Identifiers come exclusively from this fixed in-source list.
+                Execute(connection, null, "ALTER TABLE " + tableName + " ENGINE=MyISAM");
+                using (var transaction = connection.BeginTransaction())
+                {
+                    bool rejected = false;
+                    try { Claim(method, connection, transaction, "BR-3"); }
+                    catch (InvalidOperationException) { rejected = true; }
+                    Require(rejected, "Nontransactional table was accepted: " + tableName);
+                    transaction.Rollback();
+                }
+                Execute(connection, null, "ALTER TABLE " + tableName + " ENGINE=InnoDB");
+            }
+            Check(scratch, "BR-3", "ART-3", 4m, 1, "VALIDER");
+
+            // A UNIQUE(ID_BR, ETAT) composite index is not a unique receipt ID.
+            // This scratch-only fixture must fail closed even without duplicates.
+            Execute(connection, null, "ALTER TABLE TABLE_RECEPTIONS_ENTETE DROP INDEX uq_receipt");
+            Execute(connection, null,
+                "ALTER TABLE TABLE_RECEPTIONS_ENTETE ADD UNIQUE KEY uq_composite (ID_BR, ETAT)");
             using (var transaction = connection.BeginTransaction())
             {
                 bool rejected = false;
                 try { Claim(method, connection, transaction, "BR-3"); }
                 catch (InvalidOperationException) { rejected = true; }
-                Require(rejected, "Nontransactional receipt details table was accepted");
+                Require(rejected, "Composite receipt index incorrectly accepted as unique ID_BR");
                 transaction.Rollback();
             }
-            Execute(connection, null, "ALTER TABLE TABLE_RECEPTIONS_DETAILS ENGINE=InnoDB");
+            Execute(connection, null, "ALTER TABLE TABLE_RECEPTIONS_ENTETE DROP INDEX uq_composite");
 
-            // Deliberately break uniqueness in SCRATCH ONLY to ensure the
-            // helper fails closed on duplicate headers rather than posting.
-            Execute(connection, null, "ALTER TABLE TABLE_RECEPTIONS_ENTETE DROP INDEX uq_receipt");
+            // Deliberately insert duplicate headers in SCRATCH ONLY to ensure
+            // the helper fails closed instead of posting stock.
             Execute(connection, null,
                 "INSERT INTO TABLE_RECEPTIONS_ENTETE (ID_BR, ETAT) VALUES ('BR-DUP','EN_COURS'),('BR-DUP','EN_COURS')");
             using (var transaction = connection.BeginTransaction())
@@ -250,7 +273,7 @@ internal static class ReceiptClaimMariaDbSmoke
                 Require(rejected, "Duplicate receipt header was accepted");
                 transaction.Rollback();
             }
-            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, rollback/retry, blocked states, invalid/duplicate headers, MyISAM rejection");
+            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, rollback/retry, blocked states, invalid/duplicate headers, composite index, four MyISAM table rejections");
         }
     }
 
