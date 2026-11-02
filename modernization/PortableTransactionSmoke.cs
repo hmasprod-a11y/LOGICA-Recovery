@@ -292,6 +292,47 @@ internal static class PortableTransactionSmoke
                 throw new Exception("Portable shared-progress gate did not release safely");
         }
 
+        // Same production null-stream/recovery behavior on .NET 10:
+        // no synthetic NRE, no Commit, and no second sale until rollback.
+        foreach (bool missingStock in new[] { true, false })
+        {
+            var malformed = new Store();
+            var malformedInput = Input(malformed);
+            if (missingStock)
+                malformedInput.ReadStock = delegate { return null; };
+            else
+                malformedInput.ReadPayments = delegate { return null; };
+            var malformedProgress = new CheckoutCommitProgress();
+            var malformedGate = new CheckoutAttemptGate();
+            bool rejected = false;
+            try
+            {
+                CheckoutTransactionFinalizationService.PostAndFinalize(
+                    malformed, malformedInput, malformed, malformedProgress, malformedGate);
+            }
+            catch (InvalidOperationException ex)
+            {
+                rejected = ex.Message ==
+                    (missingStock ? "Checkout stock reader returned no collection."
+                                  : "Checkout payment reader returned no collection.");
+            }
+            if (!rejected || !malformedGate.IsBlocked ||
+                malformedProgress.RecoveryAction != CheckoutAttemptRecoveryAction.VerifyRollback ||
+                malformed.Events.Contains("commit") || malformed.Events.Contains("close"))
+                throw new Exception("Portable malformed stream reached commit or escaped gate");
+            malformed.Rollback();
+            malformedGate.ReleaseAfterVerifiedRollback(malformedProgress);
+            var repaired = new Store();
+            var repairedProgress = new CheckoutCommitProgress();
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                repaired, Input(repaired), repaired, repairedProgress, malformedGate);
+            if (repairedProgress.Stage != CheckoutCommitStage.Closed ||
+                String.Join(",", repaired.Events.ToArray()) !=
+                    "header,journal,print,complete,commit,close")
+                throw new Exception("Portable repaired checkout did not post exactly once");
+            malformedGate.ReleaseAfterBasketReset(repairedProgress);
+        }
+
         Console.WriteLine("PASS .NET 10 portable checkout: transaction boundary, atomic progress, per-cashier double-click gate, commit reconciliation and failure propagation");
         return 0;
     }
