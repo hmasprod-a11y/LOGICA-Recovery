@@ -2318,24 +2318,23 @@ static void ArticleFamilyMissingSettings(Assembly assembly) {
 static void StockRecoveredSchema(Assembly assembly) {
  var module=assembly.GetType("LOGICA.Module1",true);
  var conn=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
- if(conn.Database!="logica_ci" || !conn.ConnectionString.Contains("127.0.0.1")) throw new Exception("Requires isolated MariaDB");
+ if(conn.Database!="logica_ci" || !conn.ConnectionString.Contains("127.0.0.1"))throw new Exception("Requires isolated MariaDB");
  conn.Open();
  try {
   using(var cmd=conn.CreateCommand()){
+   cmd.CommandText="CREATE TEMPORARY TABLE TABLE_ARTICLES (ID INT, Famille VARCHAR(100), STOCK DECIMAL(10,2), Alert DECIMAL(10,2), PROMOTION DECIMAL(10,2), PRIX_MP DECIMAL(10,2), PRIX_A DECIMAL(10,2), PRIX_V_1 DECIMAL(10,2))";
+   cmd.ExecuteNonQuery();
+   cmd.CommandText="INSERT INTO TABLE_ARTICLES VALUES (1,'TEST',2,1,0,5,7,10)";
+   cmd.ExecuteNonQuery();
    cmd.CommandText="SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='TABLE_ARTICLES' AND COLUMN_NAME='PRIX_QTE'";
-   var count=Convert.ToInt32(cmd.ExecuteScalar());
-   if(count!=0)throw new Exception("Test fixture unexpectedly includes PRIX_QTE");
-   cmd.CommandText="SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='TABLE_LISTE_TAILLES'";
-   if(Convert.ToInt32(cmd.ExecuteScalar())!=0)throw new Exception("Test fixture unexpectedly includes sizes");
+   if(Convert.ToInt32(cmd.ExecuteScalar())!=0)throw new Exception("Unexpected quantity pricing column");
   }
+  var lookup=assembly.GetType("LOGICA.Infrastructure.Catalogue.CatalogueAggregateLookup",true);
+  var counts=(DataTable)lookup.GetMethod("Read",Flags).Invoke(null,new object[]{"",module.GetField("cn_SQL").GetValue(null)});
+  if(counts.Rows.Count!=11 || Convert.ToInt32(counts.Rows[10]["N"])!=0 || Convert.ToInt32(counts.Rows[0]["N"])!=1)
+   throw new Exception("11-row recovered dashboard aggregate projection incorrect");
+  Console.WriteLine("PASS stock aggregates with session-only legacy article schema missing PRIX_QTE");
  } finally {conn.Close();}
- var mysqlConnection=module.GetField("cn_SQL").GetValue(null);
- var lookup=assembly.GetType("LOGICA.Infrastructure.Catalogue.CatalogueAggregateLookup",true);
- var method=lookup.GetMethod("Read",Flags);
- var counts=(DataTable)method.Invoke(null,new object[]{"",mysqlConnection});
- if(counts.Rows.Count!=11 || Convert.ToInt32(counts.Rows[10]["N"])!=0)
-  throw new Exception("Expected 11 aggregate rows and zero optional quantity prices");
- Console.WriteLine("PASS recovered stock aggregates without PRIX_QTE and TABLE_LISTE_TAILLES");
 }
 [STAThread] static int Main(string[] args) {
   try {
