@@ -13084,6 +13084,10 @@ public class Form_3_VENTE : Form
 						ProjectData.ClearProjectError();
 					}
 					ProjectData.ClearProjectError();
+					// A failed checkout has been rolled back: leave the basket, payment
+					// inputs and cashier context intact so the sale can be retried.
+					// Never fall through into the successful-sale reset below.
+					return;
 				}
 				Module1.dt1.Clear();
 				Module1.da1 = new MySqlDataAdapter("select * from TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + " order by ID asc", Module1.cn_SQL);
