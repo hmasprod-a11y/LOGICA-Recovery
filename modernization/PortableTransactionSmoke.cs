@@ -130,7 +130,59 @@ internal static class PortableTransactionSmoke
         catch (ArgumentNullException ex) { nullFinalizerRejected = ex.ParamName == "finalizer"; }
         if (!nullFinalizerRejected || missingFinalizer.Events.Count != 0)
             throw new Exception("Missing transaction finalizer must fail before posting");
-        Console.WriteLine("PASS .NET 10 portable checkout: transaction boundary, commit outcome, duplicate progress guard and failure propagation");
+        // .NET 10 executes the same production per-cashier guard as WinForms.
+        // A second click cannot write another ticket while the first outcome
+        // has not been reconciled, even with a fresh progress instance.
+        var cashierGate = new CheckoutAttemptGate();
+        var first = new Store();
+        var firstProgress = new CheckoutCommitProgress();
+        CheckoutTransactionFinalizationService.PostAndFinalize(
+            first, Input(first), first, firstProgress, cashierGate);
+        if (!cashierGate.IsBlocked || firstProgress.Stage != CheckoutCommitStage.Closed)
+            throw new Exception("Portable cashier gate released before basket reset");
+        var repeated = new Store();
+        bool blocked = false;
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                repeated, Input(repeated), repeated,
+                new CheckoutCommitProgress(), cashierGate);
+        }
+        catch (InvalidOperationException) { blocked = true; }
+        if (!blocked || repeated.Events.Count != 0)
+            throw new Exception("Portable double SOLDER click reached posting");
+        cashierGate.ReleaseAfterBasketReset(firstProgress);
+
+        foreach (string failAt in new[] { "print", "commit", "close" })
+        {
+            var failedStore = new Store { FailAt = failAt };
+            var failedProgress = new CheckoutCommitProgress();
+            bool thrown = false;
+            try
+            {
+                CheckoutTransactionFinalizationService.PostAndFinalize(
+                    failedStore, Input(failedStore), failedStore,
+                    failedProgress, cashierGate);
+            }
+            catch (InvalidOperationException ex) { thrown = ex.Message == failAt; }
+            if (!thrown || !cashierGate.IsBlocked)
+                throw new Exception("Portable failed checkout was not gated: " + failAt);
+            if (failAt == "print")
+                cashierGate.ReleaseAfterVerifiedRollback(failedProgress);
+            else
+            {
+                bool unsafeReset = false;
+                try { cashierGate.ReleaseAfterVerifiedRollback(failedProgress); }
+                catch (InvalidOperationException) { unsafeReset = true; }
+                if (!unsafeReset || !cashierGate.IsBlocked)
+                    throw new Exception("Portable ambiguous commit incorrectly retried");
+                cashierGate.ReleaseAfterDatabaseReconciliation(failedProgress);
+            }
+            if (cashierGate.IsBlocked)
+                throw new Exception("Portable cashier remained blocked after reconciliation");
+        }
+
+        Console.WriteLine("PASS .NET 10 portable checkout: transaction boundary, atomic progress, per-cashier double-click gate, commit reconciliation and failure propagation");
         return 0;
     }
 }
