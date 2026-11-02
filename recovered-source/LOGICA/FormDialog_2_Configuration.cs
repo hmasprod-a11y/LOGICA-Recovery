@@ -2417,7 +2417,7 @@ public class FormDialog_2_Configuration : Form
 	private void CheckBox_me_MODEP_CheckedChanged(object sender, EventArgs e)
 	{
 		ListViewItem val = ListView1.FindItemWithText(Conversions.ToString(NewLateBinding.LateGet(sender, null, "tag", new object[0], null, null, null)), false, 0);
-		if (val != null)
+		if (val != null && val.SubItems.Count > 1)
 		{
 			ListView1.Items[val.Index].Selected = true;
 			ListView1.Items[val.Index].SubItems[1].Text = Conversions.ToString(NewLateBinding.LateGet(sender, null, "Checked", new object[0], null, null, null));
@@ -2427,7 +2427,7 @@ public class FormDialog_2_Configuration : Form
 	private void Combo_BRANCHEMENT_TextChanged(object sender, EventArgs e)
 	{
 		ListViewItem val = ListView1.FindItemWithText(Conversions.ToString(NewLateBinding.LateGet(sender, null, "tag", new object[0], null, null, null)), false, 0);
-		if (val != null)
+		if (val != null && val.SubItems.Count > 1)
 		{
 			ListView1.Items[val.Index].Selected = true;
 			ListView1.Items[val.Index].SubItems[1].Text = Conversions.ToString(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null));
