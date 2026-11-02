@@ -83,6 +83,14 @@ function Inspect-ActivationUI([Diagnostics.Process]$target, [string]$name) {
     }
     return (Get-Content -LiteralPath $output -Raw | ConvertFrom-Json)
 }
+function Assert-LoginScreen([object]$report, [string]$entrypoint) {
+    # A responsive window without the PIN screen is a startup regression.
+    # This read-only gate does not enter a PIN or assert a licensed cashier.
+    if ($report.inspectionStatus -ne 'inspected' -or $report.loginScreenVisible -ne $true) {
+        throw "Extracted $entrypoint did not expose a visible cashier PIN login screen; see activation probe JSON"
+    }
+    Write-Host "PASS: extracted $entrypoint exposes cashier PIN login screen (license and cashier access NOT verified)"
+}
 $app = $null
 $started = [Diagnostics.Stopwatch]::StartNew()
 try {
@@ -225,6 +233,7 @@ try {
         }
         Write-Host 'PASS: extracted customer launcher started actual LOGICA.exe with local MariaDB 3308'
         $launcherActivation = Inspect-ActivationUI $launcherApp 'extracted-release-launcher-activation.json'
+        Assert-LoginScreen $launcherActivation 'launcher'
         if ($launcherActivation.activationScreenVisible -eq $true) {
             throw 'REGRESSION: packaged launcher displayed legacy activation screen'
         }
@@ -276,6 +285,7 @@ try {
         }
         Write-Host 'PASS: extracted Start-LOGICA.cmd started actual LOGICA.exe using preprovisioned offline MariaDB'
         $cmdActivation = Inspect-ActivationUI $cmdApp 'extracted-release-cmd-activation.json'
+        Assert-LoginScreen $cmdActivation 'Start-LOGICA.cmd'
         if ($cmdActivation.activationScreenVisible -eq $true) {
             throw 'REGRESSION: Start-LOGICA.cmd displayed legacy activation screen'
         }
@@ -331,6 +341,7 @@ try {
             throw 'Double-click LOGICA.exe did not launch a responsive authenticated child on MariaDB 3308'
         }
         $directWithoutOverrideActivation = Inspect-ActivationUI $directChild 'extracted-release-direct-no-override-activation.json'
+        Assert-LoginScreen $directWithoutOverrideActivation 'direct EXE without override'
         if ($directWithoutOverrideActivation.activationScreenVisible -eq $true) {
             throw 'Direct EXE displayed the legacy activation panel'
         }
@@ -349,7 +360,7 @@ try {
     }
     Assert-RuntimeHashes $extract $baseline
     Assert-PackagedCodeHashes $extract $codeBaseline
-    Write-Warning 'RELEASE ACCEPTANCE BLOCKED: responsive WinForms window does not prove valid license, cashier screen, printer, or direct EXE without DB override.'
+    Write-Warning 'RELEASE ACCEPTANCE BLOCKED: PIN login screen is not proof of a valid license, successful cashier login, completed sale, printer or scanner.'
     Assert-RuntimeHashes $extract $baseline
     Assert-PackagedCodeHashes $extract $codeBaseline
     if (Test-Path -LiteralPath (Join-Path $extract 'bd/mysql-client-temporary.ini')) {
@@ -372,6 +383,9 @@ try {
         extractedStartCmdActualExeResponsive = $cmdResponsive
         startCmdOfflineMariaDbPreprovisioned = $true
         licensedCashierScreenVerified = $false
+        launcherLoginPinScreenVisible = $launcherActivation.loginScreenVisible
+        startCmdLoginPinScreenVisible = $cmdActivation.loginScreenVisible
+        directExeLoginPinScreenVisible = $directWithoutOverrideActivation.loginScreenVisible
         launcherActivationInspectionStatus = $launcherActivation.inspectionStatus
         launcherActivationScreenVisible = $launcherActivation.activationScreenVisible
         startCmdActivationInspectionStatus = $cmdActivation.inspectionStatus
