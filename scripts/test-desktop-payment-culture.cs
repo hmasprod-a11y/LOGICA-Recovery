@@ -125,6 +125,19 @@ internal static class DesktopPaymentCultureSmoke
                     keypad.Invoke(form, new object[] { repeatedDot, EventArgs.Empty });
                 Expect(display.Text == "0,25", "On-screen keypad accepted duplicate decimal point");
 
+                // A valid cash method is still cash when legacy settings contain
+                // lowercase labels, whitespace or a missing ESPECS.png icon.
+                MethodInfo cashLookup = form.GetType().GetMethod("CashPaymentButton", Flags);
+                Expect(cashLookup != null, "Cash method lookup missing");
+                FlowLayoutPanel methods = (FlowLayoutPanel)Get(form, "FlowLayoutPanel_MODE_P");
+                using (Button cash = new Button() { Name = "Button_especes", Text = " especes " })
+                {
+                    methods.Controls.Add(cash);
+                    Expect(Object.ReferenceEquals(cashLookup.Invoke(form, null), cash),
+                        "Case/space variant cash method was not available without an icon");
+                    methods.Controls.Remove(cash);
+                }
+
                 // Wide payment-method flow must not be positioned off the left
                 // edge when high DPI or many configured methods exceed the panel.
                 Control panel = (Control)Get(form, "Panel_MODE_P");
@@ -178,7 +191,7 @@ internal static class DesktopPaymentCultureSmoke
                 Recalculate(form);
                 Expect(!solder.Enabled && remainder.Text == "", "Overflow left an actionable SOLDER state");
             }
-            Console.WriteLine("PASS French decimal SOLDER, additive RESTE cash/refunds, half-dirham, both keypads, dynamic DPI layout and overflow");
+            Console.WriteLine("PASS French decimal SOLDER, additive RESTE cash/refunds, tolerant cash labels, half-dirham, both keypads, dynamic DPI layout and overflow");
             return 0;
         }
         catch (Exception exception)
