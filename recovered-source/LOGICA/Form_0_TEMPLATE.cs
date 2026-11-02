@@ -5046,86 +5046,66 @@ public class Form_0_TEMPLATE : Form
 	{
 	}
 
+	// The legacy activation form shares a parent panel with the database error UI.
+	// Never display its activation fiche merely because the local MariaDB service
+	// cannot be reached; the actual license check remains in Form_0_TEMPLATE_Load.
+	private void ShowDatabaseConnectionError()
+	{
+		PictureBox100.Image = MyProject.Forms.Form_1_LOGIN.PictureBox100.Image;
+		((Control)Panel_FICHE).Visible = false;
+		((Control)Panel_clé).Visible = true;
+		((Control)Panel_TENTATIVE_CONNEXION).Visible = true;
+		((Control)Panel_TENTATIVE_CONNEXION).BringToFront();
+	}
+
 	public void _Tentative_Connect_Database()
 	{
-		//IL_00ba: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00c0: Expected Obj, but got Unknown
-		//IL_00c2: Expected Obj, but got Unknown
-		int num = 0;
-		int num2 = 3;
-		bool flag = false;
-		int millisecondsTimeout = 1000;
-		if (!((ServerComputer)MyProject.Computer).FileSystem.DirectoryExists(Module1._CHEMIN_FOLDER + "\\bd"))
-		{
-			PictureBox100.Image = MyProject.Forms.Form_1_LOGIN.PictureBox100.Image;
-			((Control)Panel_clé).Visible = true;
-			((Control)Panel_TENTATIVE_CONNEXION).Visible = true;
-			((Control)Panel_TENTATIVE_CONNEXION).BringToFront();
-			Label label_ERREUR = Label_ERREUR;
-			label_ERREUR.Text += "\r\nVeuillez vérifier le dossier bd.";
-			return;
-		}
-		while ((num < num2) & !flag)
+		int attempt = 0;
+		const int maxRetries = 3;
+		bool connected = false;
+		// A service-backed MariaDB instance has no requirement for a local 'bd'
+		// directory. The previous directory preflight blocked valid connections.
+		Label_ERREUR.Text = "";
+		((Control)Panel_TENTATIVE_CONNEXION).Visible = false;
+		while (attempt < maxRetries && !connected)
 		{
 			try
 			{
-				Module1.cn_SQL.Open();
-				flag = true;
+				if (Module1.cn_SQL.State != ConnectionState.Open)
+				{
+					Module1.cn_SQL.Open();
+				}
+				connected = true;
 			}
 			catch (MySqlException ex)
 			{
-				ProjectData.SetProjectError((Exception)ex);
-				MySqlException ex2 = ex;
-				num = checked(num + 1);
-				switch (ex2.Number)
+				attempt++;
+				ShowDatabaseConnectionError();
+				if (ex.Number == -1 || ex.Number == 1042)
 				{
-				case -1:
-				{
-					PictureBox100.Image = MyProject.Forms.Form_1_LOGIN.PictureBox100.Image;
-					((Control)Panel_clé).Visible = true;
-					((Control)Panel_TENTATIVE_CONNEXION).Visible = true;
-					((Control)Panel_TENTATIVE_CONNEXION).BringToFront();
-					Label label_ERREUR = Label_ERREUR;
-					label_ERREUR.Text = label_ERREUR.Text + "\r\nProblème de réseau ou timeout lors de la connexion à la base de données. Tentative " + Conversions.ToString(num) + "/maxRetries ";
-					Thread.Sleep(millisecondsTimeout);
-					ProjectData.ClearProjectError();
-					break;
+					Label_ERREUR.Text = "Connexion à MariaDB indisponible (code " + ex.Number + "). Vérifiez le démarrage du service local et sa configuration. Tentative " + attempt + "/" + maxRetries + ".";
+					if (attempt < maxRetries)
+					{
+						Thread.Sleep(1000);
+					}
 				}
-				case 18456:
+				else if (ex.Number == 1044 || ex.Number == 1045 || ex.Number == 18456)
 				{
-					PictureBox100.Image = MyProject.Forms.Form_1_LOGIN.PictureBox100.Image;
-					((Control)Panel_clé).Visible = true;
-					((Control)Panel_TENTATIVE_CONNEXION).Visible = true;
-					((Control)Panel_TENTATIVE_CONNEXION).BringToFront();
-					Label label_ERREUR = Label_ERREUR;
-					label_ERREUR.Text += "\r\nÉchec d'authentification. Vérifiez vos identifiants de connexion.";
-					ProjectData.ClearProjectError();
+					Label_ERREUR.Text = "Authentification MariaDB refusée (code " + ex.Number + "). Vérifiez la configuration locale de connexion.";
 					return;
 				}
-				default:
+				else
 				{
-					PictureBox100.Image = MyProject.Forms.Form_1_LOGIN.PictureBox100.Image;
-					((Control)Panel_clé).Visible = true;
-					((Control)Panel_TENTATIVE_CONNEXION).Visible = true;
-					((Control)Panel_TENTATIVE_CONNEXION).BringToFront();
-					Label label_ERREUR = Label_ERREUR;
-					label_ERREUR.Text = label_ERREUR.Text + "\r\nErreur SQL : " + ((Exception)(object)ex2).Message + " Code : " + Conversions.ToString(ex2.Number);
-					ProjectData.ClearProjectError();
+					// Do not echo the raw connection exception: it may contain
+					// private connection details, and this is not a license error.
+					Label_ERREUR.Text = "Erreur de connexion MariaDB (code " + ex.Number + ").";
 					return;
-				}
 				}
 			}
-			catch (Exception ex3)
+			catch (Exception)
 			{
-				ProjectData.SetProjectError(ex3);
-				Exception ex4 = ex3;
-				PictureBox100.Image = MyProject.Forms.Form_1_LOGIN.PictureBox100.Image;
-				((Control)Panel_clé).Visible = true;
-				((Control)Panel_TENTATIVE_CONNEXION).Visible = true;
-				((Control)Panel_TENTATIVE_CONNEXION).BringToFront();
-				Label label_ERREUR = Label_ERREUR;
-				label_ERREUR.Text = label_ERREUR.Text + "Une erreur inattendue s'est produite : " + ex4.Message;
-				ProjectData.ClearProjectError();
+				ShowDatabaseConnectionError();
+				Label_ERREUR.Text = "Impossible d'initialiser la connexion à la base de données locale.";
 				return;
 			}
 			finally
@@ -5136,14 +5116,17 @@ public class Form_0_TEMPLATE : Form
 				}
 			}
 		}
-		if (!flag)
+		if (connected)
 		{
-			PictureBox100.Image = MyProject.Forms.Form_1_LOGIN.PictureBox100.Image;
-			((Control)Panel_clé).Visible = true;
-			((Control)Panel_TENTATIVE_CONNEXION).Visible = true;
-			((Control)Panel_TENTATIVE_CONNEXION).BringToFront();
-			Label label_ERREUR = Label_ERREUR;
-			label_ERREUR.Text += "Impossible de se connecter à la base de données après plusieurs tentatives.";
+			// A transient failed attempt must not leave the error overlay up
+			// after the database becomes reachable again.
+			Label_ERREUR.Text = "";
+			((Control)Panel_TENTATIVE_CONNEXION).Visible = false;
+		}
+		else
+		{
+			ShowDatabaseConnectionError();
+			Label_ERREUR.Text += " Impossible de se connecter après plusieurs tentatives.";
 		}
 	}
 
