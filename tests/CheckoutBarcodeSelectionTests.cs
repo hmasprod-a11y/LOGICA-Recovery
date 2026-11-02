@@ -575,6 +575,63 @@ internal static class CheckoutBarcodeSelectionTests
                         CheckoutVariantSnapshotReadStatus.InvalidCandidates)
                     throw new Exception("Scanner must continue rejecting SQL NULL barcode");
                 checks++;
+                // A local image lookup is expected to be WHERE ID_ARTICLE=@id.
+                // Do not accept a misfiltered result merely because it also
+                // contains the selected image-only product with valid pricing.
+                DataTable imageMixedIds = imageNullLive.Copy();
+                imageMixedIds.Rows.Add("UNRELATED-NULL", DBNull.Value, "Other", 99m, 0m, 20m);
+                CheckoutVariantChoiceResult imageMixedChoice =
+                    CheckoutSelectionFlowService.ChooseImageWithRefresh(imageNullTile,
+                        delegate { return imageMixedIds; });
+                if (imageMixedChoice.Status != CheckoutVariantChoiceStatus.InvalidCandidates ||
+                    imageMixedChoice.SelectedRow != null ||
+                    CheckoutArticleTileSelectionService.FindExact(imageMixedIds, imageNullTile) !=
+                        imageMixedIds.Rows[0])
+                    throw new Exception("Exact-ID refresh must reject unrelated image SQL rows while broad lookup remains valid");
+                checks++;
+                DataTable imageWrongOnly = imageNullLive.Copy();
+                imageWrongOnly.Rows[0]["ID_ARTICLE"] = "WRONG-ID";
+                if (CheckoutSelectionFlowService.ChooseImageWithRefresh(imageNullTile,
+                    delegate { return imageWrongOnly; }).Status !=
+                    CheckoutVariantChoiceStatus.InvalidCandidates)
+                    throw new Exception("Wrong-only image SQL query must not masquerade as missing");
+                checks++;
+                DataTable imageMissing = imageNullLive.Clone();
+                if (CheckoutSelectionFlowService.ChooseImageWithRefresh(imageNullTile,
+                    delegate { return imageMissing; }).Status != CheckoutVariantChoiceStatus.Missing)
+                    throw new Exception("Empty exact-ID image query must remain Missing");
+                checks++;
+                DataTable imageDuplicate = imageNullLive.Copy();
+                imageDuplicate.ImportRow(imageNullLive.Rows[0]);
+                if (CheckoutSelectionFlowService.ChooseImageWithRefresh(imageNullTile,
+                    delegate { return imageDuplicate; }).Status != CheckoutVariantChoiceStatus.Ambiguous)
+                    throw new Exception("Duplicate exact image identity must be ambiguous");
+                checks++;
+                DataTable imageBadSchema = new DataTable();
+                imageBadSchema.Columns.Add("Code", typeof(string));
+                imageBadSchema.Rows.Add(DBNull.Value);
+                if (CheckoutSelectionFlowService.ChooseImageWithRefresh(imageNullTile,
+                    delegate { return imageBadSchema; }).Status !=
+                    CheckoutVariantChoiceStatus.InvalidCandidates)
+                    throw new Exception("Incomplete image SQL projection must fail closed");
+                checks++;
+                int malformedImageQueries = 0;
+                if (CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                        new CheckoutArticleTileReference("", " "),
+                        delegate { malformedImageQueries++; return imageNullLive; }).Status !=
+                        CheckoutVariantChoiceStatus.InvalidCandidates || malformedImageQueries != 0)
+                    throw new Exception("Malformed image identity must not query local SQL");
+                checks++;
+                Exception imageQueryFailure = new InvalidOperationException("image reader failed");
+                try {
+                    CheckoutSelectionFlowService.ChooseImageWithRefresh(imageNullTile,
+                        delegate { throw imageQueryFailure; });
+                    throw new Exception("Image query failure was swallowed");
+                } catch (InvalidOperationException error) {
+                    if (!Object.ReferenceEquals(error, imageQueryFailure))
+                        throw new Exception("Image query failure identity changed");
+                }
+                checks++;
                 imageNullLive.Rows[0]["Code"] = "REASSIGNED";
                 if (CheckoutArticleTileSelectionService.EvaluateExact(imageNullLive, imageNullTile).Status !=
                     CheckoutVariantChoiceStatus.Ambiguous)
