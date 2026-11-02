@@ -73,6 +73,7 @@ try {
     $zipDirectories = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $metadata = $null
     [long]$totalUncompressed = 0
+    if ($archive.Entries.Count -gt 12000) { throw 'Beta ZIP entry count exceeds safety limit' }
     foreach ($entry in $archive.Entries) {
         $name = $entry.FullName
         if ($name.EndsWith('/')) {
