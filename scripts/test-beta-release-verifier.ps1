@@ -189,6 +189,17 @@ try {
         "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
         Assert-Rejected "invalid ZIP directories $($directoryNames -join ',')"
     }
+    # Bound malicious ZIP metadata growth before reading file streams.
+    Write-FixtureZip
+    $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
+    try {
+        for ($i = 0; $i -lt 12001; $i++) {
+            $null = $archive.CreateEntry(('extra-{0:D5}/' -f $i))
+        }
+    } finally { $archive.Dispose() }
+    $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
+    Assert-Rejected 'excessive ZIP entry count' 'Beta ZIP entry count exceeds safety limit'
     # Highly compressible payloads must fail before content is streamed or extracted.
     Write-FixtureZip
     $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
