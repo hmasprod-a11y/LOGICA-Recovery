@@ -15276,7 +15276,8 @@ public class Form_2_ARTICLES : Form
 		string name = Text_LIEN_PICTURE.Text.Trim();
 		if (name == "0" || string.Equals(name, "0.png", StringComparison.OrdinalIgnoreCase)) return true;
 		if (string.Equals(name, Text_LIEN_PICTURE_ANC.Text, StringComparison.Ordinal)) return true;
-		if (string.IsNullOrWhiteSpace(name) || name != Path.GetFileName(name) || Picture_IMAGE.Image == null)
+		if (string.IsNullOrWhiteSpace(name) || name != Path.GetFileName(name) || Picture_IMAGE.Image == null ||
+			string.IsNullOrWhiteSpace(Module1._CHEMIN_FOLDER))
 			return false;
 		try
 		{
