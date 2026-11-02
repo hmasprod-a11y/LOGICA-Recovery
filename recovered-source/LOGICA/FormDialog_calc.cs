@@ -2830,15 +2830,18 @@ public class FormDialog_calc : Form
 	// The actual payment method is in column 3 of the legacy calculation grid.
 	private bool HasSelectedPaymentMethod()
 	{
+		bool hasPayment = false;
 		foreach (DataGridViewRow row in DataGridView_CALC.Rows)
 		{
-			if (row.IsNewRow || row.Cells.Count <= 3) continue;
+			if (row.IsNewRow) continue;
+			if (row.Cells.Count <= 3) return false;
 			object method = row.Cells[3].Value;
-			if (method != null && method != DBNull.Value &&
-				!string.IsNullOrWhiteSpace(Convert.ToString(method)))
-				return true;
+			if (method == null || method == DBNull.Value ||
+				string.IsNullOrWhiteSpace(Convert.ToString(method)))
+				return false; // A mixed valid/blank grid is unsafe to post.
+			hasPayment = true;
 		}
-		return false;
+		return hasPayment;
 	}
 
 	private void FormDialog_calc_Load(object sender, EventArgs e)
