@@ -3,6 +3,7 @@ using System.Data;
 using System.Data.Common;
 using System.Globalization;
 using MySql.Data.MySqlClient;
+using Microsoft.VisualBasic;
 using Microsoft.VisualBasic.CompilerServices;
 
 namespace LOGICA.Infrastructure.Catalogue
@@ -12,11 +13,14 @@ namespace LOGICA.Infrastructure.Catalogue
         // Preserve the legacy exact-match and adapter-owned connection lifecycle.
         // Barcode/article IDs are data, never SQL fragments: apostrophes in a
         // catalogue entry must not break creation or broaden a duplicate check.
+        // Creation persists Strings.Trim(code); duplicate prechecks must use the
+        // identical normalized value. A blank barcode is not an identity:
+        // multiple image-only articles must remain creatable and editable.
         public static void FillNewCode(DataTable table, string code, MySqlConnection connection)
         {
             var adapter = new MySqlDataAdapter(
-                "select ID,Code,Article from TABLE_ARTICLES WHERE Code = @code", connection);
-            adapter.SelectCommand.Parameters.AddWithValue("@code", (object)code ?? "");
+                "select ID,Code,Article from TABLE_ARTICLES WHERE Code = @code AND @code <> ''", connection);
+            adapter.SelectCommand.Parameters.AddWithValue("@code", (object)NormalizeCode(code));
             ((DbDataAdapter)adapter).Fill(table);
         }
 
@@ -24,8 +28,8 @@ namespace LOGICA.Infrastructure.Catalogue
         {
             long id = ParseExcludedId(excludedId);
             var adapter = new MySqlDataAdapter(
-                "select ID,Code,Article from TABLE_ARTICLES WHERE Code = @code AND ID <> @excludedId", connection);
-            adapter.SelectCommand.Parameters.AddWithValue("@code", (object)code ?? "");
+                "select ID,Code,Article from TABLE_ARTICLES WHERE Code = @code AND @code <> '' AND ID <> @excludedId", connection);
+            adapter.SelectCommand.Parameters.AddWithValue("@code", (object)NormalizeCode(code));
             adapter.SelectCommand.Parameters.AddWithValue("@excludedId", id);
             ((DbDataAdapter)adapter).Fill(table);
         }
@@ -43,9 +47,14 @@ namespace LOGICA.Infrastructure.Catalogue
         public static void FillCollectionCode(DataTable table, object code, MySqlConnection connection)
         {
             var adapter = new MySqlDataAdapter(
-                "select ID,Code,Article from TABLE_ARTICLES WHERE Code = @code", connection);
-            adapter.SelectCommand.Parameters.AddWithValue("@code", (object)Conversions.ToString(code) ?? "");
+                "select ID,Code,Article from TABLE_ARTICLES WHERE Code = @code AND @code <> ''", connection);
+            adapter.SelectCommand.Parameters.AddWithValue("@code", (object)NormalizeCode(Conversions.ToString(code)));
             ((DbDataAdapter)adapter).Fill(table);
+        }
+
+        private static string NormalizeCode(string code)
+        {
+            return Strings.Trim(code ?? "") ?? "";
         }
 
         private static long ParseExcludedId(string excludedId)
