@@ -12274,6 +12274,7 @@ public class Form_3_VENTE : Form
 				Module1.dt1 = new DataTable();
 				Module1.dt1.Clear();
 				((DbDataAdapter)(object)Module1.da1).Fill(Module1.dt1);
+				AssertCheckoutCartColumns();
 				DataGridView1.DataSource = Module1.dt1;
 				CREATION_ACCES();
 				CREATION_RACCOURCIES();
@@ -14760,6 +14761,28 @@ public class Form_3_VENTE : Form
         finally
         {
             if (openedHere) connection.Close();
+        }
+    }
+
+    // Diagnose the ACTUAL bound cashier data table, not just information_schema.
+    // Never let a missing required sales column become a misleading random line error.
+    private static void AssertCheckoutCartColumns()
+    {
+        if (Module1.dt1 == null)
+            throw new InvalidOperationException("POS cart table has not been loaded.");
+        foreach (string required in new[] { "ID", "ID_ARTICLE", "Code", "Article", "Famille",
+            "PRIX_A", "PRIX_MP", "Prix_V", "Qté", "Remise", "TOTAL_NET",
+            "TAUX_TVA", "PRINTER", "PRINTER_DUPLICATA" })
+        {
+            if (!Module1.dt1.Columns.Contains(required))
+            {
+                string actual = String.Join(", ", Module1.dt1.Columns.Cast<DataColumn>()
+                    .Select(column => column.ColumnName).ToArray());
+                throw new InvalidOperationException(
+                    "POS cart schema mismatch. Missing: " + required +
+                    "; workstation: " + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text +
+                    "; loaded columns: " + actual);
+            }
         }
     }
 
