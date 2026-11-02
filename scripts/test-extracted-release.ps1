@@ -241,21 +241,68 @@ try {
     } finally { Remove-Item -LiteralPath $inventoryProbe -Recurse -Force -ErrorAction Stop }
     Write-Host 'PASS: newly injected executable rejected in isolated extracted-code fixture'
 
-    # Launch the packaged real Windows executable with the isolated CI database.
-    # A live process alone is not sufficient: require a responsive WinForms main window.
-    $app = Start-Process -FilePath (Join-Path $extract 'LOGICA.exe') -WorkingDirectory $extract -PassThru
-    $windowReady = $false
-    $timer = [Diagnostics.Stopwatch]::StartNew()
-    do {
-        Start-Sleep -Seconds 2
-        $app.Refresh()
-        if ($app.HasExited) { break }
-        if ($app.MainWindowHandle -ne 0 -and $app.Responding) { $windowReady = $true; break }
-    } while ($timer.Elapsed.TotalSeconds -lt 30)
-    if (-not $windowReady) { throw 'Extracted LOGICA.exe did not open a responsive main window' }
-    Write-Host 'PASS: extracted LOGICA.exe opened a responsive WinForms window'
-    if (-not $app.HasExited) { $app.Kill(); $app.WaitForExit(10000) | Out-Null }
-    $app = $null
+    # A single green cold start previously masked an intermittent 30s
+    # unresponsive-window failure. Exercise three independent EXE lifetimes.
+    # Require TWO consecutive responsive polls, never pass on a live PID alone.
+    # All attempts must pass; do not silently retry a failure into acceptance.
+    # This remains a disposable CI MariaDB smoke, not licensed field acceptance.
+    $startupTrials = @()
+    for ($trial = 1; $trial -le 3; $trial++) {
+        $app = $null
+        $trialReady = $false
+        $windowObserved = $false
+        $consecutiveResponsive = 0
+        $earlyExit = $false
+        $trialError = $null
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        try {
+            $app = Start-Process -FilePath (Join-Path $extract 'LOGICA.exe') -WorkingDirectory $extract -PassThru
+            do {
+                Start-Sleep -Seconds 2
+                $app.Refresh()
+                if ($app.HasExited) { $earlyExit = $true; break }
+                if ($app.MainWindowHandle -ne 0) { $windowObserved = $true }
+                if ($app.MainWindowHandle -ne 0 -and $app.Responding) {
+                    $consecutiveResponsive++
+                    if ($consecutiveResponsive -ge 2) { $trialReady = $true; break }
+                } else {
+                    $consecutiveResponsive = 0
+                }
+            } while ($timer.Elapsed.TotalSeconds -lt 30)
+        } catch {
+            # Do not put process command lines, environment or DB credentials in diagnostics.
+            $trialError = $_.Exception.GetType().Name
+        } finally {
+            if ($app) {
+                try {
+                    $app.Refresh()
+                    if (-not $app.HasExited) {
+                        $app.Kill()
+                        if (-not $app.WaitForExit(10000)) { throw 'Process cleanup timed out' }
+                    }
+                } catch {
+                    $trialError = 'ProcessCleanupFailed'
+                }
+            }
+            $app = $null
+        }
+        $startupTrials += [pscustomobject]@{
+            attempt = $trial
+            responsive = $trialReady
+            windowObserved = $windowObserved
+            earlyExit = $earlyExit
+            elapsedSeconds = [math]::Round($timer.Elapsed.TotalSeconds, 1)
+            error = $trialError
+        }
+        Write-Host "Extracted EXE startup attempt $trial/3: responsive=$trialReady windowObserved=$windowObserved earlyExit=$earlyExit elapsed=$([math]::Round($timer.Elapsed.TotalSeconds,1))s error=$trialError"
+    }
+    $startupTrials | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $results 'extracted-exe-startup-trials.json') -Encoding UTF8
+    $startupSoakPass = ($startupTrials.Count -eq 3 -and
+        @($startupTrials | Where-Object { -not $_.responsive -or -not $_.windowObserved -or $_.earlyExit -or $null -ne $_.error }).Count -eq 0)
+    if (-not $startupSoakPass) {
+        throw 'Extracted LOGICA.exe cold-start stability failed: all three independent launches must be responsive; see extracted-exe-startup-trials.json'
+    }
+    Write-Host 'PASS: extracted LOGICA.exe opened three consecutive stable responsive WinForms windows'
     Assert-RuntimeHashes $extract $baseline
     Assert-PackagedCodeHashes $extract $codeBaseline
     Write-Host "PASS: extracted EXE startup preserved $($baseline.Count) immutable runtime files"
@@ -469,7 +516,9 @@ try {
     Write-Host "PASS: offline launcher preserved $($baseline.Count) immutable files and cleaned temporary credentials"
     [pscustomobject]@{
         sourceCommit = $commit
-        extractedExeResponsive = $true
+        extractedExeResponsive = $startupSoakPass
+        extractedExeStartupSoakAllResponsive = $startupSoakPass
+        extractedExeStartupTrials = @($startupTrials)
         extractedLauncherVerified = $true
         extractedLauncherActualExeResponsive = $launcherResponsive
         extractedStartCmdActualExeResponsive = $cmdResponsive
