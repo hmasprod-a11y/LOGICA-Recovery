@@ -94,7 +94,8 @@ internal static class ReceiptClaimMariaDbSmoke
         }
     }
 
-    private static void Seed(MySqlConnection connection, string receiptId, string articleId, string state = "ENREGISTRER")
+    private static void Seed(MySqlConnection connection, string receiptId, string articleId,
+        string state = "ENREGISTRER", bool withDetails = true)
     {
         Execute(connection, null,
             "INSERT INTO TABLE_RECEPTIONS_ENTETE (ID_BR, ETAT) VALUES (@id, @state)",
@@ -102,6 +103,10 @@ internal static class ReceiptClaimMariaDbSmoke
         Execute(connection, null,
             "INSERT INTO TABLE_ARTICLES (ID_ARTICLE, STOCK) VALUES (@id, 0)",
             "@id", articleId);
+        if (withDetails)
+            Execute(connection, null,
+                "INSERT INTO TABLE_RECEPTIONS_DETAILS (ID_BR) VALUES (@id)",
+                "@id", receiptId);
     }
 
     private static void Verify(MethodInfo method, MySqlConnectionStringBuilder scratch)
@@ -129,6 +134,7 @@ internal static class ReceiptClaimMariaDbSmoke
             Seed(connection, "BR-CANCEL", "ART-CANCEL", "ANNULE");
             Seed(connection, "BR-DRAFT", "ART-DRAFT", "EN COURS");
             Seed(connection, "BR-UNKNOWN", "ART-UNKNOWN", "OTHER");
+            Seed(connection, "BR-EMPTY", "ART-EMPTY", "ENREGISTRER", false);
 
             using (var transaction = connection.BeginTransaction())
             {
@@ -205,6 +211,18 @@ internal static class ReceiptClaimMariaDbSmoke
                 transaction.Rollback();
             }
 
+            // An orphan header is not a valid receipt. Do not mark it validated
+            // or alter stock when persisted receipt details are missing.
+            using (var transaction = connection.BeginTransaction())
+            {
+                bool rejected = false;
+                try { Claim(method, connection, transaction, "BR-EMPTY"); }
+                catch (InvalidOperationException) { rejected = true; }
+                Require(rejected, "Header-only receipt was accepted without persisted details");
+                transaction.Rollback();
+            }
+            Check(scratch, "BR-EMPTY", "ART-EMPTY", 0m, 0, "ENREGISTRER");
+
             // Only the actual legacy pending state ENREGISTRER may post stock.
             // Cancelled/draft/unknown receipts must remain unchanged even if
             // a caller erroneously attempts to validate them.
@@ -273,7 +291,7 @@ internal static class ReceiptClaimMariaDbSmoke
                 Require(rejected, "Duplicate receipt header was accepted");
                 transaction.Rollback();
             }
-            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, rollback/retry, blocked states, invalid/duplicate headers, composite index, four MyISAM table rejections");
+            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, rollback/retry, blocked states, orphan header, invalid/duplicate headers, composite index, four MyISAM table rejections");
         }
     }
 
