@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using LOGICA.ApplicationLayer.Checkout;
 
 internal static class PortableTransactionSmoke
@@ -233,6 +234,50 @@ internal static class PortableTransactionSmoke
             }
             if (cashierGate.IsBlocked)
                 throw new Exception("Portable cashier remained blocked after reconciliation");
+        }
+
+        // The exact production gate also runs in .NET 10. Two independent
+        // gates accidentally sharing a progress token must never both post
+        // and the losing gate must not remain reserved after rejection.
+        for (int round = 0; round < 16; round++)
+        {
+            var progress = new CheckoutCommitProgress();
+            var gates = new[] { new CheckoutAttemptGate(), new CheckoutAttemptGate() };
+            var stores = new[] { new Store(), new Store() };
+            var start = new ManualResetEvent(false);
+            var workers = new Thread[2];
+            int successes = 0, rejected = 0;
+            for (int i = 0; i < workers.Length; i++)
+            {
+                int index = i;
+                workers[i] = new Thread(new ThreadStart(delegate {
+                    start.WaitOne();
+                    try
+                    {
+                        CheckoutTransactionFinalizationService.PostAndFinalize(
+                            stores[index], Input(stores[index]), stores[index],
+                            progress, gates[index]);
+                        Interlocked.Increment(ref successes);
+                    }
+                    catch (InvalidOperationException) { Interlocked.Increment(ref rejected); }
+                }));
+                workers[i].Start();
+            }
+            start.Set();
+            foreach (Thread worker in workers) worker.Join();
+            start.Close();
+            if (successes != 1 || rejected != 1 ||
+                progress.Stage != CheckoutCommitStage.Closed ||
+                gates[0].IsBlocked == gates[1].IsBlocked)
+                throw new Exception("Portable concurrent SOLDER admitted duplicates or stranded a gate");
+            int winner = gates[0].IsBlocked ? 0 : 1;
+            if (String.Join(",", stores[winner].Events.ToArray()) !=
+                    "header,journal,print,complete,commit,close" ||
+                stores[1 - winner].Events.Count != 0)
+                throw new Exception("Portable shared progress wrote duplicate payment/ticket");
+            gates[winner].ReleaseAfterBasketReset(progress);
+            if (gates[0].IsBlocked || gates[1].IsBlocked)
+                throw new Exception("Portable shared-progress gate did not release safely");
         }
 
         Console.WriteLine("PASS .NET 10 portable checkout: transaction boundary, atomic progress, per-cashier double-click gate, commit reconciliation and failure propagation");
