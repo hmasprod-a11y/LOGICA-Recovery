@@ -214,6 +214,9 @@ REQUIRED_RELEASE_COMMANDS = {
     'Gate unified beta candidate and generate file hashes': ('./scripts/test-release-candidate.ps1',),
     'Test offline release verifier with isolated adversarial fixtures': ('./scripts/test-beta-release-verifier.ps1',),
     'Build and independently verify beta RC ZIP': ('./scripts/package-beta-rc.ps1',),
+    'Smoke-test extracted customer ZIP with isolated MariaDB and real EXE': (
+        './scripts/test-extracted-release.ps1',
+    ),
 }
 
 
@@ -271,6 +274,7 @@ def assert_critical_release_gates(source):
         'Gate unified beta candidate and generate file hashes',
         'Test offline release verifier with isolated adversarial fixtures',
         'Build and independently verify beta RC ZIP',
+        'Smoke-test extracted customer ZIP with isolated MariaDB and real EXE',
     )
     positions = []
     for name in mandatory:
@@ -566,6 +570,28 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
         modified = source.replace('      - name: Test offline release verifier with isolated adversarial fixtures',
                                   '      - name: Disabled release verifier', 1)
         with self.assertRaisesRegex(ValueError, 'Missing or duplicated mandatory'):
+            assert_critical_release_gates(modified)
+
+    def test_extracted_exe_smoke_cannot_be_removed(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace(
+            '      - name: Smoke-test extracted customer ZIP with isolated MariaDB and real EXE',
+            '      - name: Skipped extracted executable', 1)
+        with self.assertRaisesRegex(ValueError, 'Missing or duplicated mandatory'):
+            assert_critical_release_gates(modified)
+
+    def test_extracted_exe_smoke_cannot_be_noop(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace('run: ./scripts/test-extracted-release.ps1',
+                                  'run: Write-Host skipped-extracted-smoke', 1)
+        with self.assertRaisesRegex(ValueError, 'missing executable verification command'):
+            assert_critical_release_gates(modified)
+
+    def test_extracted_exe_smoke_cannot_be_conditional(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        marker = '      - name: Smoke-test extracted customer ZIP with isolated MariaDB and real EXE'
+        modified = source.replace(marker, marker + '\n        if: false', 1)
+        with self.assertRaisesRegex(ValueError, 'must not be skipped'):
             assert_critical_release_gates(modified)
 
     def test_packaging_must_follow_verification(self):
