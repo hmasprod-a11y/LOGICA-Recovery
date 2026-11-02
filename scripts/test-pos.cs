@@ -1752,6 +1752,9 @@ class PosSmoke {
    findButton.Tag="CI_KEEP_TAG";
    findButton.Enabled=false;
    code.Text="KEEP-SCAN";
+   click.Invoke(form,new object[]{list,EventArgs.Empty});
+   if(code.Text!="KEEP-SCAN")
+    throw new Exception("Disabled checkout staged a barcode from product list click");
    doubleClick.Invoke(form,new object[]{list,EventArgs.Empty});
    if(code.Text!="KEEP-SCAN" || !Object.Equals(findButton.Tag,"CI_KEEP_TAG"))
     throw new Exception("Disabled lookup button must not post barcode-free list article");
@@ -1861,9 +1864,11 @@ class PosSmoke {
   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
    var code=(TextBox)Get(form,"Text_CODE");
    var quantity=(Control)Get(form,"Label_QTE");
+   var find=(Control)Get(form,"Button_FIND");
+   var directLookup=form.GetType().GetMethod("Button_FIND_Click",Flags);
    var barcodeHandler=form.GetType().GetMethod("Text_CODE_KeyDown",Flags);
    var quantityHandler=form.GetType().GetMethod("Label_QTE_KeyDown",Flags);
-   if(code==null||quantity==null||barcodeHandler==null||quantityHandler==null)
+   if(code==null||quantity==null||find==null||directLookup==null||barcodeHandler==null||quantityHandler==null)
     throw new Exception("Sales scanner/quantity key handlers are missing");
    code.Text="";
    var ordinary=new KeyEventArgs(Keys.A);
@@ -1882,6 +1887,18 @@ class PosSmoke {
     throw new Exception("Barcode Enter must be consumed after dispatch");
    if(code.Text!="")
     throw new Exception("Blank barcode Enter changed scanner input");
+   // A nonempty scanner barcode must not bypass disabled checkout or query SQL.
+   // This is an offline guard: Module1.cn_SQL is deliberately not initialized.
+   find.Enabled=false;
+   code.Text="DISABLED-CI-BARCODE";
+   directLookup.Invoke(form,new object[]{code,EventArgs.Empty});
+   if(code.Text!="DISABLED-CI-BARCODE")
+    throw new Exception("Disabled direct lookup changed the scanner barcode");
+   var blockedEnter=new KeyEventArgs(Keys.Enter);
+   barcodeHandler.Invoke(form,new object[]{code,blockedEnter});
+   if(!blockedEnter.Handled||!blockedEnter.SuppressKeyPress||code.Text!="DISABLED-CI-BARCODE")
+    throw new Exception("Disabled scanner Enter was not safely consumed");
+   find.Enabled=true;
    var qtyOther=new KeyEventArgs(Keys.D1);
    quantityHandler.Invoke(form,new object[]{quantity,qtyOther});
    if(qtyOther.Handled||qtyOther.SuppressKeyPress)
