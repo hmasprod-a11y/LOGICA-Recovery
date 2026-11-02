@@ -56,6 +56,8 @@ internal static class DesktopPaymentCultureSmoke
                 MethodInfo fillRemainder = form.GetType().GetMethod("Button_RESTE_Click", Flags);
                 Expect(fillRemainder != null, "RESTE handler missing");
                 grid.CurrentCell = grid.Rows[0].Cells[1];
+                // A stale visible remainder must be recomputed from the grid.
+                remainder.Text = "1,00";
                 fillRemainder.Invoke(form, new object[] { remainder, EventArgs.Empty });
                 Expect(Convert.ToDecimal(grid.Rows[0].Cells[1].Value) == 20.50m &&
                     decimal.Parse(remainder.Text, CultureInfo.CurrentCulture) == 0m && solder.Enabled,
@@ -65,6 +67,9 @@ internal static class DesktopPaymentCultureSmoke
                 Recalculate(form);
 
                 // A second method inherits the exact due amount, never Conversion.Val's 10.
+                // Even if the old displayed remainder was stale, the actual grid
+                // is authoritative before creating the second payment row.
+                remainder.Text = "999,99";
                 MethodInfo add = form.GetType().GetMethod("FAM_click", Flags);
                 Expect(add != null, "Payment-method click handler missing");
                 using (Button method = new Button() { Text = "ESPECES" })
@@ -76,6 +81,18 @@ internal static class DesktopPaymentCultureSmoke
                 Recalculate(form);
                 Expect(decimal.Parse(remainder.Text, CultureInfo.CurrentCulture) == 0m && solder.Enabled,
                     "Exact French mixed payment failed to settle");
+
+                // Clicking the first method's non-editable cells must focus
+                // THAT method's paid amount, not the last row of a split tender.
+                MethodInfo clickRow = form.GetType().GetMethod("DataGridView_CALC_CellClick", Flags);
+                Expect(clickRow != null, "Payment grid click handler missing");
+                grid.CurrentCell = grid.Rows[1].Cells[1];
+                clickRow.Invoke(form, new object[] { grid, new DataGridViewCellEventArgs(0, 0) });
+                Expect(grid.CurrentCell.RowIndex == 0 && grid.CurrentCell.ColumnIndex == 1,
+                    "Clicking first payment row redirected editing to last payment method");
+                clickRow.Invoke(form, new object[] { grid, new DataGridViewCellEventArgs(2, 1) });
+                Expect(grid.CurrentCell.RowIndex == 1 && grid.CurrentCell.ColumnIndex == 1,
+                    "Clicking second payment row did not select its amount");
 
                 // The real 0.5 coin button is captioned with a dot even under fr-FR.
                 // The original Val/AddObject path could lose the half-dirham.
@@ -124,6 +141,16 @@ internal static class DesktopPaymentCultureSmoke
                 using (Button repeatedDot = new Button() { Text = "." })
                     keypad.Invoke(form, new object[] { repeatedDot, EventArgs.Empty });
                 Expect(display.Text == "0,25", "On-screen keypad accepted duplicate decimal point");
+                // Confirming the on-screen keypad must apply its amount directly
+                // and recalculate, without synthetic SendKeys changing focus.
+                display.Text = "10,25";
+                grid.CurrentCell = grid.Rows[1].Cells[1];
+                MethodInfo keypadOk = form.GetType().GetMethod("Button_CLAVIER_NOSELECT1_Click", Flags);
+                Expect(keypadOk != null, "On-screen keypad confirmation handler missing");
+                keypadOk.Invoke(form, new object[] { form, EventArgs.Empty });
+                Expect(Convert.ToDecimal(grid.Rows[1].Cells[1].Value) == 10.25m &&
+                    decimal.Parse(remainder.Text, CultureInfo.CurrentCulture) == 0m && solder.Enabled,
+                    "On-screen keypad failed to replace the selected payment amount");
 
                 // A valid cash method is still cash when legacy settings contain
                 // lowercase labels, whitespace or a missing ESPECS.png icon.
@@ -200,7 +227,7 @@ internal static class DesktopPaymentCultureSmoke
                 Recalculate(form);
                 Expect(!solder.Enabled && remainder.Text == "", "Overflow left an actionable SOLDER state");
             }
-            Console.WriteLine("PASS French decimal SOLDER, additive RESTE cash/refunds, tolerant cash labels, half-dirham, both keypads, dynamic DPI layout and overflow");
+            Console.WriteLine("PASS French decimal SOLDER, stale-edit RESTE/method guards, clicked payment-row identity, keypad confirm, additive cash/refunds, half-dirham, dynamic DPI and overflow");
             return 0;
         }
         catch (Exception exception)
