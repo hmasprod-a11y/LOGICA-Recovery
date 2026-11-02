@@ -40,6 +40,7 @@ TRANSACTION_FINGERPRINT_TABLES = (
 
 STARTUP_VERIFIED = (
     "extractedExeResponsive",
+    "extractedExeStartupSoakAllResponsive",
     "extractedLauncherVerified",
     "extractedLauncherActualExeResponsive",
     "extractedStartCmdActualExeResponsive",
@@ -86,6 +87,20 @@ def validate(report, expected_commit=None):
     for name in STARTUP_VERIFIED:
         if report.get(name) is not True:
             raise ValueError(f"Missing successful extracted startup evidence: {name}")
+    # Each of the three real extracted EXE lifetimes must have shown a
+    # stable, responsive window. One successful retry cannot erase a failure.
+    trials = report.get("extractedExeStartupTrials")
+    if not isinstance(trials, list) or len(trials) != 3:
+        raise ValueError("Missing three independent extracted EXE startup attempts")
+    for index, trial in enumerate(trials, 1):
+        if not isinstance(trial, dict) or type(trial.get("attempt")) is not int or trial["attempt"] != index:
+            raise ValueError(f"Invalid extracted EXE startup attempt sequence: {index}")
+        if (trial.get("responsive") is not True or trial.get("windowObserved") is not True
+                or trial.get("earlyExit") is not False or trial.get("error") is not None):
+            raise ValueError(f"Failed extracted EXE startup attempt: {index}")
+        elapsed = trial.get("elapsedSeconds")
+        if type(elapsed) not in (int, float) or not 0 < elapsed <= 60:
+            raise ValueError(f"Invalid extracted EXE startup timing: {index}")
     for name in ("launcherActivationScreenVisible", "startCmdActivationScreenVisible",
                  "directExeWithoutOverrideActivationScreenVisible"):
         if report.get(name) is True:
@@ -122,6 +137,11 @@ def self_test():
         "isolatedMariaDbPort": 3308,
         "sourceCommit": "a" * 40,
         "isolatedSalesDigestCheckCount": 3,
+        "extractedExeStartupTrials": [
+            {"attempt": n, "responsive": True, "windowObserved": True,
+             "earlyExit": False, "elapsedSeconds": 5.0, "error": None}
+            for n in range(1, 4)
+        ],
         "fingerprintedTransactionTables": list(TRANSACTION_FINGERPRINT_TABLES),
         "launcherActivationScreenVisible": None,
         "startCmdActivationScreenVisible": False,
@@ -156,6 +176,9 @@ def self_test():
         ("isolatedSalesDigestCheckCount", 2),
         ("isolatedSalesDigestCheckCount", True),
         ("isolatedSalesDigestCheckCount", None),
+        ("extractedExeStartupTrials", None),
+        ("extractedExeStartupTrials", []),
+        ("extractedExeStartupTrials", [{"attempt": 1, "responsive": True}]),
         ("fingerprintedTransactionTables", None),
         ("fingerprintedTransactionTables", ["TABLE_ARTICLES", "TABLE_VENTES_ENTETE"]),
         ("fingerprintedTransactionTables", list(TRANSACTION_FINGERPRINT_TABLES[:-1])),
@@ -181,7 +204,19 @@ def self_test():
         except ValueError:
             continue
         raise AssertionError(f"Validator accepted bad evidence: {key}={invalid!r}")
-    print(f"PASS: acceptance report guard rejects {len(cases)} negative fixtures")
+    for key, invalid in (
+        ("attempt", 1), ("responsive", False), ("windowObserved", False),
+        ("earlyExit", True), ("elapsedSeconds", 0), ("elapsedSeconds", True),
+        ("error", "Timeout"),
+    ):
+        broken = copy.deepcopy(fixture)
+        broken["extractedExeStartupTrials"][1][key] = invalid
+        try:
+            validate(broken)
+        except ValueError:
+            continue
+        raise AssertionError(f"Validator accepted invalid EXE trial {key}={invalid!r}")
+    print(f"PASS: acceptance report guard rejects {len(cases) + 7} negative fixtures")
 
 
 if __name__ == "__main__":
