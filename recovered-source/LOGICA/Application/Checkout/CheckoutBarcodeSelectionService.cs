@@ -28,7 +28,7 @@ namespace LOGICA.ApplicationLayer.Checkout
             // The original WinForms handler has no second SQL read yet. Keep
             // that legacy in-memory behavior until Track C wires a real refresh.
             // Do not pretend this fallback has fresh catalogue prices.
-            return CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+            return CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialogInMemory(
                 matches, chooseDuplicate, delegate { return matches; }).SelectedRow;
         }
 
