@@ -18,7 +18,7 @@ if (-not $env:LOGICA_DB_CONNECTION_STRING -or
     throw 'Refusing receipt claim smoke outside explicit loopback logica_ci:3307'
 }
 try {
-    & $compiler /nologo /platform:x86 /target:exe /r:System.Data.dll "/r:$mysql" "/out:$exe" (Join-Path $PSScriptRoot 'test-receipt-claim-mariadb.cs')
+    & $compiler /nologo /platform:x86 /target:exe /r:System.Data.dll /r:System.Core.dll "/r:$mysql" "/out:$exe" (Join-Path $PSScriptRoot 'test-receipt-claim-mariadb.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Receipt claim MariaDB smoke compilation failed' }
     Copy-Item (Join-Path $dist 'LOGICA.exe.config') $config -Force
     & $exe
