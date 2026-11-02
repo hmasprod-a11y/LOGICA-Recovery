@@ -8,3 +8,7 @@ for field in ("GROUPE","PRIX_QTE","PRIX_QTE_MIN","Taille","Couleur","Emplacement
     assert 'row.Table.Columns.Contains("'+field+'")' in m,field
     assert 'ADD COLUMN IF NOT EXISTS `'+field+'`' in sql,field
 print("PR82 article editor static regression checks passed")
+
+# Editing an existing row must tolerate every missing column from the recovered schema.
+for field in ("GROUPE","PRIX_QTE","PRIX_QTE_MIN","Taille","Couleur","Emplacement"):
+    assert 'DT.Columns.Contains("'+field+'") ? DT.Rows[position2]["'+field+'"]' in f,field
