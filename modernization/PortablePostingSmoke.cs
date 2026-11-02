@@ -119,6 +119,28 @@ internal static class PortablePostingSmoke
         return input;
     }
 
+    // Exercise the actual payment-grid projection, not only a hand-built
+    // TicketPaymentWrite. The modal supplies a single selected tender method.
+    private static CheckoutPostingInput ProjectedTenderInput(Store store, string mode)
+    {
+        CheckoutPostingInput input = SingleCashInput(store, "1", "10.00");
+        input.ReadPayments = delegate {
+            store.Events.Add("readPayments");
+            return CheckoutPaymentReadService.Read(
+                delegate { store.Events.Add("operation"); return "VENTE"; },
+                delegate { store.Events.Add("context");
+                    return new TicketPaymentContext { TicketNumber = "T-1" }; },
+                delegate { store.Events.Add("access"); return true; },
+                delegate { store.Events.Add("count"); return 1; },
+                delegate(int index) { store.Events.Add("paid" + index); return "10.00"; },
+                delegate(int index) { store.Events.Add("mode" + index); return mode; },
+                delegate { throw new Exception("Tendered sale must not read cash total"); },
+                delegate { store.Events.Add("change"); return "0"; },
+                new PaymentSemantics());
+        };
+        return input;
+    }
+
     private static void Assert(Store store, string expected)
     {
         string actual = String.Join(",", store.Events.ToArray());
@@ -340,6 +362,28 @@ internal static class PortablePostingSmoke
             "readStock,stock:A,stock:B,readHeader,header,readJournal,journal,readPayments,payment:5.00");
         if (lateInvalidTender.PaymentCount != 1)
             throw new Exception("Streaming payment validation changed original row order");
+
+        // The production grid reader must preserve its lazy access order,
+        // and the posting writer must reject a blank mode before SQL/commit.
+        var projectedBlankMode = new Store();
+        CheckInvalidReader(projectedBlankMode,
+            ProjectedTenderInput(projectedBlankMode, null),
+            "Checkout tendered payment has no mode.",
+            "readStock,stock:CASH-ITEM,readHeader,header,readJournal,journal,readPayments,operation,context,access,access,count,paid0,mode0");
+        if (projectedBlankMode.PaymentCount != 0 ||
+            projectedBlankMode.CommitCount != 0 || projectedBlankMode.CloseCount != 0)
+            throw new Exception("Blank payment-grid mode must not reach SQL or commit");
+
+        var projectedCard = new Store();
+        CheckoutTransactionFinalizationService.PostAndFinalize(projectedCard,
+            ProjectedTenderInput(projectedCard, "CARTE"), projectedCard);
+        Assert(projectedCard,
+            "readStock,stock:CASH-ITEM,readHeader,header,readJournal,journal,readPayments,operation,context,access,access,count,paid0,mode0,payment:,change,print,readCompletion,complete,commit,close");
+        if (projectedCard.PaymentCount != 1 || projectedCard.StockCount != 1 ||
+            projectedCard.LastPayment.Kind != TicketPaymentKind.Tendered ||
+            projectedCard.LastPayment.Mode.ToString() != "CARTE" ||
+            projectedCard.CommitCount != 1 || projectedCard.CloseCount != 1)
+            throw new Exception("Projected tender sale must post exactly once");
 
         var noCompletion = new Store();
         var noCompletionInput = Input(noCompletion);
