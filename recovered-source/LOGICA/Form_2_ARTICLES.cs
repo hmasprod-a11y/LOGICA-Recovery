@@ -13788,10 +13788,21 @@ public class Form_2_ARTICLES : Form
 				Combo_PRINTER.Text = DT.Rows[position2]["PRINTER"].ToString();
 				Combo_PRINTER_DUPLICATA.Text = DT.Rows[position2]["PRINTER_DUPLICATA"].ToString();
 				Text_LIEN_PICTURE.Text = DT.Rows[position2]["Images"].ToString();
-				// Editing must survive absent, invalid or corrupt legacy article pictures.
+				// Prefer the existing shop's image when present; portable packages
+				// may keep the same file under their startup images directory.
+				string articleImagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", Text_LIEN_PICTURE.Text);
 				Picture_IMAGE.ImageLocation = null;
-				Picture_IMAGE.Image = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.LoadWithFallback(
-					Module1._CHEMIN_FOLDER, Application.StartupPath, Text_LIEN_PICTURE.Text);
+				Picture_IMAGE.Image = null;
+				if (!string.IsNullOrWhiteSpace(Text_LIEN_PICTURE.Text) && Text_LIEN_PICTURE.Text != "0" && File.Exists(articleImagePath))
+				{
+					Picture_IMAGE.Image = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.Load(
+						Path.GetDirectoryName(articleImagePath), Text_LIEN_PICTURE.Text);
+				}
+				else
+				{
+					Picture_IMAGE.Image = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.LoadWithFallback(
+						Module1._CHEMIN_FOLDER, Application.StartupPath, Text_LIEN_PICTURE.Text);
+				}
 				Text_LIEN_PICTURE_ANC.Text = DT.Rows[position2]["Images"].ToString();
 				Combo_TAILLES.Text = (DT.Columns.Contains("Taille") ? DT.Rows[position2]["Taille"].ToString() : "");
 				Combo_COULEURS.Text = (DT.Columns.Contains("Couleur") ? DT.Rows[position2]["Couleur"].ToString() : "");
