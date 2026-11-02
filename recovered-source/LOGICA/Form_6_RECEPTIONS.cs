@@ -9008,8 +9008,18 @@ public class Form_6_RECEPTIONS : Form
 				}
 				else if (Operators.CompareString(Label_TOP.Text, "MODIFICATION", TextCompare: false) == 0)
 				{
-					DataGridView1.CurrentCell = DataGridView1.Rows[Conversions.ToInteger(Label_INDEX.Text)].Cells[0];
-					DataGridView1.Rows[Conversions.ToInteger(Label_INDEX.Text)].Selected = true;
+					// A receipt can be sorted or filtered after opening its edit panel.
+					// Never use Label_INDEX or BindingContext.Position to update DT:
+					// they can refer to a different receipt than the one opened.
+					DataRow editableReceiptRow =
+						LOGICA.ApplicationLayer.Purchasing.ReceiptDocumentSelectionGuard.ResolveEditableRow(
+							DT, Text_ID.Text, Text_ID_BR.Text);
+					if (editableReceiptRow == null)
+					{
+						MessageBox.Show("Le bon a changé, a été validé ou son numéro a été modifié. Rechargez la réception.",
+							"Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+						return;
+					}
 					DataTable dataTable = new DataTable();
 					MySqlDataAdapter val4 = new MySqlDataAdapter();
 					dataTable.Clear();
@@ -9020,19 +9030,19 @@ public class Form_6_RECEPTIONS : Form
 						MessageBox.Show("Cet ID est déja utilisé", "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
 						return;
 					}
-					int position = ((ContainerControl)this).BindingContext[(object)DT].Position;
-					DT.Rows[position]["ID"] = Text_ID.Text;
-					DT.Rows[position]["ID_BR"] = Text_ID_BR.Text;
-					DT.Rows[position]["Dates"] = DateTimePicker_DATE.Text;
-					DT.Rows[position]["UTILISATEUR"] = Text_UTILISATEUR.Text;
-					DT.Rows[position]["ID_FOURNISSEUR"] = Button_FOURNISSEUR._ID_Button;
-					DT.Rows[position]["CODE_FOURNISSEUR"] = Button_FOURNISSEUR._CODE_Button;
-					DT.Rows[position]["FOURNISSEUR"] = ((ButtonBase)Button_FOURNISSEUR).Text;
-					DT.Rows[position]["N_BON_FOURNISSEUR"] = Text_N_BON_FOURNISSEUR.Text;
-					DT.Rows[position]["TOTAL_NET_ACHATS"] = Module1.FLOUSS(Conversions.ToDecimal(Label_TOTAL_NET_ACHATS_DOC.Text));
-					DT.Rows[position]["TOTAL_NET_VENTES"] = Module1.FLOUSS(Conversions.ToDecimal(Label_TOTAL_NET_VENTES_DOC.Text));
-					DT.Rows[position]["NOTES"] = Text_NOTES.Text;
-					DT.Rows[position]["ETAT"] = "ENREGISTRER";
+					// Update only the exact bound receipt row selected for modification.
+					editableReceiptRow["ID"] = Text_ID.Text;
+					editableReceiptRow["ID_BR"] = Text_ID_BR.Text;
+					editableReceiptRow["Dates"] = DateTimePicker_DATE.Text;
+					editableReceiptRow["UTILISATEUR"] = Text_UTILISATEUR.Text;
+					editableReceiptRow["ID_FOURNISSEUR"] = Button_FOURNISSEUR._ID_Button;
+					editableReceiptRow["CODE_FOURNISSEUR"] = Button_FOURNISSEUR._CODE_Button;
+					editableReceiptRow["FOURNISSEUR"] = ((ButtonBase)Button_FOURNISSEUR).Text;
+					editableReceiptRow["N_BON_FOURNISSEUR"] = Text_N_BON_FOURNISSEUR.Text;
+					editableReceiptRow["TOTAL_NET_ACHATS"] = Module1.FLOUSS(Conversions.ToDecimal(Label_TOTAL_NET_ACHATS_DOC.Text));
+					editableReceiptRow["TOTAL_NET_VENTES"] = Module1.FLOUSS(Conversions.ToDecimal(Label_TOTAL_NET_VENTES_DOC.Text));
+					editableReceiptRow["NOTES"] = Text_NOTES.Text;
+					editableReceiptRow["ETAT"] = "ENREGISTRER";
 					MySqlCommandBuilder val5 = new MySqlCommandBuilder(DA);
 					((DbDataAdapter)(object)DA).Update(DT);
 					DT.AcceptChanges();
@@ -9061,7 +9071,7 @@ public class Form_6_RECEPTIONS : Form
 					}
 					Module1.cn_SQL.Close();
 					MessageBox.Show("Modifié avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
-					string right = Conversions.ToString(Operators.ConcatenateObject("MODIFICATION | ", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_BR"].Value));
+					string right = Conversions.ToString(Operators.ConcatenateObject("MODIFICATION | ", editableReceiptRow["ID_BR"]));
 					File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
 				}
 				((Control)Panel_INFO).Hide();
