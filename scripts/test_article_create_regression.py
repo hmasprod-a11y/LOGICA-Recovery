@@ -12,3 +12,9 @@ check('Text_LIEN_PICTURE.Text != "0" && File.Exists(articleImagePath)' in source
 check('DT.Columns.Contains("GROUPE") ?' in source, "Legacy group field read must be optional")
 check(source.count('if (DT.Columns.Contains("GROUPE"))') >= 2, "Create/update group field must be optional")
 print("Article creation regression source guards passed")
+
+# The original SQL dump omitted columns consumed by the article editor.
+migration = Path("input/migrations/20261102-article-add-compatibility.sql").read_text(encoding="utf-8")
+for field in ("GROUPE", "PRIX_QTE", "PRIX_QTE_MIN", "Taille", "Couleur", "Emplacement"):
+    check("ADD COLUMN IF NOT EXISTS `" + field + "`" in migration, "Missing additive MariaDB migration: " + field)
+print("Article editor schema migration checks passed")
