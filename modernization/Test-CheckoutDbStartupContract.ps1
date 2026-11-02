@@ -42,8 +42,6 @@ Assert-Contract (-not $missingOverride.LauncherPassesEndpoint) 'missing inherite
 $missingExport = Get-CheckoutDbStartupContract $moduleFixture ($launcherFixture.Replace(
     '$env:LOGICA_DB_CONNECTION_STRING=', '$env:OTHER='))
 Assert-Contract (-not $missingExport.LauncherPassesEndpoint) 'missing launcher export must fail'
-$lateExport = Get-CheckoutDbStartupContract $moduleFixture ($launcherFixture.Replace(
-    "Start-Process (Join-Path $root 'LOGICA.exe') -Wait", '') + "`nStart-Process (Join-Path `$root 'LOGICA.exe') -Wait")
 # Construct the true out-of-order case without interpreting fixture variables.
 $lateFixture = $launcherFixture.Replace(
     '$env:LOGICA_DB_CONNECTION_STRING="Server=127.0.0.1;Port=$Port;Database=local;"' + "`n", '')
