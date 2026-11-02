@@ -14768,9 +14768,9 @@ public class Form_3_VENTE : Form
 				Text_PROMOTION.Text = selectedArticle["PROMOTION"].ToString();
 				Text_PRINTER.Text = selectedArticle["PRINTER"].ToString();
 				Text_PRINTER_DUPLICATA.Text = selectedArticle["PRINTER_DUPLICATA"].ToString();
-				Text_GROUPE.Text = selectedArticle["GROUPE"].ToString();
-				Text_PRIX_QTE.Text = selectedArticle["PRIX_QTE"].ToString();
-				Text_PRIX_QTE_MIN.Text = selectedArticle["PRIX_QTE_MIN"].ToString();
+				Text_GROUPE.Text = (selectedArticle.Table.Columns.Contains("GROUPE") ? selectedArticle["GROUPE"].ToString() : "");
+				Text_PRIX_QTE.Text = (selectedArticle.Table.Columns.Contains("PRIX_QTE") ? selectedArticle["PRIX_QTE"].ToString() : "0");
+				Text_PRIX_QTE_MIN.Text = (selectedArticle.Table.Columns.Contains("PRIX_QTE_MIN") ? selectedArticle["PRIX_QTE_MIN"].ToString() : "0");
 				if (Operators.CompareString(selectedArticle["FENETRE_PESAGE"].ToString(), "OUI", TextCompare: false) == 0)
 				{
 					MyProject.Forms.FormDialog_PESEE_BALANCE.Text_PRIX_V.Text = selectedArticle["Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5)].ToString();
@@ -15085,7 +15085,7 @@ public class Form_3_VENTE : Form
 				Module1.dt1.Rows[index2]["TAUX_TVA"] = Text_TAUX_TVA.Text;
 				Module1.dt1.Rows[index2]["PRINTER"] = Text_PRINTER.Text;
 				Module1.dt1.Rows[index2]["PRINTER_DUPLICATA"] = Text_PRINTER_DUPLICATA.Text;
-				Module1.dt1.Rows[index2]["GROUPE"] = Text_GROUPE.Text;
+				if (Module1.dt1.Columns.Contains("GROUPE")) Module1.dt1.Rows[index2]["GROUPE"] = Text_GROUPE.Text;
 				MySqlCommandBuilder val4 = new MySqlCommandBuilder(Module1.da1);
 				((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
 				Module1.dt1.AcceptChanges();
