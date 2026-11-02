@@ -16,7 +16,7 @@ def check(source):
     start = source.find(marker)
     if start < 0:
         raise AssertionError("Real checkout finalization call missing")
-    match = re.search(r"catch\\s*\\(Exception ex5\\)\\s*\\{", source[start:])
+    match = re.search(r"catch\s*\(Exception ex5\)\s*\{", source[start:])
     if not match:
         raise AssertionError("Expected checkout posting failure handler missing")
     open_brace = start + match.end() - 1
@@ -43,7 +43,7 @@ def check(source):
     if next_reset < 0 or next_reset - end > 500:
         raise AssertionError("Expected success-only basket reset missing or moved")
     between = source[end + 1:next_reset]
-    if re.search(r"\\b(?:catch|finally)\\b", between):
+    if re.search(r"\b(?:catch|finally)\b", between):
         raise AssertionError("Unexpected control flow between failure handler and reset")
     return True
 
