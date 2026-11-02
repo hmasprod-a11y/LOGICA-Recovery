@@ -122,7 +122,7 @@ assert movement_sql, "movement INSERT must use fixed SQL with no form values con
 insert_sql = movement_sql.group(1) + movement_sql.group(2)
 assert insert_sql.startswith("INSERT INTO TABLE_MOUVEMENTS_STOCK")
 for parameter in ("@dates", "@heure", "@articleId", "@code", "@article", "@quantity"):
-    assert insert_sql.count(parameter) == 1, parameter
+    assert re.findall(r"@[A-Za-z][A-Za-z0-9]*", insert_sql).count(parameter) == 1, parameter
     assert 'Parameters.AddWithValue("' + parameter + '"' in movement, parameter
 assert movement.count("Parameters.AddWithValue(") == 6
 assert movement.count("DateTime.Now.ToString(") == 2, "preserve the legacy date/time read sequence"
