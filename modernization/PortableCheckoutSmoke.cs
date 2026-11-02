@@ -945,8 +945,11 @@ internal static class PortableCheckoutSmoke
                 "Deleting the CHOSEN row during modal cannot silently sell a replacement");
             DataTable modalUnrelatedRemoval = flowMatches.Copy();
             DataRow intendedAfterShift = modalUnrelatedRemoval.Rows[1];
+            // This regression deliberately reuses the modal's in-memory
+            // DataTable after an unrelated row is removed. It exercises the
+            // legacy fallback, NOT a fresh SQL query.
             CheckoutVariantChoiceResult shiftedDialogChoice =
-                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialogInMemory(
                     modalUnrelatedRemoval, delegate(DataTable shown) {
                         shown.Rows.RemoveAt(0);
                         return 1;
