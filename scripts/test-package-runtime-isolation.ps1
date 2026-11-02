@@ -5,10 +5,12 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $work = Join-Path ([IO.Path]::GetTempPath()) ('hanouty-package-isolation-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 try {
-    foreach ($dir in @('dist','input/migrations','docs','results')) {
+    foreach ($dir in @('dist','input/migrations','docs','results','scripts')) {
         New-Item -ItemType Directory -Force -Path (Join-Path $work $dir) | Out-Null
     }
     [IO.File]::WriteAllText((Join-Path $work 'docs/RUNNING.md'), 'synthetic packaging fixture')
+    Copy-Item -LiteralPath (Join-Path $root 'scripts/Launch-LOGICA.ps1') -Destination (Join-Path $work 'scripts/Launch-LOGICA.ps1')
+    Copy-Item -LiteralPath (Join-Path $root 'scripts/Start-LOGICA.cmd') -Destination (Join-Path $work 'scripts/Start-LOGICA.cmd')
     [IO.File]::WriteAllText((Join-Path $work 'input/migrations/20261102-article-add-compatibility.sql'), '-- synthetic migration')
     $original = @{
         'poste.sni' = 'SHOP-SECRET-POST'
