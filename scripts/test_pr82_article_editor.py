@@ -102,8 +102,15 @@ assert ids(queries[3], code=normalize("")) == [], "collection blank barcode allo
 assert ids(queries[2], articleId="IMG-A", excludedId=5) == [4], "article ID uniqueness still enforced"
 assert ids(queries[2], articleId="IMG-B", excludedId=4) == [5]
 assert ids(queries[0], code=normalize("ABC'123")) == [1, 2], "nonempty duplicate behavior retained"
+# A malformed imported legacy row can have a missing database ID. SQL's
+# three-valued logic makes "ID <> @excludedId" UNKNOWN for NULL and silently
+# hides that collision. Editing must detect it rather than permit duplicates.
+db.execute("INSERT INTO TABLE_ARTICLES VALUES (?, ?, ?, ?)", (None, "NULL-ID", "Legacy orphan", "NULL-ARTICLE"))
+assert ids(queries[1], code="NULL-ID", excludedId=1) == [None], "null database ID must not hide duplicate barcode"
+assert ids(queries[2], articleId="NULL-ARTICLE", excludedId=1) == [None], "null database ID must not hide duplicate article identity"
+assert lookup.count("ID IS NULL OR ID <> @excludedId") == 2
 db.close()
-print("Catalogue parameterized duplicate-lookup regression: 22 SQL cases passed")
+print("Catalogue parameterized duplicate-lookup regression: 24 SQL cases passed")
 
 
 # The actual article-create path persists TABLE_ARTICLES before writing its
