@@ -154,3 +154,20 @@ assert stock_db.execute("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK").fetchone(
 assert stock_db.execute("SELECT DISTINCT LIBELLE FROM TABLE_MOUVEMENTS_STOCK").fetchall() == [("Création d'article",)]
 stock_db.close()
 print("Catalogue creation stock movement parameter-binding regression: 4 SQL cases passed")
+
+# QA resolution of conflicting Desktop #90 and Inventory #86/#88: the
+# deletion movement must use the identity-validated bound row, never a
+# potentially different CurrentRow after sorting/filtering.
+click = f.split("private void DataGridView1_CellClick(", 1)[1].split("\\n\\tprivate void ", 1)[0]
+helper = f.split("private static void InsertDeletionStockMovement(", 1)[1].split("\\n\\tprivate void ", 1)[0]
+assert "InsertDeletionStockMovement(Module1.cn_SQL, deleteRow);" in click
+assert "ResolveUniqueExistingRow(" in click
+assert "DataGridView1.CurrentRow" not in click, "delete path must not use CurrentRow"
+assert 'MySqlCommand command = new MySqlCommand(' in helper
+assert 'command.Parameters.AddWithValue("@code"' in helper
+assert 'command.Parameters.AddWithValue("@article"' in helper
+assert 'command.Parameters.AddWithValue("@stock"' in helper
+assert "DataRow selected" in f
+assert "ReplaceArticlePreview(selectedImage);" in f
+assert "TryPersistArticleImage()" in f
+print("QA Desktop/Inventory article identity + photo + deletion SQL integration checks passed")
