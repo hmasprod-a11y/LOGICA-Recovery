@@ -79,7 +79,17 @@ internal static class PortableTransactionSmoke
         CheckBoundary("begin.bind", "state,open,begin.bind");
         CheckBoundary("commit", "state,open,begin.bind,commit");
         CheckBoundary("close", "state,open,begin.bind,commit,close");
-        Console.WriteLine("PASS .NET 10 portable checkout: transaction boundary and finalization failure propagation");
+
+        // The WinForms transaction may already be open when finalization is
+        // invoked. A missing finalizer must not post stock/ticket/payment first.
+        var missingFinalizer = new Store();
+        bool nullFinalizerRejected = false;
+        try { CheckoutTransactionFinalizationService.PostAndFinalize(
+            missingFinalizer, Input(missingFinalizer), null); }
+        catch (ArgumentNullException ex) { nullFinalizerRejected = ex.ParamName == "finalizer"; }
+        if (!nullFinalizerRejected || missingFinalizer.Events.Count != 0)
+            throw new Exception("Missing transaction finalizer must fail before posting");
+        Console.WriteLine("PASS .NET 10 portable checkout: transaction boundary, finalizer preflight and failure propagation");
         return 0;
     }
 }
