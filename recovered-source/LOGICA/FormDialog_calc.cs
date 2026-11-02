@@ -3117,7 +3117,7 @@ public class FormDialog_calc : Form
 		//IL_0036: Expected Obj, but got Unknown
 		try
 		{
-			if (DataGridView_CALC.Rows.Count == 0)
+			if (SelectedPaymentRowCount() == 0)
 			{
 				Button val = CashPaymentButton();
 				if (val == null)
@@ -3428,7 +3428,7 @@ public class FormDialog_calc : Form
 		//IL_0036: Expected Obj, but got Unknown
 		try
 		{
-			if (DataGridView_CALC.Rows.Count == 0)
+			if (SelectedPaymentRowCount() == 0)
 			{
 				Button val = CashPaymentButton();
 				if (val == null)
