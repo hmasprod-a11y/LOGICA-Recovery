@@ -67,6 +67,39 @@ internal static class PortableTransactionSmoke
                 String.Join(",", boundary.Events.ToArray()) + " expected " + expected);
     }
 
+    private static void CheckProgress(string failAt, CheckoutCommitStage expected, string expectedEvents)
+    {
+        var store = new Store { FailAt = failAt };
+        var progress = new CheckoutCommitProgress();
+        bool failed = false;
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                store, Input(store), store, progress);
+        }
+        catch (InvalidOperationException ex) { failed = ex.Message == failAt; }
+        if (failed != (failAt != null))
+            throw new Exception("Portable commit outcome failure propagation: " + failAt);
+        if (progress.Stage != expected ||
+            progress.CommitOutcomeUnknown != (expected == CheckoutCommitStage.CommitAttempted) ||
+            progress.CommitWasConfirmed != (expected == CheckoutCommitStage.CommitConfirmed ||
+                                            expected == CheckoutCommitStage.Closed))
+            throw new Exception("Portable commit outcome misclassified: " + failAt);
+        if (String.Join(",", store.Events.ToArray()) != expectedEvents)
+            throw new Exception("Portable commit outcome changed order: " + failAt);
+
+        var duplicate = new Store();
+        bool rejected = false;
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                duplicate, Input(duplicate), duplicate, progress);
+        }
+        catch (InvalidOperationException) { rejected = true; }
+        if (!rejected || duplicate.Events.Count != 0)
+            throw new Exception("Portable duplicate SOLDER attempt reused progress");
+    }
+
     public static int Run()
     {
         Check(null, "header,journal,print,complete,commit,close");
@@ -74,6 +107,14 @@ internal static class PortableTransactionSmoke
         Check("complete", "header,journal,print,complete");
         Check("commit", "header,journal,print,complete,commit");
         Check("close", "header,journal,print,complete,commit,close");
+        CheckProgress(null, CheckoutCommitStage.Closed,
+            "header,journal,print,complete,commit,close");
+        CheckProgress("print", CheckoutCommitStage.Posting,
+            "header,journal,print");
+        CheckProgress("commit", CheckoutCommitStage.CommitAttempted,
+            "header,journal,print,complete,commit");
+        CheckProgress("close", CheckoutCommitStage.CommitConfirmed,
+            "header,journal,print,complete,commit,close");
         CheckBoundary(null, "state,open,begin.bind,commit,close");
         CheckBoundary("open", "state,open");
         CheckBoundary("begin.bind", "state,open,begin.bind");
@@ -89,7 +130,7 @@ internal static class PortableTransactionSmoke
         catch (ArgumentNullException ex) { nullFinalizerRejected = ex.ParamName == "finalizer"; }
         if (!nullFinalizerRejected || missingFinalizer.Events.Count != 0)
             throw new Exception("Missing transaction finalizer must fail before posting");
-        Console.WriteLine("PASS .NET 10 portable checkout: transaction boundary, finalizer preflight and failure propagation");
+        Console.WriteLine("PASS .NET 10 portable checkout: transaction boundary, commit outcome, duplicate progress guard and failure propagation");
         return 0;
     }
 }
