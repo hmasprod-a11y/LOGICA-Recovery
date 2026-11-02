@@ -128,6 +128,21 @@ assert movement.count("Parameters.AddWithValue(") == 6
 assert movement.count("DateTime.Now.ToString(") == 2, "preserve the legacy date/time read sequence"
 assert movement.count("command.ExecuteNonQuery();") == 1
 assert movement.index("command.ExecuteNonQuery();") < movement.index("connection.Close();")
+# A failed movement INSERT or deferred form read must not strand the shared
+# legacy connection in Open state. The article INSERT is still a separate
+# legacy operation: this is cleanup, NOT a new atomic stock transaction.
+assert "using (var command = new MySqlCommand())" in movement
+assert "finally" in movement and "connection.Close();" in movement
+try_start = movement.index("            try\\n") if "            try\\n" in movement else movement.index("            try\n")
+finally_start = movement.index("            finally")
+close_at = movement.index("connection.Close();")
+assert try_start < movement.index("connection.Open();") < finally_start < close_at
+assert try_start < movement.index("readCode()") < finally_start
+assert try_start < movement.index("readArticle()") < finally_start
+assert try_start < movement.index("readStock()") < finally_start
+assert try_start < movement.index("command.ExecuteNonQuery();") < finally_start
+assert "catch (" not in movement, "do not swallow SQL failures or claim a successful stock movement"
+print("Catalogue movement failure-path connection cleanup regression passed")
 assert "readCode() + " not in movement and "readArticle() + " not in movement
 assert "readStock() + " not in movement
 
