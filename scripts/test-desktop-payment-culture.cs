@@ -1,6 +1,7 @@
 // Isolated WinForms payment-culture regression. No shop database, licensing or checkout writes.
 using System;
 using System.Globalization;
+using System.Drawing;
 using System.IO;
 using System.Reflection;
 using System.Threading;
@@ -130,6 +131,60 @@ internal static class DesktopPaymentCultureSmoke
                     coinClick.Invoke(form, new object[] { invalidCoin, EventArgs.Empty });
                 Expect(Convert.ToDecimal(grid.Rows[1].Cells[1].Value) == 10.50m,
                     "Invalid denomination modified cashier payment");
+
+                // A denomination always belongs to ESPECES, even when the
+                // cashier is editing a card/transfer line in a split payment.
+                grid.Rows.Clear();
+                total.Text = "20,50";
+                grid.Rows.Add(new object[] { 20.50m, 10m, 0m, "CARTE", null });
+                Recalculate(form);
+                FlowLayoutPanel configuredMethods = (FlowLayoutPanel)Get(form, "FlowLayoutPanel_MODE_P");
+                using (Button cashMethod = new Button() { Text = "ESPECES" })
+                {
+                    configuredMethods.Controls.Add(cashMethod);
+                    grid.CurrentCell = grid.Rows[0].Cells[1];
+                    coinClick.Invoke(form, new object[] { halfDirham, EventArgs.Empty });
+                    Expect(grid.Rows.Count == 2 &&
+                        Convert.ToDecimal(grid.Rows[0].Cells[1].Value) == 10m &&
+                        Convert.ToDecimal(grid.Rows[1].Cells[1].Value) == 0.5m &&
+                        grid.CurrentCell.RowIndex == 1,
+                        "Cash coin modified card payment or failed to create cash row");
+                    // Switching back to the card line must not redirect cash
+                    // denomination input into the card tender.
+                    grid.CurrentCell = grid.Rows[0].Cells[1];
+                    coinClick.Invoke(form, new object[] { halfDirham, EventArgs.Empty });
+                    Expect(grid.Rows.Count == 2 &&
+                        Convert.ToDecimal(grid.Rows[0].Cells[1].Value) == 10m &&
+                        Convert.ToDecimal(grid.Rows[1].Cells[1].Value) == 1m,
+                        "Cash coin altered selected card instead of existing cash row");
+                    configuredMethods.Controls.Remove(cashMethod);
+                }
+                // A positive cash denomination is not a refund entry.
+                grid.Rows.Clear();
+                total.Text = "-10,25";
+                grid.Rows.Add(new object[] { -10.25m, -5m, 0m, "ESPECES", null });
+                Recalculate(form);
+                grid.CurrentCell = grid.Rows[0].Cells[1];
+                coinClick.Invoke(form, new object[] { halfDirham, EventArgs.Empty });
+                Expect(Convert.ToDecimal(grid.Rows[0].Cells[1].Value) == -5m,
+                    "Positive cash denomination modified negative refund");
+
+                // The decompiled 2pt captions must remain legible if the
+                // original denomination bitmap resource is missing.
+                halfDirham.BackgroundImage = null;
+                MethodInfo fallbackCaptions = form.GetType().GetMethod("EnsureReadableDenominationButtons", Flags);
+                Expect(fallbackCaptions != null, "Missing denomination caption fallback");
+                fallbackCaptions.Invoke(form, null);
+                Expect(halfDirham.Font.Size >= 11f &&
+                    halfDirham.TextAlign == System.Drawing.ContentAlignment.MiddleCenter,
+                    "Missing coin image leaves unreadable 2pt denomination caption");
+
+                // Restore exact split tender for keypad tests below.
+                grid.Rows.Clear();
+                total.Text = "20,50";
+                grid.Rows.Add(new object[] { 20.50m, 10.25m, 0m, "ESPECES", null });
+                grid.Rows.Add(new object[] { 10.25m, 10.50m, 0m, "ESPECES", null });
+                Recalculate(form);
 
                 // Physical keypad dot maps to the active culture, and repeated
                 // separators are rejected rather than creating invalid payment.
@@ -268,8 +323,20 @@ internal static class DesktopPaymentCultureSmoke
                 grid.Rows.Add(new object[] { 0m, 1m, 0m, "ESPECES", null });
                 Recalculate(form);
                 Expect(!solder.Enabled && remainder.Text == "", "Overflow left an actionable SOLDER state");
+
+                // Payment icons are cloned bitmaps owned by the dialog.
+                // Closing it must release the native GDI+ resource.
+                Bitmap ownedIcon = new Bitmap(2, 2);
+                Button iconMethod = new Button() { Text = "ICON", Image = ownedIcon };
+                ((FlowLayoutPanel)Get(form, "FlowLayoutPanel_MODE_P")).Controls.Add(iconMethod);
+                form.Dispose();
+                bool released = false;
+                try { ownedIcon.GetPixel(0, 0); }
+                catch (ArgumentException) { released = true; }
+                catch (ObjectDisposedException) { released = true; }
+                Expect(released, "Closing payment dialog leaked owned method icon");
             }
-            Console.WriteLine("PASS French decimal SOLDER, exact large totals, overpayment/change/refund guards, stale-edit RESTE/method guards, clicked payment-row identity, keypad confirm, additive cash/refunds, half-dirham, dynamic DPI and overflow");
+            Console.WriteLine("PASS French decimal SOLDER, exact large totals, cash-only coin routing, readable missing-image captions, icon disposal, overpayment/change/refund guards, stale-edit RESTE/method guards, clicked payment-row identity, keypad confirm, additive cash/refunds, half-dirham, dynamic DPI and overflow");
             return 0;
         }
         catch (Exception exception)
