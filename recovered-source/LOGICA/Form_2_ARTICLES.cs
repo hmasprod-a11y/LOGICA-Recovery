@@ -13767,14 +13767,14 @@ public class Form_2_ARTICLES : Form
 				Text_ARTICLE.Text = DT.Rows[position2]["Article"].ToString();
 				Combo_FAMILLE.Text = DT.Rows[position2]["Famille"].ToString();
 				Text_SOUS_FAMILLE.Text = DT.Rows[position2]["Sous_Famille"].ToString();
-				Combo_GROUPES.Text = DT.Rows[position2]["GROUPE"].ToString();
+				Combo_GROUPES.Text = (DT.Columns.Contains("GROUPE") ? DT.Rows[position2]["GROUPE"].ToString() : "");
 				Text_DESCRIPTION.Text = DT.Rows[position2]["Description"].ToString();
 				Text_PRIX_A.Text = DT.Rows[position2]["Prix_A"].ToString();
 				Text_PRIX_MP.Text = DT.Rows[position2]["PRIX_MP"].ToString();
 				Text_PRIX_V.Text = DT.Rows[position2]["PRIX_V_1"].ToString();
 				Text_PRIX_V_2.Text = DT.Rows[position2]["PRIX_V_2"].ToString();
-				Text_PRIX_QTE.Text = DT.Rows[position2]["PRIX_QTE"].ToString();
-				Text_PRIX_QTE_MIN.Text = DT.Rows[position2]["PRIX_QTE_MIN"].ToString();
+				Text_PRIX_QTE.Text = (DT.Columns.Contains("PRIX_QTE") ? DT.Rows[position2]["PRIX_QTE"].ToString() : "");
+				Text_PRIX_QTE_MIN.Text = (DT.Columns.Contains("PRIX_QTE_MIN") ? DT.Rows[position2]["PRIX_QTE_MIN"].ToString() : "");
 				Text_STOCK.Text = DT.Rows[position2]["STOCK"].ToString();
 				Text_ALERT.Text = DT.Rows[position2]["Alert"].ToString();
 				Text_DATE_CREATION.Text = DT.Rows[position2]["DATES"].ToString();
@@ -13798,9 +13798,9 @@ public class Form_2_ARTICLES : Form
 					}
 				}
 				Text_LIEN_PICTURE_ANC.Text = DT.Rows[position2]["Images"].ToString();
-				Combo_TAILLES.Text = DT.Rows[position2]["Taille"].ToString();
-				Combo_COULEURS.Text = DT.Rows[position2]["Couleur"].ToString();
-				Text_EMPLACEMENT.Text = DT.Rows[position2]["Emplacement"].ToString();
+				Combo_TAILLES.Text = (DT.Columns.Contains("Taille") ? DT.Rows[position2]["Taille"].ToString() : "");
+				Combo_COULEURS.Text = (DT.Columns.Contains("Couleur") ? DT.Rows[position2]["Couleur"].ToString() : "");
+				Text_EMPLACEMENT.Text = (DT.Columns.Contains("Emplacement") ? DT.Rows[position2]["Emplacement"].ToString() : "");
 				Text_PROMOTION.Text = DT.Rows[position2]["PROMOTION"].ToString();
 				Combo_BALANCE.Text = DT.Rows[position2]["BALANCE"].ToString();
 				Combo_FENETRE_PESEE.Text = DT.Rows[position2]["FENETRE_PESAGE"].ToString();
