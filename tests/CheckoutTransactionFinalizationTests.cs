@@ -29,9 +29,11 @@ internal static class CheckoutTransactionFinalizationTests
         private IEnumerable<TicketPaymentWrite> PaymentRows()
         {
             Mark("payment.next.1");
-            yield return new TicketPaymentWrite { AmountText = "1" };
+            yield return new TicketPaymentWrite {
+                AmountText = "1", Context = new TicketPaymentContext { TicketNumber = "T-1" } };
             Mark("payment.next.2");
-            yield return new TicketPaymentWrite { AmountText = "2" };
+            yield return new TicketPaymentWrite {
+                AmountText = "2", Context = new TicketPaymentContext { TicketNumber = "T-1" } };
         }
 
         internal CheckoutPostingInput Input()
