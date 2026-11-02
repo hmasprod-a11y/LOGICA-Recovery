@@ -14461,8 +14461,8 @@ public class Form_2_ARTICLES : Form
 				}
 				// Do not write an image file for a stale or ambiguous edit.
 				if (Operators.CompareString(Label_TOP.Text, "MODIFICATION", TextCompare: false) == 0 &&
-					LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.ResolveUniqueExistingRow(
-						DT, Text_ID.Text, Text_ID_ARTICLE.Text) == null)
+					LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.ResolveUniqueByDatabaseId(
+						DT, Text_ID.Text) == null)
 				{
 					MessageBox.Show("Article modifié ou identité ambiguë. Actualisez la liste avant d'enregistrer.");
 					return;
@@ -14501,8 +14501,8 @@ public class Form_2_ARTICLES : Form
 				}
 				else if (Operators.CompareString(Label_TOP.Text, "MODIFICATION", TextCompare: false) == 0)
 				{
-					DataRow editTarget = LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.ResolveUniqueExistingRow(
-						DT, Text_ID.Text, Text_ID_ARTICLE.Text);
+					DataRow editTarget = LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.ResolveUniqueByDatabaseId(
+						DT, Text_ID.Text);
 					if (editTarget == null)
 					{
 						MessageBox.Show("Article modifié ou identité ambiguë. Actualisez la liste avant d'enregistrer.");
