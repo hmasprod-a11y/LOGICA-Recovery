@@ -81,6 +81,16 @@ internal static class PortablePostingSmoke
         string actual = String.Join(",", store.Events.ToArray());
         if (actual != expected) throw new Exception("Portable posting order: " + actual + " expected " + expected);
     }
+    private static void CheckInvalidReader(Store store, CheckoutPostingInput input, string message, string expected)
+    {
+        bool rejected = false;
+        try { CheckoutTransactionFinalizationService.PostAndFinalize(store, input, store); }
+        catch (InvalidOperationException ex) { rejected = ex.Message == message; }
+        if (!rejected) throw new Exception("Malformed checkout reader must fail at its original stage: " + message);
+        Assert(store, expected);
+        if (store.CommitCount != 0 || store.CloseCount != 0)
+            throw new Exception("Malformed checkout reader must not commit or close: " + message);
+    }
     public static int Run()
     {
         var success = new Store();
@@ -140,6 +150,56 @@ internal static class PortablePostingSmoke
         catch (ArgumentNullException ex) { rejected = ex.ParamName == "store"; }
         if (!rejected) throw new Exception("Null posting store must fail before readers");
         Assert(incomplete, "");
+
+        // P0: malformed UI-derived payment and ticket readers must fail with
+        // actionable errors, never a NullReferenceException or a committed sale.
+        // Readers remain lazy and previous successful stock/payment writes are
+        // still the responsibility of the caller-owned transaction rollback.
+        var noStock = new Store();
+        var noStockInput = Input(noStock);
+        noStockInput.ReadStock = delegate { noStock.Events.Add("readStock"); return null; };
+        CheckInvalidReader(noStock, noStockInput,
+            "Checkout stock reader returned no collection.", "readStock");
+
+        var nullStockLine = new Store();
+        var nullStockInput = Input(nullStockLine);
+        nullStockInput.ReadStock = delegate { nullStockLine.Events.Add("readStock"); return new CheckoutStockLine[] { null }; };
+        CheckInvalidReader(nullStockLine, nullStockInput,
+            "Checkout stock reader returned a null line.", "readStock");
+
+        var noHeader = new Store();
+        var noHeaderInput = Input(noHeader);
+        noHeaderInput.ReadHeader = delegate { noHeader.Events.Add("readHeader"); return null; };
+        CheckInvalidReader(noHeader, noHeaderInput,
+            "Checkout header reader returned null.", "readStock,stock:A,stock:B,readHeader");
+
+        var noJournal = new Store();
+        var noJournalInput = Input(noJournal);
+        noJournalInput.ReadJournal = delegate { noJournal.Events.Add("readJournal"); return null; };
+        CheckInvalidReader(noJournal, noJournalInput,
+            "Checkout journal reader returned null.", "readStock,stock:A,stock:B,readHeader,header,readJournal");
+
+        var noPayments = new Store();
+        var noPaymentsInput = Input(noPayments);
+        noPaymentsInput.ReadPayments = delegate { noPayments.Events.Add("readPayments"); return null; };
+        CheckInvalidReader(noPayments, noPaymentsInput,
+            "Checkout payment reader returned no collection.",
+            "readStock,stock:A,stock:B,readHeader,header,readJournal,journal,readPayments");
+
+        var nullPayment = new Store();
+        var nullPaymentInput = Input(nullPayment);
+        nullPaymentInput.ReadPayments = delegate { nullPayment.Events.Add("readPayments"); return new TicketPaymentWrite[] { null }; };
+        CheckInvalidReader(nullPayment, nullPaymentInput,
+            "Checkout payment reader returned a null line.",
+            "readStock,stock:A,stock:B,readHeader,header,readJournal,journal,readPayments");
+
+        var noCompletion = new Store();
+        var noCompletionInput = Input(noCompletion);
+        noCompletionInput.ReadCompletion = delegate { noCompletion.Events.Add("readCompletion"); return null; };
+        CheckInvalidReader(noCompletion, noCompletionInput,
+            "Checkout completion reader returned null.",
+            "readStock,stock:A,stock:B,readHeader,header,readJournal,journal,readPayments,payment:1,payment:2,print,readCompletion");
+
         Console.WriteLine("PASS portable checkout posting: ordered stock/ticket/payment, failure before print and completion; one cash sale/refund and fail-fast callback safety");
         return 0;
     }
