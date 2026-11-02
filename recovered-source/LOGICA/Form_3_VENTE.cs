@@ -14637,7 +14637,12 @@ public class Form_3_VENTE : Form
 				// Barcode scanners commonly terminate scans with Enter. Consume that
 				// terminator once; do not forward it to a focused button or dialog.
 				e.SuppressKeyPress = true;
-				Button_FIND_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
+				// Keep scanner Enter consumed, but do not queue a sale while checkout
+				// is disabled by the existing workflow.
+				if (Button_FIND.Enabled)
+				{
+					Button_FIND_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
+				}
 				((TextBoxBase)Text_CODE).HideSelection = false;
 				((TextBoxBase)Text_CODE).SelectAll();
 			}
@@ -14703,6 +14708,12 @@ public class Form_3_VENTE : Form
 
 	private void Button_FIND_Click(object sender, EventArgs e)
 	{
+		// A scanner or image/list handler can call this method directly even while
+		// the checkout button is disabled. Never bypass the disabled sale gate.
+		if (!Button_FIND.Enabled)
+		{
+			return;
+		}
 		//IL_052d: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0534: Expected Obj, but got Unknown
 		//IL_0063: Unknown result type (might be due to invalid IL or missing references)
@@ -15753,6 +15764,11 @@ public class Form_3_VENTE : Form
 
 	private void DataGridView100_Click(object sender, EventArgs e)
 	{
+		// A disabled checkout must not stage a different barcode from the list.
+		if (!Button_FIND.Enabled)
+		{
+			return;
+		}
 		try
 		{
 			DataRow selected = SelectedProductListRowForPointer(e);
