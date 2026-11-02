@@ -2976,7 +2976,7 @@ public class FormDialog_calc : Form
 				// Ignore stale or blank controls instead of inserting an unusable payment row.
 				Button selectedMethod = sender as Button;
 				if (selectedMethod == null || string.IsNullOrWhiteSpace(selectedMethod.Text)) return;
-				DataGridView_CALC.Rows.Add(new object[4]
+				int insertedRow = DataGridView_CALC.Rows.Add(new object[4]
 				{
 					Conversion.Val(((ButtonBase)Button_RESTE).Text),
 					0,
@@ -2984,7 +2984,7 @@ public class FormDialog_calc : Form
 					selectedMethod.Text
 				});
 				Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
-				DataGridView_CALC.CurrentCell = DataGridView_CALC.Rows[DataGridView_CALC.Rows.Count - 1].Cells[1];
+				DataGridView_CALC.CurrentCell = DataGridView_CALC.Rows[insertedRow].Cells[1];
 				((Control)DataGridView_CALC).Focus();
 				if (!string.Equals(selectedMethod.Text, "ESPECES", StringComparison.Ordinal))
 				{
@@ -3168,39 +3168,20 @@ public class FormDialog_calc : Form
 		//IL_0023: Expected Obj, but got Unknown
 		checked
 		{
-			foreach (DataGridViewRow item in (IEnumerable)DataGridView_CALC.Rows)
-			{
-				DataGridViewRow val = item;
-				val.Height = Math.Max(24, (int)Math.Round((double)(((Control)DataGridView_CALC).Height - DataGridView_CALC.ColumnHeadersHeight - 3) / (double)DataGridView_CALC.Rows.Count));
-			}
-			int num = DataGridView_CALC.Rows.Count - 1;
-			int num2 = 0;
-			while (true)
-			{
-				int num3 = num2;
-				int num4 = num;
-				if (num3 > num4)
-				{
-					break;
-				}
-				DataGridView_CALC.Rows[num2].Cells[2].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.SubtractObject(DataGridView_CALC.Rows[num2].Cells[1].Value, DataGridView_CALC.Rows[num2].Cells[0].Value)));
-				num2++;
-			}
+			// DataGridView may expose an uncommitted placeholder row when adding
+			// rows is enabled. It is not a payment and has no numeric cell values.
+			int paymentCount = 0;
+			foreach (DataGridViewRow row in DataGridView_CALC.Rows)
+				if (!row.IsNewRow) paymentCount++;
 			double num5 = 0.0;
 			double num6 = 0.0;
-			int num7 = DataGridView_CALC.Rows.Count - 1;
-			int num8 = 0;
-			while (true)
+			foreach (DataGridViewRow row in DataGridView_CALC.Rows)
 			{
-				int num9 = num8;
-				int num4 = num7;
-				if (num9 > num4)
-				{
-					break;
-				}
-				num5 = Conversions.ToDouble(Operators.AddObject(num5, DataGridView_CALC.Rows[num8].Cells[1].Value));
-				num6 = Conversions.ToDouble(Operators.AddObject(num6, DataGridView_CALC.Rows[num8].Cells[2].Value));
-				num8++;
+				if (row.IsNewRow) continue;
+				row.Height = Math.Max(24, (int)Math.Round((double)(((Control)DataGridView_CALC).Height - DataGridView_CALC.ColumnHeadersHeight - 3) / Math.Max(1, paymentCount)));
+				row.Cells[2].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.SubtractObject(row.Cells[1].Value, row.Cells[0].Value)));
+				num5 = Conversions.ToDouble(Operators.AddObject(num5, row.Cells[1].Value));
+				num6 = Conversions.ToDouble(Operators.AddObject(num6, row.Cells[2].Value));
 			}
 			((ButtonBase)Button_RESTE).Text = Conversions.ToString(Module1.FLOUSS(new decimal(Conversion.Val(Text_TOTAL_NET.Text) - Conversion.Val(num5))));
 			if (Conversion.Val(((ButtonBase)Button_RESTE).Text) > 0.0)
@@ -3211,9 +3192,14 @@ public class FormDialog_calc : Form
 			{
 				((Control)Button_SOLDER).Enabled = true;
 			}
-			if (DataGridView_CALC.Rows.Count > 0)
+			if (paymentCount > 0)
 			{
-				DataGridView_CALC.Rows[0].Cells[1].Style.BackColor = Color.Yellow;
+				foreach (DataGridViewRow row in DataGridView_CALC.Rows)
+				{
+					if (row.IsNewRow) continue;
+					row.Cells[1].Style.BackColor = Color.Yellow;
+					break;
+				}
 			}
 		}
 	}
@@ -3225,7 +3211,7 @@ public class FormDialog_calc : Form
 		try
 		{
 			if (e.ColumnIndex == 4 && e.RowIndex >= 0 && e.RowIndex < DataGridView_CALC.Rows.Count &&
-				DataGridView_CALC.CurrentCell != null)
+				!DataGridView_CALC.Rows[e.RowIndex].IsNewRow)
 			{
 				DataGridView_CALC.Rows.RemoveAt(e.RowIndex);
 				Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
