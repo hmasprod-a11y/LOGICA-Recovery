@@ -28,6 +28,15 @@ internal static class CatalogueDuplicateMariaDbSmoke
         return result;
     }
 
+    private static DataTable InvokeCollection(Type type, DbConnection connection, object value)
+    {
+        DataTable table = new DataTable();
+        MethodInfo target = type.GetMethod("FillCollectionCode", Static);
+        Require(target != null, "Missing production collection lookup");
+        target.Invoke(null, new object[] { table, value, connection });
+        return table;
+    }
+
     private static void ExpectIds(DataTable table, string expected, string description)
     {
         System.Collections.Generic.List<string> ids = new System.Collections.Generic.List<string>();
@@ -91,6 +100,8 @@ internal static class CatalogueDuplicateMariaDbSmoke
             ExpectIds(Invoke(lookup, "FillNewCode", connection, ""), "", "blank barcode not unique");
             ExpectIds(Invoke(lookup, "FillEditedCode", connection, "  ", "4"), "", "blank edit not unique");
             ExpectIds(Invoke(lookup, "FillCollectionCode", connection, "", collection: true), "", "blank collection not unique");
+            ExpectIds(InvokeCollection(lookup, connection, DBNull.Value), "", "DBNull collection barcode safely blank");
+            ExpectIds(InvokeCollection(lookup, connection, null), "", "null collection barcode safely blank");
             ExpectIds(Invoke(lookup, "FillEditedArticleId", connection, "IMG-A", "5"), "4", "image-only article ID still unique");
             ExpectIds(Invoke(lookup, "FillEditedCode", connection, "NULL-ID", "1"), "NULL", "null database ID cannot hide barcode collision");
             ExpectIds(Invoke(lookup, "FillEditedArticleId", connection, "NULL-ARTICLE", "1"), "NULL", "null database ID cannot hide article collision");
@@ -103,7 +114,7 @@ internal static class CatalogueDuplicateMariaDbSmoke
             try { Invoke(lookup, "FillEditedCode", connection, "NORMAL", "1 OR 1=1"); }
             catch (TargetInvocationException ex) { rejected = ex.InnerException is ArgumentException; }
             Require(rejected, "Malformed excluded ID must be rejected before querying");
-            Console.WriteLine("PASS malformed excluded ID rejected; 20 MariaDB checks");
+            Console.WriteLine("PASS malformed excluded ID rejected; 22 MariaDB checks");
             return 0;
         }
         catch (Exception ex)
