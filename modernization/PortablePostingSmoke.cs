@@ -9,6 +9,8 @@ internal static class PortablePostingSmoke
     {
         internal readonly List<string> Events = new List<string>();
         internal bool FailSecondPayment;
+        internal bool FailOnCommit;
+        internal bool FailOnClose;
         internal int PaymentCount;
         internal int CommitCount;
         internal int CloseCount;
@@ -26,8 +28,8 @@ internal static class PortablePostingSmoke
             if (FailSecondPayment && payment.AmountText == "2") throw new InvalidOperationException("payment");
         }
         public void Complete(CheckoutCompletionRecord completion) { Events.Add("complete"); }
-        public void Commit() { CommitCount++; Events.Add("commit"); }
-        public void Close() { CloseCount++; Events.Add("close"); }
+        public void Commit() { CommitCount++; Events.Add("commit"); if (FailOnCommit) throw new InvalidOperationException("commit"); }
+        public void Close() { CloseCount++; Events.Add("close"); if (FailOnClose) throw new InvalidOperationException("close"); }
     }
     private static IEnumerable<CheckoutStockLine> Stocks()
     {
@@ -210,6 +212,41 @@ internal static class PortablePostingSmoke
             projectedSale.LastPayment.AmountText != "12.35" ||
             projectedSale.CommitCount != 1 || projectedSale.CloseCount != 1)
             throw new Exception("Projected cash sale must write stock/payment once");
+
+        // Real SOLDER cash projection + real posting/finalization: a Close
+        // exception happens after the sale was committed. A Commit exception
+        // is ambiguous. Neither is safe to blindly retry from the UI.
+        foreach (bool failCommit in new[] { true, false })
+        {
+            var interruptedCash = new Store {
+                FailOnCommit = failCommit, FailOnClose = !failCommit
+            };
+            var progress = new CheckoutCommitProgress();
+            bool failedAtBoundary = false;
+            try
+            {
+                CheckoutTransactionFinalizationService.PostAndFinalize(
+                    interruptedCash,
+                    ProjectedCashInput(interruptedCash, "VENTE", "1", "12.35", false),
+                    interruptedCash, progress);
+            }
+            catch (InvalidOperationException ex)
+            {
+                failedAtBoundary = ex.Message == (failCommit ? "commit" : "close");
+            }
+            if (!failedAtBoundary ||
+                progress.Stage != (failCommit ? CheckoutCommitStage.CommitAttempted :
+                                               CheckoutCommitStage.CommitConfirmed) ||
+                progress.CommitOutcomeUnknown != failCommit ||
+                progress.CommitWasConfirmed == failCommit ||
+                interruptedCash.StockCount != 1 || interruptedCash.PaymentCount != 1 ||
+                interruptedCash.CommitCount != 1 ||
+                interruptedCash.CloseCount != (failCommit ? 0 : 1))
+                throw new Exception("Cash SOLDER commit/close ambiguity must retain exact-once writes");
+            Assert(interruptedCash,
+                "readStock,stock:CASH-ITEM,readHeader,header,readJournal,journal,readPayments,operation,context,access,cash,payment:12.35,print,readCompletion,complete,commit" +
+                (failCommit ? "" : ",close"));
+        }
 
         var projectedRefund = new Store();
         CheckoutTransactionFinalizationService.PostAndFinalize(projectedRefund,
