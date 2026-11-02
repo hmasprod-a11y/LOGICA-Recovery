@@ -2315,6 +2315,12 @@ class PosSmoke {
       throw new Exception("Failed MariaDB startup must show a database error, not an activation message: "+error.Text);
      if(activation.Visible)throw new Exception("Database failure unexpectedly opened activation fiche");
      if(connection.State!=ConnectionState.Closed)throw new Exception("Failed startup probe leaked a connection");
+     // Recovery must clear the stale database error before the unchanged
+     // license check is allowed to run on the next successful startup.
+     connection.ConnectionString=originalConnectionString;
+     connect.Invoke(form,null);
+     if(error.Text!="")throw new Exception("Recovered MariaDB connection left a stale startup error overlay");
+     if(connection.State!=ConnectionState.Closed)throw new Exception("Recovered startup probe leaked a connection");
     }
    } finally {
     if(connection.State!=ConnectionState.Closed)connection.Close();
