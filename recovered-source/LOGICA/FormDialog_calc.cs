@@ -3137,7 +3137,17 @@ public class FormDialog_calc : Form
 	// The cash method is optional; missing icons must not affect availability.
 	private Button CashPaymentButton()
 	{
-		return ((Control)FlowLayoutPanel_MODE_P).Controls["Button_ESPECES"] as Button;
+		Button exact = ((Control)FlowLayoutPanel_MODE_P).Controls["Button_ESPECES"] as Button;
+		if (exact != null) return exact;
+		// Older payment settings may spell cash with different casing or spaces.
+		// The icon file name is unrelated to the method's identity.
+		foreach (Control control in FlowLayoutPanel_MODE_P.Controls)
+		{
+			Button candidate = control as Button;
+			if (candidate != null && string.Equals((candidate.Text ?? "").Trim(), "ESPECES", StringComparison.OrdinalIgnoreCase))
+				return candidate;
+		}
+		return null;
 	}
 
 	private void Button_DEVIS_Click(object sender, EventArgs e)
