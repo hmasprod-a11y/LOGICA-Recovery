@@ -2105,106 +2105,32 @@ public class FormDialog_MODE_P : Form
 
 	private void DataGridView1_DataBindingComplete(object sender, DataGridViewBindingCompleteEventArgs e)
 	{
-		int try0001_dispatch = -1;
-		int num3 = default;
-		int num = default;
-		int num2 = default;
-		int num5 = default;
-		FileStream fileStream = default;
-		int num6 = default;
-		while (true)
+		// The recovered database can reference a payment icon which is not part
+		// of the portable ZIP (e.g. ESPECES.png). Missing/corrupt icons should
+		// never interrupt cashier checkout or leave a FileStream open.
+		foreach (DataGridViewRow row in DataGridView1.Rows)
 		{
+			if (row.IsNewRow || !DataGridView1.Columns.Contains("Images"))
+				continue;
+			object nameValue = row.Cells["Images"].Value;
+			if (nameValue == null || nameValue == DBNull.Value) continue;
+			string name = Convert.ToString(nameValue);
+			if (string.IsNullOrWhiteSpace(name) || name != Path.GetFileName(name)) continue;
+			string imagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", name);
+			if (!File.Exists(imagePath)) continue;
 			try
 			{
-				/*Note: ILSpy has introduced the following switch to emulate a goto from catch-block to try-block*/;
-				int num7;
-				int num8;
-				switch (try0001_dispatch)
+				using (FileStream imageStream = new FileStream(imagePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+				using (Image original = Image.FromStream(imageStream))
 				{
-				default:
-					ProjectData.ClearProjectError();
-					num3 = -2;
-					goto IL_0009;
-				case 230:
-					{
-						num = num2;
-						switch ((num3 <= -2) ? 1 : num3)
-						{
-						case 1:
-							break;
-						default:
-							goto end_IL_0001;
-						}
-						int num4 = num + 1;
-						num = 0;
-						switch (num4)
-						{
-						case 1:
-							break;
-						case 2:
-							goto IL_0009;
-						case 3:
-							goto IL_0026;
-						case 4:
-							goto IL_006a;
-						case 5:
-							goto IL_0095;
-						case 6:
-							goto IL_009f;
-						default:
-							goto end_IL_0001;
-						case 7:
-							goto end_IL_0001_2;
-						}
-						goto default;
-					}
-					IL_006a:
-					num2 = 4;
-					DataGridView1.Rows[num5].Cells[0].Value = Image.FromStream((Stream)fileStream);
-					goto IL_0095;
-					IL_0095:
-					num2 = 5;
-					fileStream.Close();
-					goto IL_009f;
-					IL_0026:
-					num2 = 3;
-					fileStream = new FileStream(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + DataGridView1.Rows[num5].Cells["Images"].Value.ToString(), FileMode.Open, FileAccess.Read);
-					goto IL_006a;
-					IL_009f:
-					num2 = 6;
-					num5 = checked(num5 + 1);
-					goto IL_00a7;
-					IL_0009:
-					num2 = 2;
-					num6 = checked(DataGridView1.Rows.Count - 1);
-					num5 = 0;
-					goto IL_00a7;
-					IL_00a7:
-					num7 = num5;
-					num8 = num6;
-					if (num7 > num8)
-					{
-						goto end_IL_0001_2;
-					}
-					goto IL_0026;
-					end_IL_0001:
-					break;
+					row.Cells[0].Value = new Bitmap(original);
 				}
 			}
-			catch (Exception ex) when ((num3 != 0) & (num == 0))
-			{
-				ProjectData.SetProjectError(ex);
-				try0001_dispatch = 230;
-				continue;
-			}
-			throw ProjectData.CreateProjectError(-2146828237);
-			continue;
-			end_IL_0001_2:
-			break;
-		}
-		if (num != 0)
-		{
-			ProjectData.ClearProjectError();
+			catch (IOException) { }
+			catch (UnauthorizedAccessException) { }
+			catch (ArgumentException) { }
+			catch (OutOfMemoryException) { } // GDI+ invalid image payload
+			catch (System.Runtime.InteropServices.ExternalException) { }
 		}
 	}
 
