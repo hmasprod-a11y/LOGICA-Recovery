@@ -2282,8 +2282,7 @@ class PosSmoke {
  static void LegacyZeroDates(Assembly assembly) {
  var module=assembly.GetType("LOGICA.Module1",true);
  var conn=(IDbConnection)module.GetField("cn_SQL").GetValue(null);
- var builder=new System.Data.Common.DbConnectionStringBuilder {ConnectionString=conn.ConnectionString};
- if(!Convert.ToBoolean(builder["Convert Zero Datetime"]))throw new Exception("Legacy zero date conversion is disabled");
+ // Verify the behavior against a real SQL zero datetime, not an alias/key spelling.
  if(conn.Database!="logica_ci")throw new Exception("Only run this test on isolated MariaDB");
  conn.Open();
  try {
