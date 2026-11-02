@@ -2811,8 +2811,9 @@ public class FormDialog_calc : Form
 	{
 		// When many methods or large DPI make the flow wider than the panel,
 		// a negative Left hides the first (often cash) button off-screen.
-		((Control)FlowLayoutPanel_MODE_P).Left = Math.Max(0,
-			checked((int)Math.Round(((Control)Panel_MODE_P).ClientSize.Width - ((Control)FlowLayoutPanel_MODE_P).Width) / 2.0)));
+		int availableWidth = ((Control)Panel_MODE_P).ClientSize.Width;
+		int flowWidth = ((Control)FlowLayoutPanel_MODE_P).Width;
+		((Control)FlowLayoutPanel_MODE_P).Left = Math.Max(0, (availableWidth - flowWidth) / 2);
 	}
 
 	// Reopening payment must release the previous icon bitmaps and controls.
