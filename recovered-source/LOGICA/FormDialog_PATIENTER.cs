@@ -441,10 +441,16 @@ public class FormDialog_PATIENTER : Form
 		}
 	}
 
+	private DateTime _shownUtc = DateTime.UtcNow;
+
 	private void FormDialog_PATIENTER_Load(object sender, EventArgs e)
 	{
 		((Form)this).TopMost = true;
 		((Form)this).TopLevel = true;
+		// Fail-safe: the waiting overlay must never remain indefinitely if the
+		// article form throws before setting _QUITTER_PATIENTER.
+		Timer1.Interval = 250;
+		Timer1.Start();
 	}
 
 	private void PictureBox1_DoubleClick(object sender, EventArgs e)
@@ -454,7 +460,7 @@ public class FormDialog_PATIENTER : Form
 
 	private void Timer1_Tick(object sender, EventArgs e)
 	{
-		if (Module1._QUITTER_PATIENTER)
+		if (Module1._QUITTER_PATIENTER || (DateTime.UtcNow - _shownUtc).TotalSeconds >= 15)
 		{
 			Timer1.Enabled = false;
 			Module1._QUITTER_PATIENTER = false;
