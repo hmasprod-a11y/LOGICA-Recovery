@@ -3038,6 +3038,11 @@ public class FormDialog_calc : Form
 			if (DataGridView_CALC.Rows.Count == 0)
 			{
 				Button val = (Button)((Control)FlowLayoutPanel_MODE_P).Controls["Button_ESPECES"];
+				if (val == null)
+				{
+					MessageBox.Show("Mode de paiement ESPECES indisponible. Vérifiez la configuration des modes de paiement.", "Hanouty POS", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+					return;
+				}
 				val.PerformClick();
 				Button_REFRESH.PerformClick();
 			}
@@ -3323,6 +3328,11 @@ public class FormDialog_calc : Form
 			if (DataGridView_CALC.Rows.Count == 0)
 			{
 				Button val = (Button)((Control)FlowLayoutPanel_MODE_P).Controls["Button_ESPECES"];
+				if (val == null)
+				{
+					MessageBox.Show("Mode de paiement ESPECES indisponible. Vérifiez la configuration des modes de paiement.", "Hanouty POS", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+					return;
+				}
 				val.PerformClick();
 				Button_REFRESH.PerformClick();
 			}
