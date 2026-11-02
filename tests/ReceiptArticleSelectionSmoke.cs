@@ -258,6 +258,52 @@ internal static class ReceiptArticleSelectionSmoke
             Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(missingReceiptId.DefaultView[0], "BR-001") == null,
                 "missing receipt ID schema fails closed");
 
+            // Save preflight: the original UI checked stale total labels before
+            // EndEdit/recalculation, rejecting a valid first line or saving a
+            // previous amount. The production button now uses this sequence.
+            var saveStages = new System.Collections.Generic.List<string>();
+            bool readyToSave = ReceiptLineGridGuard.PrepareForSave(
+                delegate { saveStages.Add("edit"); return true; },
+                delegate { saveStages.Add("lines"); },
+                delegate { saveStages.Add("document"); });
+            Check(readyToSave && String.Join(",", saveStages.ToArray()) == "edit,lines,document",
+                "receipt save commits current edit then recalculates lines and document in order");
+            saveStages.Clear();
+            Check(!ReceiptLineGridGuard.PrepareForSave(
+                delegate { saveStages.Add("invalid-edit"); return false; },
+                delegate { saveStages.Add("should-not-recalculate"); },
+                delegate { saveStages.Add("should-not-recalculate-document"); }) &&
+                saveStages.Count == 1 && saveStages[0] == "invalid-edit",
+                "invalid edit stops receipt save without recomputing stale totals");
+            var editFailure = new InvalidOperationException("edit failed");
+            Exception observedSaveFailure = null;
+            try {
+                ReceiptLineGridGuard.PrepareForSave(
+                    delegate { throw editFailure; }, delegate { }, delegate { });
+            } catch (Exception error) { observedSaveFailure = error; }
+            Check(Object.ReferenceEquals(editFailure, observedSaveFailure),
+                "save preflight preserves original edit exception identity");
+            var documentFailure = new InvalidOperationException("totals failed");
+            observedSaveFailure = null;
+            saveStages.Clear();
+            try {
+                ReceiptLineGridGuard.PrepareForSave(
+                    delegate { saveStages.Add("edit"); return true; },
+                    delegate { saveStages.Add("lines"); },
+                    delegate { throw documentFailure; });
+            } catch (Exception error) { observedSaveFailure = error; }
+            Check(Object.ReferenceEquals(documentFailure, observedSaveFailure) &&
+                String.Join(",", saveStages.ToArray()) == "edit,lines",
+                "document-total failure propagates without authorizing save");
+            int rejectedSaveDelegates = 0;
+            try { ReceiptLineGridGuard.PrepareForSave(null, delegate { }, delegate { }); }
+            catch (ArgumentNullException) { rejectedSaveDelegates++; }
+            try { ReceiptLineGridGuard.PrepareForSave(delegate { return true; }, null, delegate { }); }
+            catch (ArgumentNullException) { rejectedSaveDelegates++; }
+            try { ReceiptLineGridGuard.PrepareForSave(delegate { return true; }, delegate { }, null); }
+            catch (ArgumentNullException) { rejectedSaveDelegates++; }
+            Check(rejectedSaveDelegates == 3, "missing save callbacks fail before any receipt mutation");
+
             // The real receipt line grid must honor the clicked/edited row,
             // not CurrentCell, and must recheck article identity after a modal.
             // Keyboard Enter and CellEnter now use the same explicit event-row
