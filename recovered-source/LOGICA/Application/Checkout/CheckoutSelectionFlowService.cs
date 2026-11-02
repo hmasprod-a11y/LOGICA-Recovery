@@ -88,8 +88,25 @@ namespace LOGICA.ApplicationLayer.Checkout
             DataTable live = readCurrentMatches();
             // A failed/empty refresh is never permission to use the stale
             // displayed row. DB exceptions still propagate to the UI handler.
-            if (live == null)
+            if (live == null || !live.Columns.Contains("Code"))
                 return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            // This callback represents a fresh *exact-barcode* SQL query. A
+            // wrong WHERE parameter or an unfiltered catalogue read must not
+            // return a saleable row, even if the chosen ID is also present.
+            // Validate the whole active result before copying live prices,
+            // discounts or tax into the legacy sale screen. A truly empty
+            // result remains Missing; pending-deleted rows are not candidates.
+            foreach (DataRow candidate in live.Rows)
+            {
+                if (candidate.RowState == DataRowState.Deleted ||
+                    candidate.RowState == DataRowState.Detached)
+                    continue;
+                if (candidate.IsNull("Code") ||
+                    !String.Equals(Convert.ToString(candidate["Code"]), barcode,
+                        StringComparison.Ordinal))
+                    return new CheckoutVariantChoiceResult(
+                        CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            }
             return CheckoutVariantSnapshotService.EvaluateChoice(live, read.Snapshots, index);
         }
 
