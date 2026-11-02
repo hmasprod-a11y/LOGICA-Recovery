@@ -100,18 +100,23 @@ namespace LOGICA.Infrastructure.Purchasing
             if (!String.Equals(state, "ENREGISTRER", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Only registered receipts can be validated.");
 
-            // An orphan receipt header must never become VALIDER. Read the
-            // persisted detail table inside the same transaction, not a UI grid
-            // that may be stale or empty after another cashier edits the receipt.
-            // This checks presence only; posting still requires the caller to
-            // re-read/lock every detail and perform all writes atomically.
+            // Lock every persisted detail row under the same InnoDB
+            // transaction as the header. A UI grid is not authoritative and
+            // another client must not delete/edit a line during posting.
+            // Caller still owns quantity validation, stock/movement writes,
+            // details state and the final Commit/Rollback.
             using (var details = new MySqlCommand(
-                "SELECT 1 FROM TABLE_RECEPTIONS_DETAILS WHERE ID_BR = @receiptId LIMIT 1",
+                "SELECT ID_BR FROM TABLE_RECEPTIONS_DETAILS " +
+                "WHERE ID_BR = @receiptId FOR UPDATE",
                 connection, transaction))
             {
                 details.Parameters.AddWithValue("@receiptId", receiptId);
-                if (details.ExecuteScalar() == null)
-                    throw new InvalidOperationException("Receipt has no persisted detail rows; refusing stock posting.");
+                using (MySqlDataReader reader = details.ExecuteReader())
+                {
+                    if (!reader.Read())
+                        throw new InvalidOperationException("Receipt has no persisted detail rows; refusing stock posting.");
+                    while (reader.Read()) { } // Lock/consume all matching rows.
+                }
             }
 
             using (var update = new MySqlCommand(
