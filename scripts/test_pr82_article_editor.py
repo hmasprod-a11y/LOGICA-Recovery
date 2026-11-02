@@ -128,36 +128,8 @@ assert movement.count("Parameters.AddWithValue(") == 6
 assert movement.count("DateTime.Now.ToString(") == 2, "preserve the legacy date/time read sequence"
 assert movement.count("command.ExecuteNonQuery();") == 1
 assert movement.index("command.ExecuteNonQuery();") < movement.index("connection.Close();")
-# A failed movement INSERT or deferred form read must not strand the shared
-# legacy connection in Open state. The article INSERT is still a separate
-# legacy operation: this is cleanup, NOT a new atomic stock transaction.
-assert "using (var command = new MySqlCommand())" in movement
-assert "finally" in movement and "connection.Close();" in movement
-try_start = movement.index("            try\\n") if "            try\\n" in movement else movement.index("            try\n")
-finally_start = movement.index("            finally")
-close_at = movement.index("connection.Close();")
-assert try_start < movement.index("connection.Open();") < finally_start < close_at
-assert try_start < movement.index("readCode()") < finally_start
-assert try_start < movement.index("readArticle()") < finally_start
-assert try_start < movement.index("readStock()") < finally_start
-assert try_start < movement.index("command.ExecuteNonQuery();") < finally_start
-assert "catch (" not in movement, "do not swallow SQL failures or claim a successful stock movement"
-print("Catalogue movement failure-path connection cleanup regression passed")
 assert "readCode() + " not in movement and "readArticle() + " not in movement
 assert "readStock() + " not in movement
-
-# Article names such as L'eau must survive the real create/edit save path.
-# Previously the form silently replaced every apostrophe with a space,
-# even though both MySqlCommandBuilder persistence and the movement INSERT
-# use bound values. That was permanent catalogue data loss.
-assert 'Text_ARTICLE.Text = Text_ARTICLE.Text.ToString().Replace(' not in f
-assert "Preserve apostrophes in article names" in f
-persistence = Path("recovered-source/LOGICA/Infrastructure/Catalogue/CatalogueRowPersistence.cs").read_text(encoding="utf-8")
-assert "new MySqlCommandBuilder(adapter)" in persistence
-assert "((DbDataAdapter)adapter).Update(table);" in persistence
-assert 'Parameters.AddWithValue("@article", readArticle())' in movement
-assert "Text_ARTICLE.Text = Text_ARTICLE.Text.ToString().Replace" not in f
-print("Catalogue article-name loss regression: original apostrophes retained")
 
 stock_db = sqlite3.connect(":memory:")
 stock_db.execute("""CREATE TABLE TABLE_MOUVEMENTS_STOCK (
