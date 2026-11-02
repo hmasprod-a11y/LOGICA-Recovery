@@ -39,3 +39,47 @@ assert "EnsureCheckoutQuantityColumn();" in sales
 assert "CREATE TABLE `" in sales and "_BACKUP_" in sales
 assert "ADD COLUMN `Qté` DOUBLE NOT NULL DEFAULT 0" in sales
 assert sales.index("EnsureCheckoutQuantityColumn();") < sales.index('Module1.dt1 = new DataTable();')
+
+
+# Catalogue duplicate lookup is part of real create/edit/collection paths.
+# Exercise the exact SQL literals with a parameter-binding SQL engine so
+# apostrophes and injection-shaped input remain literal values.
+import re
+import sqlite3
+
+lookup = Path("recovered-source/LOGICA/Infrastructure/Catalogue/CatalogueDuplicateLookup.cs").read_text(encoding="utf-8")
+queries = re.findall(r'new MySqlDataAdapter\(\s*"([^"]+)"', lookup)
+assert len(queries) == 4, "all four legacy duplicate lookup paths must be parameterized"
+assert lookup.count('Parameters.AddWithValue("@code"') == 3
+assert lookup.count('Parameters.AddWithValue("@excludedId"') == 2
+assert 'Parameters.AddWithValue("@articleId"' in lookup
+assert lookup.count('ParseExcludedId(excludedId)') == 2
+assert 'long.TryParse(excludedId, NumberStyles.Integer, CultureInfo.InvariantCulture' in lookup
+assert all("@" in query and "'" not in query for query in queries), "no user input may be interpolated"
+
+db = sqlite3.connect(":memory:")
+db.execute("CREATE TABLE TABLE_ARTICLES (ID INTEGER, Code TEXT, Article TEXT, ID_ARTICLE TEXT)")
+db.executemany("INSERT INTO TABLE_ARTICLES VALUES (?, ?, ?, ?)", [
+    (1, "ABC'123", "First", "A'1"),
+    (2, "ABC'123", "Second", "B"),
+    (3, "NORMAL", "Third", "C"),
+])
+def ids(sql, **params):
+    return [row[0] for row in db.execute(sql, params)]
+
+assert ids(queries[0], code="ABC'123") == [1, 2], "new-product duplicate barcode detects both variants"
+assert ids(queries[1], code="ABC'123", excludedId=1) == [2], "editing excludes only the current row"
+assert ids(queries[1], code="ABC'123", excludedId=2) == [1]
+assert ids(queries[2], articleId="A'1", excludedId=2) == [1], "quoted article identity is literal"
+assert ids(queries[2], articleId="A'1", excludedId=1) == []
+assert ids(queries[3], code="ABC'123") == [1, 2], "collection duplicate check preserves variants"
+for query, params in (
+    (queries[0], {"code": "' OR 1=1 --"}),
+    (queries[1], {"code": "' OR 1=1 --", "excludedId": 1}),
+    (queries[2], {"articleId": "' OR 1=1 --", "excludedId": 1}),
+    (queries[3], {"code": "' OR 1=1 --"}),
+):
+    assert ids(query, **params) == [], "malformed input must not widen the predicate"
+assert ids(queries[0], code="NORMAL") == [3], "ordinary barcodes unchanged"
+db.close()
+print("Catalogue parameterized duplicate-lookup regression: 11 SQL cases passed")
