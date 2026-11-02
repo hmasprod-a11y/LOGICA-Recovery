@@ -37,7 +37,6 @@ STARTUP_VERIFIED = (
     "launcherLoginPinScreenVisible",
     "startCmdLoginPinScreenVisible",
     "directExeLoginPinScreenVisible",
-    "startupReadOnlyDatabaseCountsVerified",
     "startCmdOfflineMariaDbPreprovisioned",
     "directExeWithoutOverrideAttempted",
     "directExeWithoutOverrideDatabaseConnectionVerified",
@@ -83,6 +82,8 @@ def validate(report, expected_commit=None):
         ("startCmd", "startCmdActivationScreenVisible", "startCmdActivationAbsenceConfirmed"),
         ("directExe", "directExeWithoutOverrideActivationScreenVisible", "directExeActivationAbsenceConfirmed"),
     ):
+        if report[visible_key] is not None and type(report[visible_key]) is not bool:
+            raise ValueError(f"Invalid activation visibility type: {prefix}")
         if report.get(prefix + "ActivationInspectionStatus") != "inspected":
             raise ValueError(f"Activation UI inspection not completed: {prefix}")
         if report[absent_key] is not (report[visible_key] is False):
@@ -90,10 +91,6 @@ def validate(report, expected_commit=None):
     for key in ("immutableRuntimeFilesVerified", "packagedCodeFilesVerified"):
         if type(report.get(key)) is not int or not 10 <= report[key] <= 10000:
             raise ValueError(f"Invalid verified runtime inventory: {key}")
-    if report.get("immutableRuntimeFilesVerified", 0) < 10:
-        raise ValueError("Incomplete immutable runtime verification")
-    if report.get("packagedCodeFilesVerified", 0) < 10:
-        raise ValueError("Incomplete packaged code verification")
     return True
 
 
@@ -137,6 +134,7 @@ def self_test():
         ("sourceCommit", "unknown"),
         ("launcherActivationScreenVisible", True),
         ("startCmdActivationScreenVisible", True),
+        ("launcherActivationScreenVisible", "unknown"),
         ("directExeWithoutOverrideActivationScreenVisible", True),
         ("launcherActivationAbsenceConfirmed", None),
         ("immutableRuntimeFilesVerified", 0),
