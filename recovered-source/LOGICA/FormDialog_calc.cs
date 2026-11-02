@@ -2841,7 +2841,26 @@ public class FormDialog_calc : Form
 					((Control)val).Margin = margin;
 					((Control)val).Width = 85;
 					((Control)val).Height = 94;
-					((ButtonBase)val).Image = Image.FromFile(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + MyProject.Forms.Form_3_VENTE.DataGridView_MODE_P.Rows[num2].Cells[1].Value.ToString());
+					// A missing image must not prevent payment method buttons from existing.
+					object imageValue = MyProject.Forms.Form_3_VENTE.DataGridView_MODE_P.Rows[num2].Cells[1].Value;
+					string imageName = imageValue == null || imageValue == DBNull.Value ? "" : Convert.ToString(imageValue);
+					if (!string.IsNullOrWhiteSpace(imageName) && imageName == Path.GetFileName(imageName))
+					{
+						string imagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", imageName);
+						if (File.Exists(imagePath))
+						{
+							try
+							{
+								using (var source = Image.FromFile(imagePath))
+									((ButtonBase)val).Image = new Bitmap(source);
+							}
+							catch (IOException) { }
+							catch (UnauthorizedAccessException) { }
+							catch (ArgumentException) { }
+							catch (OutOfMemoryException) { }
+							catch (System.Runtime.InteropServices.ExternalException) { }
+						}
+					}
 					((ButtonBase)val).ImageAlign = (ContentAlignment)2;
 					((ButtonBase)val).FlatStyle = (FlatStyle)0;
 					((ButtonBase)val).FlatAppearance.BorderSize = 0;
