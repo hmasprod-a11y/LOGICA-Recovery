@@ -34,6 +34,7 @@ on:
       - 'scripts/verify-beta-rc.ps1'
       - 'scripts/test-beta-release-verifier.ps1'
       - 'scripts/test-extracted-release.ps1'
+      - 'scripts/test-extracted-release-report.py'
       - 'scripts/test-release-upload-policy.py'
       - '.github/workflows/domain-tests.yml'
       - '.github/workflows/portable-core.yml'
@@ -72,6 +73,7 @@ on:
       - 'scripts/verify-beta-rc.ps1'
       - 'scripts/test-beta-release-verifier.ps1'
       - 'scripts/test-extracted-release.ps1'
+      - 'scripts/test-extracted-release-report.py'
       - 'scripts/test-release-upload-policy.py'
       - 'input/recovered-original.sql'
       - 'input/mysql-compatibility.sql'
@@ -219,9 +221,15 @@ jobs:
       - name: Build and independently verify beta RC ZIP
         shell: pwsh
         run: ./scripts/package-beta-rc.ps1
+      - name: Reject falsely promoted Windows field acceptance (adversarial fixtures)
+        shell: pwsh
+        run: python scripts/test-extracted-release-report.py --self-test
       - name: Smoke-test extracted customer ZIP with isolated MariaDB and real EXE
         shell: pwsh
         run: ./scripts/test-extracted-release.ps1
+      - name: Enforce extracted startup and read-only MariaDB acceptance evidence
+        shell: pwsh
+        run: python scripts/test-extracted-release-report.py --report results/extracted-release-smoke.json
       - name: Inspect original dependency types
         if: always()
         shell: powershell
