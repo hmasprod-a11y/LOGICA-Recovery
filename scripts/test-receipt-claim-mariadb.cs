@@ -222,6 +222,19 @@ internal static class ReceiptClaimMariaDbSmoke
                 transaction.Rollback();
             }
             Check(scratch, "BR-EMPTY", "ART-EMPTY", 0m, 0, "ENREGISTRER");
+            // A later legitimate receipt edit can add details and retry. The
+            // earlier rejection must not poison the receipt's persisted state.
+            Execute(connection, null,
+                "INSERT INTO TABLE_RECEPTIONS_DETAILS (ID_BR) VALUES (@id)",
+                "@id", "BR-EMPTY");
+            using (var transaction = connection.BeginTransaction())
+            {
+                Require(Claim(method, connection, transaction, "BR-EMPTY"),
+                    "Receipt with newly persisted detail could not retry");
+                Post(connection, transaction, "BR-EMPTY", "ART-EMPTY", 1.250m);
+                transaction.Commit();
+            }
+            Check(scratch, "BR-EMPTY", "ART-EMPTY", 1.250m, 1, "VALIDER");
 
             // Only the actual legacy pending state ENREGISTRER may post stock.
             // Cancelled/draft/unknown receipts must remain unchanged even if
@@ -291,7 +304,7 @@ internal static class ReceiptClaimMariaDbSmoke
                 Require(rejected, "Duplicate receipt header was accepted");
                 transaction.Rollback();
             }
-            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, rollback/retry, blocked states, orphan header, invalid/duplicate headers, composite index, four MyISAM table rejections");
+            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, rollback/retry, blocked states, orphan header/recovery, invalid/duplicate headers, composite index, four MyISAM table rejections");
         }
     }
 
