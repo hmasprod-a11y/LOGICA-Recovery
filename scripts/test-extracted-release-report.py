@@ -39,6 +39,7 @@ STARTUP_VERIFIED = (
     "directExeWithoutOverrideResponsiveWindow",
     "startupReadOnlyDatabaseCountsVerified",
     "isolatedArticleTicketContentStableAcrossEntrypoints",
+    "originalFixtureContentMatchesFirstStartupVerified",
     "temporaryMariaDbClientCredentialsCleaned",
     "launcherLoginPinScreenVisible",
     "startCmdLoginPinScreenVisible",
