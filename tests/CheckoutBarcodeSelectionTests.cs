@@ -284,6 +284,58 @@ internal static class CheckoutBarcodeSelectionTests
                     legacyFallback.Rows[1]))
                     throw new Exception("Original Windows modal fallback must keep working");
                 checks++;
+                // The snapshot-based modern scanner adapter has the same
+                // exact-barcode SQL contract as the real WinForms modal bridge.
+                // A correct selected ID does not make a mixed SQL result safe.
+                CheckoutVariantChoiceResult modernFresh =
+                    CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(displayedLive,
+                        delegate(System.Collections.Generic.IList<CheckoutVariantSnapshot> variants) {
+                            return 1;
+                        }, delegate { return liveReordered; });
+                if (modernFresh.Status != CheckoutVariantChoiceStatus.Selected ||
+                    modernFresh.SelectedRow != liveReordered.Rows[1] ||
+                    (decimal)modernFresh.SelectedRow["Prix_V_1"] != 42m ||
+                    (decimal)modernFresh.SelectedRow["REMISE"] != 15m ||
+                    (decimal)modernFresh.SelectedRow["TAUX_TVA"] != 7m)
+                    throw new Exception("Modern scanner must select fresh variant price, discount and TVA");
+                checks++;
+                DataTable modernMixedSql = liveReordered.Copy();
+                modernMixedSql.Rows[0]["Code"] = "FOREIGN-CODE";
+                CheckoutVariantChoiceResult modernMixedChoice =
+                    CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(displayedLive,
+                        delegate(System.Collections.Generic.IList<CheckoutVariantSnapshot> variants) {
+                            return 1;
+                        }, delegate { return modernMixedSql; });
+                if (modernMixedChoice.Status != CheckoutVariantChoiceStatus.InvalidCandidates ||
+                    modernMixedChoice.SelectedRow != null)
+                    throw new Exception("Modern scanner must reject foreign SQL row beside selected variant");
+                checks++;
+                DataTable modernWrongOnly = displayedLive.Clone();
+                modernWrongOnly.Rows.Add("UNRELATED", "FOREIGN-CODE", "Wrong", 100m, 0m, 20m);
+                if (CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(displayedLive,
+                    delegate(System.Collections.Generic.IList<CheckoutVariantSnapshot> variants) {
+                        return 1;
+                    }, delegate { return modernWrongOnly; }).Status !=
+                    CheckoutVariantChoiceStatus.InvalidCandidates)
+                    throw new Exception("Modern wrong-only SQL result must not masquerade as missing");
+                checks++;
+                DataTable modernNullCode = liveReordered.Copy();
+                modernNullCode.Rows[2]["Code"] = DBNull.Value;
+                if (CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(displayedLive,
+                    delegate(System.Collections.Generic.IList<CheckoutVariantSnapshot> variants) {
+                        return 1;
+                    }, delegate { return modernNullCode; }).Status !=
+                    CheckoutVariantChoiceStatus.InvalidCandidates)
+                    throw new Exception("Modern scanner cannot accept NULL barcode in live SQL");
+                checks++;
+                int modernCancelReads = 0;
+                if (CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(displayedLive,
+                    delegate(System.Collections.Generic.IList<CheckoutVariantSnapshot> variants) {
+                        return -1;
+                    }, delegate { modernCancelReads++; return modernMixedSql; }).Status !=
+                    CheckoutVariantChoiceStatus.Cancelled || modernCancelReads != 0)
+                    throw new Exception("Cancelled modern scanner must not query or price a product");
+                checks++;
                 DataTable liveMissing = liveReordered.Copy();
                 liveMissing.Rows.RemoveAt(1);
                 if (CheckoutBarcodeSelectionService.SelectWithRefresh(displayedLive,
