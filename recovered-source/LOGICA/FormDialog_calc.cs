@@ -2836,6 +2836,18 @@ public class FormDialog_calc : Form
 
 	// A blank/new payment grid row must never count as a chosen settlement.
 	// The actual payment method is in column 3 of the legacy calculation grid.
+	// Preserve legacy VB numeric conversion while rejecting incomplete edits before
+	// recalculation or checkout posting. A blank cell is not a zero payment.
+	private static bool TryGetPaymentNumber(object value, out decimal number)
+	{
+		number = 0m;
+		if (value == null || value == DBNull.Value || string.IsNullOrWhiteSpace(Convert.ToString(value))) return false;
+		try { number = Conversions.ToDecimal(value); return true; }
+		catch (InvalidCastException) { return false; }
+		catch (FormatException) { return false; }
+		catch (OverflowException) { return false; }
+	}
+
 	private bool HasSelectedPaymentMethod()
 	{
 		bool hasPayment = false;
@@ -2843,6 +2855,9 @@ public class FormDialog_calc : Form
 		{
 			if (row.IsNewRow) continue;
 			if (row.Cells.Count <= 3) return false;
+			decimal due, paid;
+			if (!TryGetPaymentNumber(row.Cells[0].Value, out due) ||
+				!TryGetPaymentNumber(row.Cells[1].Value, out paid)) return false;
 			object method = row.Cells[3].Value;
 			if (method == null || method == DBNull.Value ||
 				string.IsNullOrWhiteSpace(Convert.ToString(method)))
@@ -3176,6 +3191,20 @@ public class FormDialog_calc : Form
 		//IL_0023: Expected Obj, but got Unknown
 		checked
 		{
+			// CellValueChanged fires while the cashier is still editing. Never
+			// recalculate from a null/partial amount or leave SOLDER enabled.
+			foreach (DataGridViewRow row in DataGridView_CALC.Rows)
+			{
+				if (row.IsNewRow) continue;
+				decimal due, paid;
+				if (row.Cells.Count < 4 ||
+					!TryGetPaymentNumber(row.Cells[0].Value, out due) ||
+					!TryGetPaymentNumber(row.Cells[1].Value, out paid))
+				{
+					((Control)Button_SOLDER).Enabled = false;
+					return;
+				}
+			}
 			// DataGridView may expose an uncommitted placeholder row when adding
 			// rows is enabled. It is not a payment and has no numeric cell values.
 			int paymentCount = 0;
@@ -3456,82 +3485,33 @@ public class FormDialog_calc : Form
 
 	private void Butt_Click(object sender, EventArgs e)
 	{
-		Label_NUM.Text = Conversions.ToString(Operators.AddObject(Label_NUM.Text, NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null)));
+		Button key = sender as Button;
+		if (key == null || string.IsNullOrEmpty(key.Text) || key.Text.Length != 1) return;
+		char character = key.Text[0];
+		string current = Label_NUM.Text ?? "";
+		if (character >= '0' && character <= '9')
+			Label_NUM.Text = current + character;
+		else if (character == '.' && current.IndexOf('.') < 0)
+			Label_NUM.Text = (current.Length == 0 || current == "-" ? current + "0" : current) + ".";
+		else if (character == '-' && current.Length == 0)
+			Label_NUM.Text = "-";
+		// Reject duplicate decimal points, misplaced minus and nonnumeric captions.
 	}
 
 	private void Butt_BACK_Click(object sender, EventArgs e)
 	{
-		int try0001_dispatch = -1;
-		int num3 = default;
-		int num = default;
-		int num2 = default;
-		while (true)
-		{
-			try
-			{
-				/*Note: ILSpy has introduced the following switch to emulate a goto from catch-block to try-block*/;
-				switch (try0001_dispatch)
-				{
-				default:
-					ProjectData.ClearProjectError();
-					num3 = -2;
-					break;
-				case 90:
-					{
-						num = num2;
-						switch ((num3 <= -2) ? 1 : num3)
-						{
-						case 1:
-							break;
-						default:
-							goto end_IL_0001;
-						}
-						int num4 = num + 1;
-						num = 0;
-						switch (num4)
-						{
-						case 1:
-							break;
-						case 2:
-							goto end_IL_0001_2;
-						default:
-							goto end_IL_0001;
-						case 3:
-							goto end_IL_0001_3;
-						}
-						goto default;
-					}
-					end_IL_0001_2:
-					break;
-				}
-				num2 = 2;
-				Label_NUM.Text = Label_NUM.Text.Remove(checked(Label_NUM.Text.Length - 1));
-				break;
-				end_IL_0001:;
-			}
-			catch (Exception ex) when ((num3 != 0) & (num == 0))
-			{
-				ProjectData.SetProjectError(ex);
-				try0001_dispatch = 90;
-				continue;
-			}
-			throw ProjectData.CreateProjectError(-2146828237);
-			continue;
-			end_IL_0001_3:
-			break;
-		}
-		if (num != 0)
-		{
-			ProjectData.ClearProjectError();
-		}
+		if (!string.IsNullOrEmpty(Label_NUM.Text))
+			Label_NUM.Text = Label_NUM.Text.Substring(0, Label_NUM.Text.Length - 1);
 	}
 
 	private void Button_CLAVIER_NOSELECT1_Click(object sender, EventArgs e)
 	{
 		try
 		{
-			if (DataGridView_CALC.CurrentRow == null) return;
-			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = Conversion.Val(Label_NUM.Text);
+			if (DataGridView_CALC.CurrentRow == null || DataGridView_CALC.CurrentRow.IsNewRow) return;
+			decimal entered;
+			if (!TryGetPaymentNumber(Label_NUM.Text, out entered)) return;
+			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = entered;
 			((Control)DataGridView_CALC).Focus();
 			SendKeys.Send("{RIGHT}{LEFT}");
 			Label_NUM.Text = "";
