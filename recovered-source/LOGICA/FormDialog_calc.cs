@@ -3035,7 +3035,7 @@ public class FormDialog_calc : Form
 				Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 				DataGridView_CALC.CurrentCell = DataGridView_CALC.Rows[insertedRow].Cells[1];
 				((Control)DataGridView_CALC).Focus();
-				if (!string.Equals(selectedMethod.Text, "ESPECES", StringComparison.Ordinal))
+				if (!string.Equals(selectedMethod.Text.Trim(), "ESPECES", StringComparison.OrdinalIgnoreCase))
 				{
 					Button_RESTE.PerformClick();
 					((Control)Panel_REMARQUE).Visible = true;
