@@ -26,3 +26,9 @@ assert 'Path.Combine(root, "bd", "images")' in loader
 assert "Bitmap image = Load(candidate, fileName)" in loader
 assert sales.count("CheckoutArticleImageLoader.LoadWithFallback(") == 2
 assert "inner join TABLE_ARTICLES a on a.Famille = f.Famille" in sales
+
+# Checkout must repair legacy station quantity schema BEFORE binding the cart.
+assert "EnsureCheckoutQuantityColumn();" in sales
+assert "CREATE TABLE `" in sales and "_BACKUP_" in sales
+assert "ADD COLUMN `Qté` DOUBLE NOT NULL DEFAULT 0" in sales
+assert sales.index("EnsureCheckoutQuantityColumn();") < sales.index('Module1.dt1 = new DataTable();')
