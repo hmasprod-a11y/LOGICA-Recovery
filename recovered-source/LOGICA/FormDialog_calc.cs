@@ -2826,6 +2826,14 @@ public class FormDialog_calc : Form
 		}
 	}
 
+	private int SelectedPaymentRowCount()
+	{
+		int count = 0;
+		foreach (DataGridViewRow row in DataGridView_CALC.Rows)
+			if (!row.IsNewRow) count++;
+		return count;
+	}
+
 	// A blank/new payment grid row must never count as a chosen settlement.
 	// The actual payment method is in column 3 of the legacy calculation grid.
 	private bool HasSelectedPaymentMethod()
@@ -3032,7 +3040,7 @@ public class FormDialog_calc : Form
 			}
 			if (Operators.CompareString(((ButtonBase)MyProject.Forms.Form_3_VENTE.Button_OPERATION).Text, "RETOUR REMBOURSEMENT", TextCompare: false) == 0)
 			{
-				if (DataGridView_CALC.Rows.Count > 1)
+				if (SelectedPaymentRowCount() > 1)
 				{
 					MessageBox.Show("Choisissez un seul mode de paiement pour le retour", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
@@ -3256,7 +3264,13 @@ public class FormDialog_calc : Form
 			{
 				if (e.RowIndex >= 0 && e.RowIndex < DataGridView_CALC.Rows.Count && ((e.ColumnIndex == 0) | (e.ColumnIndex == 2) | (e.ColumnIndex == 3)))
 				{
-					DataGridView_CALC.CurrentCell = DataGridView_CALC.Rows[DataGridView_CALC.Rows.Count - 1].Cells[1];
+					// The last grid row may be an uncommitted new-row placeholder.
+					for (int i = DataGridView_CALC.Rows.Count - 1; i >= 0; i--)
+					{
+						if (DataGridView_CALC.Rows[i].IsNewRow) continue;
+						DataGridView_CALC.CurrentCell = DataGridView_CALC.Rows[i].Cells[1];
+						break;
+					}
 				}
 			}
 			catch (Exception ex)
