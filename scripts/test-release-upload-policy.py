@@ -602,7 +602,10 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
         self.assertIn("Get-Process -Name LOGICA", smoke)
         self.assertIn("extractedLauncherActualExeResponsive = $launcherResponsive", smoke)
         self.assertIn("licensedCashierScreenVerified = $false", smoke)
-        self.assertIn("directExeWithoutConnectionOverrideVerified = $false", smoke)
+        self.assertIn("directExeWithoutConnectionOverrideVerified = $directWithoutOverrideResponsive", smoke)
+        self.assertIn("directExeWithoutOverrideDatabaseConnectionVerified = $directWithoutOverrideResponsive", smoke)
+        self.assertIn("if (-not $directWithoutOverrideResponsive)", smoke)
+        self.assertIn("Direct EXE displayed the legacy activation panel", smoke)
         self.assertIn("RELEASE ACCEPTANCE BLOCKED", smoke)
         self.assertIn("if (-not $launcherResponsive)", smoke)
         launch = smoke.split('$launcherArgs = @(', 1)[1].split('$launcherProcess = Start-Process', 1)[0]
