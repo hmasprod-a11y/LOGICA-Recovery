@@ -61,7 +61,7 @@ foreach ($item in $expected) {
         [string]$item.sha256 -notmatch '^[a-fA-F0-9]{64}$') {
         throw "Invalid manifest hash or size: $name"
     }
-    if ($name -match '(^|/)(mysql-credential\.xml|mysql-import-complete\.txt)$' -or $name -match '^bd/mysql-data(/|$)') {
+    if ($name -match '(^|/)(mysql-credential\.xml|mysql-import-complete\.txt|mysql-client-temporary\.ini)$' -or $name -match '^bd/mysql-data(/|$)') {
         throw "Forbidden persisted test data in manifest: $name"
     }
     $byPath.Add($name, $item)
