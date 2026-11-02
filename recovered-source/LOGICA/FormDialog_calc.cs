@@ -22,6 +22,10 @@ public class FormDialog_calc : Form
 
 	private IContainer components;
 
+	// Calculating the derived change cell raises CellValueChanged again.
+	// Keep the outer settlement calculation authoritative and non-reentrant.
+	private bool _calculatingPayments;
+
 	[AccessedThroughProperty("Panel_DEVIS")]
 	private Panel _Panel_DEVIS;
 
@@ -2867,6 +2871,28 @@ public class FormDialog_calc : Form
 		return hasPayment;
 	}
 
+	// Payment icons are optional catalogue data, not a prerequisite for checkout.
+	// Path.GetFileName/Path.Combine can throw before Image.FromFile for malformed
+	// legacy settings; keep the method button visible even for invalid paths.
+	private static Image TryLoadPaymentIcon(string root, string imageName)
+	{
+		if (string.IsNullOrWhiteSpace(root) || string.IsNullOrWhiteSpace(imageName)) return null;
+		try
+		{
+			if (imageName != Path.GetFileName(imageName)) return null;
+			string path = Path.Combine(root, "bd", "images", imageName);
+			if (!File.Exists(path)) return null;
+			using (Image source = Image.FromFile(path))
+				return new Bitmap(source);
+		}
+		catch (IOException) { return null; }
+		catch (UnauthorizedAccessException) { return null; }
+		catch (ArgumentException) { return null; }
+		catch (NotSupportedException) { return null; }
+		catch (OutOfMemoryException) { return null; }
+		catch (System.Runtime.InteropServices.ExternalException) { return null; }
+	}
+
 	private void FormDialog_calc_Load(object sender, EventArgs e)
 	{
 		//IL_034e: Unknown result type (might be due to invalid IL or missing references)
@@ -2912,23 +2938,7 @@ public class FormDialog_calc : Form
 					// A missing image must not prevent payment method buttons from existing.
 					object imageValue = paymentRow.Cells.Count > 1 ? paymentRow.Cells[1].Value : null;
 					string imageName = imageValue == null || imageValue == DBNull.Value ? "" : Convert.ToString(imageValue).Trim();
-					if (!string.IsNullOrWhiteSpace(Module1._CHEMIN_FOLDER) && !string.IsNullOrWhiteSpace(imageName) && imageName == Path.GetFileName(imageName))
-					{
-						string imagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", imageName);
-						if (File.Exists(imagePath))
-						{
-							try
-							{
-								using (var source = Image.FromFile(imagePath))
-									((ButtonBase)val).Image = new Bitmap(source);
-							}
-							catch (IOException) { }
-							catch (UnauthorizedAccessException) { }
-							catch (ArgumentException) { }
-							catch (OutOfMemoryException) { }
-							catch (System.Runtime.InteropServices.ExternalException) { }
-						}
-					}
+					((ButtonBase)val).Image = TryLoadPaymentIcon(Module1._CHEMIN_FOLDER, imageName);
 					((ButtonBase)val).ImageAlign = (ContentAlignment)2;
 					((ButtonBase)val).FlatStyle = (FlatStyle)0;
 					((ButtonBase)val).FlatAppearance.BorderSize = 0;
@@ -3192,10 +3202,20 @@ public class FormDialog_calc : Form
 
 	private void Button_calc_Click(object sender, EventArgs e)
 	{
-		//IL_001d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0023: Expected Obj, but got Unknown
+		if (_calculatingPayments) return;
+		_calculatingPayments = true;
+		try
+		{
 		checked
 		{
+			// A missing or unfinished total is not a zero-value sale.
+			decimal total;
+			if (!TryGetPaymentNumber(Text_TOTAL_NET.Text, out total))
+			{
+				((ButtonBase)Button_RESTE).Text = "";
+				((Control)Button_SOLDER).Enabled = false;
+				return;
+			}
 			// CellValueChanged fires while the cashier is still editing. Never
 			// recalculate from a null/partial amount or leave SOLDER enabled.
 			foreach (DataGridViewRow row in DataGridView_CALC.Rows)
@@ -3244,6 +3264,8 @@ public class FormDialog_calc : Form
 				}
 			}
 		}
+		}
+		finally { _calculatingPayments = false; }
 	}
 
 	private void DataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
@@ -3433,6 +3455,10 @@ public class FormDialog_calc : Form
 		//IL_0036: Expected Obj, but got Unknown
 		try
 		{
+			// Blank/invalid remainder means the last edit has not been validated.
+			// Do not silently turn that state into a zero cash payment.
+			decimal remainder;
+			if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out remainder)) return;
 			if (SelectedPaymentRowCount() == 0)
 			{
 				Button val = CashPaymentButton();
@@ -3445,7 +3471,7 @@ public class FormDialog_calc : Form
 				Button_REFRESH.PerformClick();
 			}
 			if (DataGridView_CALC.CurrentRow == null || DataGridView_CALC.CurrentRow.IsNewRow) return;
-			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = Conversion.Val(((ButtonBase)Button_RESTE).Text);
+			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = remainder;
 			Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 			((Control)DataGridView_CALC).Focus();
 		}
