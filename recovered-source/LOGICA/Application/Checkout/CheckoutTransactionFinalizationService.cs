@@ -158,6 +158,10 @@ namespace LOGICA.ApplicationLayer.Checkout
             // token before any database callback has run. The gated overload
             // already validates before acquiring its per-cashier gate.
             // Validation is pure: no lazy reader is evaluated here.
+            // Preserve the original precedence for a reused progress token,
+            // while TryStart remains the atomic concurrency check.
+            if (progress.Stage != CheckoutCommitStage.NotStarted)
+                throw new InvalidOperationException("Checkout commit progress cannot be reused.");
             CheckoutPostingService.Validate(store, input);
             if (!progress.TryStart())
                 throw new InvalidOperationException("Checkout commit progress cannot be reused.");
