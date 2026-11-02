@@ -45,6 +45,31 @@ function Assert-RuntimeHashes([string]$directory, [hashtable]$baseline) {
         if ($actual -ne $baseline[$relative]) { throw "Runtime modified immutable file: $relative" }
     }
 }
+# Detect altered OR newly injected runnable content, including files that were
+# not part of the historical 86-file immutable subset. Runtime preferences and
+# MariaDB's disposable data directory are deliberately not treated as code.
+function Get-PackagedCodeHashes([string]$directory) {
+    $extensions = @('.exe','.dll','.config','.ps1','.psm1','.psd1','.cmd','.bat','.sql','.json','.md')
+    $hashes = @{}
+    $prefix = (Resolve-Path -LiteralPath $directory).Path.TrimEnd([char[]]@([char]92,[char]47))
+    foreach ($file in @(Get-ChildItem -LiteralPath $prefix -Recurse -File -ErrorAction Stop)) {
+        if ($extensions -notcontains $file.Extension.ToLowerInvariant()) { continue }
+        $relative = $file.FullName.Substring($prefix.Length + 1).Replace([char]92, '/')
+        if ($hashes.ContainsKey($relative)) { throw "Duplicate packaged code path: $relative" }
+        $hashes[$relative] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+    }
+    return $hashes
+}
+function Assert-PackagedCodeHashes([string]$directory, [hashtable]$baseline) {
+    $actual = Get-PackagedCodeHashes $directory
+    foreach ($relative in $baseline.Keys) {
+        if (-not $actual.ContainsKey($relative)) { throw "Packaged code removed: $relative" }
+        if ($actual[$relative] -ne $baseline[$relative]) { throw "Packaged code modified: $relative" }
+    }
+    foreach ($relative in $actual.Keys) {
+        if (-not $baseline.ContainsKey($relative)) { throw "Unexpected packaged code file: $relative" }
+    }
+}
 $app = $null
 $started = [Diagnostics.Stopwatch]::StartNew()
 try {
@@ -74,6 +99,8 @@ try {
     $dllsBefore = @(Get-ChildItem -LiteralPath $extract -Filter '*.dll' -File | ForEach-Object { $_.Name })
     if ($dllsBefore.Count -lt 1) { throw 'Extracted runtime has no DLLs to verify' }
     $baseline = Get-RuntimeHashes $extract $immutable
+    $codeBaseline = Get-PackagedCodeHashes $extract
+    if ($codeBaseline.Count -lt $dllsBefore.Count + 5) { throw 'Incomplete extracted code inventory' }
     # Negative regression uses a separate scratch fixture, not the real license.
     $probeDir = Join-Path $env:RUNNER_TEMP ('logica-integrity-probe-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $probeDir | Out-Null
@@ -96,6 +123,24 @@ try {
         if (-not $missingRejected) { throw 'Runtime integrity regression: deleted file was accepted' }
     } finally { Remove-Item -LiteralPath $probeDir -Recurse -Force -ErrorAction Stop }
     Write-Host 'PASS: immutable runtime modification and deletion rejected in isolated fixture'
+    # Negative fixture: a new executable payload must never go unnoticed.
+    $inventoryProbe = Join-Path $env:RUNNER_TEMP ('logica-code-probe-' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Force -Path $inventoryProbe | Out-Null
+    try {
+        Copy-Item -LiteralPath (Join-Path $extract 'RUNNING.md') -Destination (Join-Path $inventoryProbe 'RUNNING.md')
+        $inventoryBaseline = Get-PackagedCodeHashes $inventoryProbe
+        [IO.File]::WriteAllText((Join-Path $inventoryProbe 'unexpected.cmd'), '@echo off')
+        $injectionRejected = $false
+        try { Assert-PackagedCodeHashes $inventoryProbe $inventoryBaseline } catch {
+            if ($_.Exception.Message -ne 'Unexpected packaged code file: unexpected.cmd') { throw }
+            $injectionRejected = $true
+        }
+        if (-not $injectionRejected) { throw 'Executable injection regression: new command file was accepted' }
+        Remove-Item -LiteralPath (Join-Path $inventoryProbe 'unexpected.cmd') -Force
+        Assert-PackagedCodeHashes $inventoryProbe $inventoryBaseline
+    } finally { Remove-Item -LiteralPath $inventoryProbe -Recurse -Force -ErrorAction Stop }
+    Write-Host 'PASS: newly injected executable rejected in isolated extracted-code fixture'
+
     # Launch the packaged real Windows executable with the isolated CI database.
     # A live process alone is not sufficient: require a responsive WinForms main window.
     $app = Start-Process -FilePath (Join-Path $extract 'LOGICA.exe') -WorkingDirectory $extract -PassThru
@@ -112,6 +157,7 @@ try {
     if (-not $app.HasExited) { $app.Kill(); $app.WaitForExit(10000) | Out-Null }
     $app = $null
     Assert-RuntimeHashes $extract $baseline
+    Assert-PackagedCodeHashes $extract $codeBaseline
     Write-Host "PASS: extracted EXE startup preserved $($baseline.Count) immutable runtime files"
 
     # Verify the launcher *inside* the customer ZIP with the already-downloaded
@@ -126,6 +172,7 @@ try {
     }
     Write-Host 'PASS: extracted launcher imported original SQL fixture into a fresh loopback MariaDB instance'
     Assert-RuntimeHashes $extract $baseline
+    Assert-PackagedCodeHashes $extract $codeBaseline
     if (Test-Path -LiteralPath (Join-Path $extract 'bd/mysql-client-temporary.ini')) {
         throw 'Extracted launcher left plaintext temporary MariaDB credentials on disk'
     }
@@ -143,6 +190,8 @@ try {
         extractedExeResponsive = $true
         extractedLauncherVerified = $true
         immutableRuntimeFilesVerified = $baseline.Count
+        packagedCodeFilesVerified = $codeBaseline.Count
+        injectedExecutableProbeRejected = $true
         immutableTamperProbeRejected = $true
         immutableDeletionProbeRejected = $true
         temporaryMariaDbClientCredentialsCleaned = $true
