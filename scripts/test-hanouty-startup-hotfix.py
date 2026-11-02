@@ -32,6 +32,16 @@ checks = {
         and "LOGICA ne sera pas lance" in launcher,
     "legacy installation override preserved": 'Environment.GetEnvironmentVariable("LOGICA_DB_CONNECTION_STRING")' in module,
 }
+login = (root / "recovered-source/LOGICA/Form_1_LOGIN.cs").read_text(encoding="utf-8")
+original_sql = (root / "input/recovered-original.sql").read_text(encoding="utf-8")
+checks.update({
+    "recovered user role column retained": "`Catégorie`" in original_sql,
+    "login query aliases accented column": "`Catégorie` AS `Categorie`" in login,
+    "login reads identical projected alias": 'dataTable.Rows[0]["Categorie"]' in login,
+    "cashier PIN is parameterized": 'WHERE `ListPass` = @password' in login
+        and 'SelectCommand.Parameters.AddWithValue("@password"' in login,
+    "obsolete accented DataTable lookup absent": 'dataTable.Rows[0]["Catégorie"]' not in login,
+})
 for label, passed in checks.items():
     print(("PASS" if passed else "FAIL") + ": " + label)
 if not all(checks.values()):
