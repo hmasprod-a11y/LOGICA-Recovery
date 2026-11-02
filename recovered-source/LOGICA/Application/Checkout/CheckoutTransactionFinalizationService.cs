@@ -120,6 +120,13 @@ namespace LOGICA.ApplicationLayer.Checkout
         {
             if (finalizer == null) throw new ArgumentNullException("finalizer");
             if (gate == null) throw new ArgumentNullException("gate");
+            if (progress == null) throw new ArgumentNullException("progress");
+            if (progress.Stage != CheckoutCommitStage.NotStarted)
+                throw new InvalidOperationException("Checkout commit progress cannot be reused.");
+            // Validate all required callbacks BEFORE taking the persistent gate.
+            // An invalid Form payload has performed no DB work and must not
+            // require a fictitious rollback to unlock the next cashier attempt.
+            CheckoutPostingService.Validate(store, input);
             if (!gate.TryBegin(progress))
                 throw new InvalidOperationException("A checkout attempt is already awaiting reconciliation.");
             PostAndFinalize(store, input, finalizer, progress);
