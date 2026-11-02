@@ -71,7 +71,8 @@ internal static class CatalogueDuplicateMariaDbSmoke
     {
         Type builderType = connectionType.Assembly.GetType(
             "MySql.Data.MySqlClient.MySqlConnectionStringBuilder", true);
-        object builder = Activator.CreateInstance(builderType, new object[] { connectionString });
+        object builder = Activator.CreateInstance(builderType);
+        builderType.GetProperty("ConnectionString").SetValue(builder, connectionString, null);
         string server = Convert.ToString(builderType.GetProperty("Server").GetValue(builder, null));
         string database = Convert.ToString(builderType.GetProperty("Database").GetValue(builder, null));
         uint port = Convert.ToUInt32(builderType.GetProperty("Port").GetValue(builder, null),
