@@ -3518,13 +3518,14 @@ public class FormDialog_calc : Form
 		//IL_0036: Expected Obj, but got Unknown
 		try
 		{
-			// Reconcile the active editor before filling RESTE. The displayed
-			// remainder may predate the cashier's last uncommitted keystroke.
+			// Blank/invalid remainder is a fail-closed edit state. Do not
+			// manufacture a valid remainder from an incomplete display.
+			decimal remainder;
+			if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out remainder)) return;
+			// A valid displayed remainder may still predate the active editor.
+			// Commit and recalculate before applying RESTE to the chosen method.
 			if (!DataGridView_CALC.EndEdit()) return;
 			Button_calc_Click(sender, e);
-			// Blank/invalid remainder means the last edit has not been validated.
-			// Do not silently turn that state into a zero cash payment.
-			decimal remainder;
 			if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out remainder)) return;
 			if (SelectedPaymentRowCount() == 0)
 			{
