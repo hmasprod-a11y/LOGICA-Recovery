@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace LOGICA.ApplicationLayer.Checkout
@@ -7,8 +8,14 @@ namespace LOGICA.ApplicationLayer.Checkout
     {
         public static void Write(ICheckoutPostingStore store, IEnumerable<TicketPaymentWrite> payments)
         {
+            if (payments == null)
+                throw new InvalidOperationException("Checkout payment reader returned no collection.");
             foreach (TicketPaymentWrite payment in payments)
+            {
+                if (payment == null)
+                    throw new InvalidOperationException("Checkout payment reader returned a null line.");
                 store.WritePayment(payment);
+            }
         }
     }
 }
