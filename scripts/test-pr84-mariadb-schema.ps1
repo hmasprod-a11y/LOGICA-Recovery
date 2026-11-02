@@ -72,7 +72,7 @@ try {
     # A shop may already contain one of the compatibility columns. Ensure the
     # additive migration preserves that existing field and supplies the rest.
     Invoke-CiSql "CREATE DATABASE $partial CHARACTER SET utf8mb4;" | Out-Null
-    Invoke-CiSql "CREATE TABLE $partial\`.TABLE_ARTICLES LIKE $source\`.TABLE_ARTICLES; INSERT INTO $partial\`.TABLE_ARTICLES SELECT * FROM $source\`.TABLE_ARTICLES;" | Out-Null
+    Invoke-CiSql "CREATE TABLE $partial`.TABLE_ARTICLES LIKE $source`.TABLE_ARTICLES; INSERT INTO $partial`.TABLE_ARTICLES SELECT * FROM $source`.TABLE_ARTICLES;" | Out-Null
     Invoke-CiSql "ALTER TABLE TABLE_ARTICLES ADD COLUMN GROUPE varchar(255) DEFAULT ''; UPDATE TABLE_ARTICLES SET GROUPE='preexisting-shop-value' LIMIT 1;" $partial | Out-Null
     for ($pass = 1; $pass -le 2; $pass++) {
         $migration = @(& $client @arguments $partial '-e' "source $script" 2>&1)
