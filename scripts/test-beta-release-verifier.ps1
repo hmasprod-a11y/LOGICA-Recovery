@@ -136,7 +136,8 @@ try {
     # Even a correctly hashed manifest must not allow them into the customer ZIP.
     foreach ($smoke in @('PosSmoke.exe', 'DesktopPaymentCultureSmoke.exe',
                          'DesktopArticleDeleteSmoke.exe', 'DesktopArticleDeleteSmoke.exe.config',
-                         'DesktopSolderGuardSmoke.exe', 'DesktopSolderGuardSmoke.exe.config')) {
+                         'DesktopSolderGuardSmoke.exe', 'DesktopSolderGuardSmoke.exe.config',
+                         'CatalogueDuplicateMariaDbSmoke.exe', 'CatalogueDuplicateMariaDbSmoke.exe.config')) {
         $smokePath = Join-Path $src $smoke
         [IO.File]::WriteAllText($smokePath, 'isolated QA-only binary fixture')
         try {

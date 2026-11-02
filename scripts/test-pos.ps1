@@ -74,6 +74,12 @@ Get-Content $guardLog | Select-Object -First 30 | ForEach-Object{Write-Host $_}
 if($guardStatus -ne 'PASS'){Get-Content $guardErr | Select-Object -First 40 | ForEach-Object{Write-Host $_}}
 Remove-Item $guardExe -Force -ErrorAction SilentlyContinue
 
+# Inventory catalogue duplicate checks against the disposable MariaDB connection.
+# The standalone harness creates a connection-scoped TEMPORARY table and refuses nonlocal DBs.
+& (Join-Path $PSScriptRoot 'test-catalogue-duplicate-mariadb.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Catalogue duplicate MariaDB smoke failed' }
+$results += [pscustomobject]@{test='catalogue-duplicate-mariadb';status='PASS';exitCode=0}
+
 # Never ship isolated CI smoke executables or their configs in the customer ZIP.
 # package-runtime.ps1 removes PosSmoke*, but these two harness names are distinct.
 Remove-Item $cultureExe, (Join-Path $dist 'DesktopPaymentCultureSmoke.exe.config'), $deleteExe, (Join-Path $dist 'DesktopArticleDeleteSmoke.exe.config') -Force -ErrorAction SilentlyContinue
