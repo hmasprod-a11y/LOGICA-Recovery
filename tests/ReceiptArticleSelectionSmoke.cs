@@ -329,6 +329,9 @@ internal static class ReceiptArticleSelectionSmoke
             Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveBoundRow(
                 duplicateHeaderView[0], "BR-100"), duplicateHeaders.Rows[0]),
                 "deleted duplicate record ID restores exact bound selection");
+            // Clear the filter before testing a NULL ID; otherwise the row
+            // disappears from the view and the test would fail at the indexer.
+            duplicateHeaderView.RowFilter = "";
             duplicateHeaders.Rows[0]["ID"] = DBNull.Value;
             Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(
                 duplicateHeaderView[0], "BR-100") == null,
