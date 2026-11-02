@@ -3009,11 +3009,19 @@ public class FormDialog_calc : Form
 				// Ignore stale or blank controls instead of inserting an unusable payment row.
 				Button selectedMethod = sender as Button;
 				if (selectedMethod == null || string.IsNullOrWhiteSpace(selectedMethod.Text)) return;
+				// Never create a zero-due row from an invalid or stale remainder.
+				// VB Conversion.Val silently truncates comma decimals (e.g. 10,25 -> 10).
+				decimal remainingDue;
+				if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out remainingDue))
+				{
+					Button_calc_Click(sender, e);
+					if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out remainingDue)) return;
+				}
 				int insertedRow = DataGridView_CALC.Rows.Add(new object[4]
 				{
-					Conversion.Val(((ButtonBase)Button_RESTE).Text),
-					0,
-					0,
+					remainingDue,
+					0m,
+					0m,
 					selectedMethod.Text
 				});
 				Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
@@ -3239,21 +3247,40 @@ public class FormDialog_calc : Form
 			int paymentCount = 0;
 			foreach (DataGridViewRow row in DataGridView_CALC.Rows)
 				if (!row.IsNewRow) paymentCount++;
-			double num5 = 0.0;
-			double num6 = 0.0;
+			// Keep monetary arithmetic decimal and culture-aware throughout the
+			// cashier UI; Conversion.Val truncates comma decimals in French locales.
+			decimal paidTotal = 0m;
 			foreach (DataGridViewRow row in DataGridView_CALC.Rows)
 			{
 				if (row.IsNewRow) continue;
 				row.Height = Math.Max(24, (int)Math.Round((double)(((Control)DataGridView_CALC).Height - DataGridView_CALC.ColumnHeadersHeight - 3) / Math.Max(1, paymentCount)));
-				row.Cells[2].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.SubtractObject(row.Cells[1].Value, row.Cells[0].Value)));
-				num5 = Conversions.ToDouble(Operators.AddObject(num5, row.Cells[1].Value));
-				num6 = Conversions.ToDouble(Operators.AddObject(num6, row.Cells[2].Value));
+				decimal due = Conversions.ToDecimal(row.Cells[0].Value);
+				decimal paid = Conversions.ToDecimal(row.Cells[1].Value);
+				try
+				{
+					row.Cells[2].Value = Module1.FLOUSS(checked(paid - due));
+					paidTotal = checked(paidTotal + paid);
+				}
+				catch (OverflowException)
+				{
+					((ButtonBase)Button_RESTE).Text = "";
+					((Control)Button_SOLDER).Enabled = false;
+					return;
+				}
 			}
-			((ButtonBase)Button_RESTE).Text = Conversions.ToString(Module1.FLOUSS(new decimal(Conversion.Val(Text_TOTAL_NET.Text) - Conversion.Val(num5))));
+			decimal remainder;
+			try { remainder = Module1.FLOUSS(checked(total - paidTotal)); }
+			catch (OverflowException)
+			{
+				((ButtonBase)Button_RESTE).Text = "";
+				((Control)Button_SOLDER).Enabled = false;
+				return;
+			}
+			((ButtonBase)Button_RESTE).Text = Conversions.ToString(remainder);
 			// A zero/negative total alone is not a settlement: at least one complete
 			// payment method must be present before SOLDER can be clicked.
 			((Control)Button_SOLDER).Enabled = paymentCount > 0 &&
-				HasSelectedPaymentMethod() && Conversion.Val(((ButtonBase)Button_RESTE).Text) <= 0.0;
+				HasSelectedPaymentMethod() && remainder <= 0m;
 			if (paymentCount > 0)
 			{
 				foreach (DataGridViewRow row in DataGridView_CALC.Rows)
