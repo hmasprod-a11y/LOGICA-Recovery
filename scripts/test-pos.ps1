@@ -19,6 +19,26 @@ foreach($case in $cases) {
   Write-Host "$case $status"
   Get-Content $log | Select-Object -First 30 | ForEach-Object{Write-Host $_}
 }
+# Separate WinForms culture regression avoids modifying the shared QA/Inventory test-pos.cs harness.
+# Run it in the same isolated x86 Windows package as the legacy POS tests.
+$cultureExe=Join-Path $dist 'DesktopPaymentCultureSmoke.exe'
+& $csc /nologo /platform:x86 /target:exe /r:System.Windows.Forms.dll /r:System.Drawing.dll "/out:$cultureExe" (Join-Path $PSScriptRoot 'test-desktop-payment-culture.cs')
+if ($LASTEXITCODE -ne 0) { throw 'Desktop culture harness compilation failed' }
+Copy-Item dist/LOGICA.exe.config (Join-Path $dist 'DesktopPaymentCultureSmoke.exe.config') -Force
+$cultureLog=Join-Path (Resolve-Path results).Path 'desktop-payment-culture.log'
+$cultureError=Join-Path (Resolve-Path results).Path 'desktop-payment-culture.stderr.log'
+$cultureProcess=Start-Process $cultureExe -WorkingDirectory $dist -RedirectStandardOutput $cultureLog -RedirectStandardError $cultureError -PassThru
+if(-not $cultureProcess.WaitForExit(60000)) {
+  $cultureProcess.Kill()
+  $cultureStatus='TIMEOUT'
+} else {
+  $cultureStatus=if($cultureProcess.ExitCode -eq 0){'PASS'}else{'FAIL'}
+}
+$results+= [pscustomobject]@{test='desktop-payment-culture';status=$cultureStatus;exitCode=$cultureProcess.ExitCode}
+Write-Host "desktop-payment-culture $cultureStatus"
+Get-Content $cultureLog | Select-Object -First 30 | ForEach-Object{Write-Host $_}
+if($cultureStatus -ne 'PASS') { Get-Content $cultureError | Select-Object -First 40 | ForEach-Object{Write-Host $_} }
+
 # Launch the real Windows entry point as well as exercising forms through the harness.
 $app=Start-Process (Join-Path $dist 'LOGICA.exe') -WorkingDirectory $dist -PassThru
 # Windows cold-start may take longer than the former fixed eight seconds.
