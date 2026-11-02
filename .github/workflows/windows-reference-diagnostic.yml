@@ -18,6 +18,7 @@ on:
       - 'scripts/test-recovered-db.ps1'
       - 'scripts/test-pr84-mariadb-schema.ps1'
       - 'scripts/test_pr82_article_editor.py'
+      - 'scripts/test-solder-failure-basket-guard.py'
       - 'input/migrations/20261102-article-add-compatibility.sql'
       - 'scripts/probe-activation-ui.ps1'
       - 'scripts/test-activation-ui-probe.ps1'
@@ -57,6 +58,7 @@ on:
       - 'scripts/test-recovered-db.ps1'
       - 'scripts/test-pr84-mariadb-schema.ps1'
       - 'scripts/test_pr82_article_editor.py'
+      - 'scripts/test-solder-failure-basket-guard.py'
       - 'input/migrations/20261102-article-add-compatibility.sql'
       - 'scripts/probe-activation-ui.ps1'
       - 'scripts/test-activation-ui-probe.ps1'
@@ -144,6 +146,9 @@ jobs:
       - name: Verify PR82/PR84 catalogue image and recovered schema guards
         shell: pwsh
         run: python scripts/test_pr82_article_editor.py
+      - name: Prevent SOLDER rollback from clearing cashier basket on failure
+        shell: pwsh
+        run: python scripts/test-solder-failure-basket-guard.py
       - name: Guard release artifact upload policy (including negative fixtures)
         shell: pwsh
         run: python scripts/test-release-upload-policy.py
