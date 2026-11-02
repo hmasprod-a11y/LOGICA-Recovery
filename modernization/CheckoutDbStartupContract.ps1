@@ -11,7 +11,7 @@ function Get-CheckoutDbStartupContract {
     $envExport = [regex]::Match($LauncherSource, '(?m)^\s*\$env:LOGICA_DB_CONNECTION_STRING\s*=\s*"(?<value>[^"\r\n]*)"')
     $exeStart = [regex]::Match($LauncherSource, 'Start-Process[^\r\n]*LOGICA\.exe')
     $launcherLoopback = $LauncherSource.Contains('--bind-address=127.0.0.1') -and
-        $LauncherSource.Contains("Connect('127.0.0.1',\$Port)")
+        $LauncherSource.Contains('Connect(''127.0.0.1'',$Port)')
     $exportEndpoint = $envExport.Success -and
         $envExport.Groups['value'].Value.Contains('Server=127.0.0.1;Port=$Port;')
     $exportBeforeExe = $envExport.Success -and $exeStart.Success -and
