@@ -3,7 +3,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][int]$TargetProcessId,
-    [Parameter(Mandatory=$true)][string]$OutputPath
+    [Parameter(Mandatory=$true)][string]$OutputPath,
+    [switch]$SyntheticFixtureDiagnostic
 )
 $ErrorActionPreference = 'Stop'
 $report = [ordered]@{
@@ -46,6 +47,16 @@ try {
             }
         } catch [System.Windows.Automation.ElementNotAvailableException] {
             # A control may disappear during startup; never interpret that as licensed.
+        }
+    }
+    if ($SyntheticFixtureDiagnostic) {
+        Write-Host ("SYNTHETIC_FIXTURE_UIA count={0}" -f $nodes.Count)
+        for ($j = 0; $j -lt [math]::Min($nodes.Count, 30); $j++) {
+            $element = $nodes.Item($j)
+            try {
+                Write-Host ("SYNTHETIC_FIXTURE_UIA id={0}; name={1}; offscreen={2}" -f
+                    $element.Current.AutomationId, $element.Current.Name, $element.Current.IsOffscreen)
+            } catch {}
         }
     }
     $report.inspectionStatus = 'inspected'
