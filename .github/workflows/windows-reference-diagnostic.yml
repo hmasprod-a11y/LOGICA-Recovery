@@ -229,7 +229,7 @@ jobs:
         run: ./scripts/test-extracted-release.ps1
       - name: Enforce extracted startup and read-only MariaDB acceptance evidence
         shell: pwsh
-        run: python scripts/test-extracted-release-report.py --report results/extracted-release-smoke.json
+        run: python scripts/test-extracted-release-report.py --report results/extracted-release-smoke.json --expected-commit $(git rev-parse HEAD)
       - name: Inspect original dependency types
         if: always()
         shell: powershell
