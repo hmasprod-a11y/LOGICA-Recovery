@@ -13767,14 +13767,14 @@ public class Form_2_ARTICLES : Form
 				Text_ARTICLE.Text = DT.Rows[position2]["Article"].ToString();
 				Combo_FAMILLE.Text = DT.Rows[position2]["Famille"].ToString();
 				Text_SOUS_FAMILLE.Text = DT.Rows[position2]["Sous_Famille"].ToString();
-				Combo_GROUPES.Text = DT.Rows[position2]["GROUPE"].ToString();
+				Combo_GROUPES.Text = (DT.Columns.Contains("GROUPE") ? DT.Rows[position2]["GROUPE"].ToString() : "");
 				Text_DESCRIPTION.Text = DT.Rows[position2]["Description"].ToString();
 				Text_PRIX_A.Text = DT.Rows[position2]["Prix_A"].ToString();
 				Text_PRIX_MP.Text = DT.Rows[position2]["PRIX_MP"].ToString();
 				Text_PRIX_V.Text = DT.Rows[position2]["PRIX_V_1"].ToString();
 				Text_PRIX_V_2.Text = DT.Rows[position2]["PRIX_V_2"].ToString();
-				Text_PRIX_QTE.Text = DT.Rows[position2]["PRIX_QTE"].ToString();
-				Text_PRIX_QTE_MIN.Text = DT.Rows[position2]["PRIX_QTE_MIN"].ToString();
+				Text_PRIX_QTE.Text = (DT.Columns.Contains("PRIX_QTE") ? DT.Rows[position2]["PRIX_QTE"].ToString() : "");
+				Text_PRIX_QTE_MIN.Text = (DT.Columns.Contains("PRIX_QTE_MIN") ? DT.Rows[position2]["PRIX_QTE_MIN"].ToString() : "");
 				Text_STOCK.Text = DT.Rows[position2]["STOCK"].ToString();
 				Text_ALERT.Text = DT.Rows[position2]["Alert"].ToString();
 				Text_DATE_CREATION.Text = DT.Rows[position2]["DATES"].ToString();
@@ -13788,13 +13788,19 @@ public class Form_2_ARTICLES : Form
 				Combo_PRINTER.Text = DT.Rows[position2]["PRINTER"].ToString();
 				Combo_PRINTER_DUPLICATA.Text = DT.Rows[position2]["PRINTER_DUPLICATA"].ToString();
 				Text_LIEN_PICTURE.Text = DT.Rows[position2]["Images"].ToString();
-				Image val3 = Image.FromFile(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + Text_LIEN_PICTURE.Text);
-				Picture_IMAGE.Image = (Image)new Bitmap(val3);
+				string articleImagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", Text_LIEN_PICTURE.Text);
+				Picture_IMAGE.Image = null;
+				if (!string.IsNullOrWhiteSpace(Text_LIEN_PICTURE.Text) && Text_LIEN_PICTURE.Text != "0" && File.Exists(articleImagePath))
+				{
+					using (Image articleImage = Image.FromFile(articleImagePath))
+					{
+						Picture_IMAGE.Image = (Image)new Bitmap(articleImage);
+					}
+				}
 				Text_LIEN_PICTURE_ANC.Text = DT.Rows[position2]["Images"].ToString();
-				val3.Dispose();
-				Combo_TAILLES.Text = DT.Rows[position2]["Taille"].ToString();
-				Combo_COULEURS.Text = DT.Rows[position2]["Couleur"].ToString();
-				Text_EMPLACEMENT.Text = DT.Rows[position2]["Emplacement"].ToString();
+				Combo_TAILLES.Text = (DT.Columns.Contains("Taille") ? DT.Rows[position2]["Taille"].ToString() : "");
+				Combo_COULEURS.Text = (DT.Columns.Contains("Couleur") ? DT.Rows[position2]["Couleur"].ToString() : "");
+				Text_EMPLACEMENT.Text = (DT.Columns.Contains("Emplacement") ? DT.Rows[position2]["Emplacement"].ToString() : "");
 				Text_PROMOTION.Text = DT.Rows[position2]["PROMOTION"].ToString();
 				Combo_BALANCE.Text = DT.Rows[position2]["BALANCE"].ToString();
 				Combo_FENETRE_PESEE.Text = DT.Rows[position2]["FENETRE_PESAGE"].ToString();
@@ -14236,9 +14242,8 @@ public class Form_2_ARTICLES : Form
 			Combo_GROUPES.Text = null;
 			Text_LIEN_PICTURE.Text = "0";
 			Text_LIEN_PICTURE_ANC.Text = "0";
-			Image val = Image.FromFile(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + Text_LIEN_PICTURE.Text);
-			Picture_IMAGE.Image = (Image)new Bitmap(val);
-			val.Dispose();
+			// New articles have no image. The sentinel "0" is not a disk file.
+			Picture_IMAGE.Image = null;
 			Combo_TAILLES.Text = null;
 			Combo_COULEURS.Text = null;
 			Text_EMPLACEMENT.Text = "";

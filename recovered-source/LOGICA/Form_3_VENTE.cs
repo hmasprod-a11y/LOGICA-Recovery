@@ -12269,10 +12269,12 @@ public class Form_3_VENTE : Form
 					int fileLineNumber = frame.GetFileLineNumber();
 					ProjectData.ClearProjectError();
 				}
+				EnsureCheckoutQuantityColumn();
 				Module1.da1 = new MySqlDataAdapter("select * from TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + " order by ID asc", Module1.cn_SQL);
 				Module1.dt1 = new DataTable();
 				Module1.dt1.Clear();
 				((DbDataAdapter)(object)Module1.da1).Fill(Module1.dt1);
+				AssertCheckoutCartColumns();
 				DataGridView1.DataSource = Module1.dt1;
 				CREATION_ACCES();
 				CREATION_RACCOURCIES();
@@ -12341,7 +12343,10 @@ public class Form_3_VENTE : Form
 					num12++;
 				}
 				dataTable2.Clear();
-				val2 = new MySqlDataAdapter("select  Famille   from TABLE_FAMILLES     Where     TYPE = 'IMAGE'          order by Ordre,Famille asc ", Module1.cn_SQL);
+				// Older shops may not classify image families with TYPE='IMAGE'.
+				// Show only families containing products with named images; the image loader
+				// still verifies that the physical photo exists before adding each tile.
+				val2 = new MySqlDataAdapter("select distinct f.Famille from TABLE_FAMILLES f inner join TABLE_ARTICLES a on a.Famille = f.Famille where a.Images is not null and trim(a.Images) <> '' and a.Images not in ('0','0.png','0X.png') order by f.Famille asc", Module1.cn_SQL);
 				((DbDataAdapter)(object)val2).Fill(dataTable2);
 				((Control)FlowLayoutPanel2).Controls.Clear();
 				int num14 = dataTable2.Rows.Count - 1;
@@ -12518,8 +12523,8 @@ public class Form_3_VENTE : Form
 					{
 						break;
 					}
-					Bitmap articleImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.Load(
-						Module1._CHEMIN_FOLDER + "\\bd\\images", dataTable.Rows[num2]["Images"].ToString());
+					Bitmap articleImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.LoadWithFallback(
+						Module1._CHEMIN_FOLDER, Application.StartupPath, dataTable.Rows[num2]["Images"].ToString());
 					if (articleImage == null)
 					{
 						num2++;
@@ -14704,6 +14709,83 @@ public class Form_3_VENTE : Form
 
 	// Tile lookup is a parameterized identity query, never a barcode search.
 	// The returned row is still checked against the original tile ID AND Code.
+    // A shop's TABLE_<POSTE> schema may predate the original POS sale fields.
+    // Fix the required quantity column at POS startup, before binding the cart.
+    // A complete table snapshot is created FIRST; never alter a live shop table
+    // if the backup cannot be completed. No existing column or value is removed.
+    private static void EnsureCheckoutQuantityColumn()
+    {
+        string poste = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text;
+        if (string.IsNullOrWhiteSpace(poste) ||
+            !System.Text.RegularExpressions.Regex.IsMatch(poste, @"^[A-Za-z0-9_]{1,32}$"))
+            throw new InvalidOperationException("Invalid POS workstation table identifier.");
+
+        string table = "TABLE_" + poste;
+        MySqlConnection connection = Module1.cn_SQL;
+        bool openedHere = connection.State != ConnectionState.Open;
+        if (openedHere) connection.Open();
+        try
+        {
+            bool hasQuantity = false;
+            string alternate = null;
+            using (MySqlCommand inspect = new MySqlCommand("SHOW COLUMNS FROM `" + table + "`", connection))
+            using (MySqlDataReader reader = inspect.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    string col = reader.GetString(0);
+                    if (string.Equals(col, "Qté", StringComparison.OrdinalIgnoreCase))
+                        hasQuantity = true;
+                    if (string.Equals(col, "Qte", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(col, "Quantite", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(col, "QtÃ©", StringComparison.OrdinalIgnoreCase))
+                        alternate = col;
+                }
+            }
+            if (hasQuantity) return;
+
+            string backup = table + "_BACKUP_" + DateTime.Now.ToString("yyyyMMddHHmmss");
+            using (MySqlCommand create = new MySqlCommand("CREATE TABLE `" + backup + "` LIKE `" + table + "`", connection))
+                create.ExecuteNonQuery();
+            using (MySqlCommand copy = new MySqlCommand("INSERT INTO `" + backup + "` SELECT * FROM `" + table + "`", connection))
+                copy.ExecuteNonQuery();
+            using (MySqlCommand add = new MySqlCommand("ALTER TABLE `" + table + "` ADD COLUMN `Qté` DOUBLE NOT NULL DEFAULT 0", connection))
+                add.ExecuteNonQuery();
+            if (alternate != null)
+            {
+                using (MySqlCommand preserve = new MySqlCommand(
+                    "UPDATE `" + table + "` SET `Qté` = COALESCE(`" + alternate + "`, 0)", connection))
+                    preserve.ExecuteNonQuery();
+            }
+        }
+        finally
+        {
+            if (openedHere) connection.Close();
+        }
+    }
+
+    // Diagnose the ACTUAL bound cashier data table, not just information_schema.
+    // Never let a missing required sales column become a misleading random line error.
+    private static void AssertCheckoutCartColumns()
+    {
+        if (Module1.dt1 == null)
+            throw new InvalidOperationException("POS cart table has not been loaded.");
+        foreach (string required in new[] { "ID", "ID_ARTICLE", "Code", "Article", "Famille",
+            "PRIX_A", "PRIX_MP", "Prix_V", "Qté", "Remise", "TOTAL_NET",
+            "TAUX_TVA", "PRINTER", "PRINTER_DUPLICATA" })
+        {
+            if (!Module1.dt1.Columns.Contains(required))
+            {
+                string actual = String.Join(", ", Module1.dt1.Columns.Cast<DataColumn>()
+                    .Select(column => column.ColumnName).ToArray());
+                throw new InvalidOperationException(
+                    "POS cart schema mismatch. Missing: " + required +
+                    "; workstation: " + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text +
+                    "; loaded columns: " + actual);
+            }
+        }
+    }
+
 	private static string ExactImageArticleSql()
 	{
 		return "select * from TABLE_ARTICLES WHERE ID_ARTICLE = @id";
@@ -14768,9 +14850,9 @@ public class Form_3_VENTE : Form
 				Text_PROMOTION.Text = selectedArticle["PROMOTION"].ToString();
 				Text_PRINTER.Text = selectedArticle["PRINTER"].ToString();
 				Text_PRINTER_DUPLICATA.Text = selectedArticle["PRINTER_DUPLICATA"].ToString();
-				Text_GROUPE.Text = selectedArticle["GROUPE"].ToString();
-				Text_PRIX_QTE.Text = selectedArticle["PRIX_QTE"].ToString();
-				Text_PRIX_QTE_MIN.Text = selectedArticle["PRIX_QTE_MIN"].ToString();
+				Text_GROUPE.Text = (selectedArticle.Table.Columns.Contains("GROUPE") ? selectedArticle["GROUPE"].ToString() : "");
+				Text_PRIX_QTE.Text = (selectedArticle.Table.Columns.Contains("PRIX_QTE") ? selectedArticle["PRIX_QTE"].ToString() : "0");
+				Text_PRIX_QTE_MIN.Text = (selectedArticle.Table.Columns.Contains("PRIX_QTE_MIN") ? selectedArticle["PRIX_QTE_MIN"].ToString() : "0");
 				if (Operators.CompareString(selectedArticle["FENETRE_PESAGE"].ToString(), "OUI", TextCompare: false) == 0)
 				{
 					MyProject.Forms.FormDialog_PESEE_BALANCE.Text_PRIX_V.Text = selectedArticle["Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5)].ToString();
@@ -15085,7 +15167,7 @@ public class Form_3_VENTE : Form
 				Module1.dt1.Rows[index2]["TAUX_TVA"] = Text_TAUX_TVA.Text;
 				Module1.dt1.Rows[index2]["PRINTER"] = Text_PRINTER.Text;
 				Module1.dt1.Rows[index2]["PRINTER_DUPLICATA"] = Text_PRINTER_DUPLICATA.Text;
-				Module1.dt1.Rows[index2]["GROUPE"] = Text_GROUPE.Text;
+				if (Module1.dt1.Columns.Contains("GROUPE")) Module1.dt1.Rows[index2]["GROUPE"] = Text_GROUPE.Text;
 				MySqlCommandBuilder val4 = new MySqlCommandBuilder(Module1.da1);
 				((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
 				Module1.dt1.AcceptChanges();
@@ -15372,8 +15454,8 @@ public class Form_3_VENTE : Form
 						int num4 = num;
 						if (num3 <= num4)
 						{
-							Bitmap articleImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.Load(
-								Module1._CHEMIN_FOLDER + "\\bd\\images", dt_PIC.Rows[num2]["Images"].ToString());
+							Bitmap articleImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.LoadWithFallback(
+								Module1._CHEMIN_FOLDER, Application.StartupPath, dt_PIC.Rows[num2]["Images"].ToString());
 							if (articleImage == null)
 							{
 								num2++;

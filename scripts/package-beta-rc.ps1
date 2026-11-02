@@ -53,6 +53,16 @@ if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
 
 $releaseDir = Join-Path $root 'release'
 New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+# A passing build is not releasable if the article migration is omitted.
+$migrationSource = Join-Path $root 'input/migrations/20261102-article-add-compatibility.sql'
+$migrationPackaged = Join-Path $dist '20261102-article-add-compatibility.sql'
+$migrationGuide = Join-Path $dist 'ARTICLE-SCHEMA-MIGRATION-README.txt'
+foreach ($required in @($migrationSource, $migrationPackaged, $migrationGuide)) {
+  if (-not (Test-Path -LiteralPath $required -PathType Leaf)) { throw "Article migration release prerequisite missing: $required" }
+}
+if ((Get-FileHash -LiteralPath $migrationSource -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $migrationPackaged -Algorithm SHA256).Hash) {
+  throw 'Packaged article migration does not match the tested source'
+}
 $zipName = 'LOGICA-2.0-Beta-RC1-Windows-x86.zip'
 $zip = Join-Path $releaseDir $zipName
 if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }

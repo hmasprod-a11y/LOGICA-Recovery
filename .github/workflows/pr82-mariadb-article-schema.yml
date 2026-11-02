@@ -1,0 +1,53 @@
+name: PR82 MariaDB article schema integration
+on:
+  pull_request:
+    paths:
+      - 'input/migrations/20261102-article-add-compatibility.sql'
+      - 'scripts/package-runtime.ps1'
+      - '.github/workflows/pr82-mariadb-article-schema.yml'
+  workflow_dispatch:
+jobs:
+  schema-migration:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: testroot
+          MARIADB_DATABASE: logica_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate legacy article data survives repeatable migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          db() { docker exec -i "$(docker ps -q --filter ancestor=mariadb:11.4)" mariadb -uroot -ptestroot logica_test "$@"; }
+          db -e "CREATE TABLE TABLE_ARTICLES (ID INT PRIMARY KEY, Article VARCHAR(255), GROUPE VARCHAR(255) DEFAULT ''); INSERT INTO TABLE_ARTICLES (ID,Article,GROUPE) VALUES (1,'Existing product','OLD');"
+          db < input/migrations/20261102-article-add-compatibility.sql
+          db < input/migrations/20261102-article-add-compatibility.sql
+          for col in GROUPE PRIX_QTE PRIX_QTE_MIN Taille Couleur Emplacement; do
+            test "$(db -N -e "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='logica_test' AND table_name='TABLE_ARTICLES' AND column_name='$col'")" = 1
+          done
+          test "$(db -N -e "SELECT CONCAT(ID,':',Article,':',GROUPE) FROM TABLE_ARTICLES WHERE ID=1")" = '1:Existing product:OLD'
+          db -e "UPDATE TABLE_ARTICLES SET GROUPE='NEW', Taille='L' WHERE ID=1;"
+          test "$(db -N -e "SELECT CONCAT(GROUPE,':',Taille) FROM TABLE_ARTICLES WHERE ID=1")" = 'NEW:L'
+          echo 'PASS: repeatable MariaDB migration preserves article data and stores new values.'
+      - name: Exercise legacy cashier table quantity repair and cart insert
+        shell: bash
+        run: |
+          set -euo pipefail
+          db() { docker exec -i "$(docker ps -q --filter ancestor=mariadb:11.4)" mariadb -uroot -ptestroot logica_test "$@"; }
+          db -e "CREATE TABLE TABLE_01 (ID INT PRIMARY KEY, Code VARCHAR(30), Article VARCHAR(100), Qte DOUBLE, Prix_V DOUBLE); INSERT INTO TABLE_01 VALUES (1,'70223','CAFE CASSE',2,25);"
+          db -e "CREATE TABLE TABLE_01_BACKUP_TEST LIKE TABLE_01; INSERT INTO TABLE_01_BACKUP_TEST SELECT * FROM TABLE_01;"
+          db -e "ALTER TABLE TABLE_01 ADD COLUMN \`Qté\` DOUBLE NOT NULL DEFAULT 0; UPDATE TABLE_01 SET \`Qté\` = COALESCE(Qte,0);"
+          test "$(db -N -e "SELECT \`Qté\` FROM TABLE_01 WHERE ID=1")" = 2
+          db -e "INSERT INTO TABLE_01 (ID,Code,Article,Prix_V,\`Qté\`) VALUES (2,'70224','CAFE CREME',20,1), (3,'70225','RETURN',20,-1);"
+          test "$(db -N -e 'SELECT SUM(`Qté`) FROM TABLE_01')" = 2
+          test "$(db -N -e 'SELECT Qte FROM TABLE_01_BACKUP_TEST WHERE ID=1')" = 2
+          echo 'PASS: backup, legacy quantity preservation, sale and return rows.'
+

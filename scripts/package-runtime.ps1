@@ -30,6 +30,27 @@ foreach($key in @($defaults.Keys)){
 foreach($entry in $defaults.GetEnumerator()){[IO.File]::WriteAllText((Join-Path $dist $entry.Key),$entry.Value)}
 Copy-Item docs/RUNNING.md dist/RUNNING.md -Force
 Copy-Item scripts/Launch-LOGICA.ps1,scripts/Start-LOGICA.cmd dist -Force
+# Ship the tested additive migration with the same Windows x86 build.
+# Never apply schema changes automatically to an existing shop database.
+$migrationSource = 'input/migrations/20261102-article-add-compatibility.sql'
+if (-not (Test-Path -LiteralPath $migrationSource -PathType Leaf)) { throw 'Article schema migration missing from source checkout' }
+Copy-Item -LiteralPath $migrationSource -Destination (Join-Path $dist '20261102-article-add-compatibility.sql') -Force
+@'
+ARTICLE SCHEMA COMPATIBILITY (MariaDB)
+=====================================
+This package contains an additive schema migration for older TABLE_ARTICLES tables.
+It is NOT applied automatically: the shop database may contain irreplaceable data.
+
+Before using the article editor with an old database:
+1. Stop LOGICA and take a VERIFIED backup of the existing MariaDB shop database.
+2. Confirm the database and TABLE_ARTICLES table are the correct shop database.
+3. Have an authorized administrator apply 20261102-article-add-compatibility.sql
+   to that database using a MariaDB client, then verify the six columns exist.
+4. Start LOGICA and test creating and editing an article, including GROUPE.
+Do not run the migration on an unknown or unbacked-up database.
+The SQL is repeatable and adds missing columns only; it never drops rows.
+'@ | Set-Content -LiteralPath (Join-Path $dist 'ARTICLE-SCHEMA-MIGRATION-README.txt') -Encoding UTF8
+
 Remove-Item dist/PosSmoke* -Force -ErrorAction SilentlyContinue
 $manifest=@(Get-ChildItem dist -File | ForEach-Object {
  $hash=(Get-FileHash $_.FullName -Algorithm SHA256).Hash

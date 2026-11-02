@@ -1,0 +1,19 @@
+name: PR82 article editor regression
+on:
+  pull_request:
+    paths:
+      - recovered-source/LOGICA/Form_2_ARTICLES.cs
+      - recovered-source/LOGICA/Application/Catalogue/CatalogueRowMapper.cs
+      - input/migrations/20261102-article-add-compatibility.sql
+      - scripts/test_pr82_article_editor.py
+      - .github/workflows/pr82-article-editor.yml
+  workflow_dispatch:
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python scripts/test_pr82_article_editor.py
