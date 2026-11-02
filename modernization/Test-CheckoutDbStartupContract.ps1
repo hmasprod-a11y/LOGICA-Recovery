@@ -43,8 +43,8 @@ $missingExport = Get-CheckoutDbStartupContract $moduleFixture ($launcherFixture.
     '$env:LOGICA_DB_CONNECTION_STRING=', '$env:OTHER='))
 Assert-Contract (-not $missingExport.LauncherPassesEndpoint) 'missing launcher export must fail'
 # Construct the true out-of-order case without interpreting fixture variables.
-$lateFixture = $launcherFixture.Replace(
-    '$env:LOGICA_DB_CONNECTION_STRING="Server=127.0.0.1;Port=$Port;Database=local;"' + "`n", '')
+$lateFixture = [regex]::Replace($launcherFixture,
+    '(?m)^[ \t]*\$env:LOGICA_DB_CONNECTION_STRING[^\r\n]*(\r?\n)?', '')
 $lateFixture += "`n" + '$env:LOGICA_DB_CONNECTION_STRING="Server=127.0.0.1;Port=$Port;Database=local;"'
 $late = Get-CheckoutDbStartupContract $moduleFixture $lateFixture
 Assert-Contract (-not $late.LauncherPassesEndpoint -and -not $late.LauncherStartsExeAfterExport) 'export after EXE must fail'
