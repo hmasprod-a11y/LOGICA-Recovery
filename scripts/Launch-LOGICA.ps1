@@ -56,6 +56,66 @@ try {
  if(-not $ready){throw 'Le serveur local ne repond pas'}
  if(-not (Test-Path $marker)){
   $existing=& "$ServerBin/mariadb.exe" "--defaults-extra-file=$clientFile" -N -B -e "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name='$dbName'"
+  if($LASTEXITCODE -ne 0 -or @($existing).Count -ne 1 -or [string]$existing -notmatch '^[0-9]+{throw 'La base de recuperation existe deja sans marqueur. Aucun remplacement automatique ne sera effectue.'}
+  & "$ServerBin/mariadb.exe" "--defaults-extra-file=$clientFile" -e "CREATE DATABASE $dbName CHARACTER SET utf8mb4"
+  if($LASTEXITCODE -ne 0){throw 'Creation de la base de recuperation impossible'}
+  foreach($file in @('recovered-original.sql','mysql-compatibility.sql')){
+   $sql=(Join-Path $root "recovery/$file").Replace('\','/')
+   & "$ServerBin/mariadb.exe" "--defaults-extra-file=$clientFile" --abort-source-on-error $dbName -e "source $sql"
+   if($LASTEXITCODE -ne 0){throw "Import interrompu dans $file. Les fichiers et donnees existants sont conserves."}
+  }
+  [IO.File]::WriteAllText($marker,"Original snapshot imported without replacing an existing database. "+[DateTime]::UtcNow.ToString('o'))
+ }
+ $env:LOGICA_DB_CONNECTION_STRING="Server=127.0.0.1;Port=$Port;Database=$dbName;Uid=root;Pwd=$password;SslMode=None;Connection Timeout=10;"
+ $counts=& "$ServerBin/mariadb.exe" "--defaults-extra-file=$clientFile" -N -B $dbName -e 'SELECT COUNT(*) FROM TABLE_ARTICLES; SELECT COUNT(*) FROM TABLE_VENTES_ENTETE;'
+ if($LASTEXITCODE -ne 0 -or @($counts).Count -ne 2 -or @($counts | Where-Object { [string]$_ -notmatch '^[0-9]+ ('Base locale prete. Produits et tickets : '+($counts -join ', '))
+ if($VerifyOnly){if([int]$counts[0] -ne 120 -or [int]$counts[1] -ne 11){throw 'Les nombres de lignes importees ne correspondent pas au fichier original'};Write-Host 'PASS portable launcher imports original database and preserves row counts'}
+ else {Write-Host 'Demarrage de LOGICA...';Start-Process (Join-Path $root 'LOGICA.exe') -WorkingDirectory $root -Wait}
+} catch {Write-Host ('ERREUR : '+$_.Exception.Message) -ForegroundColor Red;exit 1}
+finally {
+ if($process -and -not $process.HasExited -and $clientFile){
+  & "$ServerBin/mariadb-admin.exe" "--defaults-extra-file=$clientFile" shutdown 2>$null | Out-Null
+  if(-not $process.WaitForExit(15000)){Write-Host 'Le serveur termine encore ses ecritures. Ne pas supprimer son dossier.'}
+ }
+ if($clientFile -and (Test-Path $clientFile)){Remove-Item $clientFile -Force}
+}
+){throw 'La verification de la base locale a echoue. Aucun import automatique ne sera effectue.'}
+  if([int]$existing -ne 0){throw 'La base de recuperation existe deja sans marqueur. Aucun remplacement automatique ne sera effectue.'}
+  & "$ServerBin/mariadb.exe" "--defaults-extra-file=$clientFile" -e "CREATE DATABASE $dbName CHARACTER SET utf8mb4"
+  if($LASTEXITCODE -ne 0){throw 'Creation de la base de recuperation impossible'}
+  foreach($file in @('recovered-original.sql','mysql-compatibility.sql')){
+   $sql=(Join-Path $root "recovery/$file").Replace('\','/')
+   & "$ServerBin/mariadb.exe" "--defaults-extra-file=$clientFile" --abort-source-on-error $dbName -e "source $sql"
+   if($LASTEXITCODE -ne 0){throw "Import interrompu dans $file. Les fichiers et donnees existants sont conserves."}
+  }
+  [IO.File]::WriteAllText($marker,"Original snapshot imported without replacing an existing database. "+[DateTime]::UtcNow.ToString('o'))
+ }
+ $env:LOGICA_DB_CONNECTION_STRING="Server=127.0.0.1;Port=$Port;Database=$dbName;Uid=root;Pwd=$password;SslMode=None;Connection Timeout=10;"
+ $counts=& "$ServerBin/mariadb.exe" "--defaults-extra-file=$clientFile" -N -B $dbName -e 'SELECT COUNT(*) FROM TABLE_ARTICLES; SELECT COUNT(*) FROM TABLE_VENTES_ENTETE;'
+ Write-Host ('Base locale prete. Produits et tickets : '+($counts -join ', '))
+ if($VerifyOnly){if([int]$counts[0] -ne 120 -or [int]$counts[1] -ne 11){throw 'Les nombres de lignes importees ne correspondent pas au fichier original'};Write-Host 'PASS portable launcher imports original database and preserves row counts'}
+ else {Write-Host 'Demarrage de LOGICA...';Start-Process (Join-Path $root 'LOGICA.exe') -WorkingDirectory $root -Wait}
+} catch {Write-Host ('ERREUR : '+$_.Exception.Message) -ForegroundColor Red;exit 1}
+finally {
+ if($process -and -not $process.HasExited -and $clientFile){
+  & "$ServerBin/mariadb-admin.exe" "--defaults-extra-file=$clientFile" shutdown 2>$null | Out-Null
+  if(-not $process.WaitForExit(15000)){Write-Host 'Le serveur termine encore ses ecritures. Ne pas supprimer son dossier.'}
+ }
+ if($clientFile -and (Test-Path $clientFile)){Remove-Item $clientFile -Force}
+}
+ }).Count -gt 0){throw 'Verification authentifiee de la base locale impossible. LOGICA ne sera pas lance.'}
+ Write-Host ('Base locale prete. Produits et tickets : '+($counts -join ', '))
+ if($VerifyOnly){if([int]$counts[0] -ne 120 -or [int]$counts[1] -ne 11){throw 'Les nombres de lignes importees ne correspondent pas au fichier original'};Write-Host 'PASS portable launcher imports original database and preserves row counts'}
+ else {Write-Host 'Demarrage de LOGICA...';Start-Process (Join-Path $root 'LOGICA.exe') -WorkingDirectory $root -Wait}
+} catch {Write-Host ('ERREUR : '+$_.Exception.Message) -ForegroundColor Red;exit 1}
+finally {
+ if($process -and -not $process.HasExited -and $clientFile){
+  & "$ServerBin/mariadb-admin.exe" "--defaults-extra-file=$clientFile" shutdown 2>$null | Out-Null
+  if(-not $process.WaitForExit(15000)){Write-Host 'Le serveur termine encore ses ecritures. Ne pas supprimer son dossier.'}
+ }
+ if($clientFile -and (Test-Path $clientFile)){Remove-Item $clientFile -Force}
+}
+){throw 'La verification de la base locale a echoue. Aucun import automatique ne sera effectue.'}
   if([int]$existing -ne 0){throw 'La base de recuperation existe deja sans marqueur. Aucun remplacement automatique ne sera effectue.'}
   & "$ServerBin/mariadb.exe" "--defaults-extra-file=$clientFile" -e "CREATE DATABASE $dbName CHARACTER SET utf8mb4"
   if($LASTEXITCODE -ne 0){throw 'Creation de la base de recuperation impossible'}
