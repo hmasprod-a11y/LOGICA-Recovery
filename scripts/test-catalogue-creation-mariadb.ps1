@@ -11,7 +11,8 @@ if (-not (Test-Path (Join-Path $dist 'LOGICA.exe'))) { throw 'Build LOGICA.exe f
 if (-not (Test-Path $compiler)) { throw 'Windows .NET Framework C# compiler not found' }
 if (-not $env:LOGICA_DB_CONNECTION_STRING -or
     $env:LOGICA_DB_CONNECTION_STRING -notmatch '(?i)(^|;)\s*Database\s*=\s*logica_ci\s*(;|$)' -or
-    $env:LOGICA_DB_CONNECTION_STRING -notmatch '(?i)(^|;)\s*Server\s*=\s*(127\.0\.0\.1|localhost)\s*(;|$)') {
+    $env:LOGICA_DB_CONNECTION_STRING -notmatch '(?i)(^|;)\s*Server\s*=\s*(127\.0\.0\.1|localhost)\s*(;|$)' -or
+    $env:LOGICA_DB_CONNECTION_STRING -notmatch '(?i)(^|;)\s*Port\s*=\s*3307\s*(;|$)') {
     throw 'Refusing to run without an explicit loopback logica_ci test connection'
 }
 try {
