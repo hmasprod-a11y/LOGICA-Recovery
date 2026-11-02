@@ -137,6 +137,15 @@ internal static class DesktopPaymentCultureSmoke
                         "Case/space variant cash method was not available without an icon");
                     methods.Controls.Remove(cash);
                 }
+                // A lower-case cash label must NOT be treated as a card payment
+                // and auto-filled; the cashier still enters the actual cash tendered.
+                grid.Rows.Clear();
+                total.Text = "20,50";
+                Recalculate(form);
+                using (Button cash = new Button() { Text = " especes " })
+                    add.Invoke(form, new object[] { cash, EventArgs.Empty });
+                Expect(grid.Rows.Count == 1 && Convert.ToDecimal(grid.Rows[0].Cells[1].Value) == 0m,
+                    "Legacy lower-case cash was incorrectly auto-settled as noncash");
 
                 // Wide payment-method flow must not be positioned off the left
                 // edge when high DPI or many configured methods exceed the panel.
