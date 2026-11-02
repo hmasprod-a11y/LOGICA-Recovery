@@ -51,7 +51,9 @@ Do not run the migration on an unknown or unbacked-up database.
 The SQL is repeatable and adds missing columns only; it never drops rows.
 '@ | Set-Content -LiteralPath (Join-Path $dist 'ARTICLE-SCHEMA-MIGRATION-README.txt') -Encoding UTF8
 
-Remove-Item dist/PosSmoke* -Force -ErrorAction SilentlyContinue
+# Never package isolated QA executables/configs, even if the POS test script
+# exited early before its own cleanup stage.
+Remove-Item dist/PosSmoke*,dist/DesktopPaymentCultureSmoke*,dist/DesktopArticleDeleteSmoke* -Force -ErrorAction SilentlyContinue
 $manifest=@(Get-ChildItem dist -File | ForEach-Object {
  $hash=(Get-FileHash $_.FullName -Algorithm SHA256).Hash
  $version=$null
