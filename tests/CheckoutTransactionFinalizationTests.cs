@@ -167,9 +167,9 @@ internal static class CheckoutTransactionFinalizationTests
         var workers = new Thread[16];
         for (int i = 0; i < workers.Length; i++)
         {
-            workers[i] = new Thread(delegate {
+            workers[i] = new Thread(new ThreadStart(delegate {
                 if (sharedProgress.TryStart()) Interlocked.Increment(ref starts);
-            });
+            }));
             workers[i].Start();
         }
         foreach (Thread worker in workers) worker.Join();
