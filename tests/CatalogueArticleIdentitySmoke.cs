@@ -37,6 +37,12 @@ internal static class CatalogueArticleIdentitySmoke
                 "edit targets the clicked identity, not DataTable position zero");
             Check(Object.ReferenceEquals(CatalogueRowMapper.ResolveUniqueExistingRow(table, "1", "A"), table.Rows[0]),
                 "original first product remains selectable");
+            Check(Object.ReferenceEquals(CatalogueRowMapper.ResolveUniqueByDatabaseId(table, "2"), clicked),
+                "save resolves immutable database ID even if article ID is edited");
+            Check(CatalogueRowMapper.ResolveUniqueByDatabaseId(table, "9") == null,
+                "stale database ID never falls back to grid position");
+            Check(CatalogueRowMapper.ResolveUniqueByDatabaseId(table, "") == null,
+                "blank database ID never authorizes save");
             Check(CatalogueRowMapper.ResolveUniqueExistingRow(table, "2", "A") == null,
                 "mixed database and article identities fail closed");
             Check(CatalogueRowMapper.ResolveUniqueExistingRow(table, "1", "B") == null,
@@ -63,10 +69,16 @@ internal static class CatalogueArticleIdentitySmoke
             table.Rows.Add(2, "C", "OTHER", "Hidden duplicate database ID");
             Check(CatalogueRowMapper.ResolveUniqueExistingRow(table, "2", "B") == null,
                 "duplicate database ID hidden by filter blocks mutation");
+            Check(CatalogueRowMapper.ResolveUniqueByDatabaseId(table, "2") == null,
+                "duplicate database ID blocks save even if article IDs differ");
+
             table.Rows.RemoveAt(2);
             table.Rows[1]["ID_ARTICLE"] = "CHANGED";
             Check(CatalogueRowMapper.ResolveUniqueExistingRow(table, "2", "B") == null,
                 "identity change while edit dialog is open blocks save");
+            Check(Object.ReferenceEquals(CatalogueRowMapper.ResolveUniqueByDatabaseId(table, "2"), table.Rows[1]),
+                "editing ID_ARTICLE is still allowed by immutable database ID");
+
             Check(Object.ReferenceEquals(CatalogueRowMapper.ResolveUniqueExistingRow(table, "2", "CHANGED"), table.Rows[1]),
                 "current exact identity remains valid");
             table.Rows[1].Delete();
