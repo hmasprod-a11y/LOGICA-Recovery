@@ -116,9 +116,13 @@ internal static class CatalogueCreationMariaDbSmoke
             object builder = Activator.CreateInstance(builderType, new object[] { original });
             string server = Convert.ToString(builderType.GetProperty("Server").GetValue(builder, null));
             string database = Convert.ToString(builderType.GetProperty("Database").GetValue(builder, null));
-            Require((server == "127.0.0.1" || string.Equals(server, "localhost", StringComparison.OrdinalIgnoreCase)) &&
-                string.Equals(database, "logica_ci", StringComparison.OrdinalIgnoreCase),
-                "Refusing non-loopback/non-disposable MariaDB connection");
+            uint port = Convert.ToUInt32(builderType.GetProperty("Port").GetValue(builder, null),
+                CultureInfo.InvariantCulture);
+            Require((string.Equals(server, "127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(server, "localhost", StringComparison.OrdinalIgnoreCase)) &&
+                string.Equals(database, "logica_ci", StringComparison.OrdinalIgnoreCase) &&
+                port == 3307,
+                "Refusing non-loopback/non-disposable/non-CI-port MariaDB connection");
             administration = NewConnection(connectionType, original);
             administration.Open();
             // New, random scratch database; CREATE without IF NOT EXISTS fails closed on collision.
