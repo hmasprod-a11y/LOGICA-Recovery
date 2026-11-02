@@ -9,7 +9,7 @@ namespace LOGICA.ApplicationLayer.Checkout
         public static void Write(ICheckoutPostingStore store, IEnumerable<TicketPaymentWrite> payments)
         {
             if (payments == null)
-                throw new InvalidOperationException("Checkout payment reader returned no collection.");
+                throw new NullReferenceException("Checkout payment reader returned no collection.");
             foreach (TicketPaymentWrite payment in payments)
             {
                 if (payment == null)
