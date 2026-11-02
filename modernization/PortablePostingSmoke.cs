@@ -36,8 +36,10 @@ internal static class PortablePostingSmoke
     }
     private static IEnumerable<TicketPaymentWrite> Payments()
     {
-        yield return new TicketPaymentWrite { AmountText = "1" };
-        yield return new TicketPaymentWrite { AmountText = "2" };
+        yield return new TicketPaymentWrite {
+            AmountText = "1", Context = new TicketPaymentContext { TicketNumber = "T-1" } };
+        yield return new TicketPaymentWrite {
+            AmountText = "2", Context = new TicketPaymentContext { TicketNumber = "T-1" } };
     }
     private static CheckoutPostingInput Input(Store store)
     {
@@ -270,6 +272,74 @@ internal static class PortablePostingSmoke
         CheckInvalidReader(nullPayment, nullPaymentInput,
             "Checkout payment reader returned a null line.",
             "readStock,stock:A,stock:B,readHeader,header,readJournal,journal,readPayments");
+
+        // SOLDER P0: callers can supply payment rows without going through
+        // CheckoutPaymentReadService. Guard the actual SQL writer boundary too.
+        // A missing context or selected tender mode must never reach WritePayment.
+        var missingDirectContext = new Store();
+        var missingDirectContextInput = Input(missingDirectContext);
+        missingDirectContextInput.ReadPayments = delegate {
+            missingDirectContext.Events.Add("readPayments");
+            return new[] { new TicketPaymentWrite {
+                Kind = TicketPaymentKind.Cash, AmountText = "10.00" } };
+        };
+        CheckInvalidReader(missingDirectContext, missingDirectContextInput,
+            "Checkout payment line has no context.",
+            "readStock,stock:A,stock:B,readHeader,header,readJournal,journal,readPayments");
+        if (missingDirectContext.PaymentCount != 0)
+            throw new Exception("Missing direct cash context reached the payment SQL writer");
+
+        var missingTenderMode = new Store();
+        var missingTenderModeInput = Input(missingTenderMode);
+        missingTenderModeInput.ReadPayments = delegate {
+            missingTenderMode.Events.Add("readPayments");
+            return new[] { new TicketPaymentWrite {
+                Kind = TicketPaymentKind.Tendered, Amount = "10.00",
+                Context = new TicketPaymentContext { TicketNumber = "T-1" } } };
+        };
+        CheckInvalidReader(missingTenderMode, missingTenderModeInput,
+            "Checkout tendered payment has no mode.",
+            "readStock,stock:A,stock:B,readHeader,header,readJournal,journal,readPayments");
+        if (missingTenderMode.PaymentCount != 0)
+            throw new Exception("Missing tender mode reached the payment SQL writer");
+
+        // A valid non-cash payment must still post exactly once in the
+        // original stock -> ticket -> payment -> print -> commit sequence.
+        var validTender = new Store();
+        var validTenderInput = Input(validTender);
+        validTenderInput.ReadPayments = delegate {
+            validTender.Events.Add("readPayments");
+            return new[] { new TicketPaymentWrite {
+                Kind = TicketPaymentKind.Tendered, Amount = "10.00", Mode = "CARTE",
+                Context = new TicketPaymentContext { TicketNumber = "T-1" } } };
+        };
+        CheckoutTransactionFinalizationService.PostAndFinalize(
+            validTender, validTenderInput, validTender);
+        Assert(validTender,
+            "readStock,stock:A,stock:B,readHeader,header,readJournal,journal,readPayments,payment:,print,readCompletion,complete,commit,close");
+        if (validTender.PaymentCount != 1 || validTender.StockCount != 2 ||
+            validTender.LastPayment.Mode.ToString() != "CARTE" ||
+            validTender.CommitCount != 1 || validTender.CloseCount != 1)
+            throw new Exception("Valid tender posting changed exact-once semantics");
+
+        // Streaming is intentional: a later malformed row must abort before
+        // printing/commit, leaving rollback to the WinForms transaction owner.
+        var lateInvalidTender = new Store();
+        var lateInvalidTenderInput = Input(lateInvalidTender);
+        lateInvalidTenderInput.ReadPayments = delegate {
+            lateInvalidTender.Events.Add("readPayments");
+            return new[] {
+                new TicketPaymentWrite { Kind = TicketPaymentKind.Cash,
+                    AmountText = "5.00", Context = new TicketPaymentContext { TicketNumber = "T-1" } },
+                new TicketPaymentWrite { Kind = TicketPaymentKind.Tendered,
+                    Amount = "5.00", Context = new TicketPaymentContext { TicketNumber = "T-1" } }
+            };
+        };
+        CheckInvalidReader(lateInvalidTender, lateInvalidTenderInput,
+            "Checkout tendered payment has no mode.",
+            "readStock,stock:A,stock:B,readHeader,header,readJournal,journal,readPayments,payment:5.00");
+        if (lateInvalidTender.PaymentCount != 1)
+            throw new Exception("Streaming payment validation changed original row order");
 
         var noCompletion = new Store();
         var noCompletionInput = Input(noCompletion);
