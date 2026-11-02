@@ -26,6 +26,17 @@ namespace LOGICA.ApplicationLayer.Purchasing
             return selectedArticleId != null || !String.IsNullOrWhiteSpace(code);
         }
 
+        // The real receipt Add button is reached after a successful catalogue
+        // resolution. A barcode-free product is valid only when its exact ID
+        // came from an explicit article-grid selection, never from an empty scan.
+        // The caller clears the grid provenance before every new lookup.
+        internal static bool CanAddResolvedArticle(string articleId, string code,
+            bool resolvedFromArticleGrid)
+        {
+            return !String.IsNullOrWhiteSpace(articleId) && code != null &&
+                (code.Length != 0 || resolvedFromArticleGrid);
+        }
+
         // Returns null on missing, ambiguous, deleted or malformed rows.
         // No SQL, price, quantity or stock mutations.
         internal static DataRow Resolve(DataTable barcodeMatches, string selectedArticleId)
