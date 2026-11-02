@@ -1496,9 +1496,13 @@ public class FormDialog_calc : Form
 	{
 		try
 		{
-			if ((disposing && components != null) ? true : false)
+			if (disposing)
 			{
-				components.Dispose();
+				// Each payment icon is a Bitmap owned by this dialog. Closing the
+				// dialog must release it, not only a subsequent reload.
+				if (FlowLayoutPanel_MODE_P != null && !FlowLayoutPanel_MODE_P.IsDisposed)
+					ClearPaymentMethodButtons();
+				if (components != null) components.Dispose();
 			}
 		}
 		finally
@@ -2909,6 +2913,21 @@ public class FormDialog_calc : Form
 		catch (System.Runtime.InteropServices.ExternalException) { return null; }
 	}
 
+	// Decompiled coin buttons use a 2pt font because their original images
+	// carry the caption. If a resource is missing, the fallback text must be
+	// legible at normal and high DPI instead of disappearing.
+	private void EnsureReadableDenominationButtons()
+	{
+		foreach (Control control in Panel_DEVIS.Controls)
+		{
+			Button coin = control as Button;
+			if (coin == null || !coin.Name.StartsWith("Button_DEVISE_", StringComparison.Ordinal) ||
+				coin.BackgroundImage != null) continue;
+			coin.Font = new Font("Calibri", 12f, FontStyle.Bold);
+			coin.TextAlign = ContentAlignment.MiddleCenter;
+		}
+	}
+
 	private void FormDialog_calc_Load(object sender, EventArgs e)
 	{
 		//IL_034e: Unknown result type (might be due to invalid IL or missing references)
@@ -2924,6 +2943,7 @@ public class FormDialog_calc : Form
 			try
 			{
 				Text_TOTAL_NET.Text = NormalizePaymentTotal(MyProject.Forms.Form_3_VENTE.Text_TOTAL_NET.Text);
+				EnsureReadableDenominationButtons();
 				ClearPaymentMethodButtons();
 				int num = MyProject.Forms.Form_3_VENTE.DataGridView_MODE_P.Rows.Count - 1;
 				int num2 = 0;
@@ -3170,6 +3190,20 @@ public class FormDialog_calc : Form
 		return null;
 	}
 
+	// Cash denomination buttons must never edit a selected card/transfer row.
+	// Find the cash row by method identity, not DataGridView.CurrentRow.
+	private DataGridViewRow CashPaymentRow()
+	{
+		foreach (DataGridViewRow row in DataGridView_CALC.Rows)
+		{
+			if (row.IsNewRow || row.Cells.Count <= 3) continue;
+			string method = Convert.ToString(row.Cells[3].Value);
+			if (string.Equals((method ?? "").Trim(), "ESPECES", StringComparison.OrdinalIgnoreCase))
+				return row;
+		}
+		return null;
+	}
+
 	private void Button_DEVIS_Click(object sender, EventArgs e)
 	{
 		//IL_0181: Unknown result type (might be due to invalid IL or missing references)
@@ -3178,34 +3212,39 @@ public class FormDialog_calc : Form
 		//IL_0036: Expected Obj, but got Unknown
 		try
 		{
-			// Cash denominations must use the latest edited amount, not the old cell.
+			// Validate the coin before changing rows. A refund uses negative
+			// amounts and must never be increased by a positive cash denomination.
+			Button denominationButton = sender as Button;
+			decimal denomination, total;
+			if (denominationButton == null ||
+				!decimal.TryParse(denominationButton.Text, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out denomination) ||
+				denomination <= 0m ||
+				!TryGetPaymentNumber(Text_TOTAL_NET.Text, out total) || total < 0m)
+				return;
 			if (!DataGridView_CALC.EndEdit()) return;
 			Button_calc_Click(sender, e);
-			if (SelectedPaymentRowCount() == 0)
+			DataGridViewRow cashRow = CashPaymentRow();
+			if (cashRow == null)
 			{
-				Button val = CashPaymentButton();
-				if (val == null)
+				Button cashMethod = CashPaymentButton();
+				if (cashMethod == null)
 				{
 					MessageBox.Show("Mode de paiement ESPECES indisponible. Vérifiez la configuration des modes de paiement.", "Hanouty POS", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 					return;
 				}
-				val.PerformClick();
-				Button_REFRESH.PerformClick();
+				// Create cash even when a card/transfer row is currently selected.
+				// FAM_click validates the latest remainder before adding a row.
+				FAM_click(cashMethod, e);
+				cashRow = CashPaymentRow();
+				if (cashRow == null) return;
 			}
-			if (DataGridView_CALC.CurrentRow == null || DataGridView_CALC.CurrentRow.IsNewRow) return;
-			int rowIndex = DataGridView_CALC.CurrentRow.Index;
-			// The 0.5 denomination caption uses an invariant dot, even on fr-FR
-			// workstations. VB Val/AddObject can truncate or concatenate money.
-			Button denominationButton = sender as Button;
-			decimal denomination, paid;
-			if (denominationButton == null ||
-				!decimal.TryParse(denominationButton.Text, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out denomination) ||
-				denomination <= 0m ||
-				!TryGetPaymentNumber(DataGridView_CALC.Rows[rowIndex].Cells[1].Value, out paid)) return;
+			DataGridView_CALC.CurrentCell = cashRow.Cells[1];
+			decimal paid;
+			if (!TryGetPaymentNumber(cashRow.Cells[1].Value, out paid)) return;
 			decimal updated;
 			try { updated = checked(paid + denomination); }
 			catch (OverflowException) { return; }
-			DataGridView_CALC.Rows[rowIndex].Cells[1].Value = updated;
+			cashRow.Cells[1].Value = updated;
 			Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 			((Control)DataGridView_CALC).Focus();
 		}
