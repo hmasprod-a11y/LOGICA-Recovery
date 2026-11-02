@@ -2415,7 +2415,7 @@ public class FormDialog_2_Configuration : Form
 		{
 			return;
 		}
-		ListViewItem setting = ListView1.FindItemWithText("MODELE_TICKET", false, 0);
+		ListViewItem setting = ListView1.Items.Count > 0 ? ListView1.FindItemWithText("MODELE_TICKET", false, 0) : null;
 		if (setting != null && setting.SubItems.Count > 1)
 		{
 			setting.Selected = true;
