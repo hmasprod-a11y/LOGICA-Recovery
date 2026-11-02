@@ -14536,7 +14536,7 @@ public class Form_2_ARTICLES : Form
                         LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance);
                     LOGICA.Infrastructure.Catalogue.CatalogueRowPersistence.UpdateAndAccept(DA, DT);
 					MessageBox.Show("Modifié avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
-					string right = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("MODIFICATION | ", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_ARTICLE"].Value), DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ARTICLE"].Value));
+					string right = "MODIFICATION | " + Convert.ToString(editTarget["ID_ARTICLE"]) + Convert.ToString(editTarget["Article"]);
 					File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
 				}
 				((Control)Panel_INFO).Hide();
