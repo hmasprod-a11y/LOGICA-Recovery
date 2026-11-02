@@ -14473,6 +14473,14 @@ public class Form_2_ARTICLES : Form
 					}
 					Text_CODE.Text = LOGICA.Domain.BalanceCodeFormatting.Format(TextBox_NBR_CODE_BALANCE.Text, () => Text_CODE.Text);
 				}
+				// Do not write an image file for a stale or ambiguous edit.
+				if (Operators.CompareString(Label_TOP.Text, "MODIFICATION", TextCompare: false) == 0 &&
+					LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.ResolveUniqueExistingRow(
+						DT, Text_ID.Text, Text_ID_ARTICLE.Text) == null)
+				{
+					MessageBox.Show("Article modifié ou identité ambiguë. Actualisez la liste avant d'enregistrer.");
+					return;
+				}
 				try
 				{
 					if (Operators.CompareString(Text_LIEN_PICTURE.Text, Text_LIEN_PICTURE_ANC.Text, TextCompare: false) != 0)
