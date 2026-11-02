@@ -15596,58 +15596,42 @@ public class Form_3_VENTE : Form
 		((Control)Text_FIND).Focus();
 	}
 
-	private void Button27_Click(object sender, EventArgs e)
+	// The legacy +/- buttons could shrink image tiles to negative dimensions and
+	// create Font objects with a non-positive size after repeated clicks. This
+	// can throw on a busy sales screen, especially with scaled Windows fonts.
+	// Keep the normal 10px/2pt steps but bound only the unsafe extremes.
+	private void ResizeArticleTiles(int direction)
 	{
-		//IL_0096: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00a0: Expected Obj, but got Unknown
-		checked
+		foreach (Control tile in ((Control)FlowLayout_ARTICLES).Controls)
 		{
-			int num = ((ArrangedElementCollection)((Control)FlowLayout_ARTICLES).Controls).Count - 1;
-			int num2 = 0;
-			while (true)
+			if (tile.IsDisposed)
 			{
-				int num3 = num2;
-				int num4 = num;
-				if (num3 <= num4)
-				{
-					Control val = ((Control)FlowLayout_ARTICLES).Controls[num2];
-					val.Width += 10;
-					val = ((Control)FlowLayout_ARTICLES).Controls[num2];
-					val.Height += 10;
-					((Control)FlowLayout_ARTICLES).Controls[num2].Font = new Font("Segoe UI", ((Control)FlowLayout_ARTICLES).Controls[num2].Font.Size + 2f);
-					num2++;
-					continue;
-				}
-				break;
+				continue;
+			}
+			int width = Math.Max(80, Math.Min(320, tile.Width + direction * 10));
+			int height = Math.Max(70, Math.Min(280, tile.Height + direction * 10));
+			float fontSize = Math.Max(7f, Math.Min(22f, tile.Font.Size + direction * 2f));
+			tile.Width = width;
+			tile.Height = height;
+			if (Math.Abs(tile.Font.Size - fontSize) > 0.01f)
+			{
+				// Preserve the existing caption style and the product tile identity.
+				tile.Font = new Font("Segoe UI", fontSize, tile.Font.Style);
 			}
 		}
+		// Zoom changes the scrollable extent; the old thumb range was stale until
+		// the next catalogue search, hiding the last products on small displays.
+		RefreshArticleImageScrollbar();
+	}
+
+	private void Button27_Click(object sender, EventArgs e)
+	{
+		ResizeArticleTiles(1);
 	}
 
 	private void Button22_Click(object sender, EventArgs e)
 	{
-		//IL_0096: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00a0: Expected Obj, but got Unknown
-		checked
-		{
-			int num = ((ArrangedElementCollection)((Control)FlowLayout_ARTICLES).Controls).Count - 1;
-			int num2 = 0;
-			while (true)
-			{
-				int num3 = num2;
-				int num4 = num;
-				if (num3 <= num4)
-				{
-					Control val = ((Control)FlowLayout_ARTICLES).Controls[num2];
-					val.Width -= 10;
-					val = ((Control)FlowLayout_ARTICLES).Controls[num2];
-					val.Height -= 10;
-					((Control)FlowLayout_ARTICLES).Controls[num2].Font = new Font("Segoe UI", ((Control)FlowLayout_ARTICLES).Controls[num2].Font.Size - 2f);
-					num2++;
-					continue;
-				}
-				break;
-			}
-		}
+		ResizeArticleTiles(-1);
 	}
 
 	private void RadioButton3_CheckedChanged(object sender, EventArgs e)
