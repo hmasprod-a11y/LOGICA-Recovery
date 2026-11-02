@@ -1940,6 +1940,79 @@ class PosSmoke {
   Console.WriteLine("PASS sales search clear executes one refresh per click");
  }
 
+ static void SalesQuantityDialogInput(Assembly assembly) {
+  // Test the real quantity entry TextBox and on-screen buttons without showing
+  // the dialog, touching MySQL or invoking sale/stock posting.
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.FormDialog_QUANTITE",true))) {
+   var input=(TextBox)Get(form,"Text_NUM");
+   var type=form.GetType();
+   var keypad=type.GetMethod("Butt_Click",Flags);
+   var back=type.GetMethod("Butt_BACK_Click",Flags);
+   var keypress=type.GetMethod("Text_NUM_KeyPress",Flags);
+   if(input==null||keypad==null||back==null||keypress==null)
+    throw new Exception("Real quantity dialog keypad/input handlers are missing");
+   using(var button=new Button()) {
+    input.Text="";
+    foreach(string key in new[]{"2","3",".","5"}) {
+     button.Text=key;
+     keypad.Invoke(form,new object[]{button,EventArgs.Empty});
+    }
+    if(input.Text!="23.5")throw new Exception("Quantity dialog keypad must append numeric digits and one decimal");
+    foreach(string invalid in new[]{"",".","X","12"," ","-"}) {
+     string before=input.Text;
+     button.Text=invalid;
+     keypad.Invoke(form,new object[]{button,EventArgs.Empty});
+     if(input.Text!=before)throw new Exception("Invalid dialog keypad caption changed quantity: "+invalid);
+    }
+    input.Text="";
+    button.Text=".";
+    keypad.Invoke(form,new object[]{button,EventArgs.Empty});
+    if(input.Text!="0.")throw new Exception("Dialog leading decimal must have a zero prefix");
+    input.Text="";
+    button.Text="-";
+    keypad.Invoke(form,new object[]{button,EventArgs.Empty});
+    button.Text=".";
+    keypad.Invoke(form,new object[]{button,EventArgs.Empty});
+    if(input.Text!="-0.")throw new Exception("Negative fraction entry must keep valid decimal prefix");
+    input.Text="123";
+    back.Invoke(form,new object[]{button,EventArgs.Empty});
+    if(input.Text!="12")throw new Exception("Dialog backspace must remove one digit");
+    for(int i=0;i<5;i++)back.Invoke(form,new object[]{button,EventArgs.Empty});
+    if(input.Text!="")throw new Exception("Backspace on empty dialog quantity must be harmless");
+   }
+   input.Text="12.3";
+   input.Select(input.TextLength,0);
+   var duplicateDot=new KeyPressEventArgs('.');
+   keypress.Invoke(form,new object[]{input,duplicateDot});
+   if(!duplicateDot.Handled)throw new Exception("Physical keyboard accepted duplicate decimal in quantity dialog");
+   var misplacedMinus=new KeyPressEventArgs('-');
+   keypress.Invoke(form,new object[]{input,misplacedMinus});
+   if(!misplacedMinus.Handled)throw new Exception("Physical keyboard accepted misplaced minus in quantity dialog");
+   input.Select(0,input.TextLength);
+   var replacementDot=new KeyPressEventArgs('.');
+   keypress.Invoke(form,new object[]{input,replacementDot});
+   if(replacementDot.Handled)throw new Exception("Replacing selected quantity must allow a new decimal");
+   input.Select(0,0);
+   var leadingMinus=new KeyPressEventArgs('-');
+   keypress.Invoke(form,new object[]{input,leadingMinus});
+   if(leadingMinus.Handled)throw new Exception("Physical keyboard must allow a leading minus");
+   input.Text="-12";
+   input.Select(0,0);
+   var repeatedMinus=new KeyPressEventArgs('-');
+   keypress.Invoke(form,new object[]{input,repeatedMinus});
+   if(!repeatedMinus.Handled)throw new Exception("Physical keyboard accepted a repeated minus");
+   foreach(char allowed in new char[]{'5','\b'}) {
+    var key=new KeyPressEventArgs(allowed);
+    keypress.Invoke(form,new object[]{input,key});
+    if(key.Handled)throw new Exception("Quantity dialog rejected valid keyboard input");
+   }
+   var invalid=new KeyPressEventArgs('Q');
+   keypress.Invoke(form,new object[]{input,invalid});
+   if(!invalid.Handled)throw new Exception("Quantity dialog accepted nonnumeric keyboard input");
+   Console.WriteLine("PASS real quantity dialog keypad, decimal/sign, selected-text replacement and empty backspace");
+  }
+ }
+
  static void SalesQuantityKeypadAndCompactKeyboard(Assembly assembly) {
   // Exercise the production numeric keypad without opening the form or touching SQL.
   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
@@ -2216,7 +2289,7 @@ class PosSmoke {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="checkout-list-selection") { SalesListSelectionFallback(assembly); } else if(args[0]=="checkout-quantity-keypad-dpi") { SalesQuantityKeypadAndCompactKeyboard(assembly); SalesSearchClearRefresh(assembly); } else if(args[0]=="checkout-scanner-enter") { SalesScannerEnterRouting(assembly); SalesImageTileLifecycle(assembly); } else if(args[0]=="checkout-image-zoom-dpi") { SalesImageTileZoomDpi(assembly); } else if(args[0]=="checkout-search-shortcut") { SalesSearchShortcut(assembly); } else if(args[0]=="checkout-family-caption-contrast") { SalesFamilyCaptionContrast(assembly); } else if(args[0]=="checkout-product-list-selection-contrast") { SalesProductListSelectionContrast(assembly); } else if(args[0]=="checkout-product-name-row-dpi") { SalesProductNameRowDpi(assembly); } else if(args[0]=="checkout-product-list-header-dpi") { SalesProductListHeaderDpi(assembly); } else if(args[0]=="checkout-basket-header-dpi") { SalesBasketHeaderDpi(assembly); } else if(args[0]=="checkout-basket-selection-contrast") { SalesBasketSelectionContrast(assembly); } else if(args[0]=="checkout-white-buttons-contrast") { SalesWhiteUtilityButtonContrast(assembly); } else if(args[0]=="checkout-keyboard-contrast") { SalesKeyboardContrast(assembly); } else if(args[0]=="checkout-contrast") { SalesActionContrast(assembly); } else if(args[0]=="checkout-barcode-chooser") { CheckoutBarcodeChooser(assembly); } else if(args[0]=="checkout-image-grid") { CheckoutImageGrid(assembly); } else if(args[0]=="checkout-article-search-sql") { CheckoutArticleSearchSql(assembly); } else if(args[0]=="shared-export-projection") { SharedExportProjection(assembly); } else if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="checkout-list-selection") { SalesListSelectionFallback(assembly); } else if(args[0]=="checkout-quantity-dialog-input") { SalesQuantityDialogInput(assembly); } else if(args[0]=="checkout-quantity-keypad-dpi") { SalesQuantityKeypadAndCompactKeyboard(assembly); SalesSearchClearRefresh(assembly); } else if(args[0]=="checkout-scanner-enter") { SalesScannerEnterRouting(assembly); SalesImageTileLifecycle(assembly); } else if(args[0]=="checkout-image-zoom-dpi") { SalesImageTileZoomDpi(assembly); } else if(args[0]=="checkout-search-shortcut") { SalesSearchShortcut(assembly); } else if(args[0]=="checkout-family-caption-contrast") { SalesFamilyCaptionContrast(assembly); } else if(args[0]=="checkout-product-list-selection-contrast") { SalesProductListSelectionContrast(assembly); } else if(args[0]=="checkout-product-name-row-dpi") { SalesProductNameRowDpi(assembly); } else if(args[0]=="checkout-product-list-header-dpi") { SalesProductListHeaderDpi(assembly); } else if(args[0]=="checkout-basket-header-dpi") { SalesBasketHeaderDpi(assembly); } else if(args[0]=="checkout-basket-selection-contrast") { SalesBasketSelectionContrast(assembly); } else if(args[0]=="checkout-white-buttons-contrast") { SalesWhiteUtilityButtonContrast(assembly); } else if(args[0]=="checkout-keyboard-contrast") { SalesKeyboardContrast(assembly); } else if(args[0]=="checkout-contrast") { SalesActionContrast(assembly); } else if(args[0]=="checkout-barcode-chooser") { CheckoutBarcodeChooser(assembly); } else if(args[0]=="checkout-image-grid") { CheckoutImageGrid(assembly); } else if(args[0]=="checkout-article-search-sql") { CheckoutArticleSearchSql(assembly); } else if(args[0]=="shared-export-projection") { SharedExportProjection(assembly); } else if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
