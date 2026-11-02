@@ -657,6 +657,34 @@ internal static class CheckoutBarcodeSelectionTests
                     throw new Exception("SQL NULL barcode must not masquerade as missing scanner variant");
                 checks++;
 
+                // Real WinForms scanner entry point: an article with only
+                // whitespace for ID_ARTICLE must never be sold, even if its
+                // barcode, price, discount and tax look valid.
+                DataTable whitespaceIdentity = Candidates();
+                whitespaceIdentity.Rows.Clear();
+                whitespaceIdentity.Rows.Add("   ", "ABC-001", "Invalid identity", 10m);
+                int whitespaceDialogCalls = 0;
+                if (CheckoutBarcodeSelectionService.Select(whitespaceIdentity,
+                        delegate(DataTable ignored) { whitespaceDialogCalls++; return 0; }) != null ||
+                    whitespaceDialogCalls != 0 ||
+                    CheckoutVariantSnapshotService.EvaluateSnapshot(whitespaceIdentity).Status !=
+                        CheckoutVariantSnapshotReadStatus.InvalidCandidates)
+                    throw new Exception("Scanner must reject whitespace article ID before modal or basket");
+                checks++;
+                DataTable validIdentity = Candidates();
+                validIdentity.Rows.Clear();
+                validIdentity.Rows.Add("SAFE-ID", "ABC-001", "Valid identity", 10m);
+                DataTable whitespaceSql = validIdentity.Copy();
+                whitespaceSql.Rows.Add("   ", "ABC-001", "Malformed live variant", 999m);
+                int whitespaceSqlReads = 0;
+                CheckoutVariantChoiceResult whitespaceChoice =
+                    CheckoutBarcodeSelectionService.SelectWithRefresh("ABC-001", validIdentity,
+                        null, delegate { whitespaceSqlReads++; return whitespaceSql; });
+                if (whitespaceChoice.Status != CheckoutVariantChoiceStatus.InvalidCandidates ||
+                    whitespaceChoice.SelectedRow != null || whitespaceSqlReads != 1 ||
+                    (decimal)validIdentity.Rows[0]["Prix_V_1"] != 10m)
+                    throw new Exception("Fresh scanner lookup must reject whitespace identity without changing price");
+                checks++;
                 DataTable scanBlankDisplayed = Candidates();
                 scanBlankDisplayed.Rows.RemoveAt(2);
                 scanBlankDisplayed.Rows.RemoveAt(1);
