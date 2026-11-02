@@ -64,6 +64,66 @@ internal static class DesktopPaymentCultureSmoke
                 Expect(decimal.Parse(remainder.Text, CultureInfo.CurrentCulture) == 0m && solder.Enabled,
                     "Exact French mixed payment failed to settle");
 
+                // The real 0.5 coin button is captioned with a dot even under fr-FR.
+                // The original Val/AddObject path could lose the half-dirham.
+                MethodInfo coinClick = form.GetType().GetMethod("Button_DEVIS_Click", Flags);
+                Expect(coinClick != null, "Cash denomination handler missing");
+                grid.CurrentCell = grid.Rows[1].Cells[1];
+                grid.Rows[1].Cells[1].Value = 10m;
+                Button halfDirham = (Button)Get(form, "Button_DEVISE_0_5");
+                Expect(halfDirham.Text == "0.5", "Unexpected original half-dirham caption");
+                coinClick.Invoke(form, new object[] { halfDirham, EventArgs.Empty });
+                Expect(Convert.ToDecimal(grid.Rows[1].Cells[1].Value) == 10.50m,
+                    "Half-dirham coin was lost under French decimal culture");
+                Expect(decimal.Parse(remainder.Text, CultureInfo.CurrentCulture) == -0.25m,
+                    "Coin button failed to recalculate exact cents");
+                using (Button invalidCoin = new Button() { Text = "not money" })
+                    coinClick.Invoke(form, new object[] { invalidCoin, EventArgs.Empty });
+                Expect(Convert.ToDecimal(grid.Rows[1].Cells[1].Value) == 10.50m,
+                    "Invalid denomination modified cashier payment");
+
+                // Physical keypad dot maps to the active culture, and repeated
+                // separators are rejected rather than creating invalid payment.
+                MethodInfo keypress = form.GetType().GetMethod("TextBox_keyPress", Flags);
+                Expect(keypress != null, "Physical keypad handler missing");
+                using (TextBox editor = new TextBox())
+                {
+                    editor.Text = "1";
+                    editor.SelectionStart = editor.Text.Length;
+                    KeyPressEventArgs dot = new KeyPressEventArgs('.');
+                    keypress.Invoke(form, new object[] { editor, dot });
+                    Expect(!dot.Handled && dot.KeyChar == ',',
+                        "French physical keypad dot was not normalized");
+                    editor.Text = "1,2";
+                    editor.SelectionStart = editor.Text.Length;
+                    KeyPressEventArgs repeated = new KeyPressEventArgs('.');
+                    keypress.Invoke(form, new object[] { editor, repeated });
+                    Expect(repeated.Handled, "Duplicate French decimal separator accepted");
+                }
+                MethodInfo keypad = form.GetType().GetMethod("Butt_Click", Flags);
+                Expect(keypad != null, "On-screen keypad handler missing");
+                Control display = (Control)Get(form, "Label_NUM");
+                display.Text = "";
+                foreach (string digit in new[] { "0", ".", "2", "5" })
+                    using (Button key = new Button() { Text = digit })
+                        keypad.Invoke(form, new object[] { key, EventArgs.Empty });
+                Expect(display.Text == "0,25", "On-screen keypad ignored French decimal separator");
+                using (Button repeatedDot = new Button() { Text = "." })
+                    keypad.Invoke(form, new object[] { repeatedDot, EventArgs.Empty });
+                Expect(display.Text == "0,25", "On-screen keypad accepted duplicate decimal point");
+
+                // Wide payment-method flow must not be positioned off the left
+                // edge when high DPI or many configured methods exceed the panel.
+                Control panel = (Control)Get(form, "Panel_MODE_P");
+                FlowLayoutPanel flow = (FlowLayoutPanel)Get(form, "FlowLayoutPanel_MODE_P");
+                flow.AutoSize = false;
+                panel.Width = 100;
+                flow.Width = 300;
+                MethodInfo shown = form.GetType().GetMethod("Form_Shown", Flags);
+                Expect(shown != null, "Payment layout handler missing");
+                shown.Invoke(form, new object[] { form, EventArgs.Empty });
+                Expect(flow.Left >= 0, "High-DPI payment methods hidden off the left edge");
+
                 // Incomplete totals cannot be silently converted into a zero-due row.
                 total.Text = "";
                 Recalculate(form);
@@ -89,7 +149,7 @@ internal static class DesktopPaymentCultureSmoke
                 Recalculate(form);
                 Expect(!solder.Enabled && remainder.Text == "", "Overflow left an actionable SOLDER state");
             }
-            Console.WriteLine("PASS French comma-decimal SOLDER, payment rows, negative returns, invalid totals and overflow");
+            Console.WriteLine("PASS French decimal SOLDER, half-dirham coin, both keypads, DPI layout, returns and overflow");
             return 0;
         }
         catch (Exception exception)
