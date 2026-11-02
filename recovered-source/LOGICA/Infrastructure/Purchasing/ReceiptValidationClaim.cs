@@ -15,7 +15,7 @@ namespace LOGICA.Infrastructure.Purchasing
         private static void EnsureTransactionalSchema(MySqlConnection connection,
             MySqlTransaction transaction)
         {
-            var required = new HashSet<string>(StringComparer.Ordinal) {
+            var required = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
                 "TABLE_RECEPTIONS_ENTETE", "TABLE_RECEPTIONS_DETAILS",
                 "TABLE_ARTICLES", "TABLE_MOUVEMENTS_STOCK"
             };
