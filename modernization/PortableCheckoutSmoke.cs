@@ -960,8 +960,8 @@ internal static class PortableCheckoutSmoke
             legacyBadLive.Rows[1]["Code"] = "REASSIGNED";
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
                 flowMatches, delegate(DataTable dialogRows) { return 1; },
-                delegate { return legacyBadLive; }).Status == CheckoutVariantChoiceStatus.Ambiguous,
-                "WinForms bridge rejects article barcode reassignment before price copy");
+                delegate { return legacyBadLive; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "WinForms bridge rejects wrong exact-barcode SQL filter before price copy");
             DataTable legacyMissingLive = flowMatches.Clone();
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
                 flowMatches, delegate(DataTable dialogRows) { return 1; },
