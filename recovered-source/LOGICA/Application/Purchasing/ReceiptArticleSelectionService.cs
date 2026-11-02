@@ -100,6 +100,24 @@ namespace LOGICA.ApplicationLayer.Purchasing
             return true;
         }
 
+        // Keep VB's existing numeric recognition/conversion at the WinForms edge,
+        // but reject malformed, blank and negative receipt quantities BEFORE
+        // legacy rounding or grid insertion. Prices keep their original signed
+        // semantics; no SQL or stock movement occurs here.
+        internal static bool TryReadReceiptNumber(string input, bool rejectNegative,
+            Func<string, bool> isNumeric, Func<string, decimal> convert,
+            out decimal value)
+        {
+            if (isNumeric == null) throw new ArgumentNullException("isNumeric");
+            if (convert == null) throw new ArgumentNullException("convert");
+            value = 0m;
+            if (String.IsNullOrWhiteSpace(input) || !isNumeric(input)) return false;
+            decimal parsed = convert(input);
+            if (rejectNegative && parsed < 0m) return false;
+            value = parsed;
+            return true;
+        }
+
         internal static bool HasExistingRow(int rowIndex, int rowCount)
         {
             return rowIndex >= 0 && rowCount > 0 && rowIndex < rowCount;
