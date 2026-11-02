@@ -15276,7 +15276,8 @@ public class Form_2_ARTICLES : Form
 		string name = Text_LIEN_PICTURE.Text.Trim();
 		if (name == "0" || string.Equals(name, "0.png", StringComparison.OrdinalIgnoreCase)) return true;
 		if (string.Equals(name, Text_LIEN_PICTURE_ANC.Text, StringComparison.Ordinal)) return true;
-		if (string.IsNullOrWhiteSpace(name) || name != Path.GetFileName(name) || Picture_IMAGE.Image == null)
+		if (string.IsNullOrWhiteSpace(name) || name != Path.GetFileName(name) || Picture_IMAGE.Image == null ||
+			string.IsNullOrWhiteSpace(Module1._CHEMIN_FOLDER))
 			return false;
 		try
 		{
@@ -15340,6 +15341,25 @@ public class Form_2_ARTICLES : Form
 		}
 	}
 
+	// The legacy gallery directory is optional in portable installations.
+	// An absent shop folder must not leave the native image picker with an
+	// invalid initial directory (or force a write to the shop's data folder).
+	private static string ResolveArticleGalleryDirectory(string shopRoot, string applicationRoot)
+	{
+		if (!string.IsNullOrWhiteSpace(shopRoot))
+		{
+			string gallery = Path.Combine(shopRoot, "bd", "Galerie");
+			if (Directory.Exists(gallery)) return gallery;
+		}
+		if (!string.IsNullOrWhiteSpace(applicationRoot))
+		{
+			string gallery = Path.Combine(applicationRoot, "bd", "Galerie");
+			if (Directory.Exists(gallery)) return gallery;
+			if (Directory.Exists(applicationRoot)) return applicationRoot;
+		}
+		return Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+	}
+
 	private void Button26_Click(object sender, EventArgs e)
 	{
 		//IL_0002: Unknown result type (might be due to invalid IL or missing references)
@@ -15352,15 +15372,19 @@ public class Form_2_ARTICLES : Form
 		//IL_0075: Expected Obj, but got Unknown
 		try
 		{
-			OpenFileDialog val = new OpenFileDialog();
-			((FileDialog)val).InitialDirectory = Module1._CHEMIN_FOLDER + "\\bd\\Galerie";
-			if ((int)((CommonDialog)val).ShowDialog() == 1)
+			using (OpenFileDialog val = new OpenFileDialog())
 			{
-				using (Image original = Image.FromFile(((FileDialog)val).FileName))
+				val.InitialDirectory = ResolveArticleGalleryDirectory(Module1._CHEMIN_FOLDER, Application.StartupPath);
+				val.Filter = "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif|Tous les fichiers (*.*)|*.*";
+				val.CheckFileExists = true;
+				if (val.ShowDialog() == DialogResult.OK)
 				{
-					ReplaceArticlePreview(new Bitmap(original)); // Do not lock the chosen file.
+					using (Image original = Image.FromFile(val.FileName))
+					{
+						ReplaceArticlePreview(new Bitmap(original)); // Do not lock the chosen file.
+					}
+					Text_LIEN_PICTURE.Text = DateTime.Now.ToString("dd-MM-yyy HH-mm-ss-fffffff") + ".png";
 				}
-				Text_LIEN_PICTURE.Text = DateTime.Now.ToString("dd-MM-yyy HH-mm-ss-fffffff") + ".png";
 			}
 		}
 		catch (Exception ex)
