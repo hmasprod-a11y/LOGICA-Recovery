@@ -2273,7 +2273,7 @@ class PosSmoke {
    var cash=panel.Controls["Button_ESPECES"] as Button;
    if(cash==null)throw new Exception("No ESPECES payment button after missing icon");
    if(cash.Image!=null)throw new Exception("Missing icon should be blank, not synthetic");
-   cash.PerformClick();
+   form.GetType().GetMethod("FAM_click",Flags).Invoke(form,new object[]{cash,EventArgs.Empty});
    var grid=(DataGridView)Get(form,"DataGridView_CALC");
    if(grid.Rows.Count==0)throw new Exception("Payment selection did not register");
    Console.WriteLine("PASS missing ESPECES.png still creates selectable cash method on actual payment form");
