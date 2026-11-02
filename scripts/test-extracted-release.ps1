@@ -25,6 +25,33 @@ $server = Get-ChildItem (Join-Path $env:RUNNER_TEMP 'logica-mariadb/server') -Re
 if (-not $server) { throw 'Isolated CI MariaDB binary missing: no network fallback permitted' }
 $extract = Join-Path $env:RUNNER_TEMP ('logica-rc1-field-smoke-' + [Guid]::NewGuid().ToString('N'))
 # Inspect only the disposable extracted copy; never mutate an installed shop.
+# A failed cleanup previously hid successful startup checks and prevented
+# release publication. Stop only processes whose executable/launcher belongs
+# to this unique CI extraction, never an installed store process.
+function Stop-ExtractedTestProcesses {
+    $expectedExe = Join-Path $extract 'LOGICA.exe'
+    foreach ($candidate in @(Get-Process -Name LOGICA -ErrorAction SilentlyContinue)) {
+        try {
+            $candidate.Refresh()
+            if (-not $candidate.HasExited -and $candidate.Path -ieq $expectedExe) {
+                $candidate.Kill()
+                if (-not $candidate.WaitForExit(10000)) { throw 'Extracted EXE did not exit' }
+            }
+        } catch {
+            Write-Warning "Disposable extracted EXE cleanup failed for PID $($candidate.Id): $($_.Exception.GetType().Name)"
+        }
+    }
+    # A direct EXE may delegate to a PowerShell/CMD launcher whose working
+    # directory keeps the extraction locked after its LOGICA child exits.
+    # Scope by the unique extraction path in the command line; never kill
+    # unrelated powershell.exe, cmd.exe or MariaDB instances.
+    foreach ($candidate in @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='cmd.exe'" -ErrorAction SilentlyContinue)) {
+        if ($candidate.ProcessId -eq $PID -or [string]::IsNullOrEmpty($candidate.CommandLine)) { continue }
+        if ($candidate.CommandLine.IndexOf($extract, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+        try { Stop-Process -Id $candidate.ProcessId -Force -ErrorAction Stop }
+        catch { Write-Warning "Disposable launcher cleanup failed for PID $($candidate.ProcessId): $($_.Exception.GetType().Name)" }
+    }
+}
 # A responsive WinForms window is not enough if startup rewrites a license,
 # peripheral configuration, executable, library, or recovery SQL file.
 function Get-RuntimeHashes([string]$directory, [string[]]$relativePaths) {
@@ -285,6 +312,7 @@ try {
                 }
             }
             $app = $null
+            Stop-ExtractedTestProcesses
         }
         $startupTrials += [pscustomobject]@{
             attempt = $trial
@@ -587,6 +615,21 @@ try {
     # The extracted launcher creates a temporary DB and local credentials; neither
     # must survive this CI run or enter any uploaded release artifact.
     if (Test-Path -LiteralPath $extract) {
-        Remove-Item -LiteralPath $extract -Recurse -Force -ErrorAction Stop
+        $cleaned = $false
+        for ($cleanupAttempt = 1; $cleanupAttempt -le 5; $cleanupAttempt++) {
+            Stop-ExtractedTestProcesses
+            try {
+                Remove-Item -LiteralPath $extract -Recurse -Force -ErrorAction Stop
+                $cleaned = $true
+                break
+            } catch [System.IO.IOException] {
+                # Windows can briefly retain an image/working-directory handle
+                # after a child process exits. Never silently ignore a lock.
+                Start-Sleep -Seconds 2
+            }
+        }
+        if (-not $cleaned) {
+            throw 'Disposable extracted Windows package remained locked after scoped process cleanup and five retries'
+        }
     }
 }
