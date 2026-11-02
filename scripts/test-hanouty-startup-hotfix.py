@@ -42,6 +42,12 @@ checks.update({
         and 'SelectCommand.Parameters.AddWithValue("@password"' in login,
     "obsolete accented DataTable lookup absent": 'dataTable.Rows[0]["Catégorie"]' not in login,
 })
+article = (root / "recovered-source/LOGICA/Form_2_ARTICLES.cs").read_text(encoding="utf-8")
+checks.update({
+    "article color table checked before loading": "TABLE_NAME = 'TABLE_LISTE_COULEURS'" in article
+        and "if (hasColorTable)" in article,
+    "article optional sizes still guarded": "if (hasSizeTable)" in article,
+})
 for label, passed in checks.items():
     print(("PASS" if passed else "FAIL") + ": " + label)
 if not all(checks.values()):
