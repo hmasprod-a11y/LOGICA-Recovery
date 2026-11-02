@@ -105,7 +105,7 @@ internal static class CheckoutPostingPipelineTests
         nullStockInput.ReadStock = delegate { nullStock.Mark("stock.read"); return null; };
         bool stockNull = false;
         try { CheckoutPostingService.Post(nullStock, nullStockInput); }
-        catch (NullReferenceException) { stockNull = true; }
+        catch (InvalidOperationException ex) { stockNull = ex.Message == "Checkout stock reader returned no collection."; }
         if (!stockNull) throw new Exception("Null stock enumeration must fail before header");
         Same(nullStock.Events, new[] { "stock.read" }, "null stock enumeration");
 
@@ -114,14 +114,14 @@ internal static class CheckoutPostingPipelineTests
         nullPaymentsInput.ReadPayments = delegate { nullPayments.Mark("payment.read"); return null; };
         bool paymentNull = false;
         try { CheckoutPostingService.Post(nullPayments, nullPaymentsInput); }
-        catch (NullReferenceException) { paymentNull = true; }
+        catch (InvalidOperationException ex) { paymentNull = ex.Message == "Checkout payment reader returned no collection."; }
         if (!paymentNull) throw new Exception("Null payment enumeration must fail before printing");
         Same(nullPayments.Events, new[] {
             "stock.read", "stock.next.1", "stock.write.1", "stock.next.2", "stock.write.2",
             "header.read", "header.write", "journal.read", "journal.write", "payment.read"
         }, "null payment enumeration");
 
-        Console.WriteLine("PASS checkout posting: 17 stage failures, lazy ordering, empty/null streams, no implicit rollback");
+        Console.WriteLine("PASS checkout posting: 17 stage failures, lazy ordering, explicit invalid-stream errors, no implicit rollback");
         return 0;
     }
 }
