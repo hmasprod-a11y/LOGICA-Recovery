@@ -402,6 +402,80 @@ internal static class PortablePostingSmoke
             projectedCard.CommitCount != 1 || projectedCard.CloseCount != 1)
             throw new Exception("Projected tender sale must post exactly once");
 
+        // A blank amount in the real SOLDER grid is not a zero-valued sale.
+        // Validate the actual SQL writer boundary before printing/commit, even
+        // when a caller bypasses the payment projection and supplies records.
+        foreach (string invalidCashAmount in new string[] { null, "", "  " })
+        {
+            var blankCash = new Store();
+            var blankCashInput = SingleCashInput(blankCash, "1", invalidCashAmount);
+            CheckInvalidReader(blankCash, blankCashInput,
+                "Checkout cash/change payment has no amount.",
+                "readStock,stock:CASH-ITEM,readHeader,header,readJournal,journal,readPayments");
+            if (blankCash.PaymentCount != 0 || blankCash.CommitCount != 0)
+                throw new Exception("Blank cash total reached SQL or committed");
+        }
+
+        foreach (object invalidTenderAmount in new object[] { null, DBNull.Value, "", "  " })
+        {
+            var blankTender = new Store();
+            var blankTenderInput = Input(blankTender);
+            blankTenderInput.ReadPayments = delegate {
+                blankTender.Events.Add("readPayments");
+                return new[] { new TicketPaymentWrite {
+                    Kind = TicketPaymentKind.Tendered, Mode = "CARTE",
+                    Amount = invalidTenderAmount,
+                    Context = new TicketPaymentContext { TicketNumber = "T-1" } } };
+            };
+            CheckInvalidReader(blankTender, blankTenderInput,
+                "Checkout tendered payment has no amount.",
+                "readStock,stock:A,stock:B,readHeader,header,readJournal,journal,readPayments");
+            if (blankTender.PaymentCount != 0 || blankTender.CommitCount != 0)
+                throw new Exception("Blank card amount reached SQL or committed");
+        }
+
+        // Change/refund remains signed and zero cash is still a legitimate
+        // string amount. No rounding, numeric parsing, or VB conversion is
+        // introduced in this boundary.
+        var zeroCash = new Store();
+        CheckoutTransactionFinalizationService.PostAndFinalize(
+            zeroCash, SingleCashInput(zeroCash, "1", "0.00"), zeroCash);
+        if (zeroCash.PaymentCount != 1 || zeroCash.LastPayment.AmountText != "0.00" ||
+            zeroCash.CommitCount != 1 || zeroCash.CloseCount != 1)
+            throw new Exception("Valid zero cash amount must retain legacy semantics");
+
+        var blankChange = new Store();
+        var blankChangeInput = Input(blankChange);
+        blankChangeInput.ReadPayments = delegate {
+            blankChange.Events.Add("readPayments");
+            return new[] { new TicketPaymentWrite {
+                Kind = TicketPaymentKind.Change, AmountText = " ",
+                Context = new TicketPaymentContext { TicketNumber = "T-1" } } };
+        };
+        CheckInvalidReader(blankChange, blankChangeInput,
+            "Checkout cash/change payment has no amount.",
+            "readStock,stock:A,stock:B,readHeader,header,readJournal,journal,readPayments");
+
+        // A valid first payment followed by an incomplete card row must never
+        // print, commit or close; the original Form rolls the transaction back.
+        var lateBlankAmount = new Store();
+        var lateBlankInput = Input(lateBlankAmount);
+        lateBlankInput.ReadPayments = delegate {
+            lateBlankAmount.Events.Add("readPayments");
+            return new[] {
+                new TicketPaymentWrite { Kind = TicketPaymentKind.Cash,
+                    AmountText = "5.00", Context = new TicketPaymentContext { TicketNumber = "T-1" } },
+                new TicketPaymentWrite { Kind = TicketPaymentKind.Tendered,
+                    Mode = "CARTE", Amount = DBNull.Value,
+                    Context = new TicketPaymentContext { TicketNumber = "T-1" } }
+            };
+        };
+        CheckInvalidReader(lateBlankAmount, lateBlankInput,
+            "Checkout tendered payment has no amount.",
+            "readStock,stock:A,stock:B,readHeader,header,readJournal,journal,readPayments,payment:5.00");
+        if (lateBlankAmount.PaymentCount != 1 || lateBlankAmount.CommitCount != 0)
+            throw new Exception("Late invalid amount changed streaming/rollback contract");
+
         var noCompletion = new Store();
         var noCompletionInput = Input(noCompletion);
         noCompletionInput.ReadCompletion = delegate { noCompletion.Events.Add("readCompletion"); return null; };
