@@ -510,6 +510,43 @@ internal static class PortableCheckoutSmoke
             Require(fakeRefresh.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
                 fakeRefresh.SelectedRow == null && fakeRefreshCalls == 1,
                 "Windows refresh adapter refuses a stale displayed DataTable");
+            // Portable .NET 10 and .NET Framework 4.8 must agree: the modern
+            // snapshot flow and legacy-dialog bridge cannot claim a fresh SQL
+            // result when the callback returns the displayed mutable table.
+            int snapshotStaleReads = 0;
+            CheckoutVariantChoiceResult snapshotStale =
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(flowMatches,
+                    delegate(IList<CheckoutVariantSnapshot> shown) { return 1; },
+                    delegate { snapshotStaleReads++; return flowMatches; });
+            Require(snapshotStale.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                snapshotStale.SelectedRow == null && snapshotStaleReads == 1,
+                "Modern snapshot SQL refresh must reject same displayed table");
+            int modalStaleReads = 0;
+            CheckoutVariantChoiceResult modalStale =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(flowMatches,
+                    delegate(DataTable shown) {
+                        Require(Object.ReferenceEquals(shown, flowMatches),
+                            "Modal must retain original displayed rows");
+                        return 1;
+                    }, delegate { modalStaleReads++; return flowMatches; });
+            Require(modalStale.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                modalStale.SelectedRow == null && modalStaleReads == 1,
+                "Modal SQL refresh must reject same displayed table");
+            CheckoutVariantChoiceResult originalInMemory =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialogInMemory(
+                    flowMatches, delegate(DataTable shown) { return 1; },
+                    delegate { return flowMatches; });
+            Require(originalInMemory.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(originalInMemory.SelectedRow, flowMatches.Rows[1]),
+                "Legacy modal fallback remains explicitly in-memory and unchanged");
+            int cancelledStaleReads = 0;
+            CheckoutVariantChoiceResult cancelledStale =
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(flowMatches,
+                    delegate(IList<CheckoutVariantSnapshot> shown) { return -1; },
+                    delegate { cancelledStaleReads++; return flowMatches; });
+            Require(cancelledStale.Status == CheckoutVariantChoiceStatus.Cancelled &&
+                cancelledStale.SelectedRow == null && cancelledStaleReads == 0,
+                "Cancelled refresh must not query or confuse stale data with cancellation");
             DataTable freshSaleRows = flowMatches.Copy();
             freshSaleRows.Rows[1]["UnitPrice"] = 18m;
             freshSaleRows.Rows[1]["Discount"] = 5m;
@@ -526,6 +563,22 @@ internal static class PortableCheckoutSmoke
                     (decimal)freshSaleChoice.SelectedRow["UnitPrice"], -2m,
                     (decimal)freshSaleChoice.SelectedRow["Discount"]) == -34.2m,
                 "Windows refresh adapter uses distinct live price for sale and return");
+            CheckoutVariantChoiceResult modernFreshSale =
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(flowMatches,
+                    delegate(IList<CheckoutVariantSnapshot> shown) { return 1; },
+                    delegate { return freshSaleRows; });
+            CheckoutVariantChoiceResult modalFreshSale =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(flowMatches,
+                    delegate(DataTable shown) { return 1; },
+                    delegate { return freshSaleRows; });
+            Require(modernFreshSale.Status == CheckoutVariantChoiceStatus.Selected &&
+                modalFreshSale.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(modernFreshSale.SelectedRow, freshSaleRows.Rows[1]) &&
+                Object.ReferenceEquals(modalFreshSale.SelectedRow, freshSaleRows.Rows[1]) &&
+                SalesLinePricing.CalculateNetAmount(
+                    (decimal)modernFreshSale.SelectedRow["UnitPrice"], -2m,
+                    (decimal)modernFreshSale.SelectedRow["Discount"]) == -34.2m,
+                "Modern and modal refresh agree on live sale/return price and discount");
             Console.WriteLine("PASS checkout Windows refresh isolation: reject same-table reader, preserve legacy scanner and live sale/return");
             // This is the Select API called by the real Form_3_VENTE handler,
             // not just the opt-in modern flow. The dialog's index belongs to
