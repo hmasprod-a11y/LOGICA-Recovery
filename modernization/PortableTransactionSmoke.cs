@@ -154,6 +154,35 @@ internal static class PortableTransactionSmoke
             throw new Exception("Portable repaired checkout did not commit");
         invalidGate.ReleaseAfterBasketReset(invalidProgress);
 
+        // Portable parity with the legacy four-argument entry point:
+        // preflight failure is not a posting attempt and must leave the
+        // progress reusable without any stock, ticket, payment or commit.
+        var ungatedStore = new Store();
+        var ungatedProgress = new CheckoutCommitProgress();
+        var ungatedInvalidInput = Input(ungatedStore);
+        ungatedInvalidInput.ReadPayments = null;
+        bool ungatedInvalidRejected = false;
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                ungatedStore, ungatedInvalidInput, ungatedStore, ungatedProgress);
+        }
+        catch (InvalidOperationException ex)
+        {
+            ungatedInvalidRejected =
+                ex.Message == "Checkout posting requires all callbacks before stock writes.";
+        }
+        if (!ungatedInvalidRejected ||
+            ungatedProgress.Stage != CheckoutCommitStage.NotStarted ||
+            ungatedStore.Events.Count != 0)
+            throw new Exception("Portable ungated preflight consumed progress or wrote SQL");
+        CheckoutTransactionFinalizationService.PostAndFinalize(
+            ungatedStore, Input(ungatedStore), ungatedStore, ungatedProgress);
+        if (ungatedProgress.Stage != CheckoutCommitStage.Closed ||
+            String.Join(",", ungatedStore.Events.ToArray()) !=
+                "header,journal,print,complete,commit,close")
+            throw new Exception("Portable ungated repaired cash sale not exactly once");
+
         // .NET 10 executes the same production per-cashier guard as WinForms.
         // A second click cannot write another ticket while the first outcome
         // has not been reconciled, even with a fresh progress instance.
