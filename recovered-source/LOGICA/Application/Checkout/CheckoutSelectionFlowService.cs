@@ -180,9 +180,35 @@ namespace LOGICA.ApplicationLayer.Checkout
             if (tile == null) throw new ArgumentNullException("tile");
             if (readCurrentCatalogue == null)
                 throw new ArgumentNullException("readCurrentCatalogue");
+            // A TagFor-created image tile always has a usable article identity.
+            // Reject caller-supplied malformed tags before invoking a local SQL
+            // reader; NULL catalogue Code is represented by the empty string.
+            if (String.IsNullOrWhiteSpace(tile.ArticleId) || tile.Code == null)
+                return new CheckoutVariantChoiceResult(
+                    CheckoutVariantChoiceStatus.InvalidCandidates, null);
             DataTable live = readCurrentCatalogue();
-            if (live == null)
-                return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            if (live == null || !live.Columns.Contains("ID_ARTICLE") ||
+                !live.Columns.Contains("Code"))
+                return new CheckoutVariantChoiceResult(
+                    CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            // The image callback is an exact ID_ARTICLE lookup, NOT a broad
+            // catalogue search. An unrelated active row means its SQL filter
+            // was lost; reporting Missing (or selecting a valid-looking row
+            // alongside unrelated rows) could trigger an unsafe UI fallback.
+            // A genuinely empty exact-ID result remains Missing.
+            foreach (DataRow row in live.Rows)
+            {
+                if (row.RowState == DataRowState.Deleted ||
+                    row.RowState == DataRowState.Detached)
+                    continue;
+                if (row.IsNull("ID_ARTICLE") ||
+                    !String.Equals(Convert.ToString(row["ID_ARTICLE"]),
+                        tile.ArticleId, StringComparison.Ordinal))
+                    return new CheckoutVariantChoiceResult(
+                        CheckoutVariantChoiceStatus.InvalidCandidates, null);
+            }
+            // Preserve the existing exact ID+Code and duplicate-ID validation,
+            // including valid SQL NULL/empty Code on image-only products.
             return CheckoutArticleTileSelectionService.EvaluateExact(live, tile);
         }
 
