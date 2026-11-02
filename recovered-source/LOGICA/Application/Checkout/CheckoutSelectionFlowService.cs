@@ -39,8 +39,8 @@ namespace LOGICA.ApplicationLayer.Checkout
             // Preserve the existing in-memory caller contract while sharing
             // exactly one choice/identity implementation with the live-query
             // adapter. No additional SQL or UI action is performed here.
-            return ChooseBarcodeWithRefresh(exactBarcodeMatches, chooseDuplicate,
-                delegate { return exactBarcodeMatches; });
+            return ChooseBarcodeWithRefreshCore(exactBarcodeMatches, chooseDuplicate,
+                delegate { return exactBarcodeMatches; }, true);
         }
 
         // Opt-in local-store refresh boundary for the real scanner handler.
@@ -53,6 +53,19 @@ namespace LOGICA.ApplicationLayer.Checkout
             DataTable displayedMatches,
             Func<IList<CheckoutVariantSnapshot>, int> chooseDuplicate,
             Func<DataTable> readCurrentMatches)
+        {
+            return ChooseBarcodeWithRefreshCore(displayedMatches, chooseDuplicate,
+                readCurrentMatches, false);
+        }
+
+        // Only the explicitly named legacy in-memory adapters may reuse the
+        // displayed table. An opt-in SQL refresh must return a DIFFERENT table:
+        // otherwise a caller could accidentally post prices from the modal's
+        // stale rows while reporting that a fresh local query was performed.
+        private static CheckoutVariantChoiceResult ChooseBarcodeWithRefreshCore(
+            DataTable displayedMatches,
+            Func<IList<CheckoutVariantSnapshot>, int> chooseDuplicate,
+            Func<DataTable> readCurrentMatches, bool allowDisplayedTable)
         {
             if (readCurrentMatches == null)
                 throw new ArgumentNullException("readCurrentMatches");
@@ -88,7 +101,8 @@ namespace LOGICA.ApplicationLayer.Checkout
             DataTable live = readCurrentMatches();
             // A failed/empty refresh is never permission to use the stale
             // displayed row. DB exceptions still propagate to the UI handler.
-            if (live == null || !live.Columns.Contains("Code"))
+            if (live == null || !live.Columns.Contains("Code") ||
+                (!allowDisplayedTable && Object.ReferenceEquals(live, displayedMatches)))
                 return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
             // This callback represents a fresh *exact-barcode* SQL query. A
             // wrong WHERE parameter or an unfiltered catalogue read must not
@@ -119,6 +133,25 @@ namespace LOGICA.ApplicationLayer.Checkout
             DataTable displayedMatches, Func<DataTable, int> chooseDuplicate,
             Func<DataTable> readCurrentMatches)
         {
+            return ChooseBarcodeWithLegacyDialogCore(displayedMatches, chooseDuplicate,
+                readCurrentMatches, false);
+        }
+
+        // The existing WinForms Select path has no second SQL read yet.
+        // Preserve its proven in-memory behavior ONLY through this explicit
+        // legacy entry point, never through the opt-in refresh API.
+        internal static CheckoutVariantChoiceResult ChooseBarcodeWithLegacyDialogInMemory(
+            DataTable displayedMatches, Func<DataTable, int> chooseDuplicate,
+            Func<DataTable> readCurrentMatches)
+        {
+            return ChooseBarcodeWithLegacyDialogCore(displayedMatches, chooseDuplicate,
+                readCurrentMatches, true);
+        }
+
+        private static CheckoutVariantChoiceResult ChooseBarcodeWithLegacyDialogCore(
+            DataTable displayedMatches, Func<DataTable, int> chooseDuplicate,
+            Func<DataTable> readCurrentMatches, bool allowDisplayedTable)
+        {
             if (displayedMatches == null)
                 throw new ArgumentNullException("displayedMatches");
             if (readCurrentMatches == null)
@@ -144,7 +177,7 @@ namespace LOGICA.ApplicationLayer.Checkout
             for (int i = 0; i < originalRows.Length; i++)
                 originalRows[i] = displayedMatches.Rows[i];
             bool selectedRowChanged = false;
-            CheckoutVariantChoiceResult result = ChooseBarcodeWithRefresh(displayedMatches,
+            CheckoutVariantChoiceResult result = ChooseBarcodeWithRefreshCore(displayedMatches,
                 chooseDuplicate == null ? null :
                     new Func<IList<CheckoutVariantSnapshot>, int>(
                         delegate(IList<CheckoutVariantSnapshot> ignored) {
@@ -158,7 +191,7 @@ namespace LOGICA.ApplicationLayer.Checkout
                             }
                             return selectedIndex;
                         }),
-                readCurrentMatches);
+                readCurrentMatches, allowDisplayedTable);
             return selectedRowChanged
                 ? new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null)
                 : result;
