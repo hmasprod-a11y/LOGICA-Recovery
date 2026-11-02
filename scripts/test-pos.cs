@@ -2246,6 +2246,13 @@ class PosSmoke {
    calc.Invoke(form,new object[]{form,EventArgs.Empty});
    if((int)count.Invoke(form,null)!=0||(bool)selected.Invoke(form,null))
     throw new Exception("Empty payment placeholder counted as a settlement");
+   var openKeypad=type.GetMethod("Button_NUMERIQUE_Click",Flags);
+   if(openKeypad==null)throw new Exception("Payment keypad entry point missing");
+   var keypadLabel=(Label)Get(form,"Label_NUM");
+   keypadLabel.Text="KEEP";
+   openKeypad.Invoke(form,new object[]{form,EventArgs.Empty});
+   if(keypadLabel.Text!="KEEP")
+    throw new Exception("Uncommitted payment placeholder opened and reset keypad");
    using(var cash=new Button(){Text="ESPECES"})
     add.Invoke(form,new object[]{cash,EventArgs.Empty});
    if((int)count.Invoke(form,null)!=1||!(bool)selected.Invoke(form,null))
