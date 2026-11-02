@@ -14097,10 +14097,10 @@ public class Form_2_ARTICLES : Form
 				TabControl tabControl = TabControl1;
 				Size itemSize = new Size((int)Math.Round((double)((Control)TabControl1).Width / (double)TabControl1.TabCount - 4.0), 30);
 				tabControl.ItemSize = itemSize;
-				TextBox_MODIF_STOCK_MANUEL.Text = MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("MODIF_STOCK_MANUEL", false, 0).Index].SubItems[1].Text;
-				TextBox_AJOUT_STOCK_MANUEL.Text = MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("AJOUT_STOCK_MANUEL", false, 0).Index].SubItems[1].Text;
-				TextBox_NBR_CODE_ARTICLE.Text = MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("NBR_CODE_ARTICLE", false, 0).Index].SubItems[1].Text;
-				TextBox_NBR_CODE_BALANCE.Text = MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("NBR_CODE_BALANCE", false, 0).Index].SubItems[1].Text;
+				TextBox_MODIF_STOCK_MANUEL.Text = ReadArticleSetting("MODIF_STOCK_MANUEL", "False");
+				TextBox_AJOUT_STOCK_MANUEL.Text = ReadArticleSetting("AJOUT_STOCK_MANUEL", "False");
+				TextBox_NBR_CODE_ARTICLE.Text = ReadArticleSetting("NBR_CODE_ARTICLE", "0");
+				TextBox_NBR_CODE_BALANCE.Text = ReadArticleSetting("NBR_CODE_BALANCE", "0");
 				FUN_CAT_ACCES();
 			}
 			catch (Exception ex)
