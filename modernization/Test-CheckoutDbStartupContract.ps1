@@ -97,10 +97,9 @@ Assert-Contract $actual.LauncherPassesEndpoint 'production launcher no longer pa
 Assert-Contract $actual.LauncherStartsAndProbesBeforeExport 'production server/readiness/export order changed'
 Assert-Contract $actual.LauncherWaitsForExe 'production launcher no longer waits for EXE'
 Assert-Contract $actual.LauncherRunsAuthenticatedQueryBeforeExe 'production authenticated SQL query missing'
-# Known launch risk: the existing launcher does not test LASTEXITCODE after
-# the final authenticated SELECT before starting the EXE. Do not modify this
-# QA/launcher-owned script from Track A; flag the gap for its owner.
-Assert-Contract (-not $actual.LauncherRejectsFailedAuthenticatedQuery) 'launcher auth-failure behavior changed; review and update contract'
+# Report the current launcher gap without locking the regression to a bug:
+# Track D may safely add the authenticated-query exit-code guard later.
+# The positive/negative fixtures above enforce accurate detection either way.
 Assert-Contract $actual.DirectExeServerIsDynamic 'production direct EXE host source changed; review startup'
 Assert-Contract (-not $actual.BareExeEndpointProvenEquivalent) 'production bare EXE is not proven equivalent'
 Assert-Contract ($actual.DirectExeFallbackPort -gt 0 -and $actual.DirectExeFallbackPort -le 65535) 'invalid EXE port'
