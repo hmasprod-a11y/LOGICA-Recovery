@@ -91,18 +91,22 @@ function Assert-LoginScreen([object]$report, [string]$entrypoint) {
     }
     Write-Host "PASS: extracted $entrypoint exposes cashier PIN login screen (license and cashier access NOT verified)"
 }
-# Compare actual article and ticket contents across all three customer entrypoints.
-# Counts alone miss edits, deleted/reinserted rows, or duplicate sales. Hashes are
-# kept only in memory; no shop data or recovered fixture rows enter artifacts.
+# Compare the full checkout persistence footprint across all three customer entrypoints.
+# A ticket header can remain unchanged while payment, journal or stock rows change.
+# Sort serialized rows ordinally (including duplicates) to avoid false differences
+# from MySQL's unspecified ordering when the first column is not unique.
+# Only disposable CI fixtures are queried; never persist row contents in artifacts.
+$script:transactionFingerprintTables = @('TABLE_ARTICLES', 'TABLE_VENTES_ENTETE', 'TABLE_VENTES_JOURNAL', 'TABLE_VENTES_REGLEMENTS', 'TABLE_MOUVEMENTS_STOCK')
 $script:isolatedSalesDigestBaseline = $null
 $script:isolatedSalesDigestChecks = 0
 function Get-IsolatedSalesDigest([string]$entrypoint, [string]$clientExe, [string]$clientConfig, [string]$database = 'logica_recovered') {
     $pieces = New-Object 'System.Collections.Generic.List[string]'
-    foreach ($table in @('TABLE_ARTICLES', 'TABLE_VENTES_ENTETE')) {
-        # --batch escapes embedded newlines/tabs. ORDER BY the original identity
-        # keeps the canonical representation stable between independent queries.
-        $rows = @(& $clientExe "--defaults-extra-file=$clientConfig" '--batch' '--skip-column-names' $database '-e' "SELECT * FROM $table ORDER BY 1;" 2>&1)
+    foreach ($table in $script:transactionFingerprintTables) {
+        # --batch escapes tabs/newlines, preserving each row's full serialized values.
+        # Sort rows ordinally because ORDER BY the first column alone is not unique.
+        [string[]]$rows = @(& $clientExe "--defaults-extra-file=$clientConfig" '--batch' '--skip-column-names' $database '-e' "SELECT * FROM $table;" 2>&1)
         if ($LASTEXITCODE -ne 0) { throw "Could not fingerprint isolated $table after $entrypoint" }
+        [Array]::Sort($rows, [StringComparer]::Ordinal)
         $pieces.Add("$table`n$($rows.Count)`n$($rows -join "`n")")
     }
     $sha = [Security.Cryptography.SHA256]::Create()
@@ -130,10 +134,10 @@ function Assert-OriginalFixtureContents([string]$clientExe, [string]$clientConfi
         }
         $expected = Get-IsolatedSalesDigest 'original SQL reference' $clientExe $clientConfig $reference
         if ($actualDigest -ne $expected) {
-            throw 'First extracted startup changed original article/ticket contents despite unchanged row counts'
+            throw 'First extracted startup changed original checkout table contents despite unchanged article/ticket counts'
         }
         $script:originalFixtureContentsVerified = $true
-        Write-Host 'PASS: first extracted startup matches independent original SQL article/ticket content fingerprints'
+        Write-Host 'PASS: first extracted startup matches independent original SQL checkout-table fingerprints'
     } finally {
         if ($created) {
             & $clientExe "--defaults-extra-file=$clientConfig" '-e' "DROP DATABASE $reference" | Out-Null
@@ -161,10 +165,10 @@ function Assert-IsolatedStartupCounts([string]$entrypoint) {
         Assert-OriginalFixtureContents $clientExe $clientConfig $digest
         $script:isolatedSalesDigestBaseline = $digest
     } elseif ($digest -ne $script:isolatedSalesDigestBaseline) {
-        throw "Isolated article/ticket CONTENT changed across extracted entrypoints at $entrypoint (counts alone would miss this)"
+        throw "Isolated checkout TABLE CONTENT changed across extracted entrypoints at $entrypoint (counts alone would miss this)"
     }
     $script:isolatedSalesDigestChecks++
-    Write-Host "PASS: $entrypoint preserved 120 articles, 11 ticket headers, and their canonical contents across entrypoints"
+    Write-Host "PASS: $entrypoint preserved articles, tickets, journal, payments and stock movements across entrypoints"
 }
 $app = $null
 $started = [Diagnostics.Stopwatch]::StartNew()
@@ -487,6 +491,8 @@ try {
         doubleSolderClickIdempotencyVerified = $false
         startupReadOnlyDatabaseCountsVerified = $true
         isolatedArticleTicketContentStableAcrossEntrypoints = ($script:isolatedSalesDigestChecks -eq 3)
+        transactionTableContentsStableAcrossEntrypoints = ($script:isolatedSalesDigestChecks -eq 3)
+        fingerprintedTransactionTables = @($script:transactionFingerprintTables)
         originalFixtureContentMatchesFirstStartupVerified = $script:originalFixtureContentsVerified
         isolatedSalesDigestCheckCount = $script:isolatedSalesDigestChecks
         returnPostedViaUiVerified = $false
