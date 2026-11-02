@@ -37,10 +37,18 @@ STARTUP_VERIFIED = (
     "launcherLoginPinScreenVisible",
     "startCmdLoginPinScreenVisible",
     "directExeLoginPinScreenVisible",
+    "startupReadOnlyDatabaseCountsVerified",
+    "startCmdOfflineMariaDbPreprovisioned",
+    "directExeWithoutOverrideAttempted",
+    "directExeWithoutOverrideDatabaseConnectionVerified",
+    "injectedExecutableProbeRejected",
+    "immutableTamperProbeRejected",
+    "immutableDeletionProbeRejected",
+    "offlineServerPackageAbsent",
 )
 
 
-def validate(report):
+def validate(report, expected_commit=None):
     if not isinstance(report, dict):
         raise ValueError("Smoke evidence must be a JSON object")
     if report.get("releaseAcceptanceDecision") != "BLOCKED_FIELD_ACCEPTANCE":
@@ -52,6 +60,8 @@ def validate(report):
     sha = report.get("sourceCommit")
     if not isinstance(sha, str) or len(sha) != 40 or any(c not in "0123456789abcdefABCDEF" for c in sha):
         raise ValueError("Missing or invalid exact source SHA")
+    if expected_commit is not None and sha.lower() != expected_commit.lower():
+        raise ValueError("Smoke evidence source SHA differs from checked-out release")
     for name in NOT_FIELD_VERIFIED:
         if report.get(name) is not False:
             raise ValueError(f"Unproven field acceptance was promoted or omitted: {name}")
@@ -68,6 +78,18 @@ def validate(report):
                  "directExeActivationAbsenceConfirmed"):
         if type(report.get(name)) is not bool:
             raise ValueError(f"Activation absence classification omitted: {name}")
+    for prefix, visible_key, absent_key in (
+        ("launcher", "launcherActivationScreenVisible", "launcherActivationAbsenceConfirmed"),
+        ("startCmd", "startCmdActivationScreenVisible", "startCmdActivationAbsenceConfirmed"),
+        ("directExe", "directExeWithoutOverrideActivationScreenVisible", "directExeActivationAbsenceConfirmed"),
+    ):
+        if report.get(prefix + "ActivationInspectionStatus") != "inspected":
+            raise ValueError(f"Activation UI inspection not completed: {prefix}")
+        if report[absent_key] is not (report[visible_key] is False):
+            raise ValueError(f"Contradictory activation absence evidence: {prefix}")
+    for key in ("immutableRuntimeFilesVerified", "packagedCodeFilesVerified"):
+        if type(report.get(key)) is not int or not 10 <= report[key] <= 10000:
+            raise ValueError(f"Invalid verified runtime inventory: {key}")
     if report.get("immutableRuntimeFilesVerified", 0) < 10:
         raise ValueError("Incomplete immutable runtime verification")
     if report.get("packagedCodeFilesVerified", 0) < 10:
@@ -91,8 +113,17 @@ def self_test():
         "directExeActivationAbsenceConfirmed": False,
         "immutableRuntimeFilesVerified": 86,
         "packagedCodeFilesVerified": 100,
+        "launcherActivationInspectionStatus": "inspected",
+        "startCmdActivationInspectionStatus": "inspected",
+        "directExeActivationInspectionStatus": "inspected",
     })
-    validate(fixture)
+    validate(fixture, expected_commit="a" * 40)
+    try:
+        validate(fixture, expected_commit="b" * 40)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Validator accepted a stale SHA from another release")
     cases = []
     for key in NOT_FIELD_VERIFIED:
         cases.append((key, True))
@@ -109,6 +140,10 @@ def self_test():
         ("directExeWithoutOverrideActivationScreenVisible", True),
         ("launcherActivationAbsenceConfirmed", None),
         ("immutableRuntimeFilesVerified", 0),
+        ("packagedCodeFilesVerified", True),
+        ("launcherActivationInspectionStatus", "unavailable"),
+        ("startCmdActivationAbsenceConfirmed", False),
+        ("directExeActivationAbsenceConfirmed", True),
     ])
     for key, invalid in cases:
         broken = copy.deepcopy(fixture)
@@ -125,11 +160,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--expected-commit")
     args = parser.parse_args()
     if args.self_test:
         self_test()
     if args.report:
-        validate(json.loads(args.report.read_text(encoding="utf-8-sig")))
+        if not args.expected_commit:
+            parser.error("--report requires --expected-commit from the checked-out build")
+        validate(json.loads(args.report.read_text(encoding="utf-8-sig")), expected_commit=args.expected_commit)
         print("PASS: extracted ZIP startup verified, field acceptance explicitly BLOCKED")
     if not args.self_test and not args.report:
         parser.error("Specify --self-test or --report")
