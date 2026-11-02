@@ -5058,6 +5058,41 @@ public class Form_0_TEMPLATE : Form
 		((Control)Panel_TENTATIVE_CONNEXION).BringToFront();
 	}
 
+	// Display only the endpoint to distinguish direct EXE defaults (often 3306)
+	// from the portable launcher (3308). Never expose credentials or the full URI.
+	private static string DatabaseEndpointHint()
+	{
+		try
+		{
+			if (Module1.cn_SQL == null || string.IsNullOrWhiteSpace(Module1.cn_SQL.ConnectionString))
+			{
+				return "";
+			}
+			MySqlConnectionStringBuilder settings = new MySqlConnectionStringBuilder(Module1.cn_SQL.ConnectionString);
+			if (string.IsNullOrWhiteSpace(settings.Server))
+			{
+				return "";
+			}
+			return " Serveur : " + settings.Server + ":" + settings.Port + ".";
+		}
+		catch (Exception)
+		{
+			return "";
+		}
+	}
+
+	// Old installations may contain NORMAL instead of a boolean flag.
+	// An unrecognized display mode must never interrupt database/license startup.
+	private static bool UseBorderedWindowMode(string mode)
+	{
+		if (string.IsNullOrWhiteSpace(mode))
+		{
+			return false;
+		}
+		string value = mode.Trim();
+		return string.Equals(value, "True", StringComparison.OrdinalIgnoreCase) || value == "1";
+	}
+
 	public void _Tentative_Connect_Database()
 	{
 		int attempt = 0;
@@ -5083,7 +5118,7 @@ public class Form_0_TEMPLATE : Form
 				ShowDatabaseConnectionError();
 				if (ex.Number == -1 || ex.Number == 1042)
 				{
-					Label_ERREUR.Text = "Connexion à MariaDB indisponible (code " + ex.Number + "). Vérifiez le démarrage du service local et sa configuration. Tentative " + attempt + "/" + maxRetries + ".";
+					Label_ERREUR.Text = "Connexion à MariaDB indisponible (code " + ex.Number + ")." + DatabaseEndpointHint() + " Vérifiez le démarrage du service local et sa configuration. Tentative " + attempt + "/" + maxRetries + ".";
 					if (attempt < maxRetries)
 					{
 						Thread.Sleep(1000);
@@ -5091,26 +5126,26 @@ public class Form_0_TEMPLATE : Form
 				}
 				else if (ex.Number == 1044 || ex.Number == 1045 || ex.Number == 18456)
 				{
-					Label_ERREUR.Text = "Authentification MariaDB refusée (code " + ex.Number + "). Vérifiez la configuration locale de connexion.";
+					Label_ERREUR.Text = "Authentification MariaDB refusée (code " + ex.Number + ")." + DatabaseEndpointHint() + " Vérifiez la configuration locale de connexion.";
 					return;
 				}
 				else
 				{
 					// Do not echo the raw connection exception: it may contain
 					// private connection details, and this is not a license error.
-					Label_ERREUR.Text = "Erreur de connexion MariaDB (code " + ex.Number + ").";
+					Label_ERREUR.Text = "Erreur de connexion MariaDB (code " + ex.Number + ")." + DatabaseEndpointHint();
 					return;
 				}
 			}
 			catch (Exception)
 			{
 				ShowDatabaseConnectionError();
-				Label_ERREUR.Text = "Impossible d'initialiser la connexion à la base de données locale.";
+				Label_ERREUR.Text = "Impossible d'initialiser la connexion à la base de données locale." + DatabaseEndpointHint();
 				return;
 			}
 			finally
 			{
-				if (Module1.cn_SQL.State == ConnectionState.Open)
+				if (Module1.cn_SQL != null && Module1.cn_SQL.State == ConnectionState.Open)
 				{
 					Module1.cn_SQL.Close();
 				}
@@ -5342,7 +5377,7 @@ public class Form_0_TEMPLATE : Form
 				RichText_insc.SelectionColor = Color.Green;
 				((TextBoxBase)RichText_insc).SelectAll();
 				RichText_insc.SelectionAlignment = (HorizontalAlignment)2;
-				if (Conversions.ToBoolean(TextBox_MODE_WINDOWS.Text))
+				if (UseBorderedWindowMode(TextBox_MODE_WINDOWS.Text))
 				{
 					((Form)this).FormBorderStyle = (FormBorderStyle)1;
 				}
