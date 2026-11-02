@@ -34,6 +34,10 @@ public class Form_3_VENTE : Form
 
 	private IContainer components;
 
+	// One latch shared by every SOLDER button; ambiguous Commit/Close blocks retry.
+	private readonly LOGICA.Presentation.Checkout.SolderSubmissionGuard _solderSubmissionGuard =
+		new LOGICA.Presentation.Checkout.SolderSubmissionGuard();
+
 	[AccessedThroughProperty("Button_SOLDER_PRINTER")]
 	private Button_CLAVIER_NOSELECT _Button_SOLDER_PRINTER;
 
@@ -12848,6 +12852,25 @@ public class Form_3_VENTE : Form
 
 	private void Button_Click(object sender, EventArgs e)
 	{
+		// A modal payment dialog pumps events, so disabling a single button is insufficient.
+		if (!_solderSubmissionGuard.TryBegin())
+		{
+			if (_solderSubmissionGuard.RequiresReconciliation)
+				MessageBox.Show("Résultat SOLDER incertain. Vérifiez le ticket, les paiements et le stock avant toute nouvelle validation, même après redémarrage.", "Validation bloquée", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+			return;
+		}
+		try
+		{
+			Button_ClickCore(sender, e);
+		}
+		finally
+		{
+			_solderSubmissionGuard.EndAttempt();
+		}
+	}
+
+	private void Button_ClickCore(object sender, EventArgs e)
+	{
 		//IL_038a: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0391: Expected Obj, but got Unknown
 		//IL_1931: Unknown result type (might be due to invalid IL or missing references)
@@ -13013,6 +13036,8 @@ public class Form_3_VENTE : Form
 				{
 					string text2 = "";
 					DateTime dateTime = default(DateTime);
+					// A Commit may succeed even if Close or printing subsequently fails.
+					_solderSubmissionGuard.MarkPostingAttempt();
 					LOGICA.ApplicationLayer.Checkout.CheckoutTransactionFinalizationService.PostAndFinalize(
 						new LOGICA.Infrastructure.Checkout.MySqlCheckoutPostingStore(val4, Module1.cn_SQL),
 						new LOGICA.ApplicationLayer.Checkout.CheckoutPostingInput
@@ -13067,8 +13092,16 @@ public class Form_3_VENTE : Form
 					StackTrace stackTrace2 = new StackTrace(ex6, fNeedFileInfo: true);
 					StackFrame frame2 = stackTrace2.GetFrame(stackTrace2.FrameCount - 1);
 					int fileLineNumber2 = frame2.GetFileLineNumber();
-					LOGICA.ApplicationLayer.Checkout.CheckoutTransactionBoundaryService.Rollback(checkoutBoundary);
-					Interaction.MsgBox(ex6.Message + "\r\nLigne : " + Conversions.ToString(fileLineNumber2) + "\r\n");
+					try
+					{
+						LOGICA.ApplicationLayer.Checkout.CheckoutTransactionBoundaryService.Rollback(checkoutBoundary);
+					}
+					catch (Exception rollbackFailure)
+					{
+						// A durable Commit cannot be undone by a late Rollback.
+						Debug.WriteLine("SOLDER rollback uncertain: " + rollbackFailure.GetType().Name);
+					}
+					Interaction.MsgBox("Résultat du paiement incertain. Ne répétez pas SOLDER sans vérifier le ticket et les mouvements.\r\n" + ex6.Message + "\r\nLigne : " + Conversions.ToString(fileLineNumber2) + "\r\n");
 					try
 					{
 						string text3 = Strings.Format(DateTime.Now, "yyMMddHHmmssfff");
@@ -13087,8 +13120,8 @@ public class Form_3_VENTE : Form
 						ProjectData.ClearProjectError();
 					}
 					ProjectData.ClearProjectError();
-					// A failed checkout has been rolled back: leave the basket, payment
-					// inputs and cashier context intact so the sale can be retried.
+					// Preserve basket, payment inputs and cashier context after a failed or
+					// ambiguous attempt; never retry without checking durable ticket state.
 					// Never fall through into the successful-sale reset below.
 					return;
 				}
@@ -13139,6 +13172,8 @@ public class Form_3_VENTE : Form
 				((Control)Label_QTE).BackColor = Color.White;
 				Label_QTE.Text = Conversions.ToString(1);
 				((Control)Text_CODE).Focus();
+				// Only a successful post and cashier reset permits the next attempt.
+				_solderSubmissionGuard.MarkCompleted();
 				if (Operators.ConditionalCompareObjectEqual(NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null), "Button_SOLDER_CREDIT", TextCompare: false) && unchecked((int)MessageBox.Show("Voulez-vous effectuer un Réglement ??", "", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0)) == 1)
 				{
 					((Component)(object)MyProject.Forms.Form_5_CLIENTS_REGLE).Dispose();

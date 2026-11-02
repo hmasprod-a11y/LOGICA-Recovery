@@ -58,6 +58,22 @@ Write-Host "desktop-article-delete $deleteStatus"
 Get-Content $deleteLog | Select-Object -First 30 | ForEach-Object{Write-Host $_}
 if($deleteStatus -ne 'PASS') { Get-Content $deleteError | Select-Object -First 40 | ForEach-Object{Write-Host $_} }
 
+# Desktop SOLDER: real x86 CLR state transitions + WinForms source wiring regression.
+$guardExe=Join-Path $dist 'DesktopSolderGuardSmoke.exe'
+$guardSource=Join-Path $PSScriptRoot '../recovered-source/LOGICA/Presentation/Checkout/SolderSubmissionGuard.cs'
+$formSource=Join-Path $PSScriptRoot '../recovered-source/LOGICA/Form_3_VENTE.cs'
+& $csc /nologo /platform:x86 /target:exe "/out:$guardExe" (Join-Path $PSScriptRoot 'test-desktop-solder-submission.cs') $guardSource
+if($LASTEXITCODE -ne 0){throw 'Desktop SOLDER guard compilation failed'}
+$guardLog=Join-Path (Resolve-Path results).Path 'desktop-solder-submission.log'
+$guardErr=Join-Path (Resolve-Path results).Path 'desktop-solder-submission.stderr.log'
+$guardProcess=Start-Process $guardExe -ArgumentList ('"' + $formSource + '"') -WorkingDirectory $dist -RedirectStandardOutput $guardLog -RedirectStandardError $guardErr -PassThru
+if(-not $guardProcess.WaitForExit(60000)){$guardProcess.Kill();$guardStatus='TIMEOUT'}else{$guardStatus=if($guardProcess.ExitCode -eq 0){'PASS'}else{'FAIL'}}
+$results+= [pscustomobject]@{test='desktop-solder-submission';status=$guardStatus;exitCode=$guardProcess.ExitCode}
+Write-Host "desktop-solder-submission $guardStatus"
+Get-Content $guardLog | Select-Object -First 30 | ForEach-Object{Write-Host $_}
+if($guardStatus -ne 'PASS'){Get-Content $guardErr | Select-Object -First 40 | ForEach-Object{Write-Host $_}}
+Remove-Item $guardExe -Force -ErrorAction SilentlyContinue
+
 # Never ship isolated CI smoke executables or their configs in the customer ZIP.
 # package-runtime.ps1 removes PosSmoke*, but these two harness names are distinct.
 Remove-Item $cultureExe, (Join-Path $dist 'DesktopPaymentCultureSmoke.exe.config'), $deleteExe, (Join-Path $dist 'DesktopArticleDeleteSmoke.exe.config') -Force -ErrorAction SilentlyContinue
