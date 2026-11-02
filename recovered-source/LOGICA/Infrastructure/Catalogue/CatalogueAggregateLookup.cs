@@ -26,7 +26,18 @@ namespace LOGICA.Infrastructure.Catalogue
             string text10 = "select    count(ID)   as N   from  TABLE_ARTICLES  where  (STOCK < 0     OR    PRIX_MP <= 0)       " + text2 + "  ";
             string text11 = "select    sum(STOCK * PRIX_V_1)   as N   from  TABLE_ARTICLES  where  STOCK > 0     AND    PRIX_V_1 > 0      " + text2 + "   ";
             string text12 = "select    count(id)   as N   from  TABLE_ARTICLES  where  (STOCK < 0     OR    PRIX_V_1 <= 0)       " + text2 + "  ";
-            string text13 = "select    count(ID)   as N    from  TABLE_ARTICLES    WHERE        PRIX_QTE <> 0     " + text2 + "  ";
+            // Recovered databases predate the optional PRIX_QTE column. Preserve
+            // the aggregate row order with a literal zero when it is absent.
+            bool hasPriceQuantity;
+            using (var schemaConnection = new MySqlConnection(connection.ConnectionString))
+            using (var check = new MySqlCommand("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'TABLE_ARTICLES' AND COLUMN_NAME = 'PRIX_QTE'", schemaConnection))
+            {
+                schemaConnection.Open();
+                hasPriceQuantity = System.Convert.ToInt32(check.ExecuteScalar()) != 0;
+            }
+            string text13 = hasPriceQuantity
+                ? "select count(ID) as N from TABLE_ARTICLES WHERE PRIX_QTE <> 0 " + text2
+                : "select 0 as N";
             DataTable dataTable = new DataTable();
             dataTable.Clear();
             dataTable = new DataTable();
