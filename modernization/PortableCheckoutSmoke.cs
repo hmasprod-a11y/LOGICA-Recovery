@@ -203,6 +203,64 @@ internal static class PortableCheckoutSmoke
             Require(selectedOutcome.Status == CheckoutVariantChoiceStatus.Selected &&
                 Object.ReferenceEquals(selectedOutcome.SelectedRow, outcomeRows.Rows[1]),
                 "Typed outcome must preserve selected article identity");
+            // A valid selected row must not conceal duplicate IDs elsewhere
+            // in the *current* catalogue query. The snapshot and all chooser
+            // entry points must agree on live candidate integrity.
+            DataTable unrelatedLiveCollision = outcomeRows.Copy();
+            unrelatedLiveCollision.Rows.Add("OTHER-CODE", "UNRELATED");
+            unrelatedLiveCollision.Rows.Add("DIFFERENT-CODE", "UNRELATED");
+            Require(CheckoutVariantSnapshotService.EvaluateSnapshot(unrelatedLiveCollision).Status ==
+                CheckoutVariantSnapshotReadStatus.Ambiguous,
+                "Snapshot rejects duplicate unrelated live IDs");
+            var unrelatedLiveChoice = CheckoutVariantSnapshotService.EvaluateChoice(
+                unrelatedLiveCollision, snapshots, 1);
+            Require(unrelatedLiveChoice.Status == CheckoutVariantChoiceStatus.Ambiguous &&
+                unrelatedLiveChoice.SelectedRow == null,
+                "Typed choice rejects duplicate unrelated live IDs");
+            Require(CheckoutVariantSnapshotService.Resolve(
+                unrelatedLiveCollision, snapshots[1]) == null,
+                "Null-returning resolver rejects duplicate unrelated live IDs");
+            Require(CheckoutVariantSnapshotService.ResolveChosenVariant(
+                unrelatedLiveCollision, snapshots, 1) == null,
+                "Index chooser rejects duplicate unrelated live IDs");
+            var unrelatedLiveTile = CheckoutArticleTileSelectionService.TagFor(outcomeRows.Rows[1]);
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(
+                unrelatedLiveCollision, unrelatedLiveTile).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous,
+                "Image tile choice shares full live identity validation");
+            Require(CheckoutArticleTileSelectionService.FindExact(
+                unrelatedLiveCollision, unrelatedLiveTile) == null,
+                "Image tile resolver rejects duplicate unrelated live IDs");
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(
+                unrelatedLiveCollision,
+                new[] { new CheckoutVariantSnapshot("NOT-PRESENT", "MISSING") }, 0).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous,
+                "Unrelated live duplicate takes precedence over missing selection");
+            unrelatedLiveCollision.Rows.Add(DBNull.Value, "BROKEN");
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(
+                unrelatedLiveCollision, snapshots, 1).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Malformed live candidate takes precedence over unrelated duplicate");
+            Require(CheckoutArticleTileSelectionService.FindExact(
+                unrelatedLiveCollision, unrelatedLiveTile) == null,
+                "Malformed live candidate never escapes image tile resolver");
+            unrelatedLiveCollision.Rows.RemoveAt(unrelatedLiveCollision.Rows.Count - 1);
+            unrelatedLiveCollision.AcceptChanges();
+            unrelatedLiveCollision.Rows[3].Delete();
+            Require(CheckoutVariantSnapshotService.EvaluateChoice(
+                unrelatedLiveCollision, snapshots, 1).Status ==
+                CheckoutVariantChoiceStatus.Selected,
+                "Pending-deleted unrelated duplicate does not poison live selection");
+            Require(CheckoutVariantSnapshotService.EvaluateSnapshot(
+                unrelatedLiveCollision).Status == CheckoutVariantSnapshotReadStatus.Ready,
+                "Snapshot and chooser agree after unrelated duplicate deletion");
+            Require(Object.ReferenceEquals(CheckoutArticleTileSelectionService.FindExact(
+                unrelatedLiveCollision, unrelatedLiveTile), unrelatedLiveCollision.Rows[1]),
+                "Image tile revalidation retains exact selected row after deletion");
+            Require(unrelatedLiveCollision.Rows[3].RowState == DataRowState.Deleted &&
+                unrelatedLiveCollision.Rows[1]["ID_ARTICLE"].ToString() == "B",
+                "Live candidate validation never mutates row states or identities");
+            Console.WriteLine("PASS modern live catalogue uniqueness: unrelated duplicate IDs, invalid precedence, tile parity and deletion");
             // A modern caller can construct or modify an IList after the
             // snapshot was displayed. Do not trust only the selected entry:
             // duplicate IDs elsewhere in the displayed list make it unsafe.
@@ -416,6 +474,846 @@ internal static class PortableCheckoutSmoke
             Require(StockAvailability.IsBelowRequested(1m, 2m, port), "Stock shortage");
             Require(!StockAvailability.IsBelowRequested(2m, 2m, port), "Stock equality");
 
+            // Real sales-screen seam: the recovered Button_FIND_Click currently
+            // uses the legacy index chooser and then Button_GO_Click calculates
+            // the line net. Exercise modern identity -> production pricing ->
+            // basket total consistency without writing the legacy basket.
+            DataTable flowMatches = new DataTable();
+            flowMatches.Columns.Add("Code", typeof(string));
+            flowMatches.Columns.Add("ID_ARTICLE", typeof(string));
+            flowMatches.Columns.Add("UnitPrice", typeof(decimal));
+            flowMatches.Columns.Add("Discount", typeof(decimal));
+            flowMatches.Rows.Add("DUP", "A", 12.50m, 10m);
+            flowMatches.Rows.Add("DUP", "B", 7.50m, 0m);
+            flowMatches.AcceptChanges();
+            int flowChooserCalls = 0;
+            CheckoutVariantChoiceResult flowChoice = CheckoutSelectionFlowService.ChooseBarcode(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> displayed) {
+                    flowChooserCalls++;
+                    Require(displayed.Count == 2 && displayed[1].ArticleId == "B",
+                        "Duplicate chooser must receive exact immutable article identities");
+                    return 1;
+                });
+            Require(flowChooserCalls == 1 && flowChoice.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(flowChoice.SelectedRow, flowMatches.Rows[1]),
+                "Modern barcode chooser must select the second actual variant");
+            Require(Object.ReferenceEquals(
+                CheckoutBarcodeSelectionService.Select(flowMatches, delegate(DataTable ignored) { return 1; }),
+                flowChoice.SelectedRow), "Modern selection must agree with legacy chosen variant");
+            // The opt-in Windows refresh contract must not silently reuse the
+            // displayed table. The old Select path above remains supported.
+            int fakeRefreshCalls = 0;
+            CheckoutVariantChoiceResult fakeRefresh =
+                CheckoutBarcodeSelectionService.SelectWithRefresh(flowMatches,
+                    delegate(DataTable shown) { return 1; },
+                    delegate { fakeRefreshCalls++; return flowMatches; });
+            Require(fakeRefresh.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                fakeRefresh.SelectedRow == null && fakeRefreshCalls == 1,
+                "Windows refresh adapter refuses a stale displayed DataTable");
+            // Portable .NET 10 and .NET Framework 4.8 must agree: the modern
+            // snapshot flow and legacy-dialog bridge cannot claim a fresh SQL
+            // result when the callback returns the displayed mutable table.
+            int snapshotStaleReads = 0;
+            CheckoutVariantChoiceResult snapshotStale =
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(flowMatches,
+                    delegate(IList<CheckoutVariantSnapshot> shown) { return 1; },
+                    delegate { snapshotStaleReads++; return flowMatches; });
+            Require(snapshotStale.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                snapshotStale.SelectedRow == null && snapshotStaleReads == 1,
+                "Modern snapshot SQL refresh must reject same displayed table");
+            int modalStaleReads = 0;
+            CheckoutVariantChoiceResult modalStale =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(flowMatches,
+                    delegate(DataTable shown) {
+                        Require(Object.ReferenceEquals(shown, flowMatches),
+                            "Modal must retain original displayed rows");
+                        return 1;
+                    }, delegate { modalStaleReads++; return flowMatches; });
+            Require(modalStale.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                modalStale.SelectedRow == null && modalStaleReads == 1,
+                "Modal SQL refresh must reject same displayed table");
+            CheckoutVariantChoiceResult originalInMemory =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialogInMemory(
+                    flowMatches, delegate(DataTable shown) { return 1; },
+                    delegate { return flowMatches; });
+            Require(originalInMemory.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(originalInMemory.SelectedRow, flowMatches.Rows[1]),
+                "Legacy modal fallback remains explicitly in-memory and unchanged");
+            int cancelledStaleReads = 0;
+            CheckoutVariantChoiceResult cancelledStale =
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(flowMatches,
+                    delegate(IList<CheckoutVariantSnapshot> shown) { return -1; },
+                    delegate { cancelledStaleReads++; return flowMatches; });
+            Require(cancelledStale.Status == CheckoutVariantChoiceStatus.Cancelled &&
+                cancelledStale.SelectedRow == null && cancelledStaleReads == 0,
+                "Cancelled refresh must not query or confuse stale data with cancellation");
+            DataTable freshSaleRows = flowMatches.Copy();
+            freshSaleRows.Rows[1]["UnitPrice"] = 18m;
+            freshSaleRows.Rows[1]["Discount"] = 5m;
+            CheckoutVariantChoiceResult freshSaleChoice =
+                CheckoutBarcodeSelectionService.SelectWithRefresh(flowMatches,
+                    delegate(DataTable shown) { return 1; },
+                    delegate { return freshSaleRows; });
+            Require(freshSaleChoice.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(freshSaleChoice.SelectedRow, freshSaleRows.Rows[1]) &&
+                SalesLinePricing.CalculateNetAmount(
+                    (decimal)freshSaleChoice.SelectedRow["UnitPrice"], 2m,
+                    (decimal)freshSaleChoice.SelectedRow["Discount"]) == 34.2m &&
+                SalesLinePricing.CalculateNetAmount(
+                    (decimal)freshSaleChoice.SelectedRow["UnitPrice"], -2m,
+                    (decimal)freshSaleChoice.SelectedRow["Discount"]) == -34.2m,
+                "Windows refresh adapter uses distinct live price for sale and return");
+            CheckoutVariantChoiceResult modernFreshSale =
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(flowMatches,
+                    delegate(IList<CheckoutVariantSnapshot> shown) { return 1; },
+                    delegate { return freshSaleRows; });
+            CheckoutVariantChoiceResult modalFreshSale =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(flowMatches,
+                    delegate(DataTable shown) { return 1; },
+                    delegate { return freshSaleRows; });
+            Require(modernFreshSale.Status == CheckoutVariantChoiceStatus.Selected &&
+                modalFreshSale.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(modernFreshSale.SelectedRow, freshSaleRows.Rows[1]) &&
+                Object.ReferenceEquals(modalFreshSale.SelectedRow, freshSaleRows.Rows[1]) &&
+                SalesLinePricing.CalculateNetAmount(
+                    (decimal)modernFreshSale.SelectedRow["UnitPrice"], -2m,
+                    (decimal)modernFreshSale.SelectedRow["Discount"]) == -34.2m,
+                "Modern and modal refresh agree on live sale/return price and discount");
+            Console.WriteLine("PASS checkout Windows refresh isolation: reject same-table reader, preserve legacy scanner and live sale/return");
+            // This is the Select API called by the real Form_3_VENTE handler,
+            // not just the opt-in modern flow. The dialog's index belongs to
+            // the originally displayed rows, even if a refresh shifts them.
+            DataTable activeReordered = flowMatches.Copy();
+            DataRow activeSelected = activeReordered.Rows[1];
+            DataRow activeResolved = CheckoutBarcodeSelectionService.Select(
+                activeReordered, delegate(DataTable live) {
+                    live.Rows.RemoveAt(0);
+                    return 1;
+                });
+            Require(Object.ReferenceEquals(activeResolved, activeSelected) &&
+                activeResolved["ID_ARTICLE"].ToString() == "B" &&
+                SalesLinePricing.CalculateNetAmount(
+                    (decimal)activeResolved["UnitPrice"], 2m,
+                    (decimal)activeResolved["Discount"]) == 15m,
+                "Real scanner chooser retains original variant and production line net after row shift");
+            DataTable activeChanged = flowMatches.Copy();
+            Require(CheckoutBarcodeSelectionService.Select(
+                activeChanged, delegate(DataTable live) {
+                    live.Rows[1]["Code"] = "OTHER";
+                    return 1;
+                }) == null,
+                "Real scanner chooser refuses changed barcode before basket posting");
+            DataTable activeDeleted = flowMatches.Copy();
+            activeDeleted.Rows[1].Delete();
+            Require(CheckoutBarcodeSelectionService.Select(activeDeleted,
+                delegate(DataTable live) { throw new Exception("Unsafe modal opened"); }) == null,
+                "Real scanner chooser refuses pre-deleted variants without opening modal");
+            int flowPriceCalls = 0;
+            CheckoutBasketPreview flowPreview = CheckoutSelectionFlowService.Preview(
+                flowChoice, 5m, delegate(DataRow article) {
+                    flowPriceCalls++;
+                    return SalesLinePricing.CalculateNetAmount(
+                        (decimal)article["UnitPrice"], 2m, (decimal)article["Discount"]);
+                }, "20", port);
+            Require(flowPriceCalls == 1 && flowPreview.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(flowPreview.SelectedRow, flowMatches.Rows[1]) &&
+                flowPreview.LineNet == 15m && flowPreview.BasketNet == 20m &&
+                flowPreview.DisplayedTotalDiffers == false,
+                "Selected duplicate variant must flow through real pricing and basket consistency");
+            Require(flowPreview.LineNet == (7.50m * 2m - 7.50m * 2m * 0m / 100m),
+                "Simple sale sample matches recovered line arithmetic before formatting");
+            CheckoutBasketPreview flowReturn = CheckoutSelectionFlowService.Preview(
+                flowChoice, 20m, delegate(DataRow article) {
+                    return SalesLinePricing.CalculateNetAmount(
+                        (decimal)article["UnitPrice"], -2m, (decimal)article["Discount"]);
+                }, "5", port);
+            Require(flowReturn.LineNet == -15m && flowReturn.BasketNet == 5m &&
+                flowReturn.DisplayedTotalDiffers == false,
+                "Return sign must remain negative through preview without stock writes");
+            CheckoutBasketPreview flowMismatch = CheckoutSelectionFlowService.Preview(
+                flowChoice, 5m, delegate(DataRow article) { return 15m; }, "19", port);
+            Require(flowMismatch.DisplayedTotalDiffers == true,
+                "Preview must invoke production basket total consistency rule");
+            DataTable flowSingle = flowMatches.Clone();
+            flowSingle.ImportRow(flowMatches.Rows[0]);
+            Require(CheckoutSelectionFlowService.ChooseBarcode(flowSingle, null).Status ==
+                CheckoutVariantChoiceStatus.Selected, "Single barcode candidate needs no dialog");
+            DataTable flowEmpty = flowMatches.Clone();
+            Require(CheckoutSelectionFlowService.ChooseBarcode(flowEmpty, null).Status ==
+                CheckoutVariantChoiceStatus.Missing, "Empty exact barcode query is Missing");
+            bool flowMissingChooserRejected = false;
+            try { CheckoutSelectionFlowService.ChooseBarcode(flowMatches, null); }
+            catch (ArgumentNullException) { flowMissingChooserRejected = true; }
+            Require(flowMissingChooserRejected, "Duplicate barcode must require explicit choice");
+            CheckoutVariantChoiceResult flowCancel = CheckoutSelectionFlowService.ChooseBarcode(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> displayed) { return -1; });
+            Require(flowCancel.Status == CheckoutVariantChoiceStatus.Cancelled,
+                "Cancel must not silently choose first barcode variant");
+            CheckoutBasketPreview flowCancelledPreview = CheckoutSelectionFlowService.Preview(
+                flowCancel, 5m, delegate(DataRow row) {
+                    throw new Exception("Cancelled checkout must never read price");
+                }, "5", port);
+            Require(flowCancelledPreview.SelectedRow == null && !flowCancelledPreview.LineNet.HasValue &&
+                !flowCancelledPreview.BasketNet.HasValue &&
+                !flowCancelledPreview.DisplayedTotalDiffers.HasValue,
+                "Cancelled selection must not compute or post a basket line");
+            DataTable flowStale = flowMatches.Copy();
+            CheckoutVariantChoiceResult flowStaleChoice = CheckoutSelectionFlowService.ChooseBarcode(
+                flowStale, delegate(IList<CheckoutVariantSnapshot> displayed) {
+                    flowStale.Rows[1]["ID_ARTICLE"] = "CHANGED";
+                    return 1;
+                });
+            Require(flowStaleChoice.Status == CheckoutVariantChoiceStatus.Missing &&
+                flowStaleChoice.SelectedRow == null,
+                "Catalogue mutation during chooser must fail closed before pricing");
+            DataTable flowDuplicates = flowMatches.Copy();
+            flowDuplicates.Rows.Add("DUP", "A", 12m, 0m);
+            Require(CheckoutSelectionFlowService.ChooseBarcode(flowDuplicates, null).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous,
+                "Duplicate catalogue IDs must not enter checkout even without a chooser");
+            flowDuplicates.Rows.Add(DBNull.Value, "BROKEN", 12m, 0m);
+            Require(CheckoutSelectionFlowService.ChooseBarcode(flowDuplicates, null).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Corrupt catalogue row takes precedence over duplicate identity");
+            DataTable flowImages = flowMatches.Clone();
+            flowImages.Rows.Add("", "IMAGE-ONLY", 10m, 5m);
+            flowImages.AcceptChanges();
+            CheckoutArticleTileReference flowTile =
+                CheckoutArticleTileSelectionService.TagFor(flowImages.Rows[0]);
+            CheckoutVariantChoiceResult flowImageChoice =
+                CheckoutSelectionFlowService.ChooseImage(flowImages, flowTile);
+            Require(flowImageChoice.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(flowImageChoice.SelectedRow, flowImages.Rows[0]),
+                "Image-only article must select by ID without requiring a barcode");
+            CheckoutBasketPreview flowImagePreview = CheckoutSelectionFlowService.Preview(
+                flowImageChoice, 0m, delegate(DataRow article) {
+                    return SalesLinePricing.CalculateNetAmount(
+                        (decimal)article["UnitPrice"], 1m, (decimal)article["Discount"]);
+                }, "10", port);
+            Require(flowImagePreview.LineNet == 9.5m && flowImagePreview.BasketNet == 9.5m &&
+                flowImagePreview.DisplayedTotalDiffers == false,
+                "Image-only selection reaches net pricing and original rounded total check");
+            flowImages.Rows[0]["ID_ARTICLE"] = "REPLACED";
+            Require(CheckoutSelectionFlowService.ChooseImage(flowImages, flowTile).Status ==
+                CheckoutVariantChoiceStatus.Missing,
+                "Image tile must fail closed if identity changed after display");
+            Require(flowMatches.Rows[0].RowState == DataRowState.Unchanged &&
+                flowMatches.Rows[1].RowState == DataRowState.Unchanged &&
+                flowMatches.Rows[1]["ID_ARTICLE"].ToString() == "B",
+                "Checkout selection-to-basket preview must never mutate source or legacy basket");
+            Console.WriteLine("PASS modern selection-to-basket flow: barcode variants, stale choice, image-only, pricing, returns and totals");
+
+            // The real sales screen queries the local catalogue before showing
+            // the barcode chooser. A second local read must be authoritative
+            // AFTER the cashier chooses, not the earlier displayed DataTable.
+            DataTable refreshedBarcode = flowMatches.Copy();
+            refreshedBarcode.Rows[0]["UnitPrice"] = 8.75m;
+            refreshedBarcode.Rows[0]["Discount"] = 0m;
+            refreshedBarcode.Rows[1]["UnitPrice"] = 99m;
+            DataTable reorderedBarcode = refreshedBarcode.Clone();
+            reorderedBarcode.ImportRow(refreshedBarcode.Rows[1]);
+            reorderedBarcode.ImportRow(refreshedBarcode.Rows[0]);
+            int liveChooserCalls = 0;
+            int liveReadCalls = 0;
+            CheckoutVariantChoiceResult liveChoice =
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                    flowMatches, delegate(IList<CheckoutVariantSnapshot> displayed) {
+                        liveChooserCalls++;
+                        Require(displayed.Count == 2 && displayed[0].ArticleId == "A" &&
+                            displayed[1].ArticleId == "B",
+                            "Refresh chooser must use original displayed identities");
+                        return 0;
+                    }, delegate {
+                        liveReadCalls++;
+                        return reorderedBarcode;
+                    });
+            Require(liveChooserCalls == 1 && liveReadCalls == 1 &&
+                liveChoice.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(liveChoice.SelectedRow, reorderedBarcode.Rows[1]),
+                "Live refresh must select exact article ID despite changed result ordering");
+            CheckoutBasketPreview liveNet = CheckoutSelectionFlowService.Preview(
+                liveChoice, 2.50m, delegate(DataRow article) {
+                    return SalesLinePricing.CalculateNetAmount(
+                        (decimal)article["UnitPrice"], 2m, (decimal)article["Discount"]);
+                }, "20", port);
+            Require(liveNet.LineNet == 17.50m && liveNet.BasketNet == 20m &&
+                liveNet.DisplayedTotalDiffers == false,
+                "Refresh-to-basket uses LIVE price and original total rule, not stale displayed price");
+            CheckoutBasketPreview liveReturn = CheckoutSelectionFlowService.Preview(
+                liveChoice, 20m, delegate(DataRow article) {
+                    return SalesLinePricing.CalculateNetAmount(
+                        (decimal)article["UnitPrice"], -2m, (decimal)article["Discount"]);
+                }, "2", port);
+            Require(liveReturn.LineNet == -17.50m && liveReturn.BasketNet == 2.50m &&
+                liveReturn.DisplayedTotalDiffers == false,
+                "Live refresh preserves negative return and midpoint total rounding");
+
+            int cancelledReads = 0;
+            CheckoutVariantChoiceResult cancelledRefresh =
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                    flowMatches, delegate(IList<CheckoutVariantSnapshot> displayed) { return -1; },
+                    delegate { cancelledReads++; throw new Exception("Cancelled must not query"); });
+            Require(cancelledRefresh.Status == CheckoutVariantChoiceStatus.Cancelled &&
+                cancelledReads == 0, "Cancellation must not requery or enter pricing");
+            CheckoutBasketPreview cancelledNet = CheckoutSelectionFlowService.Preview(
+                cancelledRefresh, 10m, delegate(DataRow article) {
+                    throw new Exception("Cancelled must not read price");
+                }, "10", port);
+            Require(!cancelledNet.LineNet.HasValue && !cancelledNet.BasketNet.HasValue,
+                "Cancelled refreshed selection cannot add a basket line");
+
+            DataTable refreshedMissing = flowMatches.Clone();
+            refreshedMissing.Rows.Add("DUP", "A", 10m, 0m);
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 1; },
+                delegate { return refreshedMissing; }).Status == CheckoutVariantChoiceStatus.Missing,
+                "Article removed after chooser cannot be sold");
+            DataTable refreshedReused = flowMatches.Copy();
+            refreshedReused.Rows[1]["Code"] = "NEW-BARCODE";
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 1; },
+                delegate { return refreshedReused; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Wrong exact-barcode SQL result is invalid before resolving reused article ID");
+            DataTable refreshedDuplicate = flowMatches.Copy();
+            refreshedDuplicate.Rows.Add("DUP", "A", 1m, 0m);
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 1; },
+                delegate { return refreshedDuplicate; }).Status == CheckoutVariantChoiceStatus.Ambiguous,
+                "Duplicate ID elsewhere in refreshed catalogue invalidates selection");
+            refreshedDuplicate.Rows.Add(DBNull.Value, "BAD", 1m, 0m);
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 1; },
+                delegate { return refreshedDuplicate; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Invalid refreshed row takes precedence over duplicate IDs");
+            // The modern snapshot-based chooser is also an exact-barcode
+            // adapter. Reject a broken SQL WHERE clause even when a correct
+            // selected ID is still present with a plausible current price.
+            DataTable wrongFilterWithSelected = reorderedBarcode.Copy();
+            wrongFilterWithSelected.Rows[0]["Code"] = "WRONG-FILTER";
+            CheckoutVariantChoiceResult wrongFilterResult =
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                    flowMatches, delegate(IList<CheckoutVariantSnapshot> freshSqlChoices) { return 0; },
+                    delegate { return wrongFilterWithSelected; });
+            Require(wrongFilterResult.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                wrongFilterResult.SelectedRow == null,
+                "Modern exact-barcode refresh cannot accept an unrelated row beside selected ID");
+            int rejectedPriceCalls = 0;
+            CheckoutBasketPreview rejectedPrice = CheckoutSelectionFlowService.Preview(
+                wrongFilterResult, 5m, delegate(DataRow article) {
+                    rejectedPriceCalls++;
+                    throw new Exception("Unsafe SQL result must never be priced");
+                }, "5", port);
+            Require(rejectedPriceCalls == 0 && !rejectedPrice.LineNet.HasValue &&
+                !rejectedPrice.BasketNet.HasValue,
+                "Rejected modern scanner refresh cannot calculate or mutate a basket preview");
+            DataTable wrongFilterWithoutSelected = refreshedMissing.Copy();
+            wrongFilterWithoutSelected.Rows[0]["Code"] = "WRONG-FILTER";
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> freshSqlChoices) { return 1; },
+                delegate { return wrongFilterWithoutSelected; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Wrong exact-barcode SQL filter takes precedence over missing selected ID");
+            DataTable nullCodeLive = reorderedBarcode.Copy();
+            nullCodeLive.Rows[0]["Code"] = DBNull.Value;
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> freshSqlChoices) { return 0; },
+                delegate { return nullCodeLive; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "SQL NULL barcode cannot enter the scanner refresh path");
+            DataTable deletedUnrelatedCode = reorderedBarcode.Copy();
+            deletedUnrelatedCode.Rows.Add("WRONG-FILTER", "DELETED-ROW", 2m, 0m);
+            deletedUnrelatedCode.AcceptChanges();
+            deletedUnrelatedCode.Rows[2].Delete();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> freshSqlChoices) { return 0; },
+                delegate { return deletedUnrelatedCode; }).Status ==
+                CheckoutVariantChoiceStatus.Selected,
+                "Deleted unrelated SQL row does not invalidate otherwise exact active matches");
+            Console.WriteLine("PASS modern scanner exact-barcode SQL integrity, stale-price guard, null and deleted rows");
+
+            DataTable refreshedDeleted = flowMatches.Copy();
+            refreshedDeleted.AcceptChanges();
+            refreshedDeleted.Rows[1].Delete();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 1; },
+                delegate { return refreshedDeleted; }).Status == CheckoutVariantChoiceStatus.Missing,
+                "Pending-deleted refreshed article is not selectable");
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 1; },
+                delegate { return null; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Null refresh result fails closed instead of using stale row");
+
+            // Integration contract for Form_3_VENTE's EXISTING DataTable modal.
+            // The dialog still receives the original rows, while all fields
+            // copied to the sale screen must come from the refreshed local row.
+            DataTable legacyLive = reorderedBarcode.Copy();
+            legacyLive.Columns.Add("TAUX_TVA", typeof(decimal));
+            legacyLive.Rows[0]["TAUX_TVA"] = 20m;
+            legacyLive.Rows[1]["TAUX_TVA"] = 7m;
+            int legacyDialogCalls = 0;
+            int legacyLiveReads = 0;
+            CheckoutVariantChoiceResult legacySelected =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                    flowMatches, delegate(DataTable dialogRows) {
+                        legacyDialogCalls++;
+                        Require(Object.ReferenceEquals(dialogRows, flowMatches) &&
+                            dialogRows.Rows[0]["ID_ARTICLE"].ToString() == "A",
+                            "WinForms dialog receives the exact original displayed table");
+                        return 0;
+                    }, delegate { legacyLiveReads++; return legacyLive; });
+            Require(legacyDialogCalls == 1 && legacyLiveReads == 1 &&
+                legacySelected.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(legacySelected.SelectedRow, legacyLive.Rows[1]) &&
+                (decimal)legacySelected.SelectedRow["UnitPrice"] == 8.75m &&
+                (decimal)legacySelected.SelectedRow["Discount"] == 0m &&
+                (decimal)legacySelected.SelectedRow["TAUX_TVA"] == 7m,
+                "Real WinForms chooser resolves LIVE price, discount and tax by article ID");
+            CheckoutBasketPreview legacyReturn = CheckoutSelectionFlowService.Preview(
+                legacySelected, 20m, delegate(DataRow row) {
+                    return SalesLinePricing.CalculateNetAmount(
+                        (decimal)row["UnitPrice"], -2m, (decimal)row["Discount"]);
+                }, "2", port);
+            Require(legacyReturn.LineNet == -17.50m &&
+                legacyReturn.BasketNet == 2.50m &&
+                legacyReturn.DisplayedTotalDiffers == false,
+                "WinForms bridge preserves legacy return sign and rounded total");
+            int noModalReads = 0;
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                flowMatches, delegate(DataTable dialogRows) { return -1; },
+                delegate { noModalReads++; throw new Exception("Cancelled checkout queried store"); }).Status ==
+                CheckoutVariantChoiceStatus.Cancelled && noModalReads == 0,
+                "WinForms modal cancellation never refreshes or posts");
+            DataTable legacySingle = flowMatches.Clone();
+            legacySingle.ImportRow(flowMatches.Rows[0]);
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                legacySingle, delegate(DataTable dialogRows) { throw new Exception("Single opened modal"); },
+                delegate { noModalReads++; return legacySingle.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.Selected && noModalReads == 1,
+                "Single barcode article refreshes once without a modal");
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                flowEmpty, null, delegate { noModalReads++; return flowMatches; }).Status ==
+                CheckoutVariantChoiceStatus.Missing && noModalReads == 1,
+                "Empty scanner result never refreshes or opens modal");
+            DataTable legacyPendingDeleted = flowMatches.Copy();
+            legacyPendingDeleted.AcceptChanges();
+            legacyPendingDeleted.Rows[0].Delete();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                legacyPendingDeleted, delegate(DataTable dialogRows) {
+                    throw new Exception("Deleted row shifted WinForms modal index");
+                }, delegate { noModalReads++; return flowMatches; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && noModalReads == 1,
+                "Pending-deleted displayed rows cannot shift legacy dialog index");
+            DataTable legacyDuplicateId = flowMatches.Copy();
+            legacyDuplicateId.Rows[1]["ID_ARTICLE"] = "A";
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                legacyDuplicateId, delegate(DataTable dialogRows) {
+                    throw new Exception("Duplicate identity opened modal");
+                }, delegate { noModalReads++; return flowMatches; }).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous && noModalReads == 1,
+                "Ambiguous displayed article identity cannot enter modal");
+            // The real WinForms modal returns a row index. A catalogue binding
+            // that changes while the modal is open must never turn index 0
+            // into a different article, even if the subsequent SQL query is fresh.
+            int modalDriftReads = 0;
+            DataTable modalReordered = flowMatches.Copy();
+            CheckoutVariantChoiceResult reorderedDialogChoice =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                    modalReordered, delegate(DataTable shown) {
+                        shown.Rows[0]["ID_ARTICLE"] = "B";
+                        shown.Rows[1]["ID_ARTICLE"] = "A";
+                        return 0;
+                    }, delegate { modalDriftReads++; return flowMatches.Copy(); });
+            Require(reorderedDialogChoice.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                reorderedDialogChoice.SelectedRow == null && modalDriftReads == 0,
+                "Reordered WinForms modal identities fail closed without querying store");
+            DataTable modalChangedCode = flowMatches.Copy();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                modalChangedCode, delegate(DataTable shown) {
+                    shown.Rows[0]["Code"] = "REASSIGNED-IN-DIALOG";
+                    return 0;
+                }, delegate { modalDriftReads++; return flowMatches.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && modalDriftReads == 0,
+                "Barcode reassignment inside modal cannot select a stale row index");
+            DataTable modalRemovedRow = flowMatches.Copy();
+            modalRemovedRow.AcceptChanges();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                modalRemovedRow, delegate(DataTable shown) {
+                    shown.Rows[1].Delete();
+                    return 1;
+                }, delegate { modalDriftReads++; return flowMatches.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && modalDriftReads == 0,
+                "Deleting the CHOSEN row during modal cannot silently sell a replacement");
+            DataTable modalUnrelatedRemoval = flowMatches.Copy();
+            DataRow intendedAfterShift = modalUnrelatedRemoval.Rows[1];
+            // This regression deliberately reuses the modal's in-memory
+            // DataTable after an unrelated row is removed. It exercises the
+            // legacy fallback, NOT a fresh SQL query.
+            CheckoutVariantChoiceResult shiftedDialogChoice =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialogInMemory(
+                    modalUnrelatedRemoval, delegate(DataTable shown) {
+                        shown.Rows.RemoveAt(0);
+                        return 1;
+                    }, delegate { modalDriftReads++; return modalUnrelatedRemoval; });
+            Require(shiftedDialogChoice.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(shiftedDialogChoice.SelectedRow, intendedAfterShift) &&
+                modalDriftReads == 1,
+                "Removing an UNRELATED row preserves the original chosen variant by identity");
+            modalDriftReads = 0;
+            DataTable modalAddedRow = flowMatches.Copy();
+            CheckoutVariantChoiceResult addedUnrelated =
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                    modalAddedRow, delegate(DataTable shown) {
+                        shown.Rows.Add("DUP", "C", 99m, 0m);
+                        return 1;
+                    }, delegate { modalDriftReads++; return flowMatches.Copy(); });
+            Require(addedUnrelated.Status == CheckoutVariantChoiceStatus.Selected &&
+                addedUnrelated.SelectedRow["ID_ARTICLE"].ToString() == "B" &&
+                modalDriftReads == 1,
+                "Adding an unrelated row preserves the chosen article after live revalidation");
+            modalDriftReads = 0;
+            DataTable modalReplacedRow = flowMatches.Copy();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                modalReplacedRow, delegate(DataTable shown) {
+                    DataRow replacement = shown.NewRow();
+                    replacement.ItemArray = (object[])shown.Rows[0].ItemArray.Clone();
+                    shown.Rows.RemoveAt(0);
+                    shown.Rows.InsertAt(replacement, 0);
+                    return 0;
+                }, delegate { modalDriftReads++; return flowMatches.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && modalDriftReads == 0,
+                "Modal cannot replace a DataRow with a lookalike ID and retain its old index");
+            DataTable modalCancelled = flowMatches.Copy();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                modalCancelled, delegate(DataTable shown) {
+                    shown.Rows[0]["ID_ARTICLE"] = "REPLACED";
+                    return -1;
+                }, delegate { modalDriftReads++; return flowMatches.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.Cancelled && modalDriftReads == 0,
+                "Explicit modal cancellation stays cancellation without store read");
+            DataTable modalPriceChanged = flowMatches.Copy();
+            CheckoutVariantChoiceResult modalPriceChoice =
+                CheckoutBarcodeSelectionService.SelectWithRefresh(
+                    modalPriceChanged, delegate(DataTable shown) {
+                        shown.Rows[0]["UnitPrice"] = 1000m;
+                        shown.Rows[0]["Discount"] = 90m;
+                        return 0;
+                    }, delegate { modalDriftReads++; return legacyLive.Copy(); });
+            Require(modalPriceChoice.Status == CheckoutVariantChoiceStatus.Selected &&
+                (decimal)modalPriceChoice.SelectedRow["UnitPrice"] == 8.75m &&
+                (decimal)modalPriceChoice.SelectedRow["Discount"] == 0m &&
+                modalDriftReads == 1,
+                "Unchanged modal identity selects refreshed price and discount, not displayed values");
+            DataTable legacyModalReassigned = flowMatches.Copy();
+            Require(CheckoutBarcodeSelectionService.Select(legacyModalReassigned,
+                delegate(DataTable shown) {
+                    shown.Rows[0]["ID_ARTICLE"] = "REPLACED";
+                    return 0;
+                }) == null,
+                "Actual legacy WinForms Select path cannot return wrong article after modal edit");
+            Console.WriteLine("PASS WinForms modal identity integrity: chosen-row replacement rejected, unrelated shifts preserved, live prices");
+
+            DataTable legacyBadLive = flowMatches.Copy();
+            legacyBadLive.Rows[1]["Code"] = "REASSIGNED";
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                flowMatches, delegate(DataTable dialogRows) { return 1; },
+                delegate { return legacyBadLive; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "WinForms bridge rejects wrong exact-barcode SQL filter before price copy");
+            DataTable legacyMissingLive = flowMatches.Clone();
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                flowMatches, delegate(DataTable dialogRows) { return 1; },
+                delegate { return legacyMissingLive; }).Status == CheckoutVariantChoiceStatus.Missing,
+                "WinForms bridge rejects article deleted from local catalogue");
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                flowMatches, delegate(DataTable dialogRows) { return 1; },
+                delegate { return null; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "WinForms bridge refuses null local-store result");
+            int invalidIndexReads = 0;
+            bool invalidLegacyIndex = false;
+            try {
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                    flowMatches, delegate(DataTable dialogRows) { return 9; },
+                    delegate { invalidIndexReads++; return flowMatches; });
+            } catch (ArgumentOutOfRangeException) { invalidLegacyIndex = true; }
+            Require(invalidLegacyIndex && invalidIndexReads == 0,
+                "Out-of-range WinForms dialog index cannot reach local store");
+            bool missingLegacyChooser = false;
+            try {
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                    flowMatches, null, delegate { return flowMatches; });
+            } catch (ArgumentNullException) { missingLegacyChooser = true; }
+            Require(missingLegacyChooser, "Duplicate WinForms barcode requires explicit choice");
+            Exception localStoreFailure = new InvalidOperationException("offline local database unavailable");
+            Exception observedLocalFailure = null;
+            try {
+                CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                    flowMatches, delegate(DataTable dialogRows) { return 0; },
+                    delegate { throw localStoreFailure; });
+            } catch (Exception error) { observedLocalFailure = error; }
+            Require(Object.ReferenceEquals(localStoreFailure, observedLocalFailure),
+                "WinForms bridge propagates local-store failure without falling back to stale price");
+            Require(flowMatches.Rows[0].RowState == DataRowState.Unchanged &&
+                flowMatches.Rows[1].RowState == DataRowState.Unchanged &&
+                (decimal)flowMatches.Rows[0]["UnitPrice"] == 12.50m &&
+                (decimal)legacyLive.Rows[1]["TAUX_TVA"] == 7m,
+                "WinForms integration bridge never mutates displayed/live catalogue rows");
+            Console.WriteLine("PASS WinForms DataTable chooser bridge: live price/tax/discount, returns, cancel, stale, deleted, ambiguity and read-only");
+
+            DataTable mixedBarcodeCandidates = flowMatches.Copy();
+            mixedBarcodeCandidates.Rows[1]["Code"] = "OTHER-BARCODE";
+            int rejectedChooserCalls = 0;
+            int rejectedRefreshCalls = 0;
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
+                mixedBarcodeCandidates, delegate(DataTable dialogCandidates) { rejectedChooserCalls++; return 0; },
+                delegate { rejectedRefreshCalls++; return mixedBarcodeCandidates.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && rejectedChooserCalls == 0 && rejectedRefreshCalls == 0,
+                "Mixed-code scanner results cannot open the WinForms modal or query the store");
+            DataTable blankScannerCandidates = flowSingle.Copy();
+            blankScannerCandidates.Rows[0]["Code"] = "  ";
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                blankScannerCandidates, null,
+                delegate { rejectedRefreshCalls++; return blankScannerCandidates.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && rejectedRefreshCalls == 0,
+                "Whitespace barcode is rejected by scanner; image-only products use tile identity");
+            DataTable mixedFreshCandidates = legacyLive.Copy();
+            // Row 0 is the selected B after reordering; corrupt only the
+            // unrelated A row so identity resolution still succeeds first.
+            mixedFreshCandidates.Rows[1]["Code"] = "WRONG-SQL-FILTER";
+            CheckoutVariantChoiceResult mixedFreshResult =
+                CheckoutBarcodeSelectionService.SelectWithRefresh(flowMatches,
+                    delegate(DataTable dialogCandidates) { return 1; },
+                    delegate { return mixedFreshCandidates; });
+            Require(mixedFreshResult.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                mixedFreshResult.SelectedRow == null,
+                "WinForms scanner adapter rejects a live SQL result containing an unrelated barcode");
+            DataTable wrongOnlyLive = legacyLive.Clone();
+            wrongOnlyLive.ImportRow(legacyLive.Rows[0]);
+            wrongOnlyLive.Rows[0]["ID_ARTICLE"] = "UNKNOWN-ID";
+            wrongOnlyLive.Rows[0]["Code"] = "UNRELATED-BARCODE";
+            CheckoutVariantChoiceResult wrongOnlySelection =
+                CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", flowMatches,
+                    delegate(DataTable dialogCandidates) { return 1; },
+                    delegate { return wrongOnlyLive; });
+            Require(wrongOnlySelection.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                wrongOnlySelection.SelectedRow == null,
+                "Wrong-only local SQL result is invalid, not a missing product");
+            DataTable noCurrentVariant = legacyLive.Clone();
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", flowMatches,
+                delegate(DataTable dialogCandidates) { return 1; },
+                delegate { return noCurrentVariant; }).Status == CheckoutVariantChoiceStatus.Missing,
+                "Empty exact-barcode SQL result remains a genuinely missing product");
+            DataTable nullLiveCode = legacyLive.Clone();
+            nullLiveCode.ImportRow(legacyLive.Rows[0]);
+            nullLiveCode.Rows[0]["Code"] = DBNull.Value;
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", flowMatches,
+                delegate(DataTable dialogCandidates) { return 1; },
+                delegate { return nullLiveCode; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "SQL NULL barcode is not a valid scanner refresh");
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh(flowMatches,
+                delegate(DataTable dialogCandidates) { return 1; },
+                delegate { return legacyLive.Copy(); }).Status == CheckoutVariantChoiceStatus.Selected,
+                "Strict scanner filter retains valid duplicate-barcode variant selection");
+            int capturedScannerModalCalls = 0;
+            int capturedScannerSqlCalls = 0;
+            CheckoutVariantChoiceResult capturedScannerChoice =
+                CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", flowMatches,
+                    delegate(DataTable shown) { capturedScannerModalCalls++; return 1; },
+                    delegate { capturedScannerSqlCalls++; return legacyLive.Copy(); });
+            Require(capturedScannerChoice.Status == CheckoutVariantChoiceStatus.Selected &&
+                capturedScannerChoice.SelectedRow["ID_ARTICLE"].ToString() == "B" &&
+                capturedScannerModalCalls == 1 && capturedScannerSqlCalls == 1,
+                "Captured scanner barcode resolves selected variant against a fresh catalogue");
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh("DIFFERENT", flowMatches,
+                delegate(DataTable shown) { capturedScannerModalCalls++; return 1; },
+                delegate { capturedScannerSqlCalls++; return legacyLive.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates &&
+                capturedScannerModalCalls == 1 && capturedScannerSqlCalls == 1,
+                "A valid but wrong initial SQL barcode must not reach the modal or local store");
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh(" ", flowMatches,
+                delegate(DataTable shown) { capturedScannerModalCalls++; return 1; },
+                delegate { capturedScannerSqlCalls++; return legacyLive.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates &&
+                capturedScannerModalCalls == 1 && capturedScannerSqlCalls == 1,
+                "Blank scanner input cannot use the barcode path");
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", flowMatches,
+                delegate(DataTable shown) { return -1; },
+                delegate { capturedScannerSqlCalls++; return legacyLive.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.Cancelled && capturedScannerSqlCalls == 1,
+                "Cancellation of captured scan must not issue another local query");
+            // Raw identity selection and the production scanner adapter have
+            // deliberately different error classifications for a reassigned
+            // barcode. Both reject it; the scanner must report an invalid
+            // exact-barcode SQL result rather than a missing/ambiguous sale.
+            DataTable reassignedSelectedBarcode = legacyLive.Copy();
+            reassignedSelectedBarcode.Rows[0]["Code"] = "REASSIGNED";
+            CheckoutVariantChoiceResult rawReassignment =
+                CheckoutVariantSnapshotService.EvaluateChoice(reassignedSelectedBarcode,
+                    CheckoutVariantSnapshotService.Read(flowMatches), 1);
+            CheckoutVariantChoiceResult scannerReassignment =
+                CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", flowMatches,
+                    delegate(DataTable shown) { return 1; },
+                    delegate { return reassignedSelectedBarcode.Copy(); });
+            Require(rawReassignment.Status == CheckoutVariantChoiceStatus.Ambiguous &&
+                rawReassignment.SelectedRow == null &&
+                scannerReassignment.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                scannerReassignment.SelectedRow == null,
+                "Raw ID reassignment is ambiguous, but a foreign scanner SQL barcode is invalid");
+            DataTable duplicateAndForeignBarcode = legacyLive.Copy();
+            duplicateAndForeignBarcode.Rows[0]["ID_ARTICLE"] = "A";
+            duplicateAndForeignBarcode.Rows[1]["Code"] = "FOREIGN";
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh("DUP", flowMatches,
+                delegate(DataTable shown) { return 0; },
+                delegate { return duplicateAndForeignBarcode; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Misfiltered SQL barcode outranks unrelated duplicate identity");
+            Console.WriteLine("PASS strict scanner status precedence: reassigned barcode and mixed duplicate identity");
+            Console.WriteLine("PASS captured barcode binding: live identity, wrong SQL result, blank scan and cancellation");
+            Console.WriteLine("PASS scanner exact-code validation before WinForms modal, local-store refresh and basket copy");
+
+            int singleReadCalls = 0;
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowSingle, null, delegate { singleReadCalls++; return flowSingle.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.Selected && singleReadCalls == 1,
+                "Single barcode match is also revalidated against live local catalogue");
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowSingle, null, delegate { return flowMatches.Clone(); }).Status ==
+                CheckoutVariantChoiceStatus.Missing,
+                "Single barcode match removed before basket must fail closed");
+            int emptyReadCalls = 0;
+            Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                flowEmpty, null, delegate { emptyReadCalls++; return flowMatches; }).Status ==
+                CheckoutVariantChoiceStatus.Missing && emptyReadCalls == 0,
+                "Initial no-match does not trigger an unnecessary refresh");
+            bool missingReaderRejected = false;
+            try {
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(flowMatches,
+                    delegate(IList<CheckoutVariantSnapshot> d) { return 0; }, null);
+            }
+            catch (ArgumentNullException) { missingReaderRejected = true; }
+            Require(missingReaderRejected, "Refresh callback is mandatory");
+            int badIndexReads = 0;
+            bool badIndexRejected = false;
+            try {
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                    flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 99; },
+                    delegate { badIndexReads++; return flowMatches; });
+            }
+            catch (ArgumentOutOfRangeException) { badIndexRejected = true; }
+            Require(badIndexRejected && badIndexReads == 0,
+                "Invalid displayed choice must not reach local store");
+            Exception liveDbFailure = new InvalidOperationException("local query failed");
+            Exception observedDbFailure = null;
+            try {
+                CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
+                    flowMatches, delegate(IList<CheckoutVariantSnapshot> d) { return 0; },
+                    delegate { throw liveDbFailure; });
+            }
+            catch (Exception error) { observedDbFailure = error; }
+            Require(Object.ReferenceEquals(observedDbFailure, liveDbFailure),
+                "Local-store query errors must propagate unmodified to Windows handler");
+
+            DataTable imageDisplayed = flowMatches.Clone();
+            imageDisplayed.Rows.Add("", "IMAGE-LIVE", 6m, 0m);
+            CheckoutArticleTileReference imageRef =
+                CheckoutArticleTileSelectionService.TagFor(imageDisplayed.Rows[0]);
+            DataTable imageCurrent = imageDisplayed.Copy();
+            imageCurrent.Rows[0]["UnitPrice"] = 11m;
+            imageCurrent.Rows[0]["Discount"] = 10m;
+            int imageReadCalls = 0;
+            CheckoutVariantChoiceResult refreshedImage =
+                CheckoutSelectionFlowService.ChooseImageWithRefresh(imageRef, delegate {
+                    imageReadCalls++;
+                    return imageCurrent;
+                });
+            Require(imageReadCalls == 1 && refreshedImage.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(refreshedImage.SelectedRow, imageCurrent.Rows[0]),
+                "Image-only blank-barcode tile re-queries by exact article identity");
+            CheckoutBasketPreview refreshedImageNet = CheckoutSelectionFlowService.Preview(
+                refreshedImage, 0m, delegate(DataRow article) {
+                    return SalesLinePricing.CalculateNetAmount(
+                        (decimal)article["UnitPrice"], 1m, (decimal)article["Discount"]);
+                }, "10", port);
+            Require(refreshedImageNet.LineNet == 9.9m && refreshedImageNet.BasketNet == 9.9m &&
+                refreshedImageNet.DisplayedTotalDiffers == false,
+                "Image tile refresh flows through production discount and total rounding");
+            imageCurrent.Rows[0]["ID_ARTICLE"] = "REUSED";
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                imageRef, delegate { return imageCurrent; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Wrong-ID exact image SQL refresh must not masquerade as a missing article");
+            imageCurrent.Rows[0]["ID_ARTICLE"] = "IMAGE-LIVE";
+            imageCurrent.Rows[0]["Code"] = "REASSIGNED";
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                imageRef, delegate { return imageCurrent; }).Status == CheckoutVariantChoiceStatus.Ambiguous,
+                "Image tile reused with different barcode fails closed");
+            // The local image reader is an exact ID_ARTICLE query. A wrong
+            // WHERE filter can return a plausible price for an unrelated item.
+            // It must be rejected BEFORE any price/basket preview, even when
+            // the intended article is also present in the result set.
+            imageCurrent.Rows[0]["Code"] = "";
+            DataTable mixedImageSql = imageCurrent.Copy();
+            mixedImageSql.Rows.Add("", "UNRELATED-IMAGE", 99m, 0m);
+            CheckoutVariantChoiceResult mixedImageResult =
+                CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                    imageRef, delegate { return mixedImageSql; });
+            Require(mixedImageResult.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
+                mixedImageResult.SelectedRow == null,
+                "Exact-ID image SQL callback cannot include an unrelated article");
+            Require(CheckoutSelectionFlowService.ChooseImage(mixedImageSql, imageRef).Status ==
+                CheckoutVariantChoiceStatus.Selected,
+                "Existing broad-catalogue image lookup keeps its legacy contract");
+            DataTable emptyExactImageSql = imageCurrent.Clone();
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                imageRef, delegate { return emptyExactImageSql; }).Status ==
+                CheckoutVariantChoiceStatus.Missing,
+                "Genuinely empty exact-ID image query remains Missing");
+            DataTable duplicateExactImageSql = imageCurrent.Copy();
+            duplicateExactImageSql.Rows.Add("", "IMAGE-LIVE", 20m, 0m);
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                imageRef, delegate { return duplicateExactImageSql; }).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous,
+                "Duplicate exact image identity cannot be added to basket");
+            DataTable corruptExactImageSql = imageCurrent.Copy();
+            corruptExactImageSql.Rows[0]["ID_ARTICLE"] = DBNull.Value;
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                imageRef, delegate { return corruptExactImageSql; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Null identity in exact image SQL query fails closed");
+            int malformedImageReads = 0;
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                new CheckoutArticleTileReference("", "  "),
+                delegate { malformedImageReads++; return imageCurrent; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && malformedImageReads == 0,
+                "Malformed image Tag must not issue a local SQL read");
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                new CheckoutArticleTileReference(null, "IMAGE-LIVE"),
+                delegate { malformedImageReads++; return imageCurrent; }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && malformedImageReads == 0,
+                "Null image Tag barcode must not issue a local SQL read");
+            Exception imageStoreError = new InvalidOperationException("image local store unavailable");
+            Exception observedImageStoreError = null;
+            try {
+                CheckoutSelectionFlowService.ChooseImageWithRefresh(imageRef,
+                    delegate { throw imageStoreError; });
+            } catch (Exception error) { observedImageStoreError = error; }
+            Require(Object.ReferenceEquals(imageStoreError, observedImageStoreError),
+                "Image exact-ID SQL failures propagate without a stale-price fallback");
+            Require(imageCurrent.Rows[0]["ID_ARTICLE"].ToString() == "IMAGE-LIVE" &&
+                (decimal)imageCurrent.Rows[0]["UnitPrice"] == 11m,
+                "Exact-ID refresh safety checks never mutate catalogue or price");
+            Console.WriteLine("PASS exact-ID image refresh SQL integrity, malformed Tag, duplicate, missing, and no stale-price fallback");
+
+            Require(CheckoutSelectionFlowService.ChooseImageWithRefresh(
+                imageRef, delegate { return null; }).Status == CheckoutVariantChoiceStatus.InvalidCandidates,
+                "Null image refresh never uses stale tile identity");
+            bool imageReaderRejected = false;
+            try { CheckoutSelectionFlowService.ChooseImageWithRefresh(imageRef, null); }
+            catch (ArgumentNullException) { imageReaderRejected = true; }
+            Require(imageReaderRejected, "Image refresh requires a live catalogue reader");
+            Require(flowMatches.Rows[0]["UnitPrice"].Equals(12.50m) &&
+                flowMatches.Rows[1]["UnitPrice"].Equals(7.50m) &&
+                flowMatches.Rows[0].RowState == DataRowState.Unchanged,
+                "Refresh orchestration never mutates displayed prices or original rows");
+            Console.WriteLine("PASS modern live local-store refresh: barcode choice, image tile, stale identities, pricing, returns, rounding and read-only basket");
+
             int quantities = 0;
             var lookup = new Lookup();
             var rows = new[] {
@@ -492,6 +1390,71 @@ internal static class PortableCheckoutSmoke
                 CheckoutArticleTileSelectionService.EvaluateExact(imageOnlyTileRows, imageOnlyTile).Status ==
                     CheckoutVariantChoiceStatus.Selected,
                 "Valid image-only article must retain blank barcode");
+            // The recovered TABLE_ARTICLES.Code column is nullable. An image
+            // tile with SQL NULL Code must remain selectable by ID_ARTICLE;
+            // scanner candidates must continue to reject that same NULL.
+            DataTable sqlNullImageRows = tiles.Clone();
+            sqlNullImageRows.Columns.Add("UnitPrice", typeof(decimal));
+            sqlNullImageRows.Columns.Add("Discount", typeof(decimal));
+            sqlNullImageRows.Columns.Add("TAUX_TVA", typeof(decimal));
+            sqlNullImageRows.Rows.Add("IMAGE-NULL", DBNull.Value, 12m, 0m, 20m);
+            CheckoutArticleTileReference sqlNullTile =
+                CheckoutArticleTileSelectionService.TagFor(sqlNullImageRows.Rows[0]);
+            Require(sqlNullTile.Code == "" && sqlNullTile.ArticleId == "IMAGE-NULL" &&
+                CheckoutArticleTileSelectionService.EvaluateExact(sqlNullImageRows, sqlNullTile).Status ==
+                    CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(
+                    CheckoutArticleTileSelectionService.FindExact(sqlNullImageRows, sqlNullTile),
+                    sqlNullImageRows.Rows[0]) && sqlNullImageRows.Rows[0].IsNull("Code"),
+                "SQL NULL barcode image tile retains original live row without modifying catalogue");
+            DataTable nullImageFresh = sqlNullImageRows.Copy();
+            nullImageFresh.Rows[0]["UnitPrice"] = 19m;
+            nullImageFresh.Rows[0]["Discount"] = 5m;
+            nullImageFresh.Rows[0]["TAUX_TVA"] = 7m;
+            int nullImageReads = 0;
+            CheckoutVariantChoiceResult nullImageRefresh =
+                CheckoutSelectionFlowService.ChooseImageWithRefresh(sqlNullTile,
+                    delegate { nullImageReads++; return nullImageFresh; });
+            Require(nullImageRefresh.Status == CheckoutVariantChoiceStatus.Selected &&
+                Object.ReferenceEquals(nullImageRefresh.SelectedRow, nullImageFresh.Rows[0]) &&
+                (decimal)nullImageRefresh.SelectedRow["UnitPrice"] == 19m &&
+                (decimal)nullImageRefresh.SelectedRow["Discount"] == 5m &&
+                (decimal)nullImageRefresh.SelectedRow["TAUX_TVA"] == 7m && nullImageReads == 1,
+                "SQL NULL image tile refresh resolves current price, discount and tax by identity");
+            nullImageFresh.Rows[0]["Code"] = "";
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(nullImageFresh, sqlNullTile).Status ==
+                CheckoutVariantChoiceStatus.Selected,
+                "SQL NULL and empty barcode are equivalent only for image-tile identity");
+            DataTable twoNullImages = sqlNullImageRows.Copy();
+            twoNullImages.Rows.Add("OTHER-NULL", DBNull.Value, 9m, 0m, 20m);
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(twoNullImages, sqlNullTile).Status ==
+                CheckoutVariantChoiceStatus.Selected,
+                "Two image-only articles without barcodes stay distinct by article ID");
+            twoNullImages.Rows[1]["ID_ARTICLE"] = "IMAGE-NULL";
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(twoNullImages, sqlNullTile).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous,
+                "Repeated image-only article ID must fail closed even with SQL NULL barcode");
+            DataTable nullImageReused = sqlNullImageRows.Copy();
+            nullImageReused.Rows[0]["Code"] = "REASSIGNED-BARCODE";
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(nullImageReused, sqlNullTile).Status ==
+                CheckoutVariantChoiceStatus.Ambiguous,
+                "Image-only article assigned a barcode after display cannot be silently selected");
+            Require(CheckoutVariantSnapshotService.EvaluateSnapshot(sqlNullImageRows).Status ==
+                CheckoutVariantSnapshotReadStatus.InvalidCandidates,
+                "SQL NULL barcode remains invalid for the scanner snapshot");
+            int nullScannerReads = 0;
+            Require(CheckoutBarcodeSelectionService.SelectWithRefresh(sqlNullImageRows, null,
+                delegate { nullScannerReads++; return sqlNullImageRows.Copy(); }).Status ==
+                CheckoutVariantChoiceStatus.InvalidCandidates && nullScannerReads == 0,
+                "Scanner never treats SQL NULL barcode as a valid exact-barcode match");
+            DataTable nullImageDeleted = sqlNullImageRows.Copy();
+            nullImageDeleted.AcceptChanges();
+            nullImageDeleted.Rows[0].Delete();
+            Require(CheckoutArticleTileSelectionService.EvaluateExact(nullImageDeleted, sqlNullTile).Status ==
+                CheckoutVariantChoiceStatus.Missing,
+                "Deleted SQL NULL image article must not be sold");
+            Console.WriteLine("PASS SQL NULL image-only catalogue identity: live prices, tax, discount, duplicates, stale, scanner separation and deletion");
+
             DataTable blankTileId = tiles.Clone();
             blankTileId.Rows.Add("", "DUP");
             bool blankTileTagRejected = false;

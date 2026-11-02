@@ -170,7 +170,19 @@ namespace LOGICA.ApplicationLayer.Checkout
                     displayedStatus == CheckoutVariantSnapshotReadStatus.Ambiguous
                         ? CheckoutVariantChoiceStatus.Ambiguous
                         : CheckoutVariantChoiceStatus.InvalidCandidates, null);
-            return EvaluateSelected(currentMatches, selected);
+            return EvaluateSelected(currentMatches, selected, false);
+        }
+
+        // Image-only catalogue rows may store SQL NULL rather than an empty
+        // barcode (TABLE_ARTICLES.Code is nullable in the recovered schema).
+        // Keep this exception confined to image-tile identity resolution: the
+        // scanner's EvaluateSnapshot/EvaluateChoice still reject NULL barcodes.
+        internal static CheckoutVariantChoiceResult EvaluateImageChoice(
+            DataTable currentMatches, CheckoutVariantSnapshot selected)
+        {
+            if (currentMatches == null) throw new ArgumentNullException("currentMatches");
+            if (selected == null) throw new ArgumentNullException("selected");
+            return EvaluateSelected(currentMatches, selected, true);
         }
 
         // The displayed list is supplied by a caller, not necessarily by Read.
@@ -202,7 +214,7 @@ namespace LOGICA.ApplicationLayer.Checkout
         // validation. In particular, a pending-deleted DataRow must never
         // escape through the null-only Resolve/ResolveChosenVariant APIs.
         private static CheckoutVariantChoiceResult EvaluateSelected(
-            DataTable currentMatches, CheckoutVariantSnapshot selected)
+            DataTable currentMatches, CheckoutVariantSnapshot selected, bool allowNullImageBarcode)
         {
             if (String.IsNullOrEmpty(selected.ArticleId) || selected.Code == null ||
                 !currentMatches.Columns.Contains("Code") ||
@@ -212,23 +224,33 @@ namespace LOGICA.ApplicationLayer.Checkout
             DataRow found = null;
             bool ambiguous = false;
             bool invalidCandidates = false;
+            // The live result must obey the same identity uniqueness contract
+            // as EvaluateSnapshot, not just for the selected ID. Otherwise a
+            // corrupt unrelated variant could be hidden by a valid selection.
+            var seenIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (DataRow row in currentMatches.Rows)
             {
                 // Deleted rows may still be present until AcceptChanges; they
                 // must not be offered to the modern checkout.
                 if (row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached)
                     continue;
-                if (row.IsNull("Code") || row.IsNull("ID_ARTICLE") ||
+                bool nullBarcode = row.IsNull("Code");
+                if ((nullBarcode && !(allowNullImageBarcode && selected.Code.Length == 0)) ||
+                    row.IsNull("ID_ARTICLE") ||
                     String.IsNullOrEmpty(Convert.ToString(row["ID_ARTICLE"])))
                 {
                     invalidCandidates = true;
                     continue;
                 }
-                // ID_ARTICLE is the catalogue identity. A second row with the
-                // same ID but a different barcode is also unsafe to select.
-                if (String.Equals(row["ID_ARTICLE"].ToString(), selected.ArticleId, StringComparison.Ordinal))
+                string candidateBarcode = nullBarcode ? "" : row["Code"].ToString();
+                string articleId = Convert.ToString(row["ID_ARTICLE"]);
+                if (!seenIds.Add(articleId))
+                    ambiguous = true;
+                // ID_ARTICLE is the catalogue identity. Reused IDs or a changed
+                // barcode must not silently select a different article.
+                if (String.Equals(articleId, selected.ArticleId, StringComparison.Ordinal))
                 {
-                    if (found != null || !String.Equals(row["Code"].ToString(), selected.Code, StringComparison.Ordinal))
+                    if (found != null || !String.Equals(candidateBarcode, selected.Code, StringComparison.Ordinal))
                         ambiguous = true;
                     else
                         found = row;
@@ -249,7 +271,7 @@ namespace LOGICA.ApplicationLayer.Checkout
         {
             if (matches == null) throw new ArgumentNullException("matches");
             if (selected == null) throw new ArgumentNullException("selected");
-            return EvaluateSelected(matches, selected).SelectedRow;
+            return EvaluateSelected(matches, selected, false).SelectedRow;
         }
     }
 }

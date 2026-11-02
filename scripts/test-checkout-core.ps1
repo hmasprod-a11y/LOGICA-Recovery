@@ -1,5 +1,8 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
+# Read-only regression: characterize direct EXE versus portable launcher DB endpoint.
+# Never connect to, initialize, or mutate a real store database here.
+& (Join-Path $root 'modernization/Test-CheckoutDbStartupContract.ps1')
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('logica-checkout-core-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temporary | Out-Null
@@ -21,6 +24,7 @@ try {
         'recovered-source/LOGICA/Application/Checkout/CheckoutBarcodeSelectionService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutArticleTileSelectionService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutVariantSnapshotService.cs',
+        'recovered-source/LOGICA/Application/Checkout/CheckoutSelectionFlowService.cs',
         'recovered-source/LOGICA/Infrastructure/Checkout/CheckoutArticleSearchQueryText.cs',
         'recovered-source/LOGICA/Application/Checkout/StockValidationModels.cs',
         'recovered-source/LOGICA/Application/Checkout/StockValidationService.cs',
