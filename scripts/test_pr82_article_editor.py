@@ -158,8 +158,8 @@ print("Catalogue creation stock movement parameter-binding regression: 4 SQL cas
 # QA resolution of conflicting Desktop #90 and Inventory #86/#88: the
 # deletion movement must use the identity-validated bound row, never a
 # potentially different CurrentRow after sorting/filtering.
-click = f.split("private void DataGridView1_CellClick(", 1)[1].split("\\n\\tprivate void ", 1)[0]
-helper = f.split("private static void InsertDeletionStockMovement(", 1)[1].split("\\n\\tprivate void ", 1)[0]
+click = f.split("private void DataGridView1_CellClick(", 1)[1].split("\n\tprivate void ", 1)[0]
+helper = f.split("private static void InsertDeletionStockMovement(", 1)[1].split("\n\tprivate void ", 1)[0]
 assert "InsertDeletionStockMovement(Module1.cn_SQL, deleteRow);" in click
 assert "ResolveUniqueExistingRow(" in click
 assert "DataGridView1.CurrentRow" not in click, "delete path must not use CurrentRow"
