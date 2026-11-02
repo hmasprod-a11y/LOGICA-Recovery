@@ -2977,12 +2977,12 @@ public class FormDialog_calc : Form
 					Conversion.Val(((ButtonBase)Button_RESTE).Text),
 					0,
 					0,
-					RuntimeHelpers.GetObjectValue(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null))
+					selectedMethod.Text
 				});
 				Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 				DataGridView_CALC.CurrentCell = DataGridView_CALC.Rows[DataGridView_CALC.Rows.Count - 1].Cells[1];
 				((Control)DataGridView_CALC).Focus();
-				if (Operators.ConditionalCompareObjectNotEqual(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null), "ESPECES", TextCompare: false))
+				if (!string.Equals(selectedMethod.Text, "ESPECES", StringComparison.Ordinal))
 				{
 					Button_RESTE.PerformClick();
 					((Control)Panel_REMARQUE).Visible = true;
