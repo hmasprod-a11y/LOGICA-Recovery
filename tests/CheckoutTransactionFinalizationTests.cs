@@ -404,6 +404,51 @@ internal static class CheckoutTransactionFinalizationTests
         AssertEvents(nextSale.Events, Stages, "next sale after reconciliation");
         gate.ReleaseAfterBasketReset(nextProgress);
 
+        // A null stock/payment collection is malformed checkout input, not a
+        // CLR NullReferenceException. The attempt has already begun, so the
+        // cashier gate must remain blocked until the Form verifies rollback.
+        foreach (bool missingStock in new[] { true, false })
+        {
+            var malformed = new Scenario();
+            var malformedInput = malformed.Input();
+            if (missingStock)
+                malformedInput.ReadStock = delegate {
+                    malformed.Events.Add("stock.read"); return null;
+                };
+            else
+                malformedInput.ReadPayments = delegate {
+                    malformed.Events.Add("payment.read"); return null;
+                };
+            var malformedProgress = new CheckoutCommitProgress();
+            var malformedGate = new CheckoutAttemptGate();
+            bool invalidStreamRejected = false;
+            try
+            {
+                CheckoutTransactionFinalizationService.PostAndFinalize(
+                    malformed, malformedInput, malformed, malformedProgress, malformedGate);
+            }
+            catch (InvalidOperationException ex)
+            {
+                invalidStreamRejected = ex.Message ==
+                    (missingStock ? "Checkout stock reader returned no collection."
+                                  : "Checkout payment reader returned no collection.");
+            }
+            if (!invalidStreamRejected || !malformedGate.IsBlocked ||
+                malformedProgress.RecoveryAction != CheckoutAttemptRecoveryAction.VerifyRollback ||
+                malformed.Events.Contains("commit") || malformed.Events.Contains("close"))
+                throw new Exception("Malformed stream escaped safe SOLDER rollback classification");
+            malformed.Rollback();
+            malformedGate.ReleaseAfterVerifiedRollback(malformedProgress);
+            if (malformedGate.IsBlocked)
+                throw new Exception("Verified rollback failed to release malformed-stream attempt");
+            var repaired = new Scenario();
+            var repairedProgress = new CheckoutCommitProgress();
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                repaired, repaired.Input(), repaired, repairedProgress, malformedGate);
+            AssertEvents(repaired.Events, Stages, "repaired checkout after null stream");
+            malformedGate.ReleaseAfterBasketReset(repairedProgress);
+        }
+
         Console.WriteLine("PASS checkout transaction finalization: 19 ordered stages, atomic progress, duplicate SOLDER gate, rollback/commit reconciliation and caller-owned rollback");
         return 0;
     }
