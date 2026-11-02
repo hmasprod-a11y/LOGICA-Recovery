@@ -367,6 +367,40 @@ internal static class ReceiptArticleSelectionSmoke
                 delegate { saveStages.Add("document"); });
             Check(readyToSave && String.Join(",", saveStages.ToArray()) == "edit,lines,document",
                 "receipt save commits current edit then recalculates lines and document in order");
+            // Edited grid lines and imported rows also go through the same
+            // receipt numeric guard before document totals or SQL persistence.
+            saveStages.Clear();
+            Check(!ReceiptLineGridGuard.PrepareForSave(
+                delegate { saveStages.Add("edit"); return ReceiptLineGridGuard.TryReadReceiptNumber(
+                    "-0.01", true, isReceiptNumeric, convertReceipt, out parsedReceiptNumber); },
+                delegate { saveStages.Add("lines"); },
+                delegate { saveStages.Add("document"); }) &&
+                String.Join(",", saveStages.ToArray()) == "edit",
+                "manually edited negative fractional quantity aborts save before totals");
+            saveStages.Clear();
+            Check(!ReceiptLineGridGuard.PrepareForSave(
+                delegate { saveStages.Add("edit"); return ReceiptLineGridGuard.TryReadReceiptNumber(
+                    "", false, isReceiptNumeric, convertReceipt, out parsedReceiptNumber); },
+                delegate { saveStages.Add("lines"); },
+                delegate { saveStages.Add("document"); }) &&
+                String.Join(",", saveStages.ToArray()) == "edit",
+                "empty edited price aborts save before totals");
+            saveStages.Clear();
+            Check(ReceiptLineGridGuard.PrepareForSave(
+                delegate { saveStages.Add("edit"); return ReceiptLineGridGuard.TryReadReceiptNumber(
+                    "1.25", true, isReceiptNumeric, convertReceipt, out parsedReceiptNumber); },
+                delegate { saveStages.Add("lines"); },
+                delegate { saveStages.Add("document"); }) &&
+                String.Join(",", saveStages.ToArray()) == "edit,lines,document",
+                "valid fractional edited quantity retains original save ordering");
+            saveStages.Clear();
+            Check(ReceiptLineGridGuard.PrepareForSave(
+                delegate { saveStages.Add("edit"); return ReceiptLineGridGuard.TryReadReceiptNumber(
+                    "0", true, isReceiptNumeric, convertReceipt, out parsedReceiptNumber); },
+                delegate { saveStages.Add("lines"); },
+                delegate { saveStages.Add("document"); }) &&
+                String.Join(",", saveStages.ToArray()) == "edit,lines,document",
+                "legacy zero-quantity edited receipt retains save path");
             saveStages.Clear();
             Check(!ReceiptLineGridGuard.PrepareForSave(
                 delegate { saveStages.Add("invalid-edit"); return false; },
