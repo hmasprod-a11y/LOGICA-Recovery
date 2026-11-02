@@ -29,7 +29,10 @@ namespace LOGICA.ApplicationLayer.Checkout
             CheckoutTicketPostingService.Write(store, input);
             CheckoutPaymentPostingService.Write(store, input.ReadPayments());
             input.Print();
-            store.Complete(input.ReadCompletion());
+            CheckoutCompletionRecord completion = input.ReadCompletion();
+            if (completion == null)
+                throw new InvalidOperationException("Checkout completion reader returned null.");
+            store.Complete(completion);
         }
     }
 }
