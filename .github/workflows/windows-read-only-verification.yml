@@ -1,0 +1,91 @@
+name: LOGICA read-only Windows verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ci/read-only-verification
+    paths:
+      - '.github/workflows/windows-read-only-verification.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Record immutable baseline
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force results | Out-Null
+          git rev-parse HEAD | Set-Content results/source-commit.txt
+      - name: Inventory original WinForms and source files
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem recovered-source -Recurse -Filter '*.cs' -File | Where-Object { $_.FullName -notmatch '[\\/](obj|bin)[\\/]' })
+          $inventory = foreach ($file in $files) {
+            $source = Get-Content $file.FullName -Raw
+            $classes = [regex]::Matches($source, '(?m)\\b(?:partial\\s+)?class\\s+([A-Za-z_][A-Za-z_0-9]*)') | ForEach-Object { $_.Groups[1].Value }
+            $formClasses = [regex]::Matches($source, '(?m)\\bclass\\s+([A-Za-z_][A-Za-z_0-9]*)\\s*:\\s*(?:System\\.Windows\\.Forms\\.)?Form\\b') | ForEach-Object { $_.Groups[1].Value }
+            [pscustomobject]@{
+              file = $file.FullName.Substring((Get-Location).Path.Length + 1)
+              classes = ($classes -join ';')
+              directFormClasses = ($formClasses -join ';')
+              lines = @($source -split "`n").Count
+            }
+          }
+          $inventory | Export-Csv results/source-inventory.csv -NoTypeInformation -Encoding UTF8
+          [pscustomobject]@{
+            sourceFiles = $files.Count
+            directFormDeclarations = @($inventory | Where-Object { $_.directFormClasses }).Count
+            note = 'Static source inventory only; inherited forms and designer files require further review'
+          } | ConvertTo-Json | Set-Content results/source-inventory-summary.json
+      - name: Restore original dependencies
+        shell: pwsh
+        run: Expand-Archive input/LOGICA-dependencies.zip dependencies -Force
+      - name: Build original source without repair
+        shell: pwsh
+        run: |
+          dotnet build recovered-source/LOGICA.csproj -c Release --nologo -v:q -o dist *> results/build.log
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content results/build.log | Select-String ': error ' | Select-Object -First 50 | ForEach-Object { Write-Host $_ }
+            throw 'Original-source build failed; diagnostics preserved'
+          }
+          Get-ChildItem dependencies -Recurse -File | ForEach-Object {
+            $target = Join-Path dist $_.Name
+            if (-not (Test-Path $target)) { Copy-Item $_.FullName -Destination $target }
+          }
+      - name: Isolated database setup
+        shell: pwsh
+        run: ./scripts/setup-test-db.ps1
+      - name: POS regression tests
+        shell: pwsh
+        run: ./scripts/test-pos.ps1
+      - name: Recovered database regression tests
+        shell: pwsh
+        run: ./scripts/test-recovered-db.ps1
+      - name: Verify tracked source unchanged
+        if: always()
+        shell: pwsh
+        run: |
+          $before = (Get-Content results/source-commit.txt -Raw).Trim()
+          $after = (git rev-parse HEAD).Trim()
+          if ($before -ne $after) { throw 'HEAD changed during verification' }
+          $dirty = git status --porcelain --untracked-files=no -- recovered-source scripts input
+          if ($dirty) { $dirty | Out-Host; throw 'Tracked source or test inputs changed during verification' }
+          'PASS read-only tracked sources' | Set-Content results/source-integrity.txt
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LOGICA-read-only-diagnostics
+          path: results/
+          retention-days: 30
