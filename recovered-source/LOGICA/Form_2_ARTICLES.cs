@@ -13901,6 +13901,16 @@ public class Form_2_ARTICLES : Form
 		}
 	}
 
+	private static string ReadArticleSetting(string name, string fallback)
+	{
+		var settings = MyProject.Forms.Form_0_TEMPLATE.ListView1;
+		if (settings == null) return fallback;
+		foreach (ListViewItem row in settings.Items)
+			if (string.Equals(row.Text, name, StringComparison.OrdinalIgnoreCase))
+				return row.SubItems.Count > 1 ? row.SubItems[1].Text : fallback;
+		return fallback;
+	}
+
 	private void Form_Me_Load(object sender, EventArgs e)
 	{
 		//IL_01eb: Unknown result type (might be due to invalid IL or missing references)
@@ -13934,10 +13944,10 @@ public class Form_2_ARTICLES : Form
 				{
 					((ButtonBase)Button244).Image = MyProject.Forms.Form_0_TEMPLATE.PictureBox_SORTIE.Image;
 				}
-				if (Conversions.ToBoolean(MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("GROUPES", false, 0).Index].SubItems[1].Text))
+				if (Conversions.ToBoolean(ReadArticleSetting("GROUPES", "False")))
 				{
 					((Control)Panel_GROUPE).Visible = true;
-					StringReader stringReader = new StringReader(MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("GROUPES_LISTE", false, 0).Index].SubItems[1].Text);
+					StringReader stringReader = new StringReader(ReadArticleSetting("GROUPES_LISTE", ""));
 					Combo_GROUPES.Items.Clear();
 					while (stringReader.Peek() != -1)
 					{
@@ -14370,7 +14380,7 @@ public class Form_2_ARTICLES : Form
 					MessageBox.Show("Veuillez remplir le champ -IMAGE- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Conversions.ToBoolean(MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("GROUPES", false, 0).Index].SubItems[1].Text) && Operators.CompareString(Combo_GROUPES.Text, "", TextCompare: false) == 0)
+				if (Conversions.ToBoolean(ReadArticleSetting("GROUPES", "False")) && Operators.CompareString(Combo_GROUPES.Text, "", TextCompare: false) == 0)
 				{
 					MessageBox.Show("Veuillez remplir le champ -GROUPE- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
