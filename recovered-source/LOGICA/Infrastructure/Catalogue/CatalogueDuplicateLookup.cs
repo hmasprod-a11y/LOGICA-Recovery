@@ -28,7 +28,7 @@ namespace LOGICA.Infrastructure.Catalogue
         {
             long id = ParseExcludedId(excludedId);
             var adapter = new MySqlDataAdapter(
-                "select ID,Code,Article from TABLE_ARTICLES WHERE Code = @code AND @code <> '' AND ID <> @excludedId", connection);
+                "select ID,Code,Article from TABLE_ARTICLES WHERE Code = @code AND @code <> '' AND (ID IS NULL OR ID <> @excludedId)", connection);
             adapter.SelectCommand.Parameters.AddWithValue("@code", (object)NormalizeCode(code));
             adapter.SelectCommand.Parameters.AddWithValue("@excludedId", id);
             ((DbDataAdapter)adapter).Fill(table);
@@ -38,7 +38,7 @@ namespace LOGICA.Infrastructure.Catalogue
         {
             long id = ParseExcludedId(excludedId);
             var adapter = new MySqlDataAdapter(
-                "select ID,ID_ARTICLE from TABLE_ARTICLES WHERE ID_ARTICLE = @articleId AND ID <> @excludedId", connection);
+                "select ID,ID_ARTICLE from TABLE_ARTICLES WHERE ID_ARTICLE = @articleId AND (ID IS NULL OR ID <> @excludedId)", connection);
             adapter.SelectCommand.Parameters.AddWithValue("@articleId", (object)articleId ?? "");
             adapter.SelectCommand.Parameters.AddWithValue("@excludedId", id);
             ((DbDataAdapter)adapter).Fill(table);
