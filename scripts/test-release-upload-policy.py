@@ -87,6 +87,13 @@ REQUIRED_WINDOWS_INPUTS = {
     'scripts/repair-source.py',
     'scripts/test-checkout-core.ps1',
     'scripts/test-release-upload-policy.py',
+    'scripts/test-extracted-release.ps1',
+    'scripts/test-beta-release-verifier.ps1',
+    'scripts/test-release-candidate.ps1',
+    'scripts/package-beta-rc.ps1',
+    'scripts/verify-beta-rc.ps1',
+    'scripts/test-pos.ps1',
+    'scripts/test-pos.cs',
     'input/original-startup.json',
     'input/LOGICA-dependencies.zip',
     'input/recovered-original.sql',
@@ -416,6 +423,20 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
         source = WORKFLOW.read_text(encoding='utf-8')
         before, after = source.split('  push:\n', 1)
         modified = before + '  push:\n' + after.replace("      - 'scripts/Launch-LOGICA.ps1'\n", '', 1)
+        with self.assertRaisesRegex(ValueError, 'push: missing Windows CI paths'):
+            assert_required_windows_triggers(modified)
+
+    def test_missing_pr_extracted_release_trigger_is_rejected(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        modified = source.replace("      - 'scripts/test-extracted-release.ps1'\n", '', 1)
+        with self.assertRaisesRegex(ValueError, 'pull_request: missing Windows CI paths'):
+            assert_required_windows_triggers(modified)
+
+    def test_missing_push_extracted_release_trigger_is_rejected(self):
+        source = WORKFLOW.read_text(encoding='utf-8')
+        before, after = source.split('  push:\n', 1)
+        modified = before + '  push:\n' + after.replace(
+            "      - 'scripts/test-extracted-release.ps1'\n", '', 1)
         with self.assertRaisesRegex(ValueError, 'push: missing Windows CI paths'):
             assert_required_windows_triggers(modified)
 
