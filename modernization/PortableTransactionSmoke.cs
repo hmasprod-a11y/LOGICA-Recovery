@@ -81,6 +81,15 @@ internal static class PortableTransactionSmoke
         catch (InvalidOperationException ex) { failed = ex.Message == failAt; }
         if (failed != (failAt != null))
             throw new Exception("Portable commit outcome failure propagation: " + failAt);
+        CheckoutAttemptRecoveryAction recovery =
+            expected == CheckoutCommitStage.Posting
+                ? CheckoutAttemptRecoveryAction.VerifyRollback :
+            expected == CheckoutCommitStage.CommitAttempted ||
+            expected == CheckoutCommitStage.CommitConfirmed
+                ? CheckoutAttemptRecoveryAction.ReconcileDatabase :
+                CheckoutAttemptRecoveryAction.ResetBasket;
+        if (progress.RecoveryAction != recovery)
+            throw new Exception("Portable unsafe checkout recovery decision: " + failAt);
         if (progress.Stage != expected ||
             progress.CommitOutcomeUnknown != (expected == CheckoutCommitStage.CommitAttempted) ||
             progress.CommitWasConfirmed != (expected == CheckoutCommitStage.CommitConfirmed ||
@@ -103,6 +112,9 @@ internal static class PortableTransactionSmoke
 
     public static int Run()
     {
+        if (new CheckoutCommitProgress().RecoveryAction !=
+            CheckoutAttemptRecoveryAction.None)
+            throw new Exception("Portable unused checkout progress must have no recovery action");
         Check(null, "header,journal,print,complete,commit,close");
         Check("print", "header,journal,print");
         Check("complete", "header,journal,print,complete");
