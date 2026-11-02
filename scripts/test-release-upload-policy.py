@@ -597,6 +597,19 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Missing or duplicated mandatory'):
             assert_critical_release_gates(modified)
 
+    def test_extracted_customer_launcher_runs_real_exe(self):
+        smoke = (WORKFLOW.parents[2] / 'scripts/test-extracted-release.ps1').read_text(encoding='utf-8')
+        self.assertIn("Get-Process -Name LOGICA", smoke)
+        self.assertIn("extractedLauncherActualExeResponsive = $launcherResponsive", smoke)
+        self.assertIn("licensedCashierScreenVerified = $false", smoke)
+        self.assertIn("directExeWithoutConnectionOverrideVerified = $false", smoke)
+        self.assertIn("RELEASE ACCEPTANCE BLOCKED", smoke)
+        self.assertIn("if (-not $launcherResponsive)", smoke)
+        launch = smoke.split('$launcherArgs = @(', 1)[1].split('$launcherProcess = Start-Process', 1)[0]
+        self.assertIn("'-Port','3308'", launch)
+        self.assertNotIn('-VerifyOnly', launch)
+        self.assertIn("Start-Process -FilePath 'powershell.exe'", smoke)
+
     def test_extracted_exe_smoke_cannot_be_removed(self):
         source = WORKFLOW.read_text(encoding='utf-8')
         modified = source.replace(
