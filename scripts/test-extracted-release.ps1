@@ -449,6 +449,11 @@ try {
         articleImageSavedViaUiVerified = $false
         solderCashPaymentVerified = $false
         salePostedExactlyOnceVerified = $false
+        # Commit/Close ambiguity and rapid duplicate SOLDER require separate
+        # authorized, isolated DB fault-injection; PIN startup proves neither.
+        postCommitCloseOutcomeVerified = $false
+        ambiguousCommitOutcomeReconciledVerified = $false
+        doubleSolderClickIdempotencyVerified = $false
         startupReadOnlyDatabaseCountsVerified = $true
         isolatedArticleTicketContentStableAcrossEntrypoints = ($script:isolatedSalesDigestChecks -eq 3)
         isolatedSalesDigestCheckCount = $script:isolatedSalesDigestChecks
