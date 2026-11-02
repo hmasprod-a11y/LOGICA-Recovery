@@ -222,6 +222,47 @@ internal static class CheckoutTransactionFinalizationTests
         if (preflightGate.IsBlocked)
             throw new Exception("Preflight retry gate did not release after verified basket reset");
 
+        // The original WinForms three-argument overload uses a fresh
+        // progress token; opt-in callers may also use the four-argument
+        // overload without a cashier gate. Invalid inputs must not consume
+        // that token before the first stock write, or a corrected attempt
+        // could be mistaken for a failed/partially posted transaction.
+        var ungated = new Scenario();
+        var ungatedProgress = new CheckoutCommitProgress();
+        var badUngated = ungated.Input();
+        badUngated.ReadPayments = null;
+        int ungatedRejected = 0;
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                null, ungated.Input(), ungated, ungatedProgress);
+        }
+        catch (ArgumentNullException ex) { if (ex.ParamName == "store") ungatedRejected++; }
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                ungated, null, ungated, ungatedProgress);
+        }
+        catch (ArgumentNullException ex) { if (ex.ParamName == "input") ungatedRejected++; }
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                ungated, badUngated, ungated, ungatedProgress);
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (ex.Message == "Checkout posting requires all callbacks before stock writes.")
+                ungatedRejected++;
+        }
+        if (ungatedRejected != 3 || ungatedProgress.Stage != CheckoutCommitStage.NotStarted ||
+            ungated.Events.Count != 0)
+            throw new Exception("Ungated malformed checkout consumed progress or wrote stock");
+        CheckoutTransactionFinalizationService.PostAndFinalize(
+            ungated, ungated.Input(), ungated, ungatedProgress);
+        AssertEvents(ungated.Events, Stages, "ungated repaired cash sale");
+        if (ungatedProgress.Stage != CheckoutCommitStage.Closed)
+            throw new Exception("Ungated repaired checkout did not close exactly once");
+
         // A single per-cashier gate must stay blocked until the UI has either
         // cleared the committed basket or verified rollback/reconciliation.
         var gate = new CheckoutAttemptGate();
