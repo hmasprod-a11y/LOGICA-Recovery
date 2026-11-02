@@ -181,7 +181,7 @@ internal static class CatalogueCreationMariaDbSmoke
                         Execute(administration, "DROP DATABASE `" + scratch + "`");
                     }
                 }
-                catch (Exception cleanup) { Console.Error.WriteLine("Scratch schema cleanup failed: " + cleanup); }
+                catch (Exception cleanup) { throw new InvalidOperationException("Scratch schema cleanup failed", cleanup); }
                 finally { administration.Dispose(); }
             }
         }
