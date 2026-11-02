@@ -739,7 +739,7 @@ internal static class PortableCheckoutSmoke
             wrongFilterWithSelected.Rows[0]["Code"] = "WRONG-FILTER";
             CheckoutVariantChoiceResult wrongFilterResult =
                 CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
-                    flowMatches, delegate(IList<CheckoutVariantSnapshot> variants) { return 0; },
+                    flowMatches, delegate(IList<CheckoutVariantSnapshot> freshSqlChoices) { return 0; },
                     delegate { return wrongFilterWithSelected; });
             Require(wrongFilterResult.Status == CheckoutVariantChoiceStatus.InvalidCandidates &&
                 wrongFilterResult.SelectedRow == null,
@@ -756,14 +756,14 @@ internal static class PortableCheckoutSmoke
             DataTable wrongFilterWithoutSelected = refreshedMissing.Copy();
             wrongFilterWithoutSelected.Rows[0]["Code"] = "WRONG-FILTER";
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
-                flowMatches, delegate(IList<CheckoutVariantSnapshot> variants) { return 1; },
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> freshSqlChoices) { return 1; },
                 delegate { return wrongFilterWithoutSelected; }).Status ==
                 CheckoutVariantChoiceStatus.InvalidCandidates,
                 "Wrong exact-barcode SQL filter takes precedence over missing selected ID");
             DataTable nullCodeLive = reorderedBarcode.Copy();
             nullCodeLive.Rows[0]["Code"] = DBNull.Value;
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
-                flowMatches, delegate(IList<CheckoutVariantSnapshot> variants) { return 0; },
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> freshSqlChoices) { return 0; },
                 delegate { return nullCodeLive; }).Status ==
                 CheckoutVariantChoiceStatus.InvalidCandidates,
                 "SQL NULL barcode cannot enter the scanner refresh path");
@@ -772,7 +772,7 @@ internal static class PortableCheckoutSmoke
             deletedUnrelatedCode.AcceptChanges();
             deletedUnrelatedCode.Rows[2].Delete();
             Require(CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(
-                flowMatches, delegate(IList<CheckoutVariantSnapshot> variants) { return 0; },
+                flowMatches, delegate(IList<CheckoutVariantSnapshot> freshSqlChoices) { return 0; },
                 delegate { return deletedUnrelatedCode; }).Status ==
                 CheckoutVariantChoiceStatus.Selected,
                 "Deleted unrelated SQL row does not invalidate otherwise exact active matches");
