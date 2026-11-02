@@ -217,6 +217,55 @@ try {
         }
     }
     if ($launcherProcess.ExitCode -ne 0) { throw "Extracted launcher exited $($launcherProcess.ExitCode); see extracted-release-launcher-ui.log" }
+    # Also exercise the exact Start-LOGICA.cmd entrypoint reported by the user.
+    # Provision MariaDB from the CI runner's existing local binaries into the
+    # disposable extraction only. Never download or modify an installed shop.
+    $cmdServer = Join-Path $extract 'bd/mysql-server'
+    $cmdProcess = $null
+    $cmdApp = $null
+    $cmdResponsive = $false
+    try {
+        Copy-Item -LiteralPath $server.Directory.Parent.FullName -Destination $cmdServer -Recurse -Force
+        if (-not (Get-ChildItem -LiteralPath $cmdServer -Recurse -Filter mariadbd.exe -File | Select-Object -First 1)) {
+            throw 'Offline CMD smoke did not provision a local MariaDB binary'
+        }
+        $cmdLog = Join-Path $results 'extracted-release-start-cmd.log'
+        $cmdErr = Join-Path $results 'extracted-release-start-cmd.stderr.log'
+        $cmdProcess = Start-Process -FilePath 'cmd.exe' -ArgumentList @('/d','/c','Start-LOGICA.cmd') -WorkingDirectory $extract -PassThru -RedirectStandardOutput $cmdLog -RedirectStandardError $cmdErr
+        $cmdTimer = [Diagnostics.Stopwatch]::StartNew()
+        do {
+            Start-Sleep -Seconds 2
+            $cmdProcess.Refresh()
+            $cmdApp = @(Get-Process -Name LOGICA -ErrorAction SilentlyContinue | Where-Object {
+                try { $_.Path -ieq (Join-Path $extract 'LOGICA.exe') } catch { $false }
+            } | Select-Object -First 1)[0]
+            if ($cmdApp) {
+                $cmdApp.Refresh()
+                if (-not $cmdApp.HasExited -and $cmdApp.MainWindowHandle -ne 0 -and $cmdApp.Responding) {
+                    $cmdResponsive = $true
+                    break
+                }
+            }
+            if ($cmdProcess.HasExited) { break }
+        } while ($cmdTimer.Elapsed.TotalSeconds -lt 90)
+        if (-not $cmdResponsive) {
+            $details = if (Test-Path -LiteralPath $cmdLog) { (Get-Content -LiteralPath $cmdLog -Tail 12) -join ' | ' } else { 'No CMD output' }
+            throw "Extracted Start-LOGICA.cmd did not open responsive LOGICA.exe with offline local MariaDB: $details"
+        }
+        Write-Host 'PASS: extracted Start-LOGICA.cmd started actual LOGICA.exe using preprovisioned offline MariaDB'
+    } finally {
+        if ($cmdApp) {
+            try { $cmdApp.Refresh(); if (-not $cmdApp.HasExited) { $cmdApp.Kill(); $cmdApp.WaitForExit(10000) | Out-Null } } catch { Write-Warning "Could not stop CMD child EXE: $_" }
+        }
+        if ($cmdProcess) {
+            try { if (-not $cmdProcess.WaitForExit(20000)) { $cmdProcess.Kill(); $cmdProcess.WaitForExit(10000) | Out-Null } }
+            catch { Write-Warning "Could not stop CMD launcher: $_" }
+        }
+        if (Test-Path -LiteralPath $cmdServer) {
+            Remove-Item -LiteralPath $cmdServer -Recurse -Force -ErrorAction Stop
+        }
+    }
+    if ($cmdProcess.ExitCode -ne 0) { throw "Extracted Start-LOGICA.cmd exited $($cmdProcess.ExitCode); see extracted-release-start-cmd.log" }
     Assert-RuntimeHashes $extract $baseline
     Assert-PackagedCodeHashes $extract $codeBaseline
     Write-Warning 'RELEASE ACCEPTANCE BLOCKED: responsive WinForms window does not prove valid license, cashier screen, printer, or direct EXE without DB override.'
@@ -239,6 +288,8 @@ try {
         extractedExeResponsive = $true
         extractedLauncherVerified = $true
         extractedLauncherActualExeResponsive = $launcherResponsive
+        extractedStartCmdActualExeResponsive = $cmdResponsive
+        startCmdOfflineMariaDbPreprovisioned = $true
         licensedCashierScreenVerified = $false
         directExeWithoutConnectionOverrideVerified = $false
         realPrinterAndScannerVerified = $false
