@@ -21,7 +21,9 @@ namespace LOGICA.ApplicationLayer.Checkout
                 // still owns rollback if a later payment fails validation.
                 if (payment.Context == null)
                     throw new InvalidOperationException("Checkout payment line has no context.");
-                if (payment.Kind == TicketPaymentKind.Tendered && payment.Mode == null)
+                if (payment.Kind == TicketPaymentKind.Tendered &&
+                    (payment.Mode == null || payment.Mode == DBNull.Value ||
+                     (payment.Mode is string && String.IsNullOrWhiteSpace((string)payment.Mode))))
                     throw new InvalidOperationException("Checkout tendered payment has no mode.");
                 store.WritePayment(payment);
             }
