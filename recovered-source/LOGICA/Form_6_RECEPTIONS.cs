@@ -682,10 +682,15 @@ public class Form_6_RECEPTIONS : Form
 	// Only set during an explicit purchase article-grid choice.
 	private string _receiptSelectedArticleId;
 
+	// True only after a fresh, exact-ID catalogue resolution from the article grid.
+	// Blank Code may be added to a receipt only with this provenance.
+	private bool _receiptResolvedFromArticleGrid;
+
 	// A failed/empty catalogue lookup must never leave a previously selected
 	// article available for addition to the current purchase receipt.
 	private void ClearReceiptArticleEntry()
 	{
+		_receiptResolvedFromArticleGrid = false;
 		Text_ID_ARTICLE.Text = "";
 		Text_CODE.Text = "";
 		Text_ARTICLE.Text = "";
@@ -9758,6 +9763,9 @@ public class Form_6_RECEPTIONS : Form
 				}
 				if (receiptArticle != null)
 				{
+					// A successful fresh lookup alone is insufficient for a blank
+					// barcode: only an explicit exact-ID grid choice authorizes it.
+					_receiptResolvedFromArticleGrid = _receiptSelectedArticleId != null;
 					Text_ID_ARTICLE.Text = receiptArticle["ID_ARTICLE"].ToString();
 					Text_CODE.Text = receiptArticle["Code"].ToString();
 					Text_ARTICLE.Text = receiptArticle["Article"].ToString();
@@ -9861,9 +9869,10 @@ public class Form_6_RECEPTIONS : Form
 					MessageBox.Show("Veuillez remplir le champ -ID_ARTICLE- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Operators.CompareString(Text_CODE.Text, "", TextCompare: false) == 0)
+				if (!LOGICA.ApplicationLayer.Purchasing.ReceiptArticleSelectionService.CanAddResolvedArticle(
+					Text_ID_ARTICLE.Text, Text_CODE.Text, _receiptResolvedFromArticleGrid))
 				{
-					MessageBox.Show("Veuillez remplir le champ -Code- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					MessageBox.Show("Veuillez sélectionner un article valide (code ou identité confirmée).", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
 				if (Operators.CompareString(Text_ARTICLE.Text, "", TextCompare: false) == 0)
@@ -9912,6 +9921,7 @@ public class Form_6_RECEPTIONS : Form
 					return;
 				}
 				DataGrid_BODY.Rows.Add(new object[10] { text, text2, text3, num, num2, num3, num4, num5, text4, text5 });
+				_receiptResolvedFromArticleGrid = false;
 				// Added lines already carry their rounded totals in num4/num5.
 				// No synthetic CellValidated event with a null row is needed.
 				Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), e);
