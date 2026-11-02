@@ -73,6 +73,22 @@ namespace LOGICA.ApplicationLayer.Purchasing
     // as an article line; identity recheck protects a pending delete dialog.
     internal static class ReceiptLineGridGuard
     {
+        // The receipt save button must finish the active edit and recompute
+        // line/document totals BEFORE checking the displayed total labels.
+        // An invalid edit aborts without recalculation or persistence.
+        // Keep the existing VB arithmetic in the WinForms callbacks.
+        internal static bool PrepareForSave(Func<bool> endEdit,
+            Action recalculateLines, Action recalculateDocument)
+        {
+            if (endEdit == null) throw new ArgumentNullException("endEdit");
+            if (recalculateLines == null) throw new ArgumentNullException("recalculateLines");
+            if (recalculateDocument == null) throw new ArgumentNullException("recalculateDocument");
+            if (!endEdit()) return false;
+            recalculateLines();
+            recalculateDocument();
+            return true;
+        }
+
         internal static bool HasExistingRow(int rowIndex, int rowCount)
         {
             return rowIndex >= 0 && rowCount > 0 && rowIndex < rowCount;
