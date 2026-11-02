@@ -609,6 +609,11 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
         self.assertIn("'-Port','3308'", launch)
         self.assertNotIn('-VerifyOnly', launch)
         self.assertIn("Start-Process -FilePath 'powershell.exe'", smoke)
+        self.assertIn("Start-Process -FilePath 'cmd.exe'", smoke)
+        self.assertIn("extractedStartCmdActualExeResponsive = $cmdResponsive", smoke)
+        self.assertIn("startCmdOfflineMariaDbPreprovisioned = $true", smoke)
+        self.assertIn("if (-not $cmdResponsive)", smoke)
+        self.assertIn("Remove-Item -LiteralPath $cmdServer -Recurse -Force", smoke)
 
     def test_extracted_exe_smoke_cannot_be_removed(self):
         source = WORKFLOW.read_text(encoding='utf-8')
