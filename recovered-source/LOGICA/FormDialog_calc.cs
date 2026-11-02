@@ -3535,7 +3535,7 @@ public class FormDialog_calc : Form
 			if (!TryGetPaymentNumber(paidCell.Value, out alreadyPaid)) return;
 			decimal completedPayment;
 			try { completedPayment = checked(alreadyPaid + remainder); }
-			catch (OverflowException) return; // Preserve the cashier's existing amount.
+			catch (OverflowException) { return; } // Preserve the cashier's existing amount.
 			paidCell.Value = completedPayment;
 			Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 			((Control)DataGridView_CALC).Focus();
