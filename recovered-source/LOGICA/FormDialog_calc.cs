@@ -3190,17 +3190,21 @@ public class FormDialog_calc : Form
 		return null;
 	}
 
-	// Cash denomination buttons must never edit a selected card/transfer row.
-	// Find the cash row by method identity, not DataGridView.CurrentRow.
+	// A selected cash row wins (split cash tenders may have multiple
+	// ESPECES rows). A selected card/transfer row must never receive coins.
+	private static bool IsCashPaymentRow(DataGridViewRow row)
+	{
+		if (row == null || row.IsNewRow || row.Cells.Count <= 3) return false;
+		string method = Convert.ToString(row.Cells[3].Value);
+		return string.Equals((method ?? "").Trim(), "ESPECES", StringComparison.OrdinalIgnoreCase);
+	}
+
 	private DataGridViewRow CashPaymentRow()
 	{
+		DataGridViewRow selected = DataGridView_CALC.CurrentRow;
+		if (IsCashPaymentRow(selected)) return selected;
 		foreach (DataGridViewRow row in DataGridView_CALC.Rows)
-		{
-			if (row.IsNewRow || row.Cells.Count <= 3) continue;
-			string method = Convert.ToString(row.Cells[3].Value);
-			if (string.Equals((method ?? "").Trim(), "ESPECES", StringComparison.OrdinalIgnoreCase))
-				return row;
-		}
+			if (IsCashPaymentRow(row)) return row;
 		return null;
 	}
 
