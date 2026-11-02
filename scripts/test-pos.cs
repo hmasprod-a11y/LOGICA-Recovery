@@ -1335,6 +1335,10 @@ class PosSmoke {
       sale.GetType().GetMethod("Text_FIND_TextChanged",Flags).Invoke(sale,new object[]{sale,EventArgs.Empty});
       if(tiles.Controls.Count!=1||Convert.ToString(tiles.Controls[0].Tag)!="CI_IMAGE_REAL")
        throw new Exception("Search image grid includes products without a valid photo: "+tiles.Controls.Count);
+      var oldTile=tiles.Controls[0];
+      sale.GetType().GetMethod("Text_FIND_TextChanged",Flags).Invoke(sale,new object[]{sale,EventArgs.Empty});
+      if(!oldTile.IsDisposed||tiles.Controls.Count!=1)
+       throw new Exception("Repeated product search did not dispose the old image tile");
              // An apostrophe is valid in a family name. An SQL-looking family
        // must be treated as an exact literal, never as a WHERE expression.
        Sql(connection,"INSERT INTO TABLE_ARTICLES (Article,Code,Images,Famille,PRIX_V_1) VALUES "+
@@ -2190,6 +2194,468 @@ class PosSmoke {
    Console.WriteLine("PASS real MariaDB DataAdapter category alias with session-local user fixture");
   } finally { connection.Close(); }
  }
+ static void DesktopSettingsStartupAndMalformedFlags(Assembly assembly) {
+  var type=assembly.GetType("LOGICA.FormDialog_2_Configuration",true);
+  var shortcut=type.GetMethod("ResolveStartupShortcutTarget",Flags);
+  var readFlag=type.GetMethod("ReadOptionalBooleanSetting",Flags);
+  if(shortcut==null||readFlag==null)throw new Exception("Settings startup/boolean compatibility helpers missing");
+  string root=Path.Combine(Path.GetTempPath(),"HanoutyStartupShortcutCI_"+Guid.NewGuid().ToString("N"));
+  string app=Path.Combine(root,"app"),data=Path.Combine(root,"data");
+  Directory.CreateDirectory(app);Directory.CreateDirectory(data);
+  try {
+   var fallback=Convert.ToString(shortcut.Invoke(null,new object[]{app,data,"LOGICA.exe"}));
+   if(fallback!=Path.Combine(data,"LOGICA.exe"))throw new Exception("Legacy EXE shortcut fallback changed");
+   var dataLauncher=Path.Combine(data,"Start-LOGICA.cmd");
+   File.WriteAllText(dataLauncher,"@echo off");
+   if(Convert.ToString(shortcut.Invoke(null,new object[]{app,data,"LOGICA.exe"}))!=dataLauncher)
+    throw new Exception("Portable data-folder launcher was not preferred over direct EXE");
+   var appLauncher=Path.Combine(app,"Start-LOGICA.cmd");
+   File.WriteAllText(appLauncher,"@echo off");
+   if(Convert.ToString(shortcut.Invoke(null,new object[]{app,data,"LOGICA.exe"}))!=appLauncher)
+    throw new Exception("Application-folder launcher was not preferred");
+   File.Delete(appLauncher);File.Delete(dataLauncher);
+  } finally {Directory.Delete(root,true);}
+  using(var form=(Form)Activator.CreateInstance(type)) {
+   var list=(ListView)Get(form,"ListView1");list.Items.Clear();
+   if((bool)readFlag.Invoke(form,new object[]{"GROUPES"}))throw new Exception("Missing optional flag enabled");
+   var row=list.Items.Add("GROUPES");row.SubItems.Add("True");
+   foreach(var sample in new[]{new[]{"True","True"},new[]{"False","False"},new[]{"1","True"},new[]{"0","False"},new[]{"-1","True"},new[]{"garbled","False"},new[]{"","False"}}) {
+    row.SubItems[1].Text=sample[0];
+    bool expected=sample[1]=="True";
+    if((bool)readFlag.Invoke(form,new object[]{"GROUPES"})!=expected)
+     throw new Exception("Optional flag failed for "+sample[0]);
+   }
+  }
+  Console.WriteLine("PASS portable startup shortcut prefers MariaDB launcher and settings flags tolerate corrupt values");
+ }
+ static void DesktopPaymentPlaceholderRowRegression(Assembly assembly) {
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.FormDialog_calc",true))) {
+   var type=form.GetType();
+   var grid=(DataGridView)Get(form,"DataGridView_CALC");
+   var calc=type.GetMethod("Button_calc_Click",Flags);
+   var add=type.GetMethod("FAM_click",Flags);
+   var count=type.GetMethod("SelectedPaymentRowCount",Flags);
+   var selected=type.GetMethod("HasSelectedPaymentMethod",Flags);
+   var click=type.GetMethod("DataGridView_CALC_CellClick",Flags);
+   var remove=type.GetMethod("DataGridView1_CellContentClick",Flags);
+   if(calc==null||add==null||count==null||selected==null||click==null||remove==null)
+    throw new Exception("Payment placeholder regression methods missing");
+   grid.AllowUserToAddRows=true;
+   grid.Rows.Clear();
+   SetText(form,"Text_TOTAL_NET","20");
+   calc.Invoke(form,new object[]{form,EventArgs.Empty});
+   if((int)count.Invoke(form,null)!=0||(bool)selected.Invoke(form,null))
+    throw new Exception("Empty payment placeholder counted as a settlement");
+   var openKeypad=type.GetMethod("Button_NUMERIQUE_Click",Flags);
+   if(openKeypad==null)throw new Exception("Payment keypad entry point missing");
+   var keypadLabel=(Label)Get(form,"Label_NUM");
+   keypadLabel.Text="KEEP";
+   openKeypad.Invoke(form,new object[]{form,EventArgs.Empty});
+   if(keypadLabel.Text!="KEEP")
+    throw new Exception("Uncommitted payment placeholder opened and reset keypad");
+   using(var cash=new Button(){Text="ESPECES"})
+    add.Invoke(form,new object[]{cash,EventArgs.Empty});
+   if((int)count.Invoke(form,null)!=1||!(bool)selected.Invoke(form,null))
+    throw new Exception("Inserted payment row was not recognized");
+   if(grid.CurrentCell==null||grid.CurrentCell.RowIndex!=0||grid.CurrentCell.ColumnIndex!=1)
+    throw new Exception("Cashier focused uncommitted new-row placeholder");
+   click.Invoke(form,new object[]{grid,new DataGridViewCellEventArgs(3,0)});
+   if(grid.CurrentCell==null||grid.CurrentCell.RowIndex!=0)
+    throw new Exception("Cashier payment cell click focused placeholder");
+   grid.CurrentCell=null;
+   remove.Invoke(form,new object[]{grid,new DataGridViewCellEventArgs(4,0)});
+   if((int)count.Invoke(form,null)!=0)
+    throw new Exception("Delete payment button did not remove row without current-cell focus");
+   calc.Invoke(form,new object[]{form,EventArgs.Empty});
+  }
+  Console.WriteLine("PASS cashier placeholder row, focus, deletion and empty payment recalculation");
+ }
+ static void SettingsSaveProjectionAndCompactDpi(Assembly assembly) {
+  var type=assembly.GetType("LOGICA.FormDialog_2_Configuration",true);
+  var project=type.GetMethod("TryGetSettingUpdate",Flags);
+  if(project==null)throw new Exception("Settings save projection missing");
+  object[] args={null,null,null};
+  if((bool)project.Invoke(null,args))throw new Exception("Null setting row was accepted");
+  using(var form=(Form)Activator.CreateInstance(type)) {
+   var list=(ListView)Get(form,"ListView1");
+   list.Items.Clear();
+   var incomplete=list.Items.Add("BRANCHEMENT");
+   args=new object[]{incomplete,null,null};
+   if((bool)project.Invoke(null,args))throw new Exception("Incomplete settings row was accepted");
+   incomplete.SubItems.Add("USB");
+   args=new object[]{incomplete,null,null};
+   if(!(bool)project.Invoke(null,args)||Convert.ToString(args[1])!="BRANCHEMENT"||Convert.ToString(args[2])!="USB")
+    throw new Exception("Valid settings value was lost");
+   var quoted=list.Items.Add("PRINTER");
+   quoted.SubItems.Add("L'imprimante");
+   args=new object[]{quoted,null,null};
+   if(!(bool)project.Invoke(null,args)||Convert.ToString(args[2])!="L'imprimante")
+    throw new Exception("Quoted printer setting was modified");
+   var grid=(DataGridView)Get(form,"DataGridView_MODELE_TICKET");
+   grid.AllowUserToAddRows=false;
+   grid.Rows.Clear();
+   grid.Rows.Add("FR_3C");
+   grid.Height=10;
+   // The production Load row sizing is exercised in its isolated helper-free
+   // path by the Windows build; the minimum height must remain 24 in code.
+  }
+  Console.WriteLine("PASS settings save projection rejects incomplete rows and retains quotes");
+ }
+ static void CashierKeyboardAndCashMethod(Assembly assembly) {
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.FormDialog_calc",true))) {
+   var type=form.GetType();
+   var press=type.GetMethod("TextBox_keyPress",Flags);
+   var cashMethod=type.GetMethod("CashPaymentButton",Flags);
+   if(press==null||cashMethod==null)throw new Exception("Cashier input guards missing");
+   using(var box=new TextBox()) {
+    box.Text="12.5";box.SelectionStart=4;
+    var duplicate=new KeyPressEventArgs('.');
+    press.Invoke(form,new object[]{box,duplicate});
+    if(!duplicate.Handled)throw new Exception("Duplicate payment decimal accepted");
+    box.Select(2,1);
+    var replace=new KeyPressEventArgs('.');
+    press.Invoke(form,new object[]{box,replace});
+    if(replace.Handled)throw new Exception("Selected decimal cannot be replaced");
+    box.Select(4,0);
+    var misplaced=new KeyPressEventArgs('-');
+    press.Invoke(form,new object[]{box,misplaced});
+    if(!misplaced.Handled)throw new Exception("Misplaced payment minus accepted");
+    box.Text="";box.Select(0,0);
+    var leading=new KeyPressEventArgs('-');
+    press.Invoke(form,new object[]{box,leading});
+    if(leading.Handled)throw new Exception("Legacy negative payment entry was lost");
+    var digit=new KeyPressEventArgs('7');
+    press.Invoke(form,new object[]{box,digit});
+    if(digit.Handled)throw new Exception("Valid payment digit was rejected");
+    var invalid=new KeyPressEventArgs('Q');
+    press.Invoke(form,new object[]{box,invalid});
+    if(!invalid.Handled)throw new Exception("Payment keyboard accepted letters");
+   }
+   var panel=(FlowLayoutPanel)Get(form,"FlowLayoutPanel_MODE_P");
+   if(cashMethod.Invoke(form,null)!=null)throw new Exception("Missing cash payment returned a button");
+   using(var cash=new Button(){Name="Button_ESPECES",Text="ESPECES"}) {
+    panel.Controls.Add(cash);
+    if(!Object.ReferenceEquals(cashMethod.Invoke(form,null),cash))
+     throw new Exception("Valid ESPECES payment button could not be resolved");
+    panel.Controls.Remove(cash);
+   }
+   var grid=(DataGridView)Get(form,"DataGridView_CALC");
+   grid.AllowUserToAddRows=false;
+   type.GetMethod("Button_REFRESH_Click",Flags).Invoke(form,new object[]{form,EventArgs.Empty});
+   type.GetMethod("DataGridView_CALC_CellClick",Flags).Invoke(form,new object[]{grid,new DataGridViewCellEventArgs(0,-1)});
+  }
+  Console.WriteLine("PASS cashier cash fallback, payment keyboard and header click");
+ }
+ static void ArticlePreviewReplacement(Assembly assembly) {
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_2_ARTICLES",true))) {
+   var method=form.GetType().GetMethod("ReplaceArticlePreview",Flags);
+   var preview=(PictureBox)Get(form,"Picture_IMAGE");
+   if(method==null)throw new Exception("Article preview replacement helper missing");
+   var first=new Bitmap(3,4);
+   method.Invoke(form,new object[]{first});
+   if(!Object.ReferenceEquals(preview.Image,first)||preview.Image.Width!=3)
+    throw new Exception("First article preview was not displayed");
+   var second=new Bitmap(5,6);
+   method.Invoke(form,new object[]{second});
+   if(!Object.ReferenceEquals(preview.Image,second)||preview.Image.Width!=5)
+    throw new Exception("New article preview was not displayed");
+   method.Invoke(form,new object[]{null});
+   if(preview.Image!=null||preview.ImageLocation!=null)
+    throw new Exception("Reset article preview retained stale image");
+   method.Invoke(form,new object[]{null});
+  }
+  Console.WriteLine("PASS article image preview replacement and clear");
+ }
+ static void SalesImageTileDisposalAndCompactDpi(Assembly assembly) {
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
+   var tiles=(FlowLayoutPanel)Get(form,"FlowLayout_ARTICLES");
+   var bar=(VScrollBar)Get(form,"vScrollBar1");
+   var clear=form.GetType().GetMethod("ClearArticleImageTiles",Flags);
+   var update=form.GetType().GetMethod("UpdateArticleImageScrollBar",Flags);
+   if(clear==null||update==null)throw new Exception("Image tile lifecycle or DPI helper missing");
+   using(var button=new Button(){Image=new Bitmap(2,2)}) {
+    tiles.Controls.Add(button);
+    bar.Height=0;tiles.Height=0;
+    update.Invoke(form,null);
+    if(bar.LargeChange<1||bar.Value<0)
+     throw new Exception("Compact DPI scrollbar produced invalid range");
+    clear.Invoke(form,null);
+    if(tiles.Controls.Count!=0||!button.IsDisposed)
+     throw new Exception("Search refresh leaked old image tiles");
+   }
+   clear.Invoke(form,null);
+  }
+  Console.WriteLine("PASS product image tile disposal and zero-height DPI scrollbar");
+ }
+ static void SettingsPortablePreferencesAndTicketSelection(Assembly assembly) {
+  var type=assembly.GetType("LOGICA.FormDialog_2_Configuration",true);
+  var option=type.GetMethod("ReadLocalOption",Flags);
+  var boolean=type.GetMethod("ReadLocalBooleanOption",Flags);
+  if(option==null||boolean==null)throw new Exception("Missing safe portable settings readers");
+  string missing="CI_NONEXISTENT_OPTION_"+Guid.NewGuid().ToString("N")+".sni";
+  if(Convert.ToString(option.Invoke(null,new object[]{missing,"CI_DEFAULT"}))!="CI_DEFAULT")
+   throw new Exception("Missing optional setting file did not use fallback");
+  if((bool)boolean.Invoke(null,new object[]{missing}))
+   throw new Exception("Missing boolean option must be false");
+  using(var form=(Form)Activator.CreateInstance(type)) {
+   var grid=(DataGridView)Get(form,"DataGridView_MODELE_TICKET");
+   grid.AllowUserToAddRows=false;grid.Rows.Clear();
+   foreach(var model in new[]{"FR_3C","FR_4C","FR_2L","AR_3C","AR_4C"})grid.Rows.Add(model);
+   var select=type.GetMethod("SelectTicketModel",Flags);
+   if(select==null)throw new Exception("Ticket model selection helper missing");
+   var cases=new[]{new[]{"FR_3C","0"},new[]{"FR_4C","1"},new[]{"FR_2L","2"},new[]{"AR_3C","3"},new[]{"AR_4C","4"},new[]{"AR","3"},new[]{"UNKNOWN","0"}};
+   foreach(var item in cases) {
+    select.Invoke(form,new object[]{item[0]});
+    if(grid.CurrentCell==null||grid.CurrentCell.RowIndex!=Int32.Parse(item[1]))
+     throw new Exception("Wrong ticket model row for "+item[0]);
+   }
+  }
+  Console.WriteLine("PASS portable optional settings and all five ticket layouts");
+ }
+ static void SettingsOptionalRowEventGuards(Assembly assembly) {
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.FormDialog_2_Configuration",true))) {
+   var rows=(ListView)Get(form,"ListView1");rows.Items.Clear();
+   var changeCheck=form.GetType().GetMethod("CheckBox_me_MODEP_CheckedChanged",Flags);
+   var changeBranch=form.GetType().GetMethod("Combo_BRANCHEMENT_TextChanged",Flags);
+   if(changeCheck==null||changeBranch==null)throw new Exception("Settings change handlers missing");
+   rows.Items.Add("FENETRE_MODE_P");
+   rows.Items.Add("BRANCHEMENT");
+   using(var check=new CheckBox(){Tag="FENETRE_MODE_P",Checked=true})
+   using(var combo=new ComboBox(){Tag="BRANCHEMENT",Text="USB"}) {
+    changeCheck.Invoke(form,new object[]{check,EventArgs.Empty});
+    changeBranch.Invoke(form,new object[]{combo,EventArgs.Empty});
+    if(rows.Items[0].SubItems.Count!=1||rows.Items[1].SubItems.Count!=1)
+     throw new Exception("Incomplete settings rows were mutated");
+    rows.Items[0].SubItems.Add("False");rows.Items[1].SubItems.Add("OLD");
+    changeCheck.Invoke(form,new object[]{check,EventArgs.Empty});
+    changeBranch.Invoke(form,new object[]{combo,EventArgs.Empty});
+    if(rows.Items[0].SubItems[1].Text!="True"||rows.Items[1].SubItems[1].Text!="USB")
+     throw new Exception("Valid settings event updates were lost");
+   }
+  }
+  Console.WriteLine("PASS settings incomplete row event guards preserve valid updates");
+ }
+ static void CashierPaymentReloadAndSelection(Assembly assembly) {
+  var module=assembly.GetType("LOGICA.Module1",true);
+  var root=module.GetField("_CHEMIN_FOLDER",Flags);
+  var original=root.GetValue(null);
+  var forms=assembly.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",Flags).GetValue(null,null);
+  var sale=Get(forms,"Form_3_VENTE");
+  var methods=(DataGridView)Get(sale,"DataGridView_MODE_P");
+  methods.AllowUserToAddRows=false;
+  methods.Rows.Clear();
+  int cash=methods.Rows.Add();
+  methods.Rows[cash].Cells[0].Value="ESPECES";
+  methods.Rows[cash].Cells[1].Value="ESPECS.png";
+  const string longName="PAIEMENT PAR VIREMENT BANCAIRE";
+  int transfer=methods.Rows.Add();
+  methods.Rows[transfer].Cells[0].Value=longName;
+  SetText(sale,"Text_TOTAL_NET","89.00");
+  try {
+   // Missing portable root must not hide the cash method when its icon is absent.
+   root.SetValue(null,null);
+   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.FormDialog_calc",true))) {
+    var type=form.GetType();
+    var load=type.GetMethod("FormDialog_calc_Load",Flags);
+    var clear=type.GetMethod("ClearPaymentMethodButtons",Flags);
+    var selected=type.GetMethod("HasSelectedPaymentMethod",Flags);
+    var fam=type.GetMethod("FAM_click",Flags);
+    if(load==null||clear==null||selected==null||fam==null)
+     throw new Exception("Cashier payment safety methods missing");
+    load.Invoke(form,new object[]{form,EventArgs.Empty});
+    var panel=(FlowLayoutPanel)Get(form,"FlowLayoutPanel_MODE_P");
+    var oldCash=panel.Controls["Button_ESPECES"] as Button;
+    var longButton=panel.Controls["Button_"+longName] as Button;
+    if(oldCash==null||longButton==null||oldCash.Image!=null)
+     throw new Exception("Missing portable root hid the cash method");
+    if(panel.ClientSize.Width>150 && longButton.Width<=85)
+     throw new Exception("Long payment caption remains clipped at DPI scale");
+    var icon=new Bitmap(4,4);
+    oldCash.Image=icon;
+    load.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(!oldCash.IsDisposed || panel.Controls["Button_ESPECES"]==null ||
+       Object.ReferenceEquals(oldCash,panel.Controls["Button_ESPECES"]))
+     throw new Exception("Reload kept stale payment buttons alive");
+    bool iconDisposed=false;
+    try { var width=icon.Width; } catch(ArgumentException) { iconDisposed=true; }
+    catch(ObjectDisposedException) { iconDisposed=true; }
+    if(!iconDisposed)throw new Exception("Reload leaked old payment icon");
+    var grid=(DataGridView)Get(form,"DataGridView_CALC");
+    grid.AllowUserToAddRows=false;grid.Rows.Clear();
+    if((bool)selected.Invoke(form,null))
+     throw new Exception("Empty settlement accepted");
+    fam.Invoke(form,new object[]{null,EventArgs.Empty});
+    using(var empty=new Button(){Text=" "})
+     fam.Invoke(form,new object[]{empty,EventArgs.Empty});
+    if(grid.Rows.Count!=0)throw new Exception("Invalid payment click created settlement");
+    int blank=grid.Rows.Add();
+    grid.Rows[blank].Cells[0].Value=10m;
+    grid.Rows[blank].Cells[1].Value=10m;
+    grid.Rows[blank].Cells[3].Value=DBNull.Value;
+    if((bool)selected.Invoke(form,null))
+     throw new Exception("Incomplete payment row accepted as settlement");
+    int valid=grid.Rows.Add();
+    grid.Rows[valid].Cells[0].Value=79m;
+    grid.Rows[valid].Cells[1].Value=79m;
+    grid.Rows[valid].Cells[3].Value="CARTE";
+    if((bool)selected.Invoke(form,null))
+     throw new Exception("Mixed blank and valid settlement rows were accepted");
+    grid.Rows[blank].Cells[3].Value="ESPECES";
+    if(!(bool)selected.Invoke(form,null))
+     throw new Exception("Valid legacy mixed payment methods were rejected");
+   }
+  } finally {root.SetValue(null,original);}
+  Console.WriteLine("PASS cashier reload disposes icons, rootless payment, valid selection and long DPI caption");
+ }
+ static void CashierPartialAmountAndKeypad(Assembly assembly) {
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.FormDialog_calc",true))) {
+   var type=form.GetType();
+   var grid=(DataGridView)Get(form,"DataGridView_CALC");
+   var calc=type.GetMethod("Button_calc_Click",Flags);
+   var selected=type.GetMethod("HasSelectedPaymentMethod",Flags);
+   var number=type.GetMethod("TryGetPaymentNumber",Flags);
+   var digit=type.GetMethod("Butt_Click",Flags);
+   var back=type.GetMethod("Butt_BACK_Click",Flags);
+   var accept=type.GetMethod("Button_CLAVIER_NOSELECT1_Click",Flags);
+   if(calc==null||selected==null||number==null||digit==null||back==null||accept==null)
+    throw new Exception("Cashier amount and keypad guards missing");
+   object[] args={DBNull.Value,0m};
+   if((bool)number.Invoke(null,args))throw new Exception("DBNull payment was treated as zero");
+   args=new object[]{"invalid",0m};
+   if((bool)number.Invoke(null,args))throw new Exception("Malformed payment was treated as zero");
+   args=new object[]{"25.5",0m};
+   if(!(bool)number.Invoke(null,args)||Convert.ToDecimal(args[1])!=25.5m)
+    throw new Exception("Valid fractional payment rejected");
+   grid.AllowUserToAddRows=false;grid.Rows.Clear();
+   SetText(form,"Text_TOTAL_NET","20");
+   grid.Rows.Add(new object[]{20m,25m,0m,"ESPECES",null});
+   calc.Invoke(form,new object[]{form,EventArgs.Empty});
+   if(!(bool)selected.Invoke(form,null)||!((Control)Get(form,"Button_SOLDER")).Enabled)
+    throw new Exception("Valid cash/change settlement no longer available");
+   grid.Rows[0].Cells[1].Value=DBNull.Value;
+   calc.Invoke(form,new object[]{form,EventArgs.Empty});
+   if((bool)selected.Invoke(form,null)||((Control)Get(form,"Button_SOLDER")).Enabled)
+    throw new Exception("Blank edited amount allowed checkout");
+   grid.Rows[0].Cells[1].Value="not-a-number";
+   calc.Invoke(form,new object[]{form,EventArgs.Empty});
+   if((bool)selected.Invoke(form,null)||((Control)Get(form,"Button_SOLDER")).Enabled)
+    throw new Exception("Malformed amount allowed checkout");
+   grid.Rows[0].Cells[1].Value=25m;
+   calc.Invoke(form,new object[]{form,EventArgs.Empty});
+   if(!(bool)selected.Invoke(form,null)||!((Control)Get(form,"Button_SOLDER")).Enabled)
+    throw new Exception("Corrected amount failed to reenable checkout");
+   grid.Rows[0].Cells[0].Value=null;
+   calc.Invoke(form,new object[]{form,EventArgs.Empty});
+   if((bool)selected.Invoke(form,null)||((Control)Get(form,"Button_SOLDER")).Enabled)
+    throw new Exception("Missing due amount allowed checkout");
+   grid.Rows[0].Cells[0].Value=20m;
+   var label=(Label)Get(form,"Label_NUM");
+   using(var key=new Button()) {
+    label.Text="";
+    key.Text=".";digit.Invoke(form,new object[]{key,EventArgs.Empty});
+    if(label.Text!="0.")throw new Exception("Decimal keypad omitted leading zero");
+    digit.Invoke(form,new object[]{key,EventArgs.Empty});
+    if(label.Text!="0.")throw new Exception("Keypad accepted repeated decimal point");
+    key.Text="4";digit.Invoke(form,new object[]{key,EventArgs.Empty});
+    if(label.Text!="0.4")throw new Exception("Keypad failed fractional input");
+    key.Text="12";digit.Invoke(form,new object[]{key,EventArgs.Empty});
+    key.Text="-";digit.Invoke(form,new object[]{key,EventArgs.Empty});
+    if(label.Text!="0.4")throw new Exception("Keypad accepted malformed caption/sign");
+    for(int i=0;i<5;i++)back.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(label.Text!="")throw new Exception("Backspace on empty keypad was unsafe");
+    key.Text="-";digit.Invoke(form,new object[]{key,EventArgs.Empty});
+    key.Text="2";digit.Invoke(form,new object[]{key,EventArgs.Empty});
+    if(label.Text!="-2")throw new Exception("Legacy negative return amount rejected");
+   }
+   grid.CurrentCell=grid.Rows[0].Cells[1];
+   label.Text="invalid";
+   accept.Invoke(form,new object[]{form,EventArgs.Empty});
+   if(Convert.ToDecimal(grid.Rows[0].Cells[1].Value)!=25m)
+    throw new Exception("Malformed keypad value overwrote valid payment");
+  }
+  Console.WriteLine("PASS cashier incomplete amounts, settlement fail-closed, recovery, keypad and empty backspace");
+ }
+ static void CashierIncompletePaymentRows(Assembly assembly) {
+  var forms=assembly.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",Flags).GetValue(null,null);
+  var sale=Get(forms,"Form_3_VENTE");
+  var methods=(DataGridView)Get(sale,"DataGridView_MODE_P");
+  methods.AllowUserToAddRows=false;methods.Rows.Clear();
+  int blank=methods.Rows.Add();methods.Rows[blank].Cells[0].Value=null;
+  int databaseNull=methods.Rows.Add();methods.Rows[databaseNull].Cells[0].Value=DBNull.Value;
+  int valid=methods.Rows.Add();methods.Rows[valid].Cells[0].Value="ESPECES";methods.Rows[valid].Cells[1].Value="CI_MISSING_ESPECES.png";
+  SetText(sale,"Text_TOTAL_NET","89.00");
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.FormDialog_calc",true))) {
+   form.GetType().GetMethod("FormDialog_calc_Load",Flags).Invoke(form,new object[]{form,EventArgs.Empty});
+   var panel=(FlowLayoutPanel)Get(form,"FlowLayoutPanel_MODE_P");
+   if(panel.Controls.Count!=1||panel.Controls["Button_ESPECES"]==null)
+    throw new Exception("Blank method rows prevented the valid cash payment button");
+   var cash=panel.Controls["Button_ESPECES"];
+   form.GetType().GetMethod("FAM_click",Flags).Invoke(form,new object[]{cash,EventArgs.Empty});
+   var grid=(DataGridView)Get(form,"DataGridView_CALC");
+   if(grid.Rows.Count!=1)throw new Exception("Cash payment selection was not preserved");
+   grid.Height=10;
+   form.GetType().GetMethod("Button_calc_Click",Flags).Invoke(form,new object[]{form,EventArgs.Empty});
+   if(grid.Rows[0].Height<24)throw new Exception("Compact payment grid produced clipped or negative row height");
+  }
+  Console.WriteLine("PASS incomplete payment methods, cash selection and compact DPI row");
+ }
+ static void ArticleImageEditorSafety(Assembly assembly) {
+  var module=assembly.GetType("LOGICA.Module1",true);
+  var folder=module.GetField("_CHEMIN_FOLDER",Flags);
+  object original=folder.GetValue(null);
+  string root=Path.Combine(Path.GetTempPath(),"HanoutyArticleImageCI_"+Guid.NewGuid().ToString("N"));
+  Directory.CreateDirectory(root);
+  try {
+   folder.SetValue(null,root);
+   var galleryMethod=assembly.GetType("LOGICA.Form_2_ARTICLES",true).GetMethod("ResolveArticleGalleryDirectory",Flags);
+   if(galleryMethod==null)throw new Exception("Article gallery portable fallback missing");
+   string gallery=Path.Combine(root,"bd","Galerie");
+   if(Convert.ToString(galleryMethod.Invoke(null,new object[]{root,root}))!=root)
+    throw new Exception("Missing gallery did not fall back to existing application folder");
+   Directory.CreateDirectory(gallery);
+   if(Convert.ToString(galleryMethod.Invoke(null,new object[]{root,root}))!=gallery)
+    throw new Exception("Existing shop gallery was not preferred");
+   string missingShop=Path.Combine(root,"absent-shop");
+   if(Convert.ToString(galleryMethod.Invoke(null,new object[]{missingShop,root}))!=gallery)
+    throw new Exception("Missing shop root did not use portable application gallery");
+   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_2_ARTICLES",true))) {
+    var preview=(PictureBox)Get(form,"Picture_IMAGE");
+    var persist=form.GetType().GetMethod("TryPersistArticleImage",Flags);
+    var refresh=form.GetType().GetMethod("Text_LIEN_PICTURE_DoubleClick",Flags);
+    var reset=form.GetType().GetMethod("Button35_Click",Flags);
+    if(persist==null||refresh==null||reset==null)throw new Exception("Article image UI guards missing");
+    SetText(form,"Text_LIEN_PICTURE_ANC","0");
+    SetText(form,"Text_LIEN_PICTURE","0");preview.Image=null;
+    if(!(bool)persist.Invoke(form,null))throw new Exception("No-image article sentinel rejected");
+    SetText(form,"Text_LIEN_PICTURE","CI_ABSENT.png");
+    if((bool)persist.Invoke(form,null))throw new Exception("Article without image preview accepted a new filename");
+    refresh.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(preview.Image!=null)throw new Exception("Missing image created a fake article tile");
+    using(var picture=new Bitmap(3,3)) {
+     preview.Image=new Bitmap(picture);
+     SetText(form,"Text_LIEN_PICTURE","..\\CI_ESCAPE.png");
+     if((bool)persist.Invoke(form,null))throw new Exception("Image path traversal accepted");
+     SetText(form,"Text_LIEN_PICTURE","CI_IMAGE_TEST.png");
+     folder.SetValue(null,null);
+     if((bool)persist.Invoke(form,null))throw new Exception("Missing portable image root caused a false save");
+     folder.SetValue(null,root);
+     if(!(bool)persist.Invoke(form,null))throw new Exception("Valid image preview was not saved");
+    }
+    string file=Path.Combine(root,"bd","images","CI_IMAGE_TEST.png");
+    if(!File.Exists(file))throw new Exception("Article image missing from isolated temporary folder");
+    preview.Image=null;refresh.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(preview.Image==null)throw new Exception("Saved article image could not be reloaded");
+    File.WriteAllText(Path.Combine(root,"bd","images","CI_CORRUPT.png"),"not a picture");
+    SetText(form,"Text_LIEN_PICTURE","CI_CORRUPT.png");refresh.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(preview.Image!=null)throw new Exception("Corrupt image was displayed as a valid image");
+    reset.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(((Control)Get(form,"Text_LIEN_PICTURE")).Text!="0"||preview.Image!=null||preview.ImageLocation!=null)
+     throw new Exception("Reset image still references a non-existent 0.png");
+    if(!(bool)persist.Invoke(form,null))throw new Exception("Reset no-image article was rejected");
+   }
+   Console.WriteLine("PASS article image create, missing, corrupt, reset and path safety");
+  } finally { folder.SetValue(null,original);Directory.Delete(root,true); }
+ }
  static void SettingsTicketGridNullGuard(Assembly assembly) {
   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.FormDialog_2_Configuration",true))) {
    var grid=(DataGridView)Get(form,"DataGridView_MODELE_TICKET");
@@ -2340,7 +2806,7 @@ static void StockRecoveredSchema(Assembly assembly) {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="stock-recovered-schema") { StockRecoveredSchema(assembly); } else if(args[0]=="legacy-zero-date") { LegacyZeroDates(assembly); } else if(args[0]=="article-missing-settings") { ArticleFamilyMissingSettings(assembly); } else if(args[0]=="cashier-missing-payment-image") { CashierMissingPaymentImage(assembly); } else if(args[0]=="checkout-missing-stock-setting") { CheckoutMissingStockSetting(assembly); } else if(args[0]=="payment-missing-icon") { PaymentMissingIcon(assembly); } else if(args[0]=="settings-missing-rows") { SettingsMissingRows(assembly); } else if(args[0]=="settings-ticket-null") { SettingsTicketGridNullGuard(assembly); } else if(args[0]=="login-category-sql") { LoginCategorySql(assembly); } else if(args[0]=="checkout-blank-barcode-live-sql") { SalesBlankBarcodeLiveLookup(assembly); } else if(args[0]=="checkout-blank-barcode-stock") { SalesBlankBarcodeStockPreflight(assembly); } else if(args[0]=="checkout-blank-barcode-posting") { SalesBlankBarcodePostingGuard(assembly); } else if(args[0]=="checkout-list-selection") { SalesListSelectionFallback(assembly); } else if(args[0]=="checkout-quantity-keypad-dpi") { SalesQuantityKeypadAndCompactKeyboard(assembly); SalesSearchClearRefresh(assembly); } else if(args[0]=="checkout-scanner-enter") { SalesScannerEnterRouting(assembly); } else if(args[0]=="checkout-search-shortcut") { SalesSearchShortcut(assembly); } else if(args[0]=="checkout-family-caption-contrast") { SalesFamilyCaptionContrast(assembly); } else if(args[0]=="checkout-product-list-selection-contrast") { SalesProductListSelectionContrast(assembly); } else if(args[0]=="checkout-product-name-row-dpi") { SalesProductNameRowDpi(assembly); } else if(args[0]=="checkout-product-list-header-dpi") { SalesProductListHeaderDpi(assembly); } else if(args[0]=="checkout-basket-header-dpi") { SalesBasketHeaderDpi(assembly); } else if(args[0]=="checkout-basket-selection-contrast") { SalesBasketSelectionContrast(assembly); } else if(args[0]=="checkout-white-buttons-contrast") { SalesWhiteUtilityButtonContrast(assembly); } else if(args[0]=="checkout-keyboard-contrast") { SalesKeyboardContrast(assembly); } else if(args[0]=="checkout-contrast") { SalesActionContrast(assembly); } else if(args[0]=="checkout-barcode-chooser") { CheckoutBarcodeChooser(assembly); } else if(args[0]=="checkout-image-grid") { CheckoutImageGrid(assembly); } else if(args[0]=="checkout-article-search-sql") { CheckoutArticleSearchSql(assembly); } else if(args[0]=="shared-export-projection") { SharedExportProjection(assembly); } else if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="desktop-startup-settings-flags") { DesktopSettingsStartupAndMalformedFlags(assembly); } else if(args[0]=="desktop-payment-placeholder") { DesktopPaymentPlaceholderRowRegression(assembly); } else if(args[0]=="desktop-settings-save-dpi") { SettingsSaveProjectionAndCompactDpi(assembly); } else if(args[0]=="desktop-payment-input") { CashierKeyboardAndCashMethod(assembly); } else if(args[0]=="desktop-image-preview") { ArticlePreviewReplacement(assembly); } else if(args[0]=="desktop-image-grid-dpi") { SalesImageTileDisposalAndCompactDpi(assembly); } else if(args[0]=="settings-optional-events") { SettingsOptionalRowEventGuards(assembly); } else if(args[0]=="article-image-editor-safety") { ArticleImageEditorSafety(assembly); } else if(args[0]=="cashier-payment-reload-selection") { CashierPaymentReloadAndSelection(assembly); } else if(args[0]=="cashier-partial-amount-keypad") { CashierPartialAmountAndKeypad(assembly); } else if(args[0]=="cashier-incomplete-payment-rows") { CashierIncompletePaymentRows(assembly); } else if(args[0]=="settings-portable-options") { SettingsPortablePreferencesAndTicketSelection(assembly); } else if(args[0]=="stock-recovered-schema") { StockRecoveredSchema(assembly); } else if(args[0]=="legacy-zero-date") { LegacyZeroDates(assembly); } else if(args[0]=="article-missing-settings") { ArticleFamilyMissingSettings(assembly); } else if(args[0]=="cashier-missing-payment-image") { CashierMissingPaymentImage(assembly); } else if(args[0]=="checkout-missing-stock-setting") { CheckoutMissingStockSetting(assembly); } else if(args[0]=="payment-missing-icon") { PaymentMissingIcon(assembly); } else if(args[0]=="settings-missing-rows") { SettingsMissingRows(assembly); } else if(args[0]=="settings-ticket-null") { SettingsTicketGridNullGuard(assembly); } else if(args[0]=="login-category-sql") { LoginCategorySql(assembly); } else if(args[0]=="checkout-blank-barcode-live-sql") { SalesBlankBarcodeLiveLookup(assembly); } else if(args[0]=="checkout-blank-barcode-stock") { SalesBlankBarcodeStockPreflight(assembly); } else if(args[0]=="checkout-blank-barcode-posting") { SalesBlankBarcodePostingGuard(assembly); } else if(args[0]=="checkout-list-selection") { SalesListSelectionFallback(assembly); } else if(args[0]=="checkout-quantity-keypad-dpi") { SalesQuantityKeypadAndCompactKeyboard(assembly); SalesSearchClearRefresh(assembly); } else if(args[0]=="checkout-scanner-enter") { SalesScannerEnterRouting(assembly); } else if(args[0]=="checkout-search-shortcut") { SalesSearchShortcut(assembly); } else if(args[0]=="checkout-family-caption-contrast") { SalesFamilyCaptionContrast(assembly); } else if(args[0]=="checkout-product-list-selection-contrast") { SalesProductListSelectionContrast(assembly); } else if(args[0]=="checkout-product-name-row-dpi") { SalesProductNameRowDpi(assembly); } else if(args[0]=="checkout-product-list-header-dpi") { SalesProductListHeaderDpi(assembly); } else if(args[0]=="checkout-basket-header-dpi") { SalesBasketHeaderDpi(assembly); } else if(args[0]=="checkout-basket-selection-contrast") { SalesBasketSelectionContrast(assembly); } else if(args[0]=="checkout-white-buttons-contrast") { SalesWhiteUtilityButtonContrast(assembly); } else if(args[0]=="checkout-keyboard-contrast") { SalesKeyboardContrast(assembly); } else if(args[0]=="checkout-contrast") { SalesActionContrast(assembly); } else if(args[0]=="checkout-barcode-chooser") { CheckoutBarcodeChooser(assembly); } else if(args[0]=="checkout-image-grid") { CheckoutImageGrid(assembly); } else if(args[0]=="checkout-article-search-sql") { CheckoutArticleSearchSql(assembly); } else if(args[0]=="shared-export-projection") { SharedExportProjection(assembly); } else if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);

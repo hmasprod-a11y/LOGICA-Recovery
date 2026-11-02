@@ -13788,15 +13788,13 @@ public class Form_2_ARTICLES : Form
 				Combo_PRINTER.Text = DT.Rows[position2]["PRINTER"].ToString();
 				Combo_PRINTER_DUPLICATA.Text = DT.Rows[position2]["PRINTER_DUPLICATA"].ToString();
 				Text_LIEN_PICTURE.Text = DT.Rows[position2]["Images"].ToString();
+				// Prefer the existing shop's image when present; portable packages
+				// may keep the same file under their startup images directory.
 				string articleImagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", Text_LIEN_PICTURE.Text);
-				Picture_IMAGE.Image = null;
-				if (!string.IsNullOrWhiteSpace(Text_LIEN_PICTURE.Text) && Text_LIEN_PICTURE.Text != "0" && File.Exists(articleImagePath))
-				{
-					using (Image articleImage = Image.FromFile(articleImagePath))
-					{
-						Picture_IMAGE.Image = (Image)new Bitmap(articleImage);
-					}
-				}
+				Image selectedImage = !string.IsNullOrWhiteSpace(Text_LIEN_PICTURE.Text) && Text_LIEN_PICTURE.Text != "0" && File.Exists(articleImagePath)
+					? LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.Load(Path.GetDirectoryName(articleImagePath), Text_LIEN_PICTURE.Text)
+					: LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.LoadWithFallback(Module1._CHEMIN_FOLDER, Application.StartupPath, Text_LIEN_PICTURE.Text);
+				ReplaceArticlePreview(selectedImage);
 				Text_LIEN_PICTURE_ANC.Text = DT.Rows[position2]["Images"].ToString();
 				Combo_TAILLES.Text = (DT.Columns.Contains("Taille") ? DT.Rows[position2]["Taille"].ToString() : "");
 				Combo_COULEURS.Text = (DT.Columns.Contains("Couleur") ? DT.Rows[position2]["Couleur"].ToString() : "");
@@ -14435,21 +14433,12 @@ public class Form_2_ARTICLES : Form
 					}
 					Text_CODE.Text = LOGICA.Domain.BalanceCodeFormatting.Format(TextBox_NBR_CODE_BALANCE.Text, () => Text_CODE.Text);
 				}
-				try
+				// Never persist an article pointing to an image which failed to save.
+				// The legacy "0" sentinel intentionally means no image.
+				if (!TryPersistArticleImage())
 				{
-					if (Operators.CompareString(Text_LIEN_PICTURE.Text, Text_LIEN_PICTURE_ANC.Text, TextCompare: false) != 0)
-					{
-						Bitmap val = new Bitmap(Picture_IMAGE.Image);
-						((Image)val).Save(Module1._CHEMIN_FOLDER + "\\bd\\images\\" + Text_LIEN_PICTURE.Text, ImageFormat.Png);
-						((Image)val).Dispose();
-					}
-				}
-				catch (Exception ex)
-				{
-					ProjectData.SetProjectError(ex);
-					Exception ex2 = ex;
-					Interaction.MsgBox("Erreur image : " + ex2.Message);
-					ProjectData.ClearProjectError();
+					MessageBox.Show("Image absente ou impossible à enregistrer. Choisissez une image valide.", "Attention", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+					return;
 				}
 				if (Operators.CompareString(Label_TOP.Text, "NOUVEAU", TextCompare: false) == 0)
 				{
@@ -15253,114 +15242,55 @@ public class Form_2_ARTICLES : Form
 		}
 	}
 
+	// All article previews are detached bitmaps. Dispose the old preview when
+	// a cashier switches products, clears a photo, or pastes a new one.
+	private void ReplaceArticlePreview(Image replacement)
+	{
+		Image previous = Picture_IMAGE.Image;
+		Picture_IMAGE.ImageLocation = null;
+		Picture_IMAGE.Image = replacement;
+		if (previous != null && !object.ReferenceEquals(previous, replacement))
+			previous.Dispose();
+	}
+
 	private void Picture_IMAGE_DoubleClick(object sender, EventArgs e)
 	{
-		//IL_006e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0074: Expected Obj, but got Unknown
-		int try0001_dispatch = -1;
-		int num3 = default;
-		int num = default;
-		int num2 = default;
-		Bitmap val = default;
-		while (true)
+		try
 		{
-			try
+			if (!Clipboard.ContainsImage()) return;
+			using (Image clipboardImage = Clipboard.GetImage())
 			{
-				/*Note: ILSpy has introduced the following switch to emulate a goto from catch-block to try-block*/;
-				PictureBox picture_IMAGE;
-				Bitmap val2;
-				Rectangle rectangle;
-				switch (try0001_dispatch)
-				{
-				default:
-					ProjectData.ClearProjectError();
-					num3 = -2;
-					goto IL_000a;
-				case 290:
-					{
-						num = num2;
-						switch ((num3 <= -2) ? 1 : num3)
-						{
-						case 1:
-							break;
-						default:
-							goto end_IL_0001;
-						}
-						int num4 = num + 1;
-						num = 0;
-						switch (num4)
-						{
-						case 1:
-							break;
-						case 2:
-							goto IL_000a;
-						case 3:
-							goto IL_0025;
-						case 4:
-							goto IL_0043;
-						case 5:
-							goto IL_0074;
-						case 6:
-							goto IL_00a6;
-						case 7:
-							goto end_IL_0001_2;
-						default:
-							goto end_IL_0001;
-						case 8:
-						case 9:
-							goto end_IL_0001_3;
-						}
-						goto default;
-					}
-					IL_0043:
-					num2 = 4;
-					val = new Bitmap(((Control)Picture_IMAGE).Size.Width, ((Control)Picture_IMAGE).Size.Height);
-					goto IL_0074;
-					IL_0074:
-					num2 = 5;
-					picture_IMAGE = Picture_IMAGE;
-					val2 = val;
-					rectangle = new Rectangle(0, 0, ((Control)Picture_IMAGE).Width, ((Control)Picture_IMAGE).Height);
-					((Control)picture_IMAGE).DrawToBitmap(val2, rectangle);
-					goto IL_00a6;
-					IL_0025:
-					num2 = 3;
-					Picture_IMAGE.Image = ((Computer)MyProject.Computer).Clipboard.GetImage();
-					goto IL_0043;
-					IL_00a6:
-					num2 = 6;
-					Picture_IMAGE.Image = (Image)(object)val;
-					break;
-					IL_000a:
-					num2 = 2;
-					if (!((Computer)MyProject.Computer).Clipboard.ContainsImage())
-					{
-						goto end_IL_0001_3;
-					}
-					goto IL_0025;
-					end_IL_0001_2:
-					break;
-				}
-				num2 = 7;
+				if (clipboardImage == null) return;
+				ReplaceArticlePreview(new Bitmap(clipboardImage));
 				Text_LIEN_PICTURE.Text = DateTime.Now.ToString("dd-MM-yyy HH-mm-ss-fffffff") + ".png";
-				break;
-				end_IL_0001:;
 			}
-			catch (Exception ex) when ((num3 != 0) & (num == 0))
-			{
-				ProjectData.SetProjectError(ex);
-				try0001_dispatch = 290;
-				continue;
-			}
-			throw ProjectData.CreateProjectError(-2146828237);
-			continue;
-			end_IL_0001_3:
-			break;
 		}
-		if (num != 0)
+		catch (System.Runtime.InteropServices.ExternalException) { /* Clipboard temporarily busy. */ }
+		catch (ArgumentException) { /* Invalid clipboard bitmap. */ }
+		catch (OutOfMemoryException) { /* Unsupported or corrupt clipboard image. */ }
+	}
+
+	// UI-only file persistence; catalogue DB transactions remain owned by Inventory.
+	private bool TryPersistArticleImage()
+	{
+		string name = Text_LIEN_PICTURE.Text.Trim();
+		if (name == "0" || string.Equals(name, "0.png", StringComparison.OrdinalIgnoreCase)) return true;
+		if (string.Equals(name, Text_LIEN_PICTURE_ANC.Text, StringComparison.Ordinal)) return true;
+		if (string.IsNullOrWhiteSpace(name) || name != Path.GetFileName(name) || Picture_IMAGE.Image == null ||
+			string.IsNullOrWhiteSpace(Module1._CHEMIN_FOLDER))
+			return false;
+		try
 		{
-			ProjectData.ClearProjectError();
+			string folder = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images");
+			Directory.CreateDirectory(folder);
+			using (Bitmap copy = new Bitmap(Picture_IMAGE.Image))
+				copy.Save(Path.Combine(folder, name), ImageFormat.Png);
+			return true;
 		}
+		catch (IOException) { return false; }
+		catch (UnauthorizedAccessException) { return false; }
+		catch (ArgumentException) { return false; }
+		catch (System.Runtime.InteropServices.ExternalException) { return false; }
 	}
 
 	private void Text_LIEN_PICTURE_TextChanged(object sender, EventArgs e)
@@ -15369,7 +15299,8 @@ public class Form_2_ARTICLES : Form
 
 	private void Text_LIEN_PICTURE_DoubleClick(object sender, EventArgs e)
 	{
-		Picture_IMAGE.ImageLocation = Module1._CHEMIN_FOLDER + "\\bd\\images\\" + Text_LIEN_PICTURE.Text.ToString();
+		ReplaceArticlePreview(LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.LoadWithFallback(
+			Module1._CHEMIN_FOLDER, Application.StartupPath, Text_LIEN_PICTURE.Text));
 	}
 
 	private void Button35_Click(object sender, EventArgs e)
@@ -15378,8 +15309,8 @@ public class Form_2_ARTICLES : Form
 		//IL_00d0: Expected Obj, but got Unknown
 		try
 		{
-			Text_LIEN_PICTURE.Text = "0.png";
-			Picture_IMAGE.ImageLocation = Module1._CHEMIN_FOLDER + "\\bd\\images\\" + Text_LIEN_PICTURE.Text;
+			Text_LIEN_PICTURE.Text = "0";
+			ReplaceArticlePreview(null);
 		}
 		catch (Exception ex)
 		{
@@ -15410,6 +15341,25 @@ public class Form_2_ARTICLES : Form
 		}
 	}
 
+	// The legacy gallery directory is optional in portable installations.
+	// An absent shop folder must not leave the native image picker with an
+	// invalid initial directory (or force a write to the shop's data folder).
+	private static string ResolveArticleGalleryDirectory(string shopRoot, string applicationRoot)
+	{
+		if (!string.IsNullOrWhiteSpace(shopRoot))
+		{
+			string gallery = Path.Combine(shopRoot, "bd", "Galerie");
+			if (Directory.Exists(gallery)) return gallery;
+		}
+		if (!string.IsNullOrWhiteSpace(applicationRoot))
+		{
+			string gallery = Path.Combine(applicationRoot, "bd", "Galerie");
+			if (Directory.Exists(gallery)) return gallery;
+			if (Directory.Exists(applicationRoot)) return applicationRoot;
+		}
+		return Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+	}
+
 	private void Button26_Click(object sender, EventArgs e)
 	{
 		//IL_0002: Unknown result type (might be due to invalid IL or missing references)
@@ -15422,17 +15372,19 @@ public class Form_2_ARTICLES : Form
 		//IL_0075: Expected Obj, but got Unknown
 		try
 		{
-			OpenFileDialog val = new OpenFileDialog();
-			((FileDialog)val).InitialDirectory = Module1._CHEMIN_FOLDER + "\\bd\\Galerie";
-			if ((int)((CommonDialog)val).ShowDialog() == 1)
+			using (OpenFileDialog val = new OpenFileDialog())
 			{
-				Picture_IMAGE.Image = Image.FromFile(((FileDialog)val).FileName);
-				Bitmap val2 = new Bitmap(((Control)Picture_IMAGE).Size.Width, ((Control)Picture_IMAGE).Size.Height);
-				PictureBox picture_IMAGE = Picture_IMAGE;
-				Rectangle rectangle = new Rectangle(0, 0, ((Control)Picture_IMAGE).Width, ((Control)Picture_IMAGE).Height);
-				((Control)picture_IMAGE).DrawToBitmap(val2, rectangle);
-				Picture_IMAGE.Image = (Image)(object)val2;
-				Text_LIEN_PICTURE.Text = DateTime.Now.ToString("dd-MM-yyy HH-mm-ss-fffffff") + ".png";
+				val.InitialDirectory = ResolveArticleGalleryDirectory(Module1._CHEMIN_FOLDER, Application.StartupPath);
+				val.Filter = "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif|Tous les fichiers (*.*)|*.*";
+				val.CheckFileExists = true;
+				if (val.ShowDialog() == DialogResult.OK)
+				{
+					using (Image original = Image.FromFile(val.FileName))
+					{
+						ReplaceArticlePreview(new Bitmap(original)); // Do not lock the chosen file.
+					}
+					Text_LIEN_PICTURE.Text = DateTime.Now.ToString("dd-MM-yyy HH-mm-ss-fffffff") + ".png";
+				}
 			}
 		}
 		catch (Exception ex)

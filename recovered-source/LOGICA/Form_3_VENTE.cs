@@ -12488,6 +12488,35 @@ public class Form_3_VENTE : Form
 	{
 	}
 
+	// Search and family switching create independent image bitmaps for each
+	// tile. Clear() alone detaches controls without disposing their GDI images.
+	private void ClearArticleImageTiles()
+	{
+		while (FlowLayout_ARTICLES.Controls.Count > 0)
+		{
+			Control tile = FlowLayout_ARTICLES.Controls[0];
+			FlowLayout_ARTICLES.Controls.RemoveAt(0);
+			ButtonBase button = tile as ButtonBase;
+			Image image = button == null ? null : button.Image;
+			if (button != null) button.Image = null;
+			tile.Dispose();
+			if (image != null) image.Dispose();
+		}
+	}
+
+	// Never divide by a hidden zero-height scrollbar at compact DPI scales.
+	private void UpdateArticleImageScrollBar()
+	{
+		VScrollBar bar = vScrollBar1;
+		int contentHeight = Math.Max(0, ((ScrollableControl)FlowLayout_ARTICLES).DisplayRectangle.Height);
+		bar.Minimum = 0;
+		bar.Maximum = contentHeight;
+		bar.LargeChange = Math.Max(1, Math.Min(contentHeight + 1, ((Control)FlowLayout_ARTICLES).Height));
+		bar.SmallChange = 15;
+		int maxValue = Math.Max(0, bar.Maximum - bar.LargeChange + 1);
+		bar.Value = Math.Min(maxValue, Math.Abs(((ScrollableControl)FlowLayout_ARTICLES).AutoScrollPosition.Y));
+	}
+
 	public void FAM2_click(object sender, EventArgs e)
 	{
 		//IL_0008: Unknown result type (might be due to invalid IL or missing references)
@@ -12512,7 +12541,7 @@ public class Form_3_VENTE : Form
 				val = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Family(), Module1.cn_SQL);
 				val.SelectCommand.Parameters.AddWithValue("@family", Conversions.ToString(NewLateBinding.LateGet(sender, null, "Text", new object[0], null, null, null)));
 				((DbDataAdapter)(object)val).Fill(dataTable);
-				((Control)FlowLayout_ARTICLES).Controls.Clear();
+				ClearArticleImageTiles();
 				int num = dataTable.Rows.Count - 1;
 				int num2 = 0;
 				while (true)
@@ -12559,11 +12588,7 @@ public class Form_3_VENTE : Form
 					num2++;
 				}
 				((Control)Text_CODE).Focus();
-				((ScrollBar)vScrollBar1).Minimum = 0;
-				((ScrollBar)vScrollBar1).Maximum = ((ScrollableControl)FlowLayout_ARTICLES).DisplayRectangle.Height;
-				((ScrollBar)vScrollBar1).LargeChange = (int)Math.Round((double)((ScrollBar)vScrollBar1).Maximum / (double)((Control)vScrollBar1).Height + (double)((Control)FlowLayout_ARTICLES).Height);
-				((ScrollBar)vScrollBar1).SmallChange = 15;
-				((ScrollBar)vScrollBar1).Value = Math.Abs(((ScrollableControl)FlowLayout_ARTICLES).AutoScrollPosition.Y);
+				UpdateArticleImageScrollBar();
 			}
 			catch (Exception ex)
 			{
@@ -15445,7 +15470,7 @@ public class Form_3_VENTE : Form
 					da_PIC = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Images(), Module1.cn_SQL);
 					da_PIC.SelectCommand.Parameters.AddWithValue("@search", LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Pattern(Text_FIND.Text));
 					((DbDataAdapter)(object)da_PIC).Fill(dt_PIC);
-					((Control)FlowLayout_ARTICLES).Controls.Clear();
+					ClearArticleImageTiles();
 					int num = dt_PIC.Rows.Count - 1;
 					int num2 = 0;
 					while (true)
