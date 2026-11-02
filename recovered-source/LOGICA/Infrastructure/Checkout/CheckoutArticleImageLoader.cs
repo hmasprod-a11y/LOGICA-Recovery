@@ -8,6 +8,36 @@ namespace LOGICA.Infrastructure.Checkout
     // Windows-only adapter. Missing, locked and invalid image files never become fake tiles.
     internal static class CheckoutArticleImageLoader
     {
+        // Resolve images from an existing shop installation as well as portable ZIP layouts.
+        // Never fabricate a tile: Load checks eligibility and reads the actual file.
+        internal static Bitmap LoadWithFallback(string shopRoot, string startupPath, string fileName)
+        {
+            if (String.IsNullOrWhiteSpace(fileName) || fileName == "0")
+                return null;
+
+            string[] roots = {
+                shopRoot,
+                startupPath,
+                Path.GetDirectoryName(startupPath ?? ""),
+                Path.GetDirectoryName(shopRoot ?? "")
+            };
+            foreach (string root in roots)
+            {
+                if (String.IsNullOrWhiteSpace(root))
+                    continue;
+                foreach (string candidate in new[] {
+                    Path.Combine(root, "bd", "images"),
+                    Path.Combine(root, "images")
+                })
+                {
+                    Bitmap image = Load(candidate, fileName);
+                    if (image != null)
+                        return image;
+                }
+            }
+            return null;
+        }
+
         internal static Bitmap Load(string imageDirectory, string fileName)
         {
             if (!CheckoutArticleImageSelectionService.IsEligible(
