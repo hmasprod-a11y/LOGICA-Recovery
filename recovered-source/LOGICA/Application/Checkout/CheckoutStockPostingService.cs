@@ -9,7 +9,7 @@ namespace LOGICA.ApplicationLayer.Checkout
         public static void Apply(ICheckoutPostingStore store, IEnumerable<CheckoutStockLine> lines)
         {
             if (lines == null)
-                throw new NullReferenceException("Checkout stock reader returned no collection.");
+                throw new InvalidOperationException("Checkout stock reader returned no collection.");
             foreach (CheckoutStockLine line in lines)
             {
                 if (line == null)
