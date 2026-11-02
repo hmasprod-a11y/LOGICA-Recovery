@@ -125,6 +125,45 @@ internal static class ReceiptArticleSelectionSmoke
             Check(!ReceiptArticleSelectionService.CanOfferCreation(barcodeFreeSingle.Clone(), "A"),
                 "disappeared barcode-free grid article cannot trigger create prompt");
 
+            // Production receipt Add button: selecting a blank-Code article
+            // in the grid must be able to create a receipt line. A blank scan
+            // or a stale selection must never gain that authorization.
+            Check(ReceiptArticleSelectionService.CanAddResolvedArticle("A", "SAME", false),
+                "normal scanner-resolved barcode still adds a receipt line");
+            Check(ReceiptArticleSelectionService.CanAddResolvedArticle("A", "SAME", true),
+                "explicit barcode grid article still adds a receipt line");
+            Check(ReceiptArticleSelectionService.CanAddResolvedArticle("A", "", true),
+                "exact-ID grid choice permits a barcode-free receipt line");
+            Check(!ReceiptArticleSelectionService.CanAddResolvedArticle("A", "", false),
+                "empty scanner result cannot add a barcode-free receipt line");
+            Check(!ReceiptArticleSelectionService.CanAddResolvedArticle("", "", true),
+                "empty grid identity never authorizes blank barcode");
+            Check(!ReceiptArticleSelectionService.CanAddResolvedArticle(" ", "", true),
+                "whitespace grid identity never authorizes blank barcode");
+            Check(!ReceiptArticleSelectionService.CanAddResolvedArticle(null, "", true),
+                "missing grid identity never authorizes blank barcode");
+            Check(!ReceiptArticleSelectionService.CanAddResolvedArticle("A", null, true),
+                "null barcode from corrupt catalogue is not a blank-code product");
+            Check(!ReceiptArticleSelectionService.CanAddResolvedArticle("A", null, false),
+                "null scanner barcode cannot add a receipt line");
+            Check(!ReceiptArticleSelectionService.CanAddResolvedArticle("", "KNOWN", false),
+                "stale cleared article identity cannot add even with old barcode");
+            Check(ReceiptArticleSelectionService.CanAddResolvedArticle("A", " ", true),
+                "exact grid selection preserves legitimate whitespace Code as stored");
+            Check(ReceiptArticleSelectionService.CanAddResolvedArticle("A", " ", false),
+                "existing nonempty Code guard preserves legacy nonblank behavior");
+            DataRow blankResolved = ReceiptArticleSelectionService.Resolve(barcodeFreeSingle, "A");
+            Check(blankResolved != null &&
+                ReceiptArticleSelectionService.CanAddResolvedArticle(
+                    Convert.ToString(blankResolved["ID_ARTICLE"]), Convert.ToString(blankResolved["Code"]), true),
+                "fresh exact-ID blank-Code resolution reaches receipt Add guard");
+            Check(ReceiptArticleSelectionService.Resolve(barcodeFreeSingle, "STALE") == null &&
+                !ReceiptArticleSelectionService.CanAddResolvedArticle("", "", false),
+                "vanished selected article never authorizes a receipt line");
+            Check(!ReceiptArticleSelectionService.ShouldLookupBarcode("", null) &&
+                !ReceiptArticleSelectionService.CanAddResolvedArticle("", "", false),
+                "empty scanner is blocked at both lookup and receipt Add");
+
             var blankCodes = Matches();
             blankCodes.Rows[0]["Code"] = "";
             blankCodes.Rows[1]["Code"] = "";
