@@ -29,7 +29,11 @@ internal static class CheckoutPostingTests
             foreach (TicketPaymentKind kind in new[] { TicketPaymentKind.Cash, TicketPaymentKind.Tendered, TicketPaymentKind.Change })
             {
                 Hit("read-" + kind);
-                yield return new TicketPaymentWrite { Kind = kind };
+                yield return new TicketPaymentWrite {
+                    Kind = kind,
+                    Context = new TicketPaymentContext { TicketNumber = "T-1" },
+                    Mode = kind == TicketPaymentKind.Tendered ? (object)"CARTE" : null
+                };
             }
         }
     }
