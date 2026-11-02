@@ -438,6 +438,7 @@ try {
         directExeWithoutConnectionOverrideVerified = $directWithoutOverrideResponsive
         directExeWithoutOverrideAttempted = $directWithoutOverrideAttempted
         directExeWithoutOverrideResponsiveWindow = $directWithoutOverrideResponsive
+        directExeActivationInspectionStatus = $directWithoutOverrideActivation.inspectionStatus
         directExeWithoutOverrideActivationScreenVisible = $(if ($directWithoutOverrideActivation) { $directWithoutOverrideActivation.activationScreenVisible } else { $null })
         directExeWithoutOverrideDatabaseConnectionVerified = $directWithoutOverrideResponsive
         realPrinterAndScannerVerified = $false
