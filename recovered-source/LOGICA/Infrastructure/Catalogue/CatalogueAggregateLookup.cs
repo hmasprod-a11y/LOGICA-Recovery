@@ -29,11 +29,16 @@ namespace LOGICA.Infrastructure.Catalogue
             // Recovered databases predate the optional PRIX_QTE column. Preserve
             // the aggregate row order with a literal zero when it is absent.
             bool hasPriceQuantity;
-            using (var schemaConnection = new MySqlConnection(connection.ConnectionString))
-            using (var check = new MySqlCommand("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'TABLE_ARTICLES' AND COLUMN_NAME = 'PRIX_QTE'", schemaConnection))
+            bool wasOpen = connection.State == ConnectionState.Open;
+            try
             {
-                schemaConnection.Open();
-                hasPriceQuantity = System.Convert.ToInt32(check.ExecuteScalar()) != 0;
+                if (!wasOpen) connection.Open();
+                using (var check = new MySqlCommand("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'TABLE_ARTICLES' AND COLUMN_NAME = 'PRIX_QTE'", connection))
+                    hasPriceQuantity = System.Convert.ToInt32(check.ExecuteScalar()) != 0;
+            }
+            finally
+            {
+                if (!wasOpen) connection.Close();
             }
             string text13 = hasPriceQuantity
                 ? "select count(ID) as N from TABLE_ARTICLES WHERE PRIX_QTE <> 0 " + text2
