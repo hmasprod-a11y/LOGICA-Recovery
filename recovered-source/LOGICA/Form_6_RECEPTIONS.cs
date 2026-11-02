@@ -8917,7 +8917,7 @@ public class Form_6_RECEPTIONS : Form
 				// line/document calculations. Checking stale labels first could
 				// reject a valid receipt or persist an earlier displayed amount.
 				if (!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.PrepareForSave(
-					delegate { return DataGrid_BODY.EndEdit(); },
+					delegate { return DataGrid_BODY.EndEdit() && ValidateReceiptGridNumbers(); },
 					delegate {
 						for (int lineIndex = 0; lineIndex < DataGrid_BODY.Rows.Count; lineIndex++)
 						{
@@ -10049,6 +10049,35 @@ public class Form_6_RECEPTIONS : Form
 	private void Button_CLOSE_Click(object sender, EventArgs e)
 	{
 		((Control)Panel_INFO).Hide();
+	}
+
+	// Manual grid edits and imported lines bypass the Add button's numeric
+	// preflight. Validate the committed cell values before any SQL save or
+	// legacy total calculation. Keep the existing VB numeric locale behavior.
+	private bool ValidateReceiptGridNumbers()
+	{
+		Func<string, bool> isNumeric = delegate(string value) { return Versioned.IsNumeric(value); };
+		Func<string, decimal> convert = delegate(string value) { return Conversions.ToDecimal(value); };
+		int validRows = 0;
+		foreach (DataGridViewRow line in DataGrid_BODY.Rows)
+		{
+			if (line.IsNewRow)
+				continue;
+			validRows++;
+			decimal parsed;
+			if (!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.TryReadReceiptNumber(
+					Convert.ToString(line.Cells["Qté"].Value), true, isNumeric, convert, out parsed) ||
+				!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.TryReadReceiptNumber(
+					Convert.ToString(line.Cells["Prix_A"].Value), false, isNumeric, convert, out parsed) ||
+				!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.TryReadReceiptNumber(
+					Convert.ToString(line.Cells["Prix_V"].Value), false, isNumeric, convert, out parsed))
+			{
+				MessageBox.Show("Vérifier la quantité et les prix de la ligne " + validRows + ".",
+					"Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+				return false;
+			}
+		}
+		return validRows > 0;
 	}
 
 	// One legacy arithmetic path for edited and programmatically saved lines.
