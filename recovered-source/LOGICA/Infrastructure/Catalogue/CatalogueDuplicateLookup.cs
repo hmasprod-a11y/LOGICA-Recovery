@@ -48,7 +48,9 @@ namespace LOGICA.Infrastructure.Catalogue
         {
             var adapter = new MySqlDataAdapter(
                 "select ID,Code,Article from TABLE_ARTICLES WHERE Code = @code AND @code <> ''", connection);
-            adapter.SelectCommand.Parameters.AddWithValue("@code", (object)NormalizeCode(Conversions.ToString(code)));
+            // Imported collection rows can carry DBNull for an optional barcode.
+            // VB Conversions.ToString(DBNull.Value) throws before the lookup.
+            adapter.SelectCommand.Parameters.AddWithValue("@code", (object)NormalizeCode(code == null || code == DBNull.Value ? "" : Conversions.ToString(code)));
             ((DbDataAdapter)adapter).Fill(table);
         }
 
