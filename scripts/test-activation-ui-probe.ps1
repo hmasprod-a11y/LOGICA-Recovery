@@ -29,6 +29,17 @@ public static class ActivationFixture {
             label.AutoSize = true;
             panel.Controls.Add(label);
             window.Controls.Add(panel);
+            var pin = new TextBox();
+            pin.Name = "Text_NUM";
+            pin.Location = new Point(30, 240);
+            pin.Visible = args.Length == 0 || args[0] != "no-login";
+            window.Controls.Add(pin);
+            var cashier = new Button();
+            cashier.Name = "Button_VENTE";
+            cashier.Text = "Vente";
+            cashier.Location = new Point(220, 240);
+            cashier.Visible = false;
+            window.Controls.Add(cashier);
             Application.Run(window);
         }
     }
@@ -38,7 +49,7 @@ $code | Set-Content -LiteralPath $source -Encoding UTF8
 & $compiler /nologo /target:winexe /r:System.Windows.Forms.dll /r:System.Drawing.dll "/out:$exe" $source
 if ($LASTEXITCODE -ne 0) { throw 'Synthetic WinForms activation fixture compilation failed' }
 try {
-    foreach ($mode in @('visible', 'hidden')) {
+    foreach ($mode in @('visible', 'hidden', 'no-login')) {
         $process = $null
         try {
             $process = Start-Process -FilePath $exe -ArgumentList $mode -WorkingDirectory $work -PassThru
@@ -63,7 +74,16 @@ try {
             if ($mode -eq 'hidden' -and $report.activationScreenVisible -eq $true) {
                 throw 'Hidden activation screen incorrectly classified as visible'
             }
-            Write-Host "PASS: read-only activation probe correctly classified synthetic $mode screen"
+            if ($mode -eq 'no-login' -and $report.loginScreenVisible -eq $true) {
+                throw 'Hidden PIN input incorrectly classified as an active cashier login screen'
+            }
+            if ($mode -ne 'no-login' -and $report.loginScreenVisible -ne $true) {
+                throw "Visible synthetic cashier PIN input not detected: $mode"
+            }
+            if ($report.licensedCashierVerified -ne $false) {
+                throw 'Read-only probe must never claim a licensed cashier login'
+            }
+            Write-Host "PASS: read-only activation and login probe correctly classified synthetic $mode screen"
         } finally {
             if ($process) {
                 try { $process.Refresh(); if (-not $process.HasExited) { $process.Kill(); $process.WaitForExit(10000) | Out-Null } } catch {}
