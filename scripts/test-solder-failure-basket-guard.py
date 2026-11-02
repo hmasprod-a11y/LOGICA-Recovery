@@ -35,8 +35,9 @@ def check(source):
     handler = source[open_brace + 1:end]
     rollback = handler.find("CheckoutTransactionBoundaryService.Rollback(checkoutBoundary);")
     abort = handler.rfind("return;")
-    if rollback < 0 or abort < rollback:
-        raise AssertionError("Failed SOLDER must roll back and return before basket reset")
+    first_abort = handler.find("return;")
+    if rollback < 0 or abort < rollback or (first_abort >= 0 and first_abort < rollback):
+        raise AssertionError("Failed SOLDER must roll back before returning, and return before basket reset")
     if "Module1.dt1.Clear();" in handler:
         raise AssertionError("Failed SOLDER catch cleared cashier basket")
     next_reset = source.find("Module1.dt1.Clear();", end)
