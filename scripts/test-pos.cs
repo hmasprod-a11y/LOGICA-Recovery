@@ -2531,6 +2531,24 @@ class PosSmoke {
     try { var width=icon.Width; } catch(ArgumentException) { iconDisposed=true; }
     catch(ObjectDisposedException) { iconDisposed=true; }
     if(!iconDisposed)throw new Exception("Reload leaked old payment icon");
+    // Real icon loading must accept harmless whitespace around a configured
+    // filename while keeping the payment button available without the file.
+    string temp=Path.Combine(Path.GetTempPath(),"HanoutyPaymentIconCI_"+Guid.NewGuid().ToString("N"));
+    try {
+     string images=Path.Combine(temp,"bd","images");
+     Directory.CreateDirectory(images);
+     using(var png=new Bitmap(3,3))png.Save(Path.Combine(images,"ESPECS.png"));
+     methods.Rows[cash].Cells[1].Value=" ESPECS.png ";
+     root.SetValue(null,temp);
+     load.Invoke(form,new object[]{form,EventArgs.Empty});
+     var loaded=panel.Controls["Button_ESPECES"] as Button;
+     if(loaded==null||loaded.Image==null)
+      throw new Exception("Whitespace-padded payment icon was not loaded");
+     clear.Invoke(form,null);
+    } finally {
+     root.SetValue(null,null);
+     if(Directory.Exists(temp))Directory.Delete(temp,true);
+    }
     var grid=(DataGridView)Get(form,"DataGridView_CALC");
     grid.AllowUserToAddRows=false;grid.Rows.Clear();
     if((bool)selected.Invoke(form,null))
