@@ -160,6 +160,43 @@ namespace LOGICA.ApplicationLayer.Purchasing
                 String.Equals(confirmedReceiptId, loadedReceiptId, StringComparison.Ordinal);
         }
 
+        // Saving a previously opened receipt must never trust Label_INDEX or
+        // BindingContext.Position: sorting/filtering can point at another row.
+        // Resolve by the stable database record ID and the original receipt
+        // number. A changed number or an already validated record fails closed;
+        // changing receipt numbers would also orphan legacy detail rows.
+        internal static DataRow ResolveEditableRow(DataTable receipts,
+            string recordId, string receiptId)
+        {
+            if (receipts == null || String.IsNullOrWhiteSpace(recordId) ||
+                String.IsNullOrWhiteSpace(receiptId) ||
+                !receipts.Columns.Contains("ID") ||
+                !receipts.Columns.Contains("ID_BR") ||
+                !receipts.Columns.Contains("ETAT"))
+                return null;
+            DataRow found = null;
+            foreach (DataRow row in receipts.Rows)
+            {
+                if (row.RowState == DataRowState.Deleted ||
+                    row.RowState == DataRowState.Detached ||
+                    row.IsNull("ID") || row.IsNull("ID_BR") || row.IsNull("ETAT"))
+                    continue;
+                if (!String.Equals(Convert.ToString(row["ID"]), recordId,
+                    StringComparison.Ordinal))
+                    continue;
+                // Duplicate record IDs are unsafe even if only one has the
+                // requested receipt number; never mutate either record.
+                if (found != null) return null;
+                found = row;
+            }
+            if (found == null ||
+                !Matches(receiptId, Convert.ToString(found["ID_BR"])) ||
+                String.Equals(Convert.ToString(found["ETAT"]), "VALIDER",
+                    StringComparison.Ordinal))
+                return null;
+            return found;
+        }
+
         // Preserve the original confirmation behavior for unvalidated legacy
         // states (including EN_COURS). Only a now-validated or missing state
         // must stop posting after the consultation refresh. This UI guard is
