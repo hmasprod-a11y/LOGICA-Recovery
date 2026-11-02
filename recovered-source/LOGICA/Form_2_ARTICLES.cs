@@ -13714,6 +13714,30 @@ public class Form_2_ARTICLES : Form
 	{
 	}
 
+	// QA resolution of Desktop #90 and Inventory #88: use the uniquely validated
+	// bound article row, never CurrentRow (which can change under sort/filter).
+	// Parameterized movement preserves apostrophes and comma-decimal stock.
+	private static void InsertDeletionStockMovement(MySqlConnection connection, DataRow selected)
+	{
+		if (connection == null || selected == null || selected.RowState == DataRowState.Deleted || selected.RowState == DataRowState.Detached)
+			throw new InvalidOperationException("Aucune ligne d'article sélectionnée.");
+		using (MySqlCommand command = new MySqlCommand(
+			"INSERT INTO TABLE_MOUVEMENTS_STOCK " +
+			"(DATES, HEURE, LIBELLE, ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE) " +
+			"VALUES (@dates, @heure, @libelle, @id, @code, @article, CONCAT('-', @stock))", connection))
+		{
+			DateTime now = DateTime.Now;
+			command.Parameters.AddWithValue("@dates", now.ToString("yyyy-MM-dd"));
+			command.Parameters.AddWithValue("@heure", now.ToString("HH:mm:ss"));
+			command.Parameters.AddWithValue("@libelle", "Suppression d'article");
+			command.Parameters.AddWithValue("@id", Convert.ToString(selected["ID_ARTICLE"]));
+			command.Parameters.AddWithValue("@code", Convert.ToString(selected["Code"]));
+			command.Parameters.AddWithValue("@article", Convert.ToString(selected["Article"]));
+			command.Parameters.AddWithValue("@stock", Conversions.ToDecimal(selected["STOCK"]).ToString(CultureInfo.InvariantCulture));
+			command.ExecuteNonQuery();
+		}
+	}
+
 	private void DataGridView1_CellClick(object sender, DataGridViewCellEventArgs e)
 	{
 		//IL_0be4: Unknown result type (might be due to invalid IL or missing references)
@@ -13751,14 +13775,11 @@ public class Form_2_ARTICLES : Form
 					}
 					string right = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("SUPPRESION | ", deleteRow["ID_ARTICLE"]), deleteRow["Article"]));
 					File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
-					MySqlCommand val = new MySqlCommand();
 					if (Module1.cn_SQL.State != ConnectionState.Open)
 					{
 						Module1.cn_SQL.Open();
 					}
-					val.CommandText = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat("INSERT  INTO   TABLE_MOUVEMENTS_STOCK               ( DATES , HEURE , LIBELLE,ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE)         values           ( '" + DateTime.Now.ToString("yyyy-MM-dd"), "' ,  '"), DateTime.Now.ToString("HH:mm:ss")), "'  ,'Suppression d''article'   ,'"), deleteRow["ID_ARTICLE"]), "'    ,'"), deleteRow["Code"]), "' ,'"), deleteRow["Article"]), "'  ,    CONCAT('-','"), deleteRow["STOCK"]), "')         )        "));
-					val.Connection = Module1.cn_SQL;
-					val.ExecuteNonQuery();
+					InsertDeletionStockMovement(Module1.cn_SQL, deleteRow);
 					Module1.cn_SQL.Close();
 					int position = DT.Rows.IndexOf(deleteRow);
 					deleteRow.Delete();
