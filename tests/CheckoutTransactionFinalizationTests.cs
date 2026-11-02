@@ -176,6 +176,51 @@ internal static class CheckoutTransactionFinalizationTests
         if (starts != 1 || sharedProgress.Stage != CheckoutCommitStage.Posting)
             throw new Exception("Concurrent SOLDER progress was admitted more than once");
 
+        // Regression: two different cashier gates must never strand the loser
+        // if a buggy caller shares one progress token across concurrent clicks.
+        // Only one store may post, commit and close. The other gate must remain
+        // immediately reusable without pretending a rollback occurred.
+        for (int round = 0; round < 24; round++)
+        {
+            var raceProgress = new CheckoutCommitProgress();
+            var raceGates = new[] { new CheckoutAttemptGate(), new CheckoutAttemptGate() };
+            var raceScenarios = new[] { new Scenario(), new Scenario() };
+            var raceStart = new ManualResetEvent(false);
+            var raceWorkers = new Thread[2];
+            int raceWins = 0, raceRejects = 0;
+            for (int i = 0; i < raceWorkers.Length; i++)
+            {
+                int index = i;
+                raceWorkers[i] = new Thread(new ThreadStart(delegate {
+                    raceStart.WaitOne();
+                    try
+                    {
+                        CheckoutTransactionFinalizationService.PostAndFinalize(
+                            raceScenarios[index], raceScenarios[index].Input(),
+                            raceScenarios[index], raceProgress, raceGates[index]);
+                        Interlocked.Increment(ref raceWins);
+                    }
+                    catch (InvalidOperationException) { Interlocked.Increment(ref raceRejects); }
+                }));
+                raceWorkers[i].Start();
+            }
+            raceStart.Set();
+            foreach (Thread worker in raceWorkers) worker.Join();
+            raceStart.Close();
+            if (raceWins != 1 || raceRejects != 1 ||
+                raceProgress.Stage != CheckoutCommitStage.Closed ||
+                raceGates[0].IsBlocked == raceGates[1].IsBlocked)
+                throw new Exception("Concurrent cashier gates admitted two sales or stranded the loser");
+            int winner = raceGates[0].IsBlocked ? 0 : 1;
+            AssertEvents(raceScenarios[winner].Events, Stages,
+                "cross-gate single sale round " + round);
+            if (raceScenarios[1 - winner].Events.Count != 0)
+                throw new Exception("Rejected concurrent SOLDER wrote ticket or stock");
+            raceGates[winner].ReleaseAfterBasketReset(raceProgress);
+            if (raceGates[0].IsBlocked || raceGates[1].IsBlocked)
+                throw new Exception("Concurrent SOLDER gate remained blocked after basket reset");
+        }
+
         // P0 regression: malformed SOLDER input must fail before the
         // persistent per-form gate is acquired. The same progress/gate must
         // remain usable after the UI fixes its payload, without fake rollback.
