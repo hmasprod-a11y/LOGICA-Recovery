@@ -16,6 +16,12 @@ on:
       - 'scripts/Launch-LOGICA.ps1'
       - 'scripts/test-launcher-auth-guard.py'
       - 'scripts/test-recovered-db.ps1'
+      - 'scripts/test-pr84-mariadb-schema.ps1'
+      - 'scripts/test_pr82_article_editor.py'
+      - 'scripts/test-solder-failure-basket-guard.py'
+      - 'input/migrations/20261102-article-add-compatibility.sql'
+      - 'scripts/probe-activation-ui.ps1'
+      - 'scripts/test-activation-ui-probe.ps1'
       - 'scripts/setup-test-db.ps1'
       - 'recovered-source/**'
       - 'tests/**'
@@ -29,6 +35,7 @@ on:
       - 'scripts/verify-beta-rc.ps1'
       - 'scripts/test-beta-release-verifier.ps1'
       - 'scripts/test-extracted-release.ps1'
+      - 'scripts/test-extracted-release-report.py'
       - 'scripts/test-release-upload-policy.py'
       - '.github/workflows/domain-tests.yml'
       - '.github/workflows/portable-core.yml'
@@ -49,6 +56,12 @@ on:
       - 'scripts/Launch-LOGICA.ps1'
       - 'scripts/test-launcher-auth-guard.py'
       - 'scripts/test-recovered-db.ps1'
+      - 'scripts/test-pr84-mariadb-schema.ps1'
+      - 'scripts/test_pr82_article_editor.py'
+      - 'scripts/test-solder-failure-basket-guard.py'
+      - 'input/migrations/20261102-article-add-compatibility.sql'
+      - 'scripts/probe-activation-ui.ps1'
+      - 'scripts/test-activation-ui-probe.ps1'
       - 'scripts/setup-test-db.ps1'
       - 'recovered-source/**'
       - 'scripts/repair-source.py'
@@ -62,6 +75,7 @@ on:
       - 'scripts/verify-beta-rc.ps1'
       - 'scripts/test-beta-release-verifier.ps1'
       - 'scripts/test-extracted-release.ps1'
+      - 'scripts/test-extracted-release-report.py'
       - 'scripts/test-release-upload-policy.py'
       - 'input/recovered-original.sql'
       - 'input/mysql-compatibility.sql'
@@ -108,6 +122,7 @@ jobs:
           foreach ($path in @('scripts/Launch-LOGICA.ps1', 'scripts/package-beta-rc.ps1', 'scripts/test-extracted-release.ps1',
                               'scripts/verify-beta-rc.ps1', 'scripts/test-beta-release-verifier.ps1',
                               'scripts/test-release-candidate.ps1', 'scripts/test-release-private-state.ps1',
+                              'scripts/test-pr84-mariadb-schema.ps1',
                               'scripts/probe-activation-ui.ps1', 'scripts/test-activation-ui-probe.ps1')) {
             $tokens = $null
             $parseErrors = $null
@@ -128,6 +143,12 @@ jobs:
       - name: Guard actual cashier startup and portable direct-EXE routing
         shell: pwsh
         run: python scripts/test-hanouty-startup-hotfix.py
+      - name: Verify PR82/PR84 catalogue image and recovered schema guards
+        shell: pwsh
+        run: python scripts/test_pr82_article_editor.py
+      - name: Prevent SOLDER rollback from clearing cashier basket on failure
+        shell: pwsh
+        run: python scripts/test-solder-failure-basket-guard.py
       - name: Guard release artifact upload policy (including negative fixtures)
         shell: pwsh
         run: python scripts/test-release-upload-policy.py
@@ -177,6 +198,9 @@ jobs:
       - name: Verify original recovered Access data on MySQL
         shell: pwsh
         run: ./scripts/test-recovered-db.ps1
+      - name: Verify PR84 article migration twice against isolated recovered MariaDB
+        shell: pwsh
+        run: ./scripts/test-pr84-mariadb-schema.ps1
       - name: Verify portable launcher with original data
         shell: pwsh
         run: |
@@ -202,9 +226,15 @@ jobs:
       - name: Build and independently verify beta RC ZIP
         shell: pwsh
         run: ./scripts/package-beta-rc.ps1
+      - name: Reject falsely promoted Windows field acceptance (adversarial fixtures)
+        shell: pwsh
+        run: python scripts/test-extracted-release-report.py --self-test
       - name: Smoke-test extracted customer ZIP with isolated MariaDB and real EXE
         shell: pwsh
         run: ./scripts/test-extracted-release.ps1
+      - name: Enforce extracted startup and read-only MariaDB acceptance evidence
+        shell: pwsh
+        run: python scripts/test-extracted-release-report.py --report results/extracted-release-smoke.json --expected-commit $(git rev-parse HEAD)
       - name: Inspect original dependency types
         if: always()
         shell: powershell

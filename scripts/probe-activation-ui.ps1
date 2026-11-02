@@ -16,6 +16,11 @@ $report = [ordered]@{
     activationLabelVisible = $null
     activationScreenVisible = $null
     licensedCashierVerified = $false
+    loginPinInputLocated = $false
+    loginPinInputVisible = $null
+    cashierMenuLocated = $false
+    cashierMenuVisible = $null
+    loginScreenVisible = $null
 }
 try {
     Add-Type -AssemblyName UIAutomationClient
@@ -36,6 +41,18 @@ try {
             $id = [string]$node.Current.AutomationId
             $name = [string]$node.Current.Name
             $visible = -not [bool]$node.Current.IsOffscreen
+            # WinForms UIA commonly exposes a numeric native HWND as AutomationId,
+            # not Control.Name. The login PIN is a password Edit control.
+            $isPasswordEdit = ($node.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit -and
+                               [bool]$node.Current.IsPassword)
+            if ($id -eq 'Text_NUM' -or $name -eq 'Text_NUM' -or $isPasswordEdit) {
+                $report.loginPinInputLocated = $true
+                $report.loginPinInputVisible = $visible
+            }
+            if ($id -eq 'Button_VENTE') {
+                $report.cashierMenuLocated = $true
+                $report.cashierMenuVisible = $visible
+            }
             if ($id -eq 'Panel_clé' -or $id -eq 'Panel_cle') {
                 $report.activationPanelLocated = $true
                 $report.activationPanelVisible = $visible
@@ -54,8 +71,9 @@ try {
         for ($j = 0; $j -lt [math]::Min($nodes.Count, 30); $j++) {
             $element = $nodes.Item($j)
             try {
-                Write-Host ("SYNTHETIC_FIXTURE_UIA id={0}; name={1}; offscreen={2}" -f
-                    $element.Current.AutomationId, $element.Current.Name, $element.Current.IsOffscreen)
+                Write-Host ("SYNTHETIC_FIXTURE_UIA id={0}; name={1}; offscreen={2}; type={3}; password={4}" -f
+                    $element.Current.AutomationId, $element.Current.Name, $element.Current.IsOffscreen,
+                    $element.Current.ControlType.ProgrammaticName, $element.Current.IsPassword)
             } catch {}
         }
     }
@@ -73,6 +91,25 @@ public static class LogicaActivationCaptionProbe {
     public static extern int GetWindowText(IntPtr hwnd, StringBuilder buffer, int capacity);
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+    public static extern int GetClassName(IntPtr hwnd, StringBuilder buffer, int capacity);
+    [DllImport("user32.dll", EntryPoint="GetWindowLongW")]
+    public static extern int GetWindowStyle(IntPtr hwnd, int index);
+    public static bool HasVisiblePasswordEdit(IntPtr parent) {
+        bool found = false;
+        ChildCallback callback = (hwnd, param) => {
+            if (!IsWindowVisible(hwnd)) return true;
+            var cls = new StringBuilder(256);
+            GetClassName(hwnd, cls, cls.Capacity);
+            if (cls.ToString().IndexOf("EDIT", StringComparison.OrdinalIgnoreCase) < 0) return true;
+            const int GWL_STYLE = -16;
+            const int ES_PASSWORD = 0x20;
+            if ((GetWindowStyle(hwnd, GWL_STYLE) & ES_PASSWORD) != 0) found = true;
+            return true;
+        };
+        EnumChildWindows(parent, callback, IntPtr.Zero);
+        return found;
+    }
     public static bool HasVisibleActivationLabel(IntPtr parent) {
         bool detected = false;
         ChildCallback callback = (hwnd, param) => {
@@ -95,7 +132,18 @@ public static class LogicaActivationCaptionProbe {
         $report.activationLabelLocated = $true
         $report.activationLabelVisible = $true
     }
+    # Native WinForms edit controls can appear as ControlType.Pane with a numeric
+    # AutomationId. Read-only Win32 ES_PASSWORD detection is the fallback.
+    if ([LogicaActivationCaptionProbe]::HasVisiblePasswordEdit($target.MainWindowHandle)) {
+        $report.loginPinInputLocated = $true
+        $report.loginPinInputVisible = $true
+    }
     $report.inspectionStatus = 'inspected'
+    # A visible PIN input establishes the login screen only; it is NOT proof
+    # of a valid license, a completed login, or access to the cashier.
+    if ($report.loginPinInputLocated) {
+        $report.loginScreenVisible = [bool]$report.loginPinInputVisible
+    }
     if ($report.activationPanelVisible -eq $true -or $report.activationLabelVisible -eq $true) {
         $report.activationScreenVisible = $true
     } elseif ($report.activationPanelLocated -or $report.activationLabelLocated) {

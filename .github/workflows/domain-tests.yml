@@ -11,6 +11,10 @@ on:
       - 'scripts/test-stock-movement-core.ps1'
       - 'scripts/test-catalogue-core.ps1'
       - 'scripts/test-checkout-core.ps1'
+      - 'scripts/test-pr84-mariadb-schema.ps1'
+      - 'scripts/test-extracted-release.ps1'
+      - 'scripts/probe-activation-ui.ps1'
+      - 'scripts/test-activation-ui-probe.ps1'
       - '.github/workflows/domain-tests.yml'
   push:
     paths:

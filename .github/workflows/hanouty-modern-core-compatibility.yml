@@ -7,6 +7,10 @@ on:
       - 'recovered-source/LOGICA/Domain/**'
       - 'recovered-source/LOGICA/Application/**'
       - 'recovered-source/LOGICA/Infrastructure/**'
+      - 'scripts/test-pr84-mariadb-schema.ps1'
+      - 'scripts/test-extracted-release.ps1'
+      - 'scripts/probe-activation-ui.ps1'
+      - 'scripts/test-activation-ui-probe.ps1'
       - '.github/workflows/hanouty-modern-core-compatibility.yml'
 permissions:
   contents: read

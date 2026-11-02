@@ -603,7 +603,13 @@ class ReleaseUploadPolicyTests(unittest.TestCase):
         self.assertIn("extractedLauncherActualExeResponsive = $launcherResponsive", smoke)
         self.assertIn("licensedCashierScreenVerified = $false", smoke)
         self.assertIn("directExeWithoutConnectionOverrideVerified = $directWithoutOverrideResponsive", smoke)
-        self.assertIn("directExeWithoutOverrideDatabaseConnectionVerified = $directWithoutOverrideResponsive", smoke)
+        # A responsive PIN screen cannot establish that the EXE authenticated.
+        self.assertIn("directExeWithoutOverrideDatabaseConnectionVerified = $false", smoke)
+        self.assertNotIn("directExeWithoutOverrideDatabaseConnectionVerified = $directWithoutOverrideResponsive", smoke)
+        # Protect actual article/ticket contents, not just the original row counts.
+        self.assertIn("Get-IsolatedSalesDigest $entrypoint $clientExe $clientConfig", smoke)
+        self.assertIn("isolatedArticleTicketContentStableAcrossEntrypoints = ($script:isolatedSalesDigestChecks -eq 3)", smoke)
+        self.assertIn("if ($script:isolatedSalesDigestChecks -ne 3)", smoke)
         self.assertIn("if (-not $directWithoutOverrideResponsive)", smoke)
         self.assertIn("Direct EXE displayed the legacy activation panel", smoke)
         self.assertIn("RELEASE ACCEPTANCE BLOCKED", smoke)

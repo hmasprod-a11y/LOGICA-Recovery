@@ -12,6 +12,10 @@ on:
       - 'recovered-source/LOGICA/Application/Checkout/**'
       - 'recovered-source/LOGICA/Application/Inventory/**'
       - 'recovered-source/LOGICA/Application/Catalogue/**'
+      - 'scripts/test-pr84-mariadb-schema.ps1'
+      - 'scripts/test-extracted-release.ps1'
+      - 'scripts/probe-activation-ui.ps1'
+      - 'scripts/test-activation-ui-probe.ps1'
       - '.github/workflows/portable-core.yml'
   push:
     paths:
