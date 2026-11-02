@@ -14484,7 +14484,6 @@ public class Form_2_ARTICLES : Form
 					MessageBox.Show("Article modifié ou identité ambiguë. Actualisez la liste avant d'enregistrer.");
 					return;
 				}
-					}
 				// Never persist an article pointing to an image which failed to save.
 				// The legacy "0" sentinel intentionally means no image.
 				if (!TryPersistArticleImage())
