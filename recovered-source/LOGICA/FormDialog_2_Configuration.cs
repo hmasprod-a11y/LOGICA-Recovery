@@ -2398,37 +2398,34 @@ public class FormDialog_2_Configuration : Form
 
 	private void DataGridView_MODELE_TICKET_CellClick(object sender, DataGridViewCellEventArgs e)
 	{
-		ListViewItem val = ListView1.FindItemWithText(Conversions.ToString(NewLateBinding.LateGet(sender, null, "tag", new object[0], null, null, null)), false, 0);
-		if (val != null)
+		// DataGridView raises CellClick for column headers and empty/new rows too.
+		// Those cells have no value and previously threw NullReferenceException.
+		if (e.RowIndex < 0 || e.ColumnIndex < 0 ||
+			e.RowIndex >= DataGridView_MODELE_TICKET.Rows.Count)
 		{
-			ListView1.Items[val.Index].Selected = true;
-			ListView1.Items[val.Index].SubItems[1].Text = DataGridView_MODELE_TICKET.Rows[((DataGridViewBand)DataGridView_MODELE_TICKET.CurrentRow).Index].Cells[0].Value.ToString();
+			return;
 		}
-		if (Operators.CompareString(DataGridView_MODELE_TICKET.Rows[((DataGridViewBand)DataGridView_MODELE_TICKET.CurrentRow).Index].Cells[0].Value.ToString(), "FR_3C", TextCompare: false) == 0)
+		DataGridViewRow row = DataGridView_MODELE_TICKET.Rows[e.RowIndex];
+		if (row.IsNewRow || row.Cells.Count == 0 || row.Cells[0].Value == null)
 		{
-			((Control)PictureBox_FR_3C).Visible = true;
-			((Control)PictureBox_FR_3C).BringToFront();
+			return;
 		}
-		else if (Operators.CompareString(DataGridView_MODELE_TICKET.Rows[((DataGridViewBand)DataGridView_MODELE_TICKET.CurrentRow).Index].Cells[0].Value.ToString(), "FR_4C", TextCompare: false) == 0)
+		string model = Convert.ToString(row.Cells[0].Value);
+		if (string.IsNullOrWhiteSpace(model))
 		{
-			((Control)PictureBox_FR_4C).Visible = true;
-			((Control)PictureBox_FR_4C).BringToFront();
+			return;
 		}
-		else if (Operators.CompareString(DataGridView_MODELE_TICKET.Rows[((DataGridViewBand)DataGridView_MODELE_TICKET.CurrentRow).Index].Cells[0].Value.ToString(), "FR_2L", TextCompare: false) == 0)
+		ListViewItem setting = ListView1.FindItemWithText("MODELE_TICKET", false, 0);
+		if (setting != null && setting.SubItems.Count > 1)
 		{
-			((Control)PictureBox_FR_2L).Visible = true;
-			((Control)PictureBox_FR_2L).BringToFront();
+			setting.Selected = true;
+			setting.SubItems[1].Text = model;
 		}
-		else if (Operators.CompareString(DataGridView_MODELE_TICKET.Rows[((DataGridViewBand)DataGridView_MODELE_TICKET.CurrentRow).Index].Cells[0].Value.ToString(), "AR_3C", TextCompare: false) == 0)
-		{
-			((Control)PictureBox_AR_3C).Visible = true;
-			((Control)PictureBox_AR_3C).BringToFront();
-		}
-		else if (Operators.CompareString(DataGridView_MODELE_TICKET.Rows[((DataGridViewBand)DataGridView_MODELE_TICKET.CurrentRow).Index].Cells[0].Value.ToString(), "AR_4C", TextCompare: false) == 0)
-		{
-			((Control)PictureBox_AR_4C).Visible = true;
-			((Control)PictureBox_AR_4C).BringToFront();
-		}
+		PictureBox_FR_3C.Visible = model == "FR_3C";
+		PictureBox_FR_4C.Visible = model == "FR_4C";
+		PictureBox_FR_2L.Visible = model == "FR_2L";
+		PictureBox_AR_3C.Visible = model == "AR_3C";
+		PictureBox_AR_4C.Visible = model == "AR_4C";
 	}
 
 	private void Button20324_Click(object sender, EventArgs e)
