@@ -2269,6 +2269,35 @@ public class FormDialog_2_Configuration : Form
 		return fallback;
 	}
 
+	// Recovered databases can contain empty, numeric or malformed optional flags.
+	// Never crash Settings while reading one; this is display-only and does
+	// not rewrite the stored preference or the license state.
+	private bool ReadOptionalBooleanSetting(string key)
+	{
+		string value = ReadOptionalSetting(key, "False");
+		bool enabled;
+		if (bool.TryParse(value, out enabled)) return enabled;
+		int numeric;
+		return int.TryParse(value, out numeric) && numeric != 0;
+	}
+
+	// A direct EXE shortcut skips the portable MariaDB bootstrap and may raise
+	// MySQL 1042. Prefer the shipped launcher, without altering DB or licensing.
+	private static string ResolveStartupShortcutTarget(string applicationFolder, string dataFolder, string executableName)
+	{
+		if (!string.IsNullOrWhiteSpace(applicationFolder))
+		{
+			string launcher = Path.Combine(applicationFolder, "Start-LOGICA.cmd");
+			if (File.Exists(launcher)) return launcher;
+		}
+		if (!string.IsNullOrWhiteSpace(dataFolder))
+		{
+			string launcher = Path.Combine(dataFolder, "Start-LOGICA.cmd");
+			if (File.Exists(launcher)) return launcher;
+		}
+		return Path.Combine(string.IsNullOrWhiteSpace(dataFolder) ? applicationFolder : dataFolder, executableName);
+	}
+
 	// Incomplete optional rows are not valid updates. Never rewrite a setting
 	// to a guessed value when its UI row lacks the value subitem.
 	private static bool TryGetSettingUpdate(ListViewItem item, out string key, out string value)
@@ -2360,15 +2389,15 @@ public class FormDialog_2_Configuration : Form
 			}
 			val3.Close();
 			Module1.cn_SQL.Close();
-			CheckBox_me_MODEP.Checked = Conversions.ToBoolean(ReadOptionalSetting("FENETRE_MODE_P", "False"));
-			CheckBox_me_STOCK.Checked = Conversions.ToBoolean(ReadOptionalSetting("GESTION_STOCK", "False"));
-			CheckBox_me_MODIF_STOCK.Checked = Conversions.ToBoolean(ReadOptionalSetting("MODIF_STOCK_MANUEL", "False"));
-			CheckBox_me_AJOUT_STOCK.Checked = Conversions.ToBoolean(ReadOptionalSetting("AJOUT_STOCK_MANUEL", "False"));
-			CheckBox_me_BLOCAGE_STOCK.Checked = Conversions.ToBoolean(ReadOptionalSetting("BLOCAGE_STOCK_INSUFFISANT", "False"));
-			CheckBox_me_SOLDER_SANS_TICKET.Checked = Conversions.ToBoolean(ReadOptionalSetting("SOLDER_SANS_TICKET", "False"));
-			CheckBox_me_GESTION_CLOTURE.Checked = Conversions.ToBoolean(ReadOptionalSetting("GESTION_CLOTURE", "False"));
-			CheckBox_me_CLOTURE_CAISSIER_OBLIGER.Checked = Conversions.ToBoolean(ReadOptionalSetting("CLOTURE_CAISSIER_OBLIGER", "False"));
-			CheckBox_me_GESTION_GROUPE_FAMILLE.Checked = Conversions.ToBoolean(ReadOptionalSetting("GROUPES", "False"));
+			CheckBox_me_MODEP.Checked = ReadOptionalBooleanSetting("FENETRE_MODE_P");
+			CheckBox_me_STOCK.Checked = ReadOptionalBooleanSetting("GESTION_STOCK");
+			CheckBox_me_MODIF_STOCK.Checked = ReadOptionalBooleanSetting("MODIF_STOCK_MANUEL");
+			CheckBox_me_AJOUT_STOCK.Checked = ReadOptionalBooleanSetting("AJOUT_STOCK_MANUEL");
+			CheckBox_me_BLOCAGE_STOCK.Checked = ReadOptionalBooleanSetting("BLOCAGE_STOCK_INSUFFISANT");
+			CheckBox_me_SOLDER_SANS_TICKET.Checked = ReadOptionalBooleanSetting("SOLDER_SANS_TICKET");
+			CheckBox_me_GESTION_CLOTURE.Checked = ReadOptionalBooleanSetting("GESTION_CLOTURE");
+			CheckBox_me_CLOTURE_CAISSIER_OBLIGER.Checked = ReadOptionalBooleanSetting("CLOTURE_CAISSIER_OBLIGER");
+			CheckBox_me_GESTION_GROUPE_FAMILLE.Checked = ReadOptionalBooleanSetting("GROUPES");
 			Combo_BRANCHEMENT.Text = ReadOptionalSetting("BRANCHEMENT", "USB");
 			SelectTicketModel(ReadOptionalSetting("MODELE_TICKET", "FR_3C"));
 			CheckBox_me_RFID.Checked = ReadLocalBooleanOption("acces_rfid.sni");
@@ -2627,16 +2656,17 @@ public class FormDialog_2_Configuration : Form
 		{
 			try
 			{
-				if (CheckBox_me_STARTUP.Checked && (!((ServerComputer)MyProject.Computer).FileSystem.FileExists(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) + "\\LOGICA.lnk") | !((ServerComputer)MyProject.Computer).FileSystem.FileExists(Environment.GetFolderPath(Environment.SpecialFolder.Startup) + "\\LOGICA.lnk")))
+				if (CheckBox_me_STARTUP.Checked)
 				{
+					string shortcutTarget = ResolveStartupShortcutTarget(Application.StartupPath, Module1._CHEMIN_FOLDER, Application.ProductName + ".exe");
 					object objectValue = RuntimeHelpers.GetObjectValue(Interaction.CreateObject("WScript.Shell"));
 					object objectValue2 = RuntimeHelpers.GetObjectValue(NewLateBinding.LateGet(objectValue, null, "CreateShortcut", new object[1] { Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) + "\\LOGICA.lnk" }, null, null, null));
-					NewLateBinding.LateSet(objectValue2, null, "TargetPath", new object[1] { Module1._CHEMIN_FOLDER + "\\" + Application.ProductName + ".exe" }, null, null);
+					NewLateBinding.LateSet(objectValue2, null, "TargetPath", new object[1] { shortcutTarget }, null, null);
 					NewLateBinding.LateSet(objectValue2, null, "WindowStyle", new object[1] { 1 }, null, null);
 					NewLateBinding.LateCall(objectValue2, null, "Save", new object[0], null, null, null, IgnoreReturn: true);
 					object objectValue3 = RuntimeHelpers.GetObjectValue(Interaction.CreateObject("WScript.Shell"));
 					object objectValue4 = RuntimeHelpers.GetObjectValue(NewLateBinding.LateGet(objectValue3, null, "CreateShortcut", new object[1] { Environment.GetFolderPath(Environment.SpecialFolder.Startup) + "\\LOGICA.lnk" }, null, null, null));
-					NewLateBinding.LateSet(objectValue4, null, "TargetPath", new object[1] { Module1._CHEMIN_FOLDER + "\\" + Application.ProductName + ".exe" }, null, null);
+					NewLateBinding.LateSet(objectValue4, null, "TargetPath", new object[1] { shortcutTarget }, null, null);
 					NewLateBinding.LateSet(objectValue4, null, "WindowStyle", new object[1] { 1 }, null, null);
 					NewLateBinding.LateCall(objectValue4, null, "Save", new object[0], null, null, null, IgnoreReturn: true);
 				}
