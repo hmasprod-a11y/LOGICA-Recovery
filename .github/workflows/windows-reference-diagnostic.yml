@@ -105,7 +105,7 @@ jobs:
       - name: Parse release PowerShell scripts before expensive Windows POS tests
         shell: pwsh
         run: |
-          foreach ($path in @('scripts/package-beta-rc.ps1', 'scripts/test-extracted-release.ps1',
+          foreach ($path in @('scripts/Launch-LOGICA.ps1', 'scripts/package-beta-rc.ps1', 'scripts/test-extracted-release.ps1',
                               'scripts/verify-beta-rc.ps1', 'scripts/test-beta-release-verifier.ps1',
                               'scripts/test-release-candidate.ps1', 'scripts/test-release-private-state.ps1',
                               'scripts/probe-activation-ui.ps1', 'scripts/test-activation-ui-probe.ps1')) {
