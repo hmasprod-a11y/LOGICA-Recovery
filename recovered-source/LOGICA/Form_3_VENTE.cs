@@ -7696,6 +7696,18 @@ public class Form_3_VENTE : Form
 		ApplyProductListSelectionContrast();
 	}
 
+	// Ctrl+F jumps to product search without opening/closing the on-screen keyboard.
+	// The original search button remains unchanged, including its layout toggle.
+	protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+	{
+		if (keyData == (Keys.Control | Keys.F) && Text_FIND != null && !Text_FIND.IsDisposed && Text_FIND.Enabled && !Text_FIND.ReadOnly && Text_FIND.Visible && !Text_FIND.Focused && !Text_FIND.Disposing)
+		{
+			Text_FIND.Focus();
+			return true;
+		}
+		return base.ProcessCmdKey(ref msg, keyData);
+	}
+
 	// Family colors come from shop configuration and can be very light or dark.
 	// Choose the higher-contrast text color without changing the configured background.
 	private static Color ReadableFamilyCaptionColor(Color background)
@@ -12471,6 +12483,48 @@ public class Form_3_VENTE : Form
 	{
 	}
 
+	// Search/family refreshes can happen thousands of times during a cashier shift.
+	// Controls.Clear only detaches image tiles; it does not release their GDI bitmaps.
+	// Each tile image is loaded as a new Bitmap and is owned by that tile.
+	private static void ClearArticleImageTiles(FlowLayoutPanel tiles)
+	{
+		while (tiles.Controls.Count > 0)
+		{
+			Control tile = tiles.Controls[0];
+			tiles.Controls.RemoveAt(0);
+			ButtonBase button = tile as ButtonBase;
+			Image ownedImage = button == null ? null : button.Image;
+			if (button != null)
+			{
+				button.Image = null;
+			}
+			tile.Dispose();
+			if (ownedImage != null)
+			{
+				ownedImage.Dispose();
+			}
+		}
+	}
+
+	// The image grid may be hidden or measured at zero height during startup/DPI
+	// transitions. Keep the legacy scroll scale, but never divide by zero or
+	// restore an offset beyond the current filtered image list.
+	private void RefreshArticleImageScrollbar()
+	{
+		ScrollBar scroll = (ScrollBar)vScrollBar1;
+		ScrollableControl tiles = (ScrollableControl)FlowLayout_ARTICLES;
+		scroll.Minimum = 0;
+		scroll.Maximum = Math.Max(0, tiles.DisplayRectangle.Height);
+		double large = (double)scroll.Maximum / Math.Max(1, ((Control)vScrollBar1).Height)
+			+ Math.Max(0, ((Control)FlowLayout_ARTICLES).Height);
+		scroll.LargeChange = Math.Max(1, (int)Math.Min(int.MaxValue, Math.Round(large)));
+		scroll.SmallChange = 15;
+		int offset = tiles.AutoScrollPosition.Y;
+		int requested = offset == int.MinValue ? int.MaxValue : Math.Abs(offset);
+		int maxValue = Math.Max(scroll.Minimum, scroll.Maximum - scroll.LargeChange + 1);
+		scroll.Value = Math.Min(Math.Max(scroll.Minimum, requested), maxValue);
+	}
+
 	public void FAM2_click(object sender, EventArgs e)
 	{
 		//IL_0008: Unknown result type (might be due to invalid IL or missing references)
@@ -12495,7 +12549,7 @@ public class Form_3_VENTE : Form
 				val = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Family(), Module1.cn_SQL);
 				val.SelectCommand.Parameters.AddWithValue("@family", Conversions.ToString(NewLateBinding.LateGet(sender, null, "Text", new object[0], null, null, null)));
 				((DbDataAdapter)(object)val).Fill(dataTable);
-				((Control)FlowLayout_ARTICLES).Controls.Clear();
+				ClearArticleImageTiles(FlowLayout_ARTICLES);
 				int num = dataTable.Rows.Count - 1;
 				int num2 = 0;
 				while (true)
@@ -12505,6 +12559,13 @@ public class Form_3_VENTE : Form
 					if (num3 > num4)
 					{
 						break;
+					}
+					LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference tileReference =
+						LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(dataTable.Rows[num2]);
+					if (tileReference == null || string.IsNullOrWhiteSpace(tileReference.ArticleId))
+					{
+						num2++;
+						continue;
 					}
 					Bitmap articleImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.Load(
 						Module1._CHEMIN_FOLDER + "\\bd\\images", dataTable.Rows[num2]["Images"].ToString());
@@ -12517,7 +12578,7 @@ public class Form_3_VENTE : Form
 					button_RJ_ARTICLE._COLOR_PRIX = ((TextBoxBase)Text_THEME).BackColor;
 					((Control)button_RJ_ARTICLE).Name = "Button_ARTICLE_" + Conversions.ToString(num2);
 					((ButtonBase)button_RJ_ARTICLE).Text = dataTable.Rows[num2]["Article"].ToString();
-					((Control)button_RJ_ARTICLE).Tag = LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(dataTable.Rows[num2]);
+					((Control)button_RJ_ARTICLE).Tag = tileReference;
 					button_RJ_ARTICLE._PRIX = Strings.FormatNumber(dataTable.Rows[num2]["PRIX_V_1"].ToString());
 					button_RJ_ARTICLE._BackgroundColor = Color.White;
 					button_RJ_ARTICLE._BorderColor = ((TextBoxBase)Text_THEME).BackColor;
@@ -12542,11 +12603,7 @@ public class Form_3_VENTE : Form
 					num2++;
 				}
 				((Control)Text_CODE).Focus();
-				((ScrollBar)vScrollBar1).Minimum = 0;
-				((ScrollBar)vScrollBar1).Maximum = ((ScrollableControl)FlowLayout_ARTICLES).DisplayRectangle.Height;
-				((ScrollBar)vScrollBar1).LargeChange = (int)Math.Round((double)((ScrollBar)vScrollBar1).Maximum / (double)((Control)vScrollBar1).Height + (double)((Control)FlowLayout_ARTICLES).Height);
-				((ScrollBar)vScrollBar1).SmallChange = 15;
-				((ScrollBar)vScrollBar1).Value = Math.Abs(((ScrollableControl)FlowLayout_ARTICLES).AutoScrollPosition.Y);
+				RefreshArticleImageScrollbar();
 			}
 			catch (Exception ex)
 			{
@@ -12575,7 +12632,13 @@ public class Form_3_VENTE : Form
 		{
 			object imageTag = NewLateBinding.LateGet(sender, null, "tag", new object[0], null, null, null);
 			LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference imageArticle = imageTag as LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference;
-			Text_CODE.Text = imageArticle == null ? Conversions.ToString(imageTag) : imageArticle.Code;
+			// Never reinterpret a malformed image tag as a scanner barcode. A stale
+			// tile must fail closed rather than sell the last scanned article.
+			if (imageArticle == null || string.IsNullOrWhiteSpace(imageArticle.ArticleId) || !Button_FIND.Enabled)
+			{
+				return;
+			}
+			Text_CODE.Text = imageArticle.Code;
 			Button_FIND_Click(RuntimeHelpers.GetObjectValue(sender), e);
 		}
 		catch (Exception ex)
@@ -14569,9 +14632,17 @@ public class Form_3_VENTE : Form
 		//IL_00d1: Expected Obj, but got Unknown
 		try
 		{
-			if ((int)e.KeyCode == 13)
+			if (e.KeyCode == Keys.Enter && e.Modifiers == Keys.None)
 			{
-				Button_FIND_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
+				// Barcode scanners commonly terminate scans with Enter. Consume that
+				// terminator once; do not forward it to a focused button or dialog.
+				e.SuppressKeyPress = true;
+				// Keep scanner Enter consumed, but do not queue a sale while checkout
+				// is disabled by the existing workflow.
+				if (Button_FIND.Enabled)
+				{
+					Button_FIND_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
+				}
 				((TextBoxBase)Text_CODE).HideSelection = false;
 				((TextBoxBase)Text_CODE).SelectAll();
 			}
@@ -14628,8 +14699,21 @@ public class Form_3_VENTE : Form
 		Text_PRIX_QTE_MIN.Text = "";
 	}
 
+	// Tile lookup is a parameterized identity query, never a barcode search.
+	// The returned row is still checked against the original tile ID AND Code.
+	private static string ExactImageArticleSql()
+	{
+		return "select * from TABLE_ARTICLES WHERE ID_ARTICLE = @id";
+	}
+
 	private void Button_FIND_Click(object sender, EventArgs e)
 	{
+		// A scanner or image/list handler can call this method directly even while
+		// the checkout button is disabled. Never bypass the disabled sale gate.
+		if (!Button_FIND.Enabled)
+		{
+			return;
+		}
 		//IL_052d: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0534: Expected Obj, but got Unknown
 		//IL_0063: Unknown result type (might be due to invalid IL or missing references)
@@ -14639,20 +14723,31 @@ public class Form_3_VENTE : Form
 		//IL_0409: Unknown result type (might be due to invalid IL or missing references)
 		try
 		{
-			if (Operators.CompareString(Text_CODE.Text.Trim(), "", TextCompare: false) == 0)
+			Control clickedControl = sender as Control;
+			LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference clickedImage = clickedControl == null
+				? null : clickedControl.Tag as LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference;
+			// An image tile is identified by ID_ARTICLE, even when it has no barcode.
+			// Keep the scanner's original exact-barcode path and chooser unchanged.
+			if ((clickedImage == null && Operators.CompareString(Text_CODE.Text.Trim(), "", TextCompare: false) == 0)
+				|| (clickedImage != null && string.IsNullOrWhiteSpace(clickedImage.ArticleId)))
 			{
 				((Control)Text_CODE).Focus();
 				return;
 			}
 			Module1.dt_find.Clear();
-			Module1.da_find = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.ExactBarcode(), Module1.cn_SQL);
-			Module1.da_find.SelectCommand.Parameters.AddWithValue("@code", Text_CODE.Text);
+			if (clickedImage != null)
+			{
+				Module1.da_find = new MySqlDataAdapter(ExactImageArticleSql(), Module1.cn_SQL);
+				Module1.da_find.SelectCommand.Parameters.AddWithValue("@id", clickedImage.ArticleId);
+			}
+			else
+			{
+				Module1.da_find = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.ExactBarcode(), Module1.cn_SQL);
+				Module1.da_find.SelectCommand.Parameters.AddWithValue("@code", Text_CODE.Text);
+			}
 			((DbDataAdapter)(object)Module1.da_find).Fill(Module1.dt_find);
 			if (Module1.dt_find.Rows.Count != 0)
 			{
-				Control clickedControl = sender as Control;
-				LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference clickedImage = clickedControl == null
-					? null : clickedControl.Tag as LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference;
 				DataRow selectedArticle = clickedImage != null
 					? LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.FindExact(Module1.dt_find, clickedImage)
 					: LOGICA.ApplicationLayer.Checkout.CheckoutBarcodeSelectionService.Select(
@@ -14698,6 +14793,12 @@ public class Form_3_VENTE : Form
 			}
 			else
 			{
+				// A stale image tile must not open the scanner's unknown-barcode dialog.
+				if (clickedImage != null)
+				{
+					((Control)Text_CODE).Focus();
+					return;
+				}
 				((Form)MyProject.Forms.FormDialog_ARTICLE_INCONNU).ShowDialog();
 				_effacer_article_attributions();
 				((Control)Label_QTE).BackColor = Color.White;
@@ -15104,8 +15205,11 @@ public class Form_3_VENTE : Form
 		//IL_00b6: Expected Obj, but got Unknown
 		try
 		{
-			if ((int)e.KeyCode == 13)
+			if (e.KeyCode == Keys.Enter && e.Modifiers == Keys.None)
 			{
+				// Quantity Enter returns to barcode scanning, without triggering
+				// a second implicit Enter on the focused sales control.
+				e.SuppressKeyPress = true;
 				((Control)Text_CODE).Focus();
 			}
 		}
@@ -15140,6 +15244,15 @@ public class Form_3_VENTE : Form
 
 	private void Label_QTE_KeyPress(object sender, KeyPressEventArgs e)
 	{
+		// Keep the original numeric/backspace/minus input, but reject a second
+		// decimal separator before it can reach the checkout quantity parser.
+		if ((e.KeyChar == '.' && Label_QTE.Text.IndexOf('.') >= 0)
+			|| (e.KeyChar == '-' && (Label_QTE.Text.Length != 0 || Label_QTE.Text.IndexOf('-') >= 0)))
+		{
+			// A second decimal point or a misplaced minus sign is not a valid quantity.
+			e.Handled = true;
+			return;
+		}
 		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
 		{
 			e.Handled = true;
@@ -15236,7 +15349,7 @@ public class Form_3_VENTE : Form
 					da_PIC = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Images(), Module1.cn_SQL);
 					da_PIC.SelectCommand.Parameters.AddWithValue("@search", LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.Pattern(Text_FIND.Text));
 					((DbDataAdapter)(object)da_PIC).Fill(dt_PIC);
-					((Control)FlowLayout_ARTICLES).Controls.Clear();
+					ClearArticleImageTiles(FlowLayout_ARTICLES);
 					int num = dt_PIC.Rows.Count - 1;
 					int num2 = 0;
 					while (true)
@@ -15245,6 +15358,13 @@ public class Form_3_VENTE : Form
 						int num4 = num;
 						if (num3 <= num4)
 						{
+							LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference tileReference =
+								LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(dt_PIC.Rows[num2]);
+							if (tileReference == null || string.IsNullOrWhiteSpace(tileReference.ArticleId))
+							{
+								num2++;
+								continue;
+							}
 							Bitmap articleImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.Load(
 								Module1._CHEMIN_FOLDER + "\\bd\\images", dt_PIC.Rows[num2]["Images"].ToString());
 							if (articleImage == null)
@@ -15256,7 +15376,7 @@ public class Form_3_VENTE : Form
 							button_RJ_ARTICLE._COLOR_PRIX = ((TextBoxBase)Text_THEME).BackColor;
 							((Control)button_RJ_ARTICLE).Name = "Button_ARTICLE_" + Conversions.ToString(num2);
 							((ButtonBase)button_RJ_ARTICLE).Text = dt_PIC.Rows[num2]["Article"].ToString();
-							((Control)button_RJ_ARTICLE).Tag = LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(dt_PIC.Rows[num2]);
+							((Control)button_RJ_ARTICLE).Tag = tileReference;
 							button_RJ_ARTICLE._PRIX = Strings.FormatNumber(dt_PIC.Rows[num2]["PRIX_V_1"].ToString());
 							button_RJ_ARTICLE._BackgroundColor = Color.White;
 							button_RJ_ARTICLE._BorderColor = ((TextBoxBase)Text_THEME).BackColor;
@@ -15283,6 +15403,7 @@ public class Form_3_VENTE : Form
 						}
 						break;
 					}
+					RefreshArticleImageScrollbar();
 					});
 			}
 			catch (Exception ex)
@@ -15465,65 +15586,73 @@ public class Form_3_VENTE : Form
 	{
 	}
 
+	// Clearing search must execute at most one catalogue refresh. The legacy
+	// space-then-empty workaround fired TextChanged twice (two SQL reads).
+	// Preserve its force-refresh behavior when search is already empty.
+	private static void ClearProductSearch(TextBox search, Action refreshWhenEmpty)
+	{
+		if (search.Text.Length != 0)
+		{
+			search.Clear(); // TextChanged performs one refresh.
+		}
+		else
+		{
+			refreshWhenEmpty();
+		}
+	}
+
 	private void Button_987_Click(object sender, EventArgs e)
 	{
-		Text_FIND.Text = " ";
-		Text_FIND.Text = "";
+		ClearProductSearch(Text_FIND, delegate { Text_FIND_TextChanged(Text_FIND, EventArgs.Empty); });
 		((Control)Text_FIND).Focus();
+	}
+
+	// The legacy +/- buttons could shrink image tiles to negative dimensions and
+	// create Font objects with a non-positive size after repeated clicks. This
+	// can throw on a busy sales screen, especially with scaled Windows fonts.
+	// Keep the normal 10px/2pt steps but bound only the unsafe extremes.
+	private void ResizeArticleTiles(int direction)
+	{
+		// Avoid one full flow-layout pass per product while resizing a large
+		// catalogue; always resume layout even if a tile was disposed mid-update.
+		((Control)FlowLayout_ARTICLES).SuspendLayout();
+		try
+		{
+			foreach (Control tile in ((Control)FlowLayout_ARTICLES).Controls)
+			{
+				if (tile.IsDisposed)
+				{
+					continue;
+				}
+				int width = Math.Max(80, Math.Min(320, tile.Width + direction * 10));
+				int height = Math.Max(70, Math.Min(280, tile.Height + direction * 10));
+				float fontSize = Math.Max(7f, Math.Min(22f, tile.Font.Size + direction * 2f));
+				tile.Width = width;
+				tile.Height = height;
+				if (Math.Abs(tile.Font.Size - fontSize) > 0.01f)
+				{
+					// Preserve the existing caption style and the product tile identity.
+					tile.Font = new Font("Segoe UI", fontSize, tile.Font.Style);
+				}
+			}
+		}
+		finally
+		{
+			((Control)FlowLayout_ARTICLES).ResumeLayout(true);
+		}
+		// Zoom changes the scrollable extent; the old thumb range was stale until
+		// the next catalogue search, hiding the last products on small displays.
+		RefreshArticleImageScrollbar();
 	}
 
 	private void Button27_Click(object sender, EventArgs e)
 	{
-		//IL_0096: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00a0: Expected Obj, but got Unknown
-		checked
-		{
-			int num = ((ArrangedElementCollection)((Control)FlowLayout_ARTICLES).Controls).Count - 1;
-			int num2 = 0;
-			while (true)
-			{
-				int num3 = num2;
-				int num4 = num;
-				if (num3 <= num4)
-				{
-					Control val = ((Control)FlowLayout_ARTICLES).Controls[num2];
-					val.Width += 10;
-					val = ((Control)FlowLayout_ARTICLES).Controls[num2];
-					val.Height += 10;
-					((Control)FlowLayout_ARTICLES).Controls[num2].Font = new Font("Segoe UI", ((Control)FlowLayout_ARTICLES).Controls[num2].Font.Size + 2f);
-					num2++;
-					continue;
-				}
-				break;
-			}
-		}
+		ResizeArticleTiles(1);
 	}
 
 	private void Button22_Click(object sender, EventArgs e)
 	{
-		//IL_0096: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00a0: Expected Obj, but got Unknown
-		checked
-		{
-			int num = ((ArrangedElementCollection)((Control)FlowLayout_ARTICLES).Controls).Count - 1;
-			int num2 = 0;
-			while (true)
-			{
-				int num3 = num2;
-				int num4 = num;
-				if (num3 <= num4)
-				{
-					Control val = ((Control)FlowLayout_ARTICLES).Controls[num2];
-					val.Width -= 10;
-					val = ((Control)FlowLayout_ARTICLES).Controls[num2];
-					val.Height -= 10;
-					((Control)FlowLayout_ARTICLES).Controls[num2].Font = new Font("Segoe UI", ((Control)FlowLayout_ARTICLES).Controls[num2].Font.Size - 2f);
-					num2++;
-					continue;
-				}
-				break;
-			}
-		}
+		ResizeArticleTiles(-1);
 	}
 
 	private void RadioButton3_CheckedChanged(object sender, EventArgs e)
@@ -15538,22 +15667,117 @@ public class Form_3_VENTE : Form
 	{
 	}
 
+	// Resolve the selected bound row, not a possibly stale currency-manager index.
+	// An empty/header-only list must never rescan the previously selected barcode.
+	private DataRow SelectedProductListRow()
+	{
+		DataGridViewRow gridRow = DataGridView100.CurrentRow;
+		DataRowView view = gridRow == null || gridRow.IsNewRow ? null : gridRow.DataBoundItem as DataRowView;
+		if (view == null || view.Row == null || view.Row.RowState == DataRowState.Deleted || view.Row.RowState == DataRowState.Detached)
+		{
+			return null;
+		}
+		return view.Row;
+	}
+
+	// Mouse clicks must resolve the cell actually under the pointer. CurrentRow can
+	// still refer to a previous article when a header, scrollbar or another row is
+	// double-clicked, which could otherwise add the wrong product to the basket.
+	private DataRow SelectedProductListRowForPointer(EventArgs e)
+	{
+		MouseEventArgs mouse = e as MouseEventArgs;
+		if (mouse == null)
+		{
+			// Preserve the legacy programmatic/keyboard invocation path.
+			return SelectedProductListRow();
+		}
+		if (mouse.Button != MouseButtons.Left)
+		{
+			return null;
+		}
+		DataGridView.HitTestInfo hit = DataGridView100.HitTest(mouse.X, mouse.Y);
+		if (hit.Type != DataGridViewHitTestType.Cell || hit.RowIndex < 0
+			|| hit.RowIndex >= DataGridView100.Rows.Count || hit.ColumnIndex < 0)
+		{
+			return null;
+		}
+		DataGridViewRow gridRow = DataGridView100.Rows[hit.RowIndex];
+		DataRowView view = gridRow == null || gridRow.IsNewRow ? null : gridRow.DataBoundItem as DataRowView;
+		if (view == null || view.Row == null || view.Row.RowState == DataRowState.Deleted
+			|| view.Row.RowState == DataRowState.Detached)
+		{
+			return null;
+		}
+		return view.Row;
+	}
+
+	// List mode includes articles without a barcode or image. Resolve those by
+	// immutable article identity, exactly as an image tile does; scanner lookup
+	// and the legacy duplicate-barcode chooser remain unchanged.
+	private static LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference BlankBarcodeListArticleReference(DataRow row)
+	{
+		if (row == null || row.Table == null || row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached
+			|| !row.Table.Columns.Contains("ID_ARTICLE") || !row.Table.Columns.Contains("Code")
+			|| !string.IsNullOrWhiteSpace(row["Code"].ToString()) || string.IsNullOrWhiteSpace(row["ID_ARTICLE"].ToString()))
+		{
+			return null;
+		}
+		return LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(row);
+	}
+
 	private void DataGridView100_DoubleClick(object sender, EventArgs e)
 	{
-		Button_FIND.PerformClick();
+		// Match PerformClick's disabled-button behavior on both lookup paths.
+		if (!Button_FIND.Enabled)
+		{
+			return;
+		}
+		DataRow row = SelectedProductListRowForPointer(e);
+		if (row == null || !row.Table.Columns.Contains("Code"))
+		{
+			return;
+		}
+		LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference identity = BlankBarcodeListArticleReference(row);
+		if (identity == null)
+		{
+			// Preserve the original exact-barcode lookup and duplicate chooser.
+			if (string.IsNullOrWhiteSpace(row["Code"].ToString()))
+			{
+				return;
+			}
+			Text_CODE.Text = row["Code"].ToString();
+			Button_FIND.PerformClick();
+			return;
+		}
+		// Reuse the proven image-tile identity lookup without leaving Tag changed.
+		object originalTag = Button_FIND.Tag;
+		try
+		{
+			Button_FIND.Tag = identity;
+			Button_FIND_Click(Button_FIND, e);
+		}
+		finally
+		{
+			Button_FIND.Tag = originalTag;
+		}
 	}
 
 	private void DataGridView100_Click(object sender, EventArgs e)
 	{
+		// A disabled checkout must not stage a different barcode from the list.
+		if (!Button_FIND.Enabled)
+		{
+			return;
+		}
 		try
 		{
-			if (DataGridView100.Rows.Count == 0)
+			DataRow selected = SelectedProductListRowForPointer(e);
+			if (selected == null || !selected.Table.Columns.Contains("Code"))
 			{
 				((Control)Text_CODE).Focus();
 				return;
 			}
-			int position = ((ContainerControl)this).BindingContext[(object)dt_LA].Position;
-			Text_CODE.Text = dt_LA.Rows[position]["Code"].ToString();
+			Text_CODE.Text = selected["Code"].ToString();
 			((Control)Text_CODE).Focus();
 		}
 		catch (Exception ex)
@@ -16934,12 +17158,25 @@ public class Form_3_VENTE : Form
 
 	private void Button_qte1_Click(object sender, EventArgs e)
 	{
-		if (((Control)Label_QTE).BackColor == Color.White)
+		string key = Conversions.ToString(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null));
+		// Ignore unexpected button captions rather than producing an invalid checkout quantity.
+		if (string.IsNullOrEmpty(key) || (key != "." && (key.Length != 1 || key[0] < '0' || key[0] > '9')))
 		{
-			Label_QTE.Text = "";
+			return;
+		}
+		string current = ((Control)Label_QTE).BackColor == Color.White ? "" : Label_QTE.Text;
+		// A second decimal point creates a quantity that cannot be converted at checkout.
+		// Preserve the existing numeric keypad and reset semantics for valid input.
+		if (key == "." && current.IndexOf('.') >= 0)
+		{
+			return;
+		}
+		if (key == "." && current.Length == 0)
+		{
+			current = "0";
 		}
 		((Control)Label_QTE).BackColor = Color.Yellow;
-		Label_QTE.Text = Conversions.ToString(Operators.AddObject(Label_QTE.Text, NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null)));
+		Label_QTE.Text = current + key;
 	}
 
 	private void Button_qteBACK_Click(object sender, EventArgs e)
@@ -17044,18 +17281,33 @@ public class Form_3_VENTE : Form
 		e.Graphics.DrawString(" - ", new Font("Inconsolata Condensed", 11f, (FontStyle)0), Brushes.Black, 0f, 40f, new StringFormat((StringFormatFlags)8192));
 	}
 
+	private int _productListHeightBeforeKeyboard;
+
 	private void Button_876_Click(object sender, EventArgs e)
 	{
 		((Control)Text_FIND).Focus();
-		if (Operators.ConditionalCompareObjectEqual(((Control)TabControl2).Tag, "", TextCompare: false))
+		// Tag is null on a fresh designer-created tab unless a resource overrides it.
+		// Treat null as the closed state, not as a request to restore an unknown height.
+		if (((Control)TabControl2).Tag == null || Operators.ConditionalCompareObjectEqual(((Control)TabControl2).Tag, "", TextCompare: false))
 		{
+			// On compact displays, never collapse the product list to zero/negative height.
+			// Keep the original layout and keyboard state as a safe legacy fallback.
+			if (((Control)TabControl2).Height <= ((Control)Panel_CLAVIER).Height + 10)
+			{
+				return;
+			}
+			_productListHeightBeforeKeyboard = ((Control)TabControl2).Height;
 			((Control)TabControl2).Height = checked(((Control)TabControl2).Height - ((Control)Panel_CLAVIER).Height - 10);
 			((Control)TabControl2).Tag = "1";
 		}
 		else
 		{
 			((Control)TabControl2).Tag = "";
-			((Control)TabControl2).Height = ((Control)Panel9).Height;
+			// Preserve the exact pre-keyboard list height under DPI scaling.
+			// Keep the original Panel9 fallback if this form had no saved height.
+			((Control)TabControl2).Height = _productListHeightBeforeKeyboard > 0
+				? _productListHeightBeforeKeyboard : ((Control)Panel9).Height;
+			_productListHeightBeforeKeyboard = 0;
 		}
 	}
 

@@ -1281,6 +1281,126 @@ class PosSmoke {
  }
 
 
+ static void SalesImageTileZoomDpi(Assembly assembly) {
+  // Offline WinForms regression: repeated +/- zoom must never create an invalid
+  // Font or negative tile size, and must not alter article identity or images.
+  var saleType=assembly.GetType("LOGICA.Form_3_VENTE",true);
+  using(var sale=(Form)Activator.CreateInstance(saleType)) {
+   var tiles=(FlowLayoutPanel)Get(sale,"FlowLayout_ARTICLES");
+   var scrollbar=(ScrollBar)Get(sale,"vScrollBar1");
+   var plus=saleType.GetMethod("Button27_Click",Flags);
+   var minus=saleType.GetMethod("Button22_Click",Flags);
+   if(tiles==null||scrollbar==null||plus==null||minus==null)
+    throw new Exception("Image tile zoom or scrollbar controls missing");
+   // Empty image results must also allow zoom without a crash or SQL read.
+   plus.Invoke(sale,new object[]{sale,EventArgs.Empty});
+   minus.Invoke(sale,new object[]{sale,EventArgs.Empty});
+   using(var bitmap=new Bitmap(2,2))
+   using(var first=new Button(){Width=127,Height=117,Tag="CI_ARTICLE_1",Image=bitmap})
+   using(var second=new Button(){Width=127,Height=117,Tag="CI_ARTICLE_2"}) {
+    first.Font=new Font("Segoe UI",9f,FontStyle.Bold);
+    second.Font=new Font("Segoe UI",9f,FontStyle.Regular);
+    tiles.Controls.Add(first);
+    tiles.Controls.Add(second);
+    minus.Invoke(sale,new object[]{sale,EventArgs.Empty});
+    if(first.Width!=117||first.Height!=107||Math.Abs(first.Font.Size-7f)>0.01f)
+     throw new Exception("Normal zoom-out must retain legacy 10px/2pt step");
+    plus.Invoke(sale,new object[]{sale,EventArgs.Empty});
+    if(first.Width!=127||first.Height!=117||Math.Abs(first.Font.Size-9f)>0.01f)
+     throw new Exception("Normal zoom-in must restore original tile dimensions");
+    for(int i=0;i<50;i++)minus.Invoke(sale,new object[]{sale,EventArgs.Empty});
+    foreach(Control tile in tiles.Controls) {
+     if(tile.Width<80||tile.Height<70||tile.Font.Size<7f)
+      throw new Exception("Repeated zoom-out produced unreadable/invalid tile dimensions");
+    }
+    for(int i=0;i<70;i++)plus.Invoke(sale,new object[]{sale,EventArgs.Empty});
+    foreach(Control tile in tiles.Controls) {
+     if(tile.Width>320||tile.Height>280||tile.Font.Size>22f)
+      throw new Exception("Repeated zoom-in exceeded safe image-tile dimensions");
+    }
+    if(!Object.Equals(first.Tag,"CI_ARTICLE_1")||!Object.Equals(second.Tag,"CI_ARTICLE_2")||
+       !Object.ReferenceEquals(first.Image,bitmap)||first.Font.Style!=FontStyle.Bold)
+     throw new Exception("Zoom must preserve tile identity, image and caption style");
+    int highest=Math.Max(scrollbar.Minimum,scrollbar.Maximum-scrollbar.LargeChange+1);
+    if(scrollbar.Value<scrollbar.Minimum||scrollbar.Value>highest)
+     throw new Exception("Zoom left image scrollbar outside its legal range");
+   }
+   Console.WriteLine("PASS image-tile zoom bounded at DPI extremes; identity, bitmap and scroll preserved");
+  }
+ }
+
+ static void SalesImageTileLifecycle(Assembly assembly) {
+  // Offline: repeated search must release detached controls and their owned GDI bitmaps.
+  var saleType=assembly.GetType("LOGICA.Form_3_VENTE",true);
+  var clear=saleType.GetMethod("ClearArticleImageTiles",Flags);
+  var click=saleType.GetMethod("B_article2_click",Flags);
+  if(clear==null||click==null)throw new Exception("Image tile lifecycle or click handler missing");
+  using(var panel=new FlowLayoutPanel()) {
+   var image=new Bitmap(2,2);
+   var tile=new Button(){Image=image};
+   panel.Controls.Add(tile);
+   clear.Invoke(null,new object[]{panel});
+   if(panel.Controls.Count!=0||!tile.IsDisposed)
+    throw new Exception("Search refresh left detached image tile alive");
+   bool disposed=false;
+   try {image.GetPixel(0,0);} catch(ArgumentException) {disposed=true;}
+   catch(System.Runtime.InteropServices.ExternalException) {disposed=true;}
+   if(!disposed)throw new Exception("Search refresh leaked a GDI image");
+   clear.Invoke(null,new object[]{panel}); // Empty refresh must be safe.
+  }
+  using(var sale=(Form)Activator.CreateInstance(saleType)) {
+   var code=(TextBox)Get(sale,"Text_CODE");
+   var find=(Control)Get(sale,"Button_FIND");
+   code.Text="PREVIOUS-SCAN";
+   using(var tile=new Button(){Tag="UNTRUSTED-TAG"}) {
+    click.Invoke(sale,new object[]{tile,EventArgs.Empty});
+    if(code.Text!="PREVIOUS-SCAN")
+     throw new Exception("Invalid image tag replaced scanned barcode");
+    tile.Tag=null;
+    click.Invoke(sale,new object[]{tile,EventArgs.Empty});
+    if(code.Text!="PREVIOUS-SCAN")
+     throw new Exception("Null image tag replaced scanned barcode");
+    var tagType=assembly.GetType("LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference",true);
+    var ctor=tagType.GetConstructor(BindingFlags.Instance|BindingFlags.NonPublic,null,new Type[]{typeof(string),typeof(string)},null);
+    if(ctor==null)throw new Exception("Tile identity constructor missing");
+    tile.Tag=ctor.Invoke(new object[]{"CI_VALID","101"});
+    find.Enabled=false;
+    click.Invoke(sale,new object[]{tile,EventArgs.Empty});
+    if(code.Text!="PREVIOUS-SCAN")
+     throw new Exception("Disabled checkout button accepted an image tile");
+    find.Enabled=true;
+    tile.Tag=ctor.Invoke(new object[]{"CI_INVALID"," "});
+    click.Invoke(sale,new object[]{tile,EventArgs.Empty});
+    if(code.Text!="PREVIOUS-SCAN")
+     throw new Exception("Image tile without article ID reached scanner lookup");
+   }
+   // Hidden/zero-height image scrollbar occurs before first layout and at DPI resize.
+   var scrollbar=(ScrollBar)Get(sale,"vScrollBar1");
+   var imageGrid=(FlowLayoutPanel)Get(sale,"FlowLayout_ARTICLES");
+   var refresh=saleType.GetMethod("RefreshArticleImageScrollbar",Flags);
+   if(scrollbar==null||imageGrid==null||refresh==null)
+    throw new Exception("Image scrollbar refresh boundary missing");
+   int previousHeight=scrollbar.Height;
+   try {
+    scrollbar.Height=0;
+    refresh.Invoke(sale,null);
+    if(scrollbar.LargeChange<1||scrollbar.Value<scrollbar.Minimum||scrollbar.Value>scrollbar.Maximum)
+     throw new Exception("Zero-height DPI image scrollbar produced invalid range");
+    using(var largeTile=new Button(){Width=120,Height=500}) {
+     imageGrid.Controls.Add(largeTile);
+     refresh.Invoke(sale,null);
+     if(scrollbar.Value<scrollbar.Minimum||scrollbar.Value>scrollbar.Maximum)
+      throw new Exception("Image scrollbar overflowed after catalogue expansion");
+     imageGrid.Controls.Remove(largeTile);
+    }
+    refresh.Invoke(sale,null);
+    if(scrollbar.Value<scrollbar.Minimum||scrollbar.Value>scrollbar.Maximum)
+     throw new Exception("Image scrollbar retained an invalid offset after clearing tiles");
+   } finally {scrollbar.Height=previousHeight;}
+  }
+  Console.WriteLine("PASS image tile disposal, safe clicks, and zero-height DPI scrollbar bounds offline");
+ }
+
  static void CheckoutImageGrid(Assembly assembly) {
   var module=assembly.GetType("LOGICA.Module1",true);
   var field=module.GetField("_CHEMIN_FOLDER",Flags);
@@ -1323,6 +1443,8 @@ class PosSmoke {
       }
       if(tiles.Controls.Count!=1||Convert.ToString(tiles.Controls[0].Tag)!="CI_IMAGE_REAL")
        throw new Exception("Family image grid includes missing/placeholder/corrupt products: "+tiles.Controls.Count);
+      var previousTile=tiles.Controls[0];
+      var previousImage=((ButtonBase)previousTile).Image;
       var tabs=(TabControl)Get(sale,"TabControl2");
       tabs.SelectedIndex=0;
       ((Control)Get(sale,"Text_FIND")).Text="CI Item";
@@ -1335,6 +1457,8 @@ class PosSmoke {
       sale.GetType().GetMethod("Text_FIND_TextChanged",Flags).Invoke(sale,new object[]{sale,EventArgs.Empty});
       if(tiles.Controls.Count!=1||Convert.ToString(tiles.Controls[0].Tag)!="CI_IMAGE_REAL")
        throw new Exception("Search image grid includes products without a valid photo: "+tiles.Controls.Count);
+      if(!previousTile.IsDisposed||Object.ReferenceEquals(((ButtonBase)tiles.Controls[0]).Image,previousImage))
+       throw new Exception("Image search refresh did not dispose and replace the previous tile");
              // An apostrophe is valid in a family name. An SQL-looking family
        // must be treated as an exact literal, never as a WHERE expression.
        Sql(connection,"INSERT INTO TABLE_ARTICLES (Article,Code,Images,Famille,PRIX_V_1) VALUES "+
@@ -1393,6 +1517,102 @@ class PosSmoke {
        object removedTag=secondId==Convert.ToString(matches.Rows[0]["ID_ARTICLE"]) ? firstTag : secondTag;
        if(findExact.Invoke(null,new object[]{matches,removedTag})!=null)
         throw new Exception("Stale image tile silently selected another variant");
+       // Image-only products have no barcode: the WinForms tile must resolve
+       // by parameterized article ID and still validate its original tile identity.
+       Sql(connection,"INSERT INTO TABLE_ARTICLES (Article,Code,Images,Famille,PRIX_V_1) VALUES "+
+        "('CI Image only','','hanouty_ci_real.png','CI_IMAGE_ONLY',8.5)");
+       using(var family=new Button(){Text="CI_IMAGE_ONLY"})
+        sale.GetType().GetMethod("FAM2_click",Flags).Invoke(sale,new object[]{family,EventArgs.Empty});
+       if(tiles.Controls.Count!=1||!tileType.IsInstanceOfType(tiles.Controls[0].Tag))
+        throw new Exception("Image-only product must create a typed image tile");
+       object imageOnlyTag=tiles.Controls[0].Tag;
+       if(Convert.ToString(imageOnlyTag)!="")
+        throw new Exception("Image-only tile must retain its empty barcode");
+       string imageOnlyId=Convert.ToString(tileType.GetProperty("ArticleId",Flags).GetValue(imageOnlyTag,null));
+       var imageSqlMethod=sale.GetType().GetMethod("ExactImageArticleSql",Flags);
+       if(imageSqlMethod==null||!imageSqlMethod.IsStatic)
+        throw new Exception("Image-only lookup SQL method missing");
+       string imageSql=(string)imageSqlMethod.Invoke(null,null);
+       if(imageSql!="select * from TABLE_ARTICLES WHERE ID_ARTICLE = @id")
+        throw new Exception("Image-only lookup must use parameterized ID_ARTICLE");
+       var imageRows=new DataTable();
+       using(var cmd=connection.CreateCommand()) {
+        cmd.CommandText=imageSql;
+        var idParam=cmd.CreateParameter();
+        idParam.ParameterName="@id";
+        idParam.Value=imageOnlyId;
+        cmd.Parameters.Add(idParam);
+        using(var reader=cmd.ExecuteReader())imageRows.Load(reader);
+       }
+       var imageRow=(DataRow)findExact.Invoke(null,new object[]{imageRows,imageOnlyTag});
+       if(imageRows.Rows.Count!=1||imageRow==null||
+          Convert.ToString(imageRow["ID_ARTICLE"])!=imageOnlyId||
+          Convert.ToString(imageRow["Code"])!="")
+        throw new Exception("Image-only ID lookup did not resolve the exact empty-barcode product");
+       // A deleted article must never resolve to another image tile.
+       using(var cmd=connection.CreateCommand()) {
+        cmd.CommandText="DELETE FROM TABLE_ARTICLES WHERE ID_ARTICLE = @id";
+        var idParam=cmd.CreateParameter();
+        idParam.ParameterName="@id";
+        idParam.Value=imageOnlyId;
+        cmd.Parameters.Add(idParam);
+        cmd.ExecuteNonQuery();
+       }
+       imageRows.Clear();
+       using(var cmd=connection.CreateCommand()) {
+        cmd.CommandText=imageSql;
+        var idParam=cmd.CreateParameter();
+        idParam.ParameterName="@id";
+        idParam.Value=imageOnlyId;
+        cmd.Parameters.Add(idParam);
+        using(var reader=cmd.ExecuteReader())imageRows.Load(reader);
+       }
+       if(imageRows.Rows.Count!=0||findExact.Invoke(null,new object[]{imageRows,imageOnlyTag})!=null)
+        throw new Exception("Deleted image-only article must fail closed");
+       // List-only products have neither a barcode nor a photo. They must
+       // remain selectable in list mode and resolve through the same exact-ID
+       // SQL as image tiles, without appearing in the image grid.
+       Sql(connection,"INSERT INTO TABLE_ARTICLES (Article,Code,Images,Famille,PRIX_V_1) VALUES "+
+        "('CI List no barcode','','','CI_LIST_ONLY',7.5)");
+       tabs.SelectedIndex=0;
+       ((Control)Get(sale,"Text_FIND")).Text="CI List no barcode";
+       sale.GetType().GetMethod("Text_FIND_TextChanged",Flags).Invoke(sale,new object[]{sale,EventArgs.Empty});
+       var listOnlyData=list.DataSource as DataTable;
+       if(listOnlyData==null || listOnlyData.Rows.Count!=1 || Convert.ToString(listOnlyData.Rows[0]["Code"])!="")
+        throw new Exception("Barcode-free article missing from the full product list");
+       var listReference=sale.GetType().GetMethod("BlankBarcodeListArticleReference",Flags);
+       var listTag=listReference.Invoke(null,new object[]{listOnlyData.Rows[0]});
+       if(!tileType.IsInstanceOfType(listTag))
+        throw new Exception("List-only article did not retain a typed exact identity");
+       string listId=Convert.ToString(tileType.GetProperty("ArticleId",Flags).GetValue(listTag,null));
+       var listLookup=new DataTable();
+       using(var cmd=connection.CreateCommand()) {
+        cmd.CommandText=imageSql;
+        var id=cmd.CreateParameter();
+        id.ParameterName="@id"; id.Value=listId; cmd.Parameters.Add(id);
+        using(var reader=cmd.ExecuteReader())listLookup.Load(reader);
+       }
+       if(listLookup.Rows.Count!=1 || findExact.Invoke(null,new object[]{listLookup,listTag})==null)
+        throw new Exception("Barcode-free list article failed exact-ID lookup");
+       tabs.SelectedIndex=1;
+       sale.GetType().GetMethod("Text_FIND_TextChanged",Flags).Invoke(sale,new object[]{sale,EventArgs.Empty});
+       if(tiles.Controls.Count!=0)
+        throw new Exception("Product without photo leaked into image grid");
+       using(var cmd=connection.CreateCommand()) {
+        cmd.CommandText="DELETE FROM TABLE_ARTICLES WHERE ID_ARTICLE = @id";
+        var id=cmd.CreateParameter(); id.ParameterName="@id"; id.Value=listId; cmd.Parameters.Add(id);
+        cmd.ExecuteNonQuery();
+       }
+       listLookup.Clear();
+       using(var cmd=connection.CreateCommand()) {
+        cmd.CommandText=imageSql;
+        var id=cmd.CreateParameter(); id.ParameterName="@id"; id.Value=listId; cmd.Parameters.Add(id);
+        using(var reader=cmd.ExecuteReader())listLookup.Load(reader);
+       }
+       if(listLookup.Rows.Count!=0 || findExact.Invoke(null,new object[]{listLookup,listTag})!=null)
+        throw new Exception("Deleted barcode-free list article must not resolve another product");
+       Console.WriteLine("PASS isolated MariaDB barcode-free list article: exact ID, no image tile and stale deletion");
+       Console.WriteLine("PASS isolated MariaDB image-only tile: exact ID, blank barcode and stale deletion");
        Console.WriteLine("PASS isolated MariaDB image tiles: same barcode, distinct article IDs, exact selection and stale-tile rejection");
        Console.WriteLine("PASS original Windows POS: parameterized family tiles, quotes, literal SQL text and injection rejection");
        Console.WriteLine("PASS original Windows POS: family and search image tiles real-only; list still shows all 5 products");
@@ -1445,6 +1665,484 @@ class PosSmoke {
    form.GetType().GetMethod("ApplyProductListSelectionContrast",Flags).Invoke(form,null);
    verify();
    Console.WriteLine("PASS product-list selected-row contrast and original bindings");
+  }
+ }
+
+ static void SalesListSelectionFallback(Assembly assembly) {
+  // The list includes barcode-free products even without a photo. Guard empty
+  // selections and use the exact bound row rather than stale currency position.
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
+   var list=(DataGridView)Get(form,"DataGridView100");
+   var code=(TextBox)Get(form,"Text_CODE");
+   var findButton=(Control)Get(form,"Button_FIND");
+   var selected=form.GetType().GetMethod("SelectedProductListRow",Flags);
+   var pointer=form.GetType().GetMethod("SelectedProductListRowForPointer",Flags);
+   var reference=form.GetType().GetMethod("BlankBarcodeListArticleReference",Flags);
+   var click=form.GetType().GetMethod("DataGridView100_Click",Flags);
+   var doubleClick=form.GetType().GetMethod("DataGridView100_DoubleClick",Flags);
+   if(list==null||code==null||findButton==null||selected==null||pointer==null||reference==null||click==null||doubleClick==null)
+    throw new Exception("Sales product-list selection handlers missing");
+   var rows=new DataTable();
+   foreach(string column in new[]{"ID_ARTICLE","Code","Article","PRIX_V_1"})rows.Columns.Add(column);
+   rows.Rows.Add("101","","No barcode and no photo","8.50");
+   rows.Rows.Add("102","BAR-102","Ordinary barcode","9.50");
+   list.DataSource=rows;
+   if(list.Rows.Count!=2)throw new Exception("Sales product list failed to bind two articles");
+   list.CurrentCell=list.Rows[0].Cells[0];
+   if(!Object.ReferenceEquals(selected.Invoke(form,null),rows.Rows[0]))
+    throw new Exception("List selection did not resolve the first bound row");
+   // Pointer hit-testing must never use a stale CurrentRow for a different cell.
+   // No sale is posted here; tests exercise the real WinForms selection handler.
+   // The production sales form is intentionally not shown (its Load reads SQL).
+   // Reparent only the list into a temporary visible host so WinForms can
+   // calculate real cell rectangles and HitTest without loading the sales form.
+   var originalParent=list.Parent;
+   var originalBounds=list.Bounds;
+   var originalDock=list.Dock;
+   using(var pointerHost=new Form()) {
+    try {
+     list.Dock=DockStyle.None;
+     list.Parent=pointerHost;
+     pointerHost.ClientSize=new Size(650,350);
+     list.Bounds=new Rectangle(0,0,600,300);
+     pointerHost.Show();
+     list.PerformLayout();
+   var secondRect=list.GetCellDisplayRectangle(0,1,false);
+   if(secondRect.Width<=8||secondRect.Height<=8)
+    throw new Exception("Second product row not visible for pointer regression");
+   int hitX=secondRect.Left+5,hitY=secondRect.Top+5;
+   if(list.HitTest(hitX,hitY).RowIndex!=1)
+    throw new Exception("WinForms hit test did not locate second product");
+   var secondPointer=new MouseEventArgs(MouseButtons.Left,2,hitX,hitY,0);
+   if(!Object.ReferenceEquals(pointer.Invoke(form,new object[]{secondPointer}),rows.Rows[1]))
+    throw new Exception("Double-click pointer resolved stale CurrentRow instead of clicked product");
+   var outsidePointer=new MouseEventArgs(MouseButtons.Left,2,-1,-1,0);
+   if(pointer.Invoke(form,new object[]{outsidePointer})!=null)
+    throw new Exception("Outside-grid double-click must not resolve a product");
+   var rightPointer=new MouseEventArgs(MouseButtons.Right,2,hitX,hitY,0);
+   if(pointer.Invoke(form,new object[]{rightPointer})!=null)
+    throw new Exception("Right-click must not select a product for checkout");
+   if(list.ColumnHeadersVisible) {
+    var headerPointer=new MouseEventArgs(MouseButtons.Left,2,hitX,1,0);
+    if(pointer.Invoke(form,new object[]{headerPointer})!=null)
+     throw new Exception("Column-header double-click resolved previously selected product");
+    code.Text="HEADER-SCAN";
+    doubleClick.Invoke(form,new object[]{list,headerPointer});
+    if(code.Text!="HEADER-SCAN")
+     throw new Exception("Header double-click changed barcode or triggered a sale");
+    click.Invoke(form,new object[]{list,headerPointer});
+    if(code.Text!="HEADER-SCAN")
+     throw new Exception("Header click reused stale selected barcode");
+   }
+   code.Text="OLD-SCAN";
+   click.Invoke(form,new object[]{list,secondPointer});
+   if(code.Text!="BAR-102")
+    throw new Exception("Pointer click did not load barcode of the actually clicked row");
+   list.CurrentCell=list.Rows[0].Cells[0];
+    } finally {
+     list.Parent=originalParent;
+     list.Dock=originalDock;
+     list.Bounds=originalBounds;
+    }
+   }
+   var tag=reference.Invoke(null,new object[]{rows.Rows[0]});
+   var tagType=assembly.GetType("LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference",true);
+   if(!tagType.IsInstanceOfType(tag) || Convert.ToString(tagType.GetProperty("ArticleId",Flags).GetValue(tag,null))!="101" || Convert.ToString(tag)!="")
+    throw new Exception("Barcode-free list row lost its exact article identity");
+   findButton.Tag="CI_KEEP_TAG";
+   findButton.Enabled=false;
+   code.Text="KEEP-SCAN";
+   click.Invoke(form,new object[]{list,EventArgs.Empty});
+   if(code.Text!="KEEP-SCAN")
+    throw new Exception("Disabled checkout staged a barcode from product list click");
+   doubleClick.Invoke(form,new object[]{list,EventArgs.Empty});
+   if(code.Text!="KEEP-SCAN" || !Object.Equals(findButton.Tag,"CI_KEEP_TAG"))
+    throw new Exception("Disabled lookup button must not post barcode-free list article");
+   findButton.Enabled=true;
+   findButton.Tag=null;
+   code.Text="OLD-SCAN";
+   click.Invoke(form,new object[]{list,EventArgs.Empty});
+   if(code.Text!="")throw new Exception("List click retained a stale scanned barcode");
+   list.CurrentCell=list.Rows[1].Cells[0];
+   click.Invoke(form,new object[]{list,EventArgs.Empty});
+   if(code.Text!="BAR-102" || reference.Invoke(null,new object[]{rows.Rows[1]})!=null)
+    throw new Exception("Barcode list click must retain legacy exact-barcode route");
+   rows.Rows[0]["ID_ARTICLE"]=DBNull.Value;
+   if(reference.Invoke(null,new object[]{rows.Rows[0]})!=null)
+    throw new Exception("Missing article ID must fail closed");
+   rows.Rows[0]["ID_ARTICLE"]="101";
+   var deletedRow=rows.Rows[0];
+   deletedRow.Delete();
+   if(reference.Invoke(null,new object[]{deletedRow})!=null)
+    throw new Exception("Deleted list row must fail closed");
+   list.DataSource=null;
+   code.Text="KEEP-SCAN";
+   doubleClick.Invoke(form,new object[]{list,EventArgs.Empty});
+   if(code.Text!="KEEP-SCAN")
+    throw new Exception("Empty list double-click rescanned an unrelated barcode");
+  }
+  Console.WriteLine("PASS list row identity: barcode-free article, legacy barcode, deleted/empty guards");
+ }
+
+ static void SalesSearchShortcut(Assembly assembly) {
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
+   var search=(Control)Get(form,"Text_FIND");
+   var tabs=(Control)Get(form,"TabControl2");
+   var originalTag=tabs.Tag;
+   var method=form.GetType().GetMethod("ProcessCmdKey",BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.DeclaredOnly);
+   var searchProperty=form.GetType().GetProperty("Text_FIND",BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic);
+   if(method==null || search==null || search.Parent==null || !search.Enabled || searchProperty==null)
+    throw new Exception("Sales search shortcut or search field is unavailable");
+   // An unshown WinForms form reports child.Visible=false because its parent is hidden.
+   // Avoid Form.Show() here: it triggers the production Load path and database reads.
+   // Swap in a visible, unattached test TextBox to exercise the REAL ProcessCmdKey
+   // implementation, then restore the actual designer control and its event hooks.
+   using(var probe=new TextBox()) {
+    probe.Visible=true;
+    searchProperty.SetValue(form,probe,null);
+    try {
+     var args=new object[]{new Message(),Keys.Control|Keys.F};
+     if(!Object.Equals(method.Invoke(form,args),true))
+      throw new Exception("Ctrl+F must be consumed when product search is available");
+     if(!Object.Equals(tabs.Tag,originalTag))
+      throw new Exception("Ctrl+F must not toggle the legacy on-screen keyboard");
+     args=new object[]{new Message(),Keys.Control|Keys.G};
+     if(Object.Equals(method.Invoke(form,args),true))
+      throw new Exception("Unrelated Ctrl+G must remain available to legacy controls");
+     args=new object[]{new Message(),Keys.Control|Keys.Shift|Keys.F};
+     if(Object.Equals(method.Invoke(form,args),true))
+      throw new Exception("Ctrl+Shift+F must retain its original key routing");
+     args=new object[]{new Message(),Keys.Alt|Keys.F};
+     if(Object.Equals(method.Invoke(form,args),true))
+      throw new Exception("Alt+F must retain its original menu routing");
+     searchProperty.SetValue(form,null,null);
+     args=new object[]{new Message(),Keys.Control|Keys.F};
+     if(Object.Equals(method.Invoke(form,args),true))
+      throw new Exception("Missing search field must not swallow Ctrl+F");
+     searchProperty.SetValue(form,probe,null);
+     probe.ReadOnly=true;
+     args=new object[]{new Message(),Keys.Control|Keys.F};
+     if(Object.Equals(method.Invoke(form,args),true))
+      throw new Exception("Ctrl+F must not swallow scanner input when search is read-only");
+     probe.ReadOnly=false;
+     probe.Visible=false;
+     args=new object[]{new Message(),Keys.Control|Keys.F};
+     if(Object.Equals(method.Invoke(form,args),true))
+      throw new Exception("Ctrl+F must not be consumed when search is hidden");
+     probe.Visible=true;
+     // A disposed search field must never intercept scanner/legacy key input.
+     using(var disposedProbe=new TextBox()) {
+      disposedProbe.Dispose();
+      searchProperty.SetValue(form,disposedProbe,null);
+      args=new object[]{new Message(),Keys.Control|Keys.F};
+      if(Object.Equals(method.Invoke(form,args),true))
+       throw new Exception("Disposed search field must not consume Ctrl+F");
+      searchProperty.SetValue(form,probe,null);
+     }
+     // The actual control must remain attached and bound after the probe is restored.
+     if(searchProperty.GetValue(form,null)!=probe)
+      throw new Exception("Search probe was unexpectedly detached before restoration");
+     probe.Enabled=false;
+     args=new object[]{new Message(),Keys.Control|Keys.F};
+     if(Object.Equals(method.Invoke(form,args),true))
+      throw new Exception("Ctrl+F must not consume barcode input when search is disabled");
+    } finally {
+     searchProperty.SetValue(form,search,null);
+    }
+   }
+   if(!Object.ReferenceEquals(searchProperty.GetValue(form,null),search))
+    throw new Exception("Original sales search control was not restored after shortcut regression");
+   if(search.IsDisposed || search.Parent==null)
+    throw new Exception("Shortcut regression must preserve the original search control and parent");
+   Console.WriteLine("PASS Ctrl+F product-search shortcut leaves keyboard layout unchanged");
+  }
+ }
+
+ static void SalesScannerEnterRouting(Assembly assembly) {
+  // A barcode scanner sends a final Enter. It must dispatch exactly once and
+  // suppress the original key press; blank input must never query MariaDB.
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
+   var code=(TextBox)Get(form,"Text_CODE");
+   var quantity=(Control)Get(form,"Label_QTE");
+   var find=(Control)Get(form,"Button_FIND");
+   var directLookup=form.GetType().GetMethod("Button_FIND_Click",Flags);
+   var barcodeHandler=form.GetType().GetMethod("Text_CODE_KeyDown",Flags);
+   var quantityHandler=form.GetType().GetMethod("Label_QTE_KeyDown",Flags);
+   if(code==null||quantity==null||find==null||directLookup==null||barcodeHandler==null||quantityHandler==null)
+    throw new Exception("Sales scanner/quantity key handlers are missing");
+   code.Text="";
+   var ordinary=new KeyEventArgs(Keys.A);
+   barcodeHandler.Invoke(form,new object[]{code,ordinary});
+   if(ordinary.Handled||ordinary.SuppressKeyPress)
+    throw new Exception("Ordinary barcode character must not be swallowed");
+   foreach(var modifiedKey in new[]{Keys.Control|Keys.Enter,Keys.Shift|Keys.Enter,Keys.Alt|Keys.Enter}) {
+    var modified=new KeyEventArgs(modifiedKey);
+    barcodeHandler.Invoke(form,new object[]{code,modified});
+    if(modified.Handled||modified.SuppressKeyPress)
+     throw new Exception("Modified Enter must not initiate barcode lookup: "+modifiedKey);
+   }
+   var enter=new KeyEventArgs(Keys.Enter);
+   barcodeHandler.Invoke(form,new object[]{code,enter});
+   if(!enter.Handled||!enter.SuppressKeyPress)
+    throw new Exception("Barcode Enter must be consumed after dispatch");
+   if(code.Text!="")
+    throw new Exception("Blank barcode Enter changed scanner input");
+   // A nonempty scanner barcode must not bypass disabled checkout or query SQL.
+   // This is an offline guard: Module1.cn_SQL is deliberately not initialized.
+   find.Enabled=false;
+   code.Text="DISABLED-CI-BARCODE";
+   directLookup.Invoke(form,new object[]{code,EventArgs.Empty});
+   if(code.Text!="DISABLED-CI-BARCODE")
+    throw new Exception("Disabled direct lookup changed the scanner barcode");
+   var blockedEnter=new KeyEventArgs(Keys.Enter);
+   barcodeHandler.Invoke(form,new object[]{code,blockedEnter});
+   if(!blockedEnter.Handled||!blockedEnter.SuppressKeyPress||code.Text!="DISABLED-CI-BARCODE")
+    throw new Exception("Disabled scanner Enter was not safely consumed");
+   find.Enabled=true;
+   var qtyOther=new KeyEventArgs(Keys.D1);
+   quantityHandler.Invoke(form,new object[]{quantity,qtyOther});
+   if(qtyOther.Handled||qtyOther.SuppressKeyPress)
+    throw new Exception("Quantity numeric input must not be swallowed");
+   foreach(var modifiedKey in new[]{Keys.Control|Keys.Enter,Keys.Shift|Keys.Enter,Keys.Alt|Keys.Enter}) {
+    var modified=new KeyEventArgs(modifiedKey);
+    quantityHandler.Invoke(form,new object[]{quantity,modified});
+    if(modified.Handled||modified.SuppressKeyPress)
+     throw new Exception("Modified Enter must not change quantity focus: "+modifiedKey);
+   }
+   var qtyEnter=new KeyEventArgs(Keys.Enter);
+   quantityHandler.Invoke(form,new object[]{quantity,qtyEnter});
+   if(!qtyEnter.Handled||!qtyEnter.SuppressKeyPress)
+    throw new Exception("Quantity Enter must be consumed when returning to barcode");
+   Console.WriteLine("PASS barcode and quantity Enter routing, scanner terminator suppressed, blank scan offline");
+  }
+ }
+
+ static void SalesSearchClearRefresh(Assembly assembly) {
+  // Test the real search-clear decision without invoking SQL or the Form.Load path.
+  var method=assembly.GetType("LOGICA.Form_3_VENTE",true).GetMethod("ClearProductSearch",Flags);
+  if(method==null||!method.IsStatic)throw new Exception("Search clear helper missing");
+  using(var search=new TextBox()) {
+   int textChanges=0, forcedRefreshes=0;
+   search.TextChanged+=(sender,e)=>textChanges++;
+   search.Text="milk";
+   textChanges=0;
+   Action force=()=>forcedRefreshes++;
+   method.Invoke(null,new object[]{search,force});
+   if(search.Text!=""||textChanges!=1||forcedRefreshes!=0)
+    throw new Exception("Clearing nonempty search must refresh once via TextChanged");
+   method.Invoke(null,new object[]{search,force});
+   if(search.Text!=""||textChanges!=1||forcedRefreshes!=1)
+    throw new Exception("Clearing empty search must force exactly one refresh");
+   method.Invoke(null,new object[]{search,force});
+   if(textChanges!=1||forcedRefreshes!=2)
+    throw new Exception("Repeated empty search clear must not trigger duplicate refreshes");
+  }
+  Console.WriteLine("PASS sales search clear executes one refresh per click");
+ }
+
+ static void SalesQuantityDialogInput(Assembly assembly) {
+  // Test the real quantity entry TextBox and on-screen buttons without showing
+  // the dialog, touching MySQL or invoking sale/stock posting.
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.FormDialog_QUANTITE",true))) {
+   var input=(TextBox)Get(form,"Text_NUM");
+   var type=form.GetType();
+   var keypad=type.GetMethod("Butt_Click",Flags);
+   var back=type.GetMethod("Butt_BACK_Click",Flags);
+   var keypress=type.GetMethod("Text_NUM_KeyPress",Flags);
+   if(input==null||keypad==null||back==null||keypress==null)
+    throw new Exception("Real quantity dialog keypad/input handlers are missing");
+   using(var button=new Button()) {
+    input.Text="";
+    foreach(string key in new[]{"2","3",".","5"}) {
+     button.Text=key;
+     keypad.Invoke(form,new object[]{button,EventArgs.Empty});
+    }
+    if(input.Text!="23.5")throw new Exception("Quantity dialog keypad must append numeric digits and one decimal");
+    foreach(string invalid in new[]{"",".","X","12"," ","-"}) {
+     string before=input.Text;
+     button.Text=invalid;
+     keypad.Invoke(form,new object[]{button,EventArgs.Empty});
+     if(input.Text!=before)throw new Exception("Invalid dialog keypad caption changed quantity: "+invalid);
+    }
+    input.Text="";
+    button.Text=".";
+    keypad.Invoke(form,new object[]{button,EventArgs.Empty});
+    if(input.Text!="0.")throw new Exception("Dialog leading decimal must have a zero prefix");
+    input.Text="";
+    button.Text="-";
+    keypad.Invoke(form,new object[]{button,EventArgs.Empty});
+    button.Text=".";
+    keypad.Invoke(form,new object[]{button,EventArgs.Empty});
+    if(input.Text!="-0.")throw new Exception("Negative fraction entry must keep valid decimal prefix");
+    input.Text="123";
+    back.Invoke(form,new object[]{button,EventArgs.Empty});
+    if(input.Text!="12")throw new Exception("Dialog backspace must remove one digit");
+    for(int i=0;i<5;i++)back.Invoke(form,new object[]{button,EventArgs.Empty});
+    if(input.Text!="")throw new Exception("Backspace on empty dialog quantity must be harmless");
+   }
+   input.Text="12.3";
+   input.Select(input.TextLength,0);
+   var duplicateDot=new KeyPressEventArgs('.');
+   keypress.Invoke(form,new object[]{input,duplicateDot});
+   if(!duplicateDot.Handled)throw new Exception("Physical keyboard accepted duplicate decimal in quantity dialog");
+   var misplacedMinus=new KeyPressEventArgs('-');
+   keypress.Invoke(form,new object[]{input,misplacedMinus});
+   if(!misplacedMinus.Handled)throw new Exception("Physical keyboard accepted misplaced minus in quantity dialog");
+   input.Select(0,input.TextLength);
+   var replacementDot=new KeyPressEventArgs('.');
+   keypress.Invoke(form,new object[]{input,replacementDot});
+   if(replacementDot.Handled)throw new Exception("Replacing selected quantity must allow a new decimal");
+   input.Select(0,0);
+   var leadingMinus=new KeyPressEventArgs('-');
+   keypress.Invoke(form,new object[]{input,leadingMinus});
+   if(leadingMinus.Handled)throw new Exception("Physical keyboard must allow a leading minus");
+   input.Text="-12";
+   input.Select(0,0);
+   var repeatedMinus=new KeyPressEventArgs('-');
+   keypress.Invoke(form,new object[]{input,repeatedMinus});
+   if(!repeatedMinus.Handled)throw new Exception("Physical keyboard accepted a repeated minus");
+   foreach(char allowed in new char[]{'5','\b'}) {
+    var key=new KeyPressEventArgs(allowed);
+    keypress.Invoke(form,new object[]{input,key});
+    if(key.Handled)throw new Exception("Quantity dialog rejected valid keyboard input");
+   }
+   var invalidKey=new KeyPressEventArgs('Q');
+   keypress.Invoke(form,new object[]{input,invalidKey});
+   if(!invalidKey.Handled)throw new Exception("Quantity dialog accepted nonnumeric keyboard input");
+   Console.WriteLine("PASS real quantity dialog keypad, decimal/sign, selected-text replacement and empty backspace");
+  }
+ }
+
+ static void SalesQuantityKeypadAndCompactKeyboard(Assembly assembly) {
+  // Exercise the production numeric keypad without opening the form or touching SQL.
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
+   var quantity=(Control)Get(form,"Label_QTE");
+   var qtyButton=form.GetType().GetMethod("Button_qte1_Click",Flags);
+   var qtyKeyPress=form.GetType().GetMethod("Label_QTE_KeyPress",Flags);
+   var qtyReset=form.GetType().GetMethod("Button_qteDRAFT_Click",Flags);
+   var keyboardButton=form.GetType().GetMethod("Button_876_Click",Flags);
+   var tabs=(Control)Get(form,"TabControl2");
+   var keyboard=(Control)Get(form,"Panel_CLAVIER");
+   var panel=(Control)Get(form,"Panel9");
+   if(quantity==null||qtyButton==null||qtyReset==null||keyboardButton==null||
+      tabs==null||keyboard==null||panel==null)
+    throw new Exception("Sales quantity keypad or keyboard layout is missing");
+   if(qtyKeyPress==null)throw new Exception("Quantity keyboard handler missing");
+   var oldQty=quantity.Text;
+   quantity.Text="23.5";
+   var duplicateDecimal=new KeyPressEventArgs('.');
+   qtyKeyPress.Invoke(form,new object[]{quantity,duplicateDecimal});
+   if(!duplicateDecimal.Handled)throw new Exception("Physical keyboard must reject duplicate decimal separators");
+   foreach(char allowed in new char[]{'4','\b'}) {
+    var key=new KeyPressEventArgs(allowed);
+    qtyKeyPress.Invoke(form,new object[]{quantity,key});
+    if(key.Handled)throw new Exception("Quantity keyboard rejected legacy valid key: "+allowed);
+   }
+   var misplacedMinus=new KeyPressEventArgs('-');
+   qtyKeyPress.Invoke(form,new object[]{quantity,misplacedMinus});
+   if(!misplacedMinus.Handled)throw new Exception("Physical quantity keyboard accepted minus after digits");
+   quantity.Text="";
+   var leadingMinus=new KeyPressEventArgs('-');
+   qtyKeyPress.Invoke(form,new object[]{quantity,leadingMinus});
+   if(leadingMinus.Handled)throw new Exception("Legacy leading minus entry must remain available");
+   quantity.Text="-2";
+   var repeatedMinus=new KeyPressEventArgs('-');
+   qtyKeyPress.Invoke(form,new object[]{quantity,repeatedMinus});
+   if(!repeatedMinus.Handled)throw new Exception("Physical quantity keyboard accepted repeated minus");
+   var invalidKey=new KeyPressEventArgs('X');
+   qtyKeyPress.Invoke(form,new object[]{quantity,invalidKey});
+   if(!invalidKey.Handled)throw new Exception("Quantity keyboard accepted nonnumeric input");
+   var oldColor=quantity.BackColor;
+   var oldHeight=tabs.Height;
+   var oldTag=tabs.Tag;
+   try {
+    qtyReset.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(quantity.Text!="1"||quantity.BackColor!=Color.White)
+     throw new Exception("Quantity reset must restore the original unit quantity");
+    using(var digit=new Button()) {
+     digit.Text="2";
+     qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
+     if(quantity.Text!="2"||quantity.BackColor!=Color.Yellow)
+      throw new Exception("First keypad digit must replace the default quantity");
+     digit.Text="3";
+     qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
+     if(quantity.Text!="23")
+      throw new Exception("Numeric keypad must append digits rather than add values");
+     digit.Text=".";
+     qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
+     digit.Text="5";
+     qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
+     if(quantity.Text!="23.5")
+      throw new Exception("Fractional keypad input must preserve decimal text");
+     digit.Text=".";
+     qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
+     if(quantity.Text!="23.5")
+      throw new Exception("Repeated decimal key must not create an invalid quantity");
+     qtyReset.Invoke(form,new object[]{form,EventArgs.Empty});
+     digit.Text=".";
+     qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
+     digit.Text="5";
+     qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
+     if(quantity.Text!="0.5")
+      throw new Exception("Fractional quantity must start with a leading zero");
+     // Unexpected button captions must not corrupt the numeric quantity.
+     foreach(string invalid in new string[]{"", "X", "12", "-", ",", " "}) {
+      string before=quantity.Text;
+      digit.Text=invalid;
+      qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
+      if(quantity.Text!=before)
+       throw new Exception("Invalid keypad caption changed quantity: "+invalid);
+     }
+     qtyReset.Invoke(form,new object[]{form,EventArgs.Empty});
+     digit.Text="7";
+     qtyButton.Invoke(form,new object[]{digit,EventArgs.Empty});
+     if(quantity.Text!="7")
+      throw new Exception("Quantity reset must not concatenate with the old value");
+    }
+    // The original keyboard toggle subtracts keyboard height from the product
+    // list, which could collapse it on a small screen or high DPI.
+    tabs.Tag="";
+    tabs.Height=keyboard.Height+10;
+    int compactHeight=tabs.Height;
+    keyboardButton.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(tabs.Height!=compactHeight||!Object.Equals(tabs.Tag,""))
+     throw new Exception("Compact keyboard toggle must keep the list and state intact");
+    tabs.Height=keyboard.Height+90;
+    keyboardButton.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(tabs.Height!=80||!Object.Equals(tabs.Tag,"1"))
+     throw new Exception("Normal keyboard toggle must retain the legacy height calculation");
+    keyboardButton.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(tabs.Height!=keyboard.Height+90||!Object.Equals(tabs.Tag,""))
+     throw new Exception("Closing keyboard must restore the exact pre-keyboard height at DPI scale");
+    // Reopen and close at a different size; stale cached heights must not leak.
+    tabs.Height=keyboard.Height+115;
+    keyboardButton.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(tabs.Height!=105||!Object.Equals(tabs.Tag,"1"))
+     throw new Exception("Keyboard must shrink the list by its actual height");
+    keyboardButton.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(tabs.Height!=keyboard.Height+115||!Object.Equals(tabs.Tag,""))
+     throw new Exception("Keyboard must restore the newly measured product list height");
+    // The designer may leave Tag=null: the first click must OPEN, not restore Panel9.
+    tabs.Tag=null;
+    tabs.Height=keyboard.Height+90;
+    keyboardButton.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(tabs.Height!=80||!Object.Equals(tabs.Tag,"1"))
+     throw new Exception("Null initial keyboard tag must open without collapsing the list");
+    keyboardButton.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(tabs.Height!=keyboard.Height+90||!Object.Equals(tabs.Tag,""))
+     throw new Exception("Closing keyboard after null tag must restore initial list height");
+    tabs.Tag=null;
+    tabs.Height=keyboard.Height+10;
+    keyboardButton.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(tabs.Height!=keyboard.Height+10||tabs.Tag!=null)
+     throw new Exception("Compact keyboard with null tag must preserve original layout");
+   } finally {
+    quantity.Text=oldQty;
+    quantity.BackColor=oldColor;
+    tabs.Height=oldHeight;
+    tabs.Tag=oldTag;
+   }
+   Console.WriteLine("PASS quantity digit/decimal/reset and compact/normal keyboard layout fallback");
   }
  }
 
@@ -1587,11 +2285,86 @@ class PosSmoke {
   }
  }
 
+ static void StartupDatabaseErrorVsLicense(Assembly assembly) {
+  // Isolated MariaDB regression: a missing legacy 'bd' folder is NOT a
+  // license problem and must not prevent the service-backed database opening.
+  var module=assembly.GetType("LOGICA.Module1",true);
+  var folderField=module.GetField("_CHEMIN_FOLDER",Flags);
+  var dbField=module.GetField("cn_SQL",Flags);
+  using(var connection=(IDbConnection)dbField.GetValue(null)) {
+   if(!connection.ConnectionString.Contains("127.0.0.1") || !connection.ConnectionString.Contains("logica_ci"))
+    throw new Exception("Startup regression requires isolated MariaDB, never production data");
+   var originalConnectionString=connection.ConnectionString;
+   var originalFolder=(string)folderField.GetValue(null);
+   try {
+    folderField.SetValue(null,Path.Combine(Path.GetTempPath(),"logica-ci-missing-bd-"+Guid.NewGuid().ToString("N")));
+    using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_0_TEMPLATE",true))) {
+     var type=form.GetType();
+     var connect=type.GetMethod("_Tentative_Connect_Database",Flags);
+     var error=(Control)Get(form,"Label_ERREUR");
+     var activation=(Control)Get(form,"Panel_FICHE");
+     if(connect==null||error==null||activation==null)
+      throw new Exception("Startup connection or activation UI controls missing");
+     var endpoint=type.GetMethod("DatabaseEndpointHint",Flags);
+     var windowMode=type.GetMethod("UseBorderedWindowMode",Flags);
+     if(endpoint==null||windowMode==null)throw new Exception("Startup diagnostics and window-mode compatibility missing");
+     foreach(string mode in new string[]{"True"," true ","1"}) {
+      if(!(bool)windowMode.Invoke(null,new object[]{mode}))throw new Exception("Legacy bordered window mode was lost: "+mode);
+     }
+     foreach(string mode in new string[]{"False","0","NORMAL","","unknown"}) {
+      if((bool)windowMode.Invoke(null,new object[]{mode}))throw new Exception("Unknown or normal window mode must not change the display: "+mode);
+     }
+     foreach(int port in new int[]{3306,3308}) {
+      connection.ConnectionString="Server=127.0.0.1;Port="+port+";Database=logica_ci;Uid=invalid;Pwd=secret-not-for-ui";
+      var hint=(string)endpoint.Invoke(null,null);
+      if(!hint.Contains("127.0.0.1:"+port)||hint.Contains("secret-not-for-ui")||hint.Contains("Uid="))
+       throw new Exception("Startup endpoint diagnostic must identify the port without leaking credentials");
+     }
+     connection.ConnectionString=originalConnectionString;
+     error.Text="stale connection error";
+     connect.Invoke(form,null);
+     if(error.Text!="")throw new Exception("Valid isolated MariaDB was blocked by missing bd folder or stale error");
+     if(connection.State!=ConnectionState.Closed)throw new Exception("Startup probe leaked an open MariaDB connection");
+     connection.ConnectionString="Server=127.0.0.1;Port=1;Database=logica_ci;Uid=invalid;Pwd=secret-not-for-ui;Connection Timeout=1";
+     connect.Invoke(form,null);
+     if(error.Text.IndexOf("MariaDB",StringComparison.OrdinalIgnoreCase)<0)
+      throw new Exception("Failed MariaDB startup must show a database error, not an activation message: "+error.Text);
+     if(activation.Visible)throw new Exception("Database failure unexpectedly opened activation fiche");
+     if(!error.Text.Contains("127.0.0.1:1")||error.Text.Contains("secret-not-for-ui"))
+      throw new Exception("MariaDB failure must show the safe endpoint, never its credentials");
+     // Missing connection initialization must remain a database UI error,
+     // not a null-reference crash or a false activation prompt.
+     dbField.SetValue(null,null);
+     try {
+      connect.Invoke(form,null);
+      if(error.Text.IndexOf("base de données",StringComparison.OrdinalIgnoreCase)<0)
+       throw new Exception("Missing MariaDB connection was not reported as a startup error");
+      if(activation.Visible)throw new Exception("Missing MariaDB connection displayed activation fiche");
+      if((string)endpoint.Invoke(null,null)!="")
+       throw new Exception("Missing MariaDB connection unexpectedly has an endpoint");
+     } finally { dbField.SetValue(null,connection); }
+     if(connection.State!=ConnectionState.Closed)throw new Exception("Failed startup probe leaked a connection");
+     // Recovery must clear the stale database error before the unchanged
+     // license check is allowed to run on the next successful startup.
+     connection.ConnectionString=originalConnectionString;
+     connect.Invoke(form,null);
+     if(error.Text!="")throw new Exception("Recovered MariaDB connection left a stale startup error overlay");
+     if(connection.State!=ConnectionState.Closed)throw new Exception("Recovered startup probe leaked a connection");
+    }
+   } finally {
+    if(connection.State!=ConnectionState.Closed)connection.Close();
+    connection.ConnectionString=originalConnectionString;
+    folderField.SetValue(null,originalFolder);
+   }
+  }
+  Console.WriteLine("PASS startup database failure distinguished from license; no legacy bd directory required");
+ }
+
  [STAThread] static int Main(string[] args) {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="checkout-family-caption-contrast") { SalesFamilyCaptionContrast(assembly); } else if(args[0]=="checkout-product-list-selection-contrast") { SalesProductListSelectionContrast(assembly); } else if(args[0]=="checkout-product-name-row-dpi") { SalesProductNameRowDpi(assembly); } else if(args[0]=="checkout-product-list-header-dpi") { SalesProductListHeaderDpi(assembly); } else if(args[0]=="checkout-basket-header-dpi") { SalesBasketHeaderDpi(assembly); } else if(args[0]=="checkout-basket-selection-contrast") { SalesBasketSelectionContrast(assembly); } else if(args[0]=="checkout-white-buttons-contrast") { SalesWhiteUtilityButtonContrast(assembly); } else if(args[0]=="checkout-keyboard-contrast") { SalesKeyboardContrast(assembly); } else if(args[0]=="checkout-contrast") { SalesActionContrast(assembly); } else if(args[0]=="checkout-barcode-chooser") { CheckoutBarcodeChooser(assembly); } else if(args[0]=="checkout-image-grid") { CheckoutImageGrid(assembly); } else if(args[0]=="checkout-article-search-sql") { CheckoutArticleSearchSql(assembly); } else if(args[0]=="shared-export-projection") { SharedExportProjection(assembly); } else if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="startup-db-license-separation") { StartupDatabaseErrorVsLicense(assembly); } else if(args[0]=="checkout-list-selection") { SalesListSelectionFallback(assembly); } else if(args[0]=="checkout-quantity-dialog-input") { SalesQuantityDialogInput(assembly); } else if(args[0]=="checkout-quantity-keypad-dpi") { SalesQuantityKeypadAndCompactKeyboard(assembly); SalesSearchClearRefresh(assembly); } else if(args[0]=="checkout-scanner-enter") { SalesScannerEnterRouting(assembly); SalesImageTileLifecycle(assembly); } else if(args[0]=="checkout-image-zoom-dpi") { SalesImageTileZoomDpi(assembly); } else if(args[0]=="checkout-search-shortcut") { SalesSearchShortcut(assembly); } else if(args[0]=="checkout-family-caption-contrast") { SalesFamilyCaptionContrast(assembly); } else if(args[0]=="checkout-product-list-selection-contrast") { SalesProductListSelectionContrast(assembly); } else if(args[0]=="checkout-product-name-row-dpi") { SalesProductNameRowDpi(assembly); } else if(args[0]=="checkout-product-list-header-dpi") { SalesProductListHeaderDpi(assembly); } else if(args[0]=="checkout-basket-header-dpi") { SalesBasketHeaderDpi(assembly); } else if(args[0]=="checkout-basket-selection-contrast") { SalesBasketSelectionContrast(assembly); } else if(args[0]=="checkout-white-buttons-contrast") { SalesWhiteUtilityButtonContrast(assembly); } else if(args[0]=="checkout-keyboard-contrast") { SalesKeyboardContrast(assembly); } else if(args[0]=="checkout-contrast") { SalesActionContrast(assembly); } else if(args[0]=="checkout-barcode-chooser") { CheckoutBarcodeChooser(assembly); } else if(args[0]=="checkout-image-grid") { CheckoutImageGrid(assembly); } else if(args[0]=="checkout-article-search-sql") { CheckoutArticleSearchSql(assembly); } else if(args[0]=="shared-export-projection") { SharedExportProjection(assembly); } else if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
