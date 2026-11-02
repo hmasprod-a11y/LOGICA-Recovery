@@ -2833,16 +2833,24 @@ public class FormDialog_calc : Form
 					{
 						break;
 					}
+					DataGridViewRow paymentRow = MyProject.Forms.Form_3_VENTE.DataGridView_MODE_P.Rows[num2];
+					object paymentName = paymentRow.IsNewRow || paymentRow.Cells.Count == 0 ? null : paymentRow.Cells[0].Value;
+					string methodName = paymentName == null || paymentName == DBNull.Value ? "" : Convert.ToString(paymentName).Trim();
+					if (string.IsNullOrEmpty(methodName))
+					{
+						num2++;
+						continue; // An incomplete optional payment row is not a cashier action.
+					}
 					Button val = new Button();
-					((ButtonBase)val).Text = MyProject.Forms.Form_3_VENTE.DataGridView_MODE_P.Rows[num2].Cells[0].Value.ToString();
-					((Control)val).Name = "Button_" + MyProject.Forms.Form_3_VENTE.DataGridView_MODE_P.Rows[num2].Cells[0].Value.ToString();
+					((ButtonBase)val).Text = methodName;
+					((Control)val).Name = "Button_" + methodName;
 					((ButtonBase)val).TextAlign = (ContentAlignment)512;
 					Padding margin = new Padding(5, 0, 5, 0);
 					((Control)val).Margin = margin;
 					((Control)val).Width = 85;
 					((Control)val).Height = 94;
 					// A missing image must not prevent payment method buttons from existing.
-					object imageValue = MyProject.Forms.Form_3_VENTE.DataGridView_MODE_P.Rows[num2].Cells[1].Value;
+					object imageValue = paymentRow.Cells.Count > 1 ? paymentRow.Cells[1].Value : null;
 					string imageName = imageValue == null || imageValue == DBNull.Value ? "" : Convert.ToString(imageValue);
 					if (!string.IsNullOrWhiteSpace(imageName) && imageName == Path.GetFileName(imageName))
 					{
@@ -3027,6 +3035,12 @@ public class FormDialog_calc : Form
 		}
 	}
 
+	// The cash method is optional; missing icons must not affect availability.
+	private Button CashPaymentButton()
+	{
+		return ((Control)FlowLayoutPanel_MODE_P).Controls["Button_ESPECES"] as Button;
+	}
+
 	private void Button_DEVIS_Click(object sender, EventArgs e)
 	{
 		//IL_0181: Unknown result type (might be due to invalid IL or missing references)
@@ -3037,7 +3051,7 @@ public class FormDialog_calc : Form
 		{
 			if (DataGridView_CALC.Rows.Count == 0)
 			{
-				Button val = (Button)((Control)FlowLayoutPanel_MODE_P).Controls["Button_ESPECES"];
+				Button val = CashPaymentButton();
 				if (val == null)
 				{
 					MessageBox.Show("Mode de paiement ESPECES indisponible. Vérifiez la configuration des modes de paiement.", "Hanouty POS", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -3046,7 +3060,9 @@ public class FormDialog_calc : Form
 				val.PerformClick();
 				Button_REFRESH.PerformClick();
 			}
-			DataGridView_CALC.Rows[((DataGridViewBand)DataGridView_CALC.CurrentRow).Index].Cells[1].Value = Operators.AddObject(DataGridView_CALC.Rows[((DataGridViewBand)DataGridView_CALC.CurrentRow).Index].Cells[1].Value, Conversion.Val(RuntimeHelpers.GetObjectValue(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null))));
+			if (DataGridView_CALC.CurrentRow == null) return;
+			int rowIndex = DataGridView_CALC.CurrentRow.Index;
+			DataGridView_CALC.Rows[rowIndex].Cells[1].Value = Operators.AddObject(DataGridView_CALC.Rows[rowIndex].Cells[1].Value, Conversion.Val(RuntimeHelpers.GetObjectValue(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null))));
 			Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 			((Control)DataGridView_CALC).Focus();
 		}
@@ -3110,7 +3126,7 @@ public class FormDialog_calc : Form
 			foreach (DataGridViewRow item in (IEnumerable)DataGridView_CALC.Rows)
 			{
 				DataGridViewRow val = item;
-				val.Height = (int)Math.Round((double)(((Control)DataGridView_CALC).Height - DataGridView_CALC.ColumnHeadersHeight - 3) / (double)DataGridView_CALC.Rows.Count);
+				val.Height = Math.Max(24, (int)Math.Round((double)(((Control)DataGridView_CALC).Height - DataGridView_CALC.ColumnHeadersHeight - 3) / (double)DataGridView_CALC.Rows.Count));
 			}
 			int num = DataGridView_CALC.Rows.Count - 1;
 			int num2 = 0;
@@ -3163,9 +3179,10 @@ public class FormDialog_calc : Form
 		//IL_00d8: Expected Obj, but got Unknown
 		try
 		{
-			if (e.ColumnIndex == 4)
+			if (e.ColumnIndex == 4 && e.RowIndex >= 0 && e.RowIndex < DataGridView_CALC.Rows.Count &&
+				DataGridView_CALC.CurrentCell != null)
 			{
-				DataGridView_CALC.Rows.RemoveAt(DataGridView_CALC.CurrentCell.RowIndex);
+				DataGridView_CALC.Rows.RemoveAt(e.RowIndex);
 				Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
 			}
 		}
@@ -3206,7 +3223,7 @@ public class FormDialog_calc : Form
 		{
 			try
 			{
-				if (DataGridView_CALC.Rows.Count != 0 && ((e.ColumnIndex == 0) | (e.ColumnIndex == 2) | (e.ColumnIndex == 3)))
+				if (e.RowIndex >= 0 && e.RowIndex < DataGridView_CALC.Rows.Count && ((e.ColumnIndex == 0) | (e.ColumnIndex == 2) | (e.ColumnIndex == 3)))
 				{
 					DataGridView_CALC.CurrentCell = DataGridView_CALC.Rows[DataGridView_CALC.Rows.Count - 1].Cells[1];
 				}
@@ -3246,14 +3263,26 @@ public class FormDialog_calc : Form
 		//IL_001e: Unknown result type (might be due to invalid IL or missing references)
 		//IL_002b: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0035: Expected Obj, but got Unknown
-		if (DataGridView_CALC.CurrentCell.ColumnIndex == 1)
+		if (DataGridView_CALC.CurrentCell != null && DataGridView_CALC.CurrentCell.ColumnIndex == 1 && e.Control is TextBox)
 		{
-			((Control)(TextBox)e.Control).KeyPress += TextBox_keyPress;
+			((TextBox)e.Control).KeyPress -= TextBox_keyPress;
+			((TextBox)e.Control).KeyPress += TextBox_keyPress;
 		}
 	}
 
 	private void TextBox_keyPress(object sender, KeyPressEventArgs e)
 	{
+		TextBox input = sender as TextBox;
+		if (input != null && (e.KeyChar == '.' || e.KeyChar == '-'))
+		{
+			string remaining = input.Text.Remove(input.SelectionStart, input.SelectionLength);
+			if ((e.KeyChar == '.' && remaining.IndexOf('.') >= 0) ||
+				(e.KeyChar == '-' && (input.SelectionStart != 0 || remaining.IndexOf('-') >= 0)))
+			{
+				e.Handled = true;
+				return;
+			}
+		}
 		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
 		{
 			e.Handled = true;
@@ -3282,9 +3311,9 @@ public class FormDialog_calc : Form
 		//IL_00fb: Expected Obj, but got Unknown
 		try
 		{
-			if (DataGridView_CALC.Rows.Count != 0)
+			if (DataGridView_CALC.Rows.Count != 0 && DataGridView_CALC.CurrentRow != null)
 			{
-				DataGridView_CALC.Rows[((DataGridViewBand)DataGridView_CALC.CurrentRow).Index].Cells[1].Value = "0";
+				DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = "0";
 				((Control)DataGridView_CALC).Focus();
 			}
 		}
@@ -3327,7 +3356,7 @@ public class FormDialog_calc : Form
 		{
 			if (DataGridView_CALC.Rows.Count == 0)
 			{
-				Button val = (Button)((Control)FlowLayoutPanel_MODE_P).Controls["Button_ESPECES"];
+				Button val = CashPaymentButton();
 				if (val == null)
 				{
 					MessageBox.Show("Mode de paiement ESPECES indisponible. Vérifiez la configuration des modes de paiement.", "Hanouty POS", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -3336,7 +3365,8 @@ public class FormDialog_calc : Form
 				val.PerformClick();
 				Button_REFRESH.PerformClick();
 			}
-			DataGridView_CALC.Rows[((DataGridViewBand)DataGridView_CALC.CurrentRow).Index].Cells[1].Value = Conversion.Val(((ButtonBase)Button_RESTE).Text);
+			if (DataGridView_CALC.CurrentRow == null) return;
+			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = Conversion.Val(((ButtonBase)Button_RESTE).Text);
 			Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 			((Control)DataGridView_CALC).Focus();
 		}
@@ -3455,7 +3485,8 @@ public class FormDialog_calc : Form
 	{
 		try
 		{
-			DataGridView_CALC.Rows[((DataGridViewBand)DataGridView_CALC.CurrentRow).Index].Cells[1].Value = Conversion.Val(Label_NUM.Text);
+			if (DataGridView_CALC.CurrentRow == null) return;
+			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = Conversion.Val(Label_NUM.Text);
 			((Control)DataGridView_CALC).Focus();
 			SendKeys.Send("{RIGHT}{LEFT}");
 			Label_NUM.Text = "";
@@ -3476,8 +3507,13 @@ public class FormDialog_calc : Form
 	{
 		//IL_0030: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0036: Expected Obj, but got Unknown
+		Button val = CashPaymentButton();
+		if (val == null)
+		{
+			MessageBox.Show("Mode de paiement ESPECES indisponible. Vérifiez la configuration des modes de paiement.", "Hanouty POS", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+			return; // Never enter reimbursement without a configured cash method.
+		}
 		((ButtonBase)MyProject.Forms.Form_3_VENTE.Button_OPERATION).Text = "RETOUR REMBOURSEMENT";
-		Button val = (Button)((Control)FlowLayoutPanel_MODE_P).Controls["Button_ESPECES"];
 		val.PerformClick();
 		Button_RESTE.PerformClick();
 		((Control)Panel_RETOUR).Visible = false;
