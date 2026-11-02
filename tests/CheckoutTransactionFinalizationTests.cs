@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using LOGICA.ApplicationLayer.Checkout;
 
 internal static class CheckoutTransactionFinalizationTests
@@ -159,7 +160,106 @@ internal static class CheckoutTransactionFinalizationTests
         if (!missingProgressRejected || missingProgress.Events.Count != 0)
             throw new Exception("Null SOLDER progress must fail before stock mutation");
 
-        Console.WriteLine("PASS checkout transaction finalization: 19 ordered stages, commit ambiguity/confirmed close, progress reuse and caller-owned rollback");
+        // Concurrent callers must not both enter the same production progress.
+        // This is deterministic: only one atomic NotStarted -> Posting wins.
+        var sharedProgress = new CheckoutCommitProgress();
+        int starts = 0;
+        var workers = new Thread[16];
+        for (int i = 0; i < workers.Length; i++)
+        {
+            workers[i] = new Thread(delegate {
+                if (sharedProgress.TryStart()) Interlocked.Increment(ref starts);
+            });
+            workers[i].Start();
+        }
+        foreach (Thread worker in workers) worker.Join();
+        if (starts != 1 || sharedProgress.Stage != CheckoutCommitStage.Posting)
+            throw new Exception("Concurrent SOLDER progress was admitted more than once");
+
+        // A single per-cashier gate must stay blocked until the UI has either
+        // cleared the committed basket or verified rollback/reconciliation.
+        var gate = new CheckoutAttemptGate();
+        var guarded = new Scenario();
+        var guardedProgress = new CheckoutCommitProgress();
+        CheckoutTransactionFinalizationService.PostAndFinalize(
+            guarded, guarded.Input(), guarded, guardedProgress, gate);
+        AssertEvents(guarded.Events, Stages, "guarded cash sale");
+        if (!gate.IsBlocked || guardedProgress.Stage != CheckoutCommitStage.Closed)
+            throw new Exception("Completed SOLDER must remain gated until basket reset");
+
+        var duplicateClick = new Scenario();
+        bool duplicateRejected = false;
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                duplicateClick, duplicateClick.Input(), duplicateClick,
+                new CheckoutCommitProgress(), gate);
+        }
+        catch (InvalidOperationException) { duplicateRejected = true; }
+        if (!duplicateRejected || duplicateClick.Events.Count != 0)
+            throw new Exception("Double SOLDER click wrote stock/ticket/payment");
+
+        bool wrongResetRejected = false;
+        try { gate.ReleaseAfterBasketReset(new CheckoutCommitProgress()); }
+        catch (InvalidOperationException) { wrongResetRejected = true; }
+        if (!wrongResetRejected || !gate.IsBlocked)
+            throw new Exception("Unrelated cashier progress unlocked active settlement");
+        gate.ReleaseAfterBasketReset(guardedProgress);
+        if (gate.IsBlocked)
+            throw new Exception("Verified basket reset did not release cashier gate");
+
+        // A failed precommit posting needs a verified rollback before retry.
+        var precommit = new Scenario { FailAt = "payment.write.1" };
+        var precommitProgress = new CheckoutCommitProgress();
+        bool precommitFailed = false;
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                precommit, precommit.Input(), precommit, precommitProgress, gate);
+        }
+        catch (InjectedFailure) { precommitFailed = true; precommit.Rollback(); }
+        if (!precommitFailed || !gate.IsBlocked ||
+            precommitProgress.Stage != CheckoutCommitStage.Posting ||
+            precommit.Events.Contains("commit"))
+            throw new Exception("Precommit SOLDER failure must not commit or unlock");
+        gate.ReleaseAfterVerifiedRollback(precommitProgress);
+        if (gate.IsBlocked) throw new Exception("Verified rollback did not unlock cashier");
+
+        // Ambiguous Commit and post-Commit Close failures cannot use the
+        // precommit rollback path; they require durable ticket reconciliation.
+        foreach (string failAt in new[] { "commit", "close" })
+        {
+            var uncertain = new Scenario { FailAt = failAt };
+            var uncertainProgress = new CheckoutCommitProgress();
+            bool failed = false;
+            try
+            {
+                CheckoutTransactionFinalizationService.PostAndFinalize(
+                    uncertain, uncertain.Input(), uncertain, uncertainProgress, gate);
+            }
+            catch (InjectedFailure) { failed = true; }
+            if (!failed || !gate.IsBlocked)
+                throw new Exception("Post/ambiguous commit failure unlocked SOLDER");
+            bool unsafeReleaseRejected = false;
+            try { gate.ReleaseAfterVerifiedRollback(uncertainProgress); }
+            catch (InvalidOperationException) { unsafeReleaseRejected = true; }
+            if (!unsafeReleaseRejected || !gate.IsBlocked)
+                throw new Exception("Unsafe rollback unlocked a committed/ambiguous sale");
+            gate.ReleaseAfterDatabaseReconciliation(uncertainProgress);
+            if (gate.IsBlocked)
+                throw new Exception("Verified database reconciliation did not unlock cashier");
+        }
+
+        // After reconciliation the same cashier gate can serve the next sale,
+        // but a previously used progress instance still cannot be reused.
+        var nextSale = new Scenario();
+        var nextProgress = new CheckoutCommitProgress();
+        CheckoutTransactionFinalizationService.PostAndFinalize(
+            nextSale, nextSale.Input(), nextSale, nextProgress, gate);
+        AssertEvents(nextSale.Events, Stages, "next sale after reconciliation");
+        gate.ReleaseAfterBasketReset(nextProgress);
+
+        Console.WriteLine("PASS checkout transaction finalization: 19 ordered stages, atomic progress, duplicate SOLDER gate, rollback/commit reconciliation and caller-owned rollback");
         return 0;
     }
 }
