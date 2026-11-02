@@ -297,6 +297,69 @@ internal static class ReceiptArticleSelectionSmoke
             Check(ReceiptDocumentSelectionGuard.ResolveBoundRow(missingReceiptId.DefaultView[0], "BR-001") == null,
                 "missing receipt ID schema fails closed");
 
+            // Real MODIFICATION save used Label_INDEX + BindingContext.Position,
+            // which can target a different record after sorting/filtering.
+            // Exact ID and receipt number must select one unvalidated DT row.
+            var editableReceipts = new DataTable();
+            editableReceipts.Columns.Add("ID", typeof(string));
+            editableReceipts.Columns.Add("ID_BR", typeof(string));
+            editableReceipts.Columns.Add("ETAT", typeof(string));
+            editableReceipts.Rows.Add("10", "BR-A", "ENREGISTRER");
+            editableReceipts.Rows.Add("11", "BR-B", "ENREGISTRER");
+            editableReceipts.Rows.Add("12", "BR-C", "VALIDER");
+            editableReceipts.AcceptChanges();
+            DataView editableView = editableReceipts.DefaultView;
+            editableView.Sort = "ID_BR DESC";
+            Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "10", "BR-A"), editableReceipts.Rows[0]),
+                "sorted modification resolves original database row, not visible index");
+            editableView.RowFilter = "ID_BR <> 'BR-B'";
+            Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "11", "BR-B"), editableReceipts.Rows[1]),
+                "filtered grid does not retarget a previously opened receipt");
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "11", "BR-A") == null,
+                "mismatched receipt number cannot update another record");
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "12", "BR-C") == null,
+                "validated receipt cannot be reverted to ENREGISTRER by stale edit");
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "999", "BR-A") == null,
+                "deleted or missing record cannot be silently replaced");
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "10", "br-a") == null,
+                "receipt edit identity uses ordinal comparison");
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "", "BR-A") == null,
+                "blank database record ID cannot authorize edit");
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "10", "") == null,
+                "blank receipt number cannot authorize edit");
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                null, "10", "BR-A") == null,
+                "missing bound snapshot cannot authorize edit");
+            editableReceipts.Rows.Add("10", "BR-OTHER", "ENREGISTRER");
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "10", "BR-A") == null,
+                "duplicate database record ID blocks edit even if number matches");
+            editableReceipts.Rows[3].Delete();
+            Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "10", "BR-A"), editableReceipts.Rows[0]),
+                "deleted duplicate record does not block valid existing row");
+            editableReceipts.Rows[0]["ID_BR"] = "BR-RENUMBERED";
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "10", "BR-A") == null,
+                "changed bound receipt number blocks stale modification");
+            Check(Object.ReferenceEquals(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                editableReceipts, "10", "BR-RENUMBERED"), editableReceipts.Rows[0]),
+                "fresh receipt number permits exact edit of original record");
+            var missingEditableSchema = new DataTable();
+            missingEditableSchema.Columns.Add("ID");
+            missingEditableSchema.Rows.Add("10");
+            Check(ReceiptDocumentSelectionGuard.ResolveEditableRow(
+                missingEditableSchema, "10", "BR-A") == null,
+                "missing state/receipt schema cannot authorize edit");
+
             // Actual receipt Add button: reject invalid text before legacy VB
             // decimal conversion and before a line can be inserted. The core
             // accepts caller-supplied parsing so the Windows edge keeps its
