@@ -51,6 +51,19 @@ internal static class DesktopPaymentCultureSmoke
                     "Comma decimal remainder was truncated or rounded incorrectly");
                 Expect(!solder.Enabled, "Partial French cash payment enabled SOLDER");
 
+                // RESTE must ADD the outstanding amount to the selected method,
+                // not replace the amount already entered (10,25 + 10,25).
+                MethodInfo fillRemainder = form.GetType().GetMethod("Button_RESTE_Click", Flags);
+                Expect(fillRemainder != null, "RESTE handler missing");
+                grid.CurrentCell = grid.Rows[0].Cells[1];
+                fillRemainder.Invoke(form, new object[] { remainder, EventArgs.Empty });
+                Expect(Convert.ToDecimal(grid.Rows[0].Cells[1].Value) == 20.50m &&
+                    decimal.Parse(remainder.Text, CultureInfo.CurrentCulture) == 0m && solder.Enabled,
+                    "RESTE replaced a partial cash amount instead of completing it");
+                // Restore the partial payment to test the second payment-method path.
+                grid.Rows[0].Cells[1].Value = "10,25";
+                Recalculate(form);
+
                 // A second method inherits the exact due amount, never Conversion.Val's 10.
                 MethodInfo add = form.GetType().GetMethod("FAM_click", Flags);
                 Expect(add != null, "Payment-method click handler missing");
@@ -123,6 +136,14 @@ internal static class DesktopPaymentCultureSmoke
                 Expect(shown != null, "Payment layout handler missing");
                 shown.Invoke(form, new object[] { form, EventArgs.Empty });
                 Expect(flow.Left >= 0, "High-DPI payment methods hidden off the left edge");
+                // Resizing the payment panel must recompute alignment, not just Shown.
+                flow.Width = 80;
+                panel.Width = 300;
+                Expect(flow.Left == (panel.ClientSize.Width - flow.Width) / 2,
+                    "Payment methods were not recentered after a DPI/layout resize");
+                panel.Width = 60;
+                flow.Width = 300;
+                Expect(flow.Left >= 0, "Resizing clipped the first payment method");
 
                 // Incomplete totals cannot be silently converted into a zero-due row.
                 total.Text = "";
@@ -140,6 +161,14 @@ internal static class DesktopPaymentCultureSmoke
                 Recalculate(form);
                 Expect(decimal.Parse(remainder.Text, CultureInfo.CurrentCulture) == 0m && solder.Enabled,
                     "Negative return payment no longer settles");
+                // Partial refunds must also be completed additively by RESTE.
+                grid.Rows[0].Cells[1].Value = "-5,00";
+                Recalculate(form);
+                grid.CurrentCell = grid.Rows[0].Cells[1];
+                fillRemainder.Invoke(form, new object[] { remainder, EventArgs.Empty });
+                Expect(Convert.ToDecimal(grid.Rows[0].Cells[1].Value) == -10.25m &&
+                    decimal.Parse(remainder.Text, CultureInfo.CurrentCulture) == 0m && solder.Enabled,
+                    "RESTE failed to complete a partial negative refund");
 
                 // A malformed extreme payment must fail closed rather than crash the UI.
                 grid.Rows.Clear();
@@ -149,7 +178,7 @@ internal static class DesktopPaymentCultureSmoke
                 Recalculate(form);
                 Expect(!solder.Enabled && remainder.Text == "", "Overflow left an actionable SOLDER state");
             }
-            Console.WriteLine("PASS French decimal SOLDER, half-dirham coin, both keypads, DPI layout, returns and overflow");
+            Console.WriteLine("PASS French decimal SOLDER, additive RESTE cash/refunds, half-dirham, both keypads, dynamic DPI layout and overflow");
             return 0;
         }
         catch (Exception exception)
