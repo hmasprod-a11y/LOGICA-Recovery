@@ -130,6 +130,30 @@ internal static class PortableTransactionSmoke
         catch (ArgumentNullException ex) { nullFinalizerRejected = ex.ParamName == "finalizer"; }
         if (!nullFinalizerRejected || missingFinalizer.Events.Count != 0)
             throw new Exception("Missing transaction finalizer must fail before posting");
+        // Portable parity: missing callbacks cannot strand a persistent
+        // per-cashier gate before the first DB callback has executed.
+        var invalidGate = new CheckoutAttemptGate();
+        var invalidProgress = new CheckoutCommitProgress();
+        var invalidStore = new Store();
+        var invalidInput = Input(invalidStore);
+        invalidInput.ReadPayments = null;
+        bool invalidRejected = false;
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                invalidStore, invalidInput, invalidStore, invalidProgress, invalidGate);
+        }
+        catch (InvalidOperationException) { invalidRejected = true; }
+        if (!invalidRejected || invalidGate.IsBlocked ||
+            invalidProgress.Stage != CheckoutCommitStage.NotStarted ||
+            invalidStore.Events.Count != 0)
+            throw new Exception("Portable malformed checkout acquired cashier gate");
+        CheckoutTransactionFinalizationService.PostAndFinalize(
+            invalidStore, Input(invalidStore), invalidStore, invalidProgress, invalidGate);
+        if (!invalidGate.IsBlocked || invalidProgress.Stage != CheckoutCommitStage.Closed)
+            throw new Exception("Portable repaired checkout did not commit");
+        invalidGate.ReleaseAfterBasketReset(invalidProgress);
+
         // .NET 10 executes the same production per-cashier guard as WinForms.
         // A second click cannot write another ticket while the first outcome
         // has not been reconciled, even with a fresh progress instance.
