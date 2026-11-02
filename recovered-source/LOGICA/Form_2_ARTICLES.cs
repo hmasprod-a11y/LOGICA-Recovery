@@ -13733,7 +13733,8 @@ public class Form_2_ARTICLES : Form
 			command.Parameters.AddWithValue("@id", Convert.ToString(selected.Cells["ID_ARTICLE"].Value));
 			command.Parameters.AddWithValue("@code", Convert.ToString(selected.Cells["Code"].Value));
 			command.Parameters.AddWithValue("@article", Convert.ToString(selected.Cells["Article"].Value));
-			// Stock may be displayed with a French comma; SQL numeric text must be invariant.\n\t\t\tcommand.Parameters.AddWithValue("@stock", Conversions.ToDecimal(selected.Cells["STOCK"].Value).ToString(CultureInfo.InvariantCulture));
+			// Stock may be displayed with a French comma; SQL numeric text must be invariant.
+			command.Parameters.AddWithValue("@stock", Conversions.ToDecimal(selected.Cells["STOCK"].Value).ToString(CultureInfo.InvariantCulture));
 			command.ExecuteNonQuery();
 		}
 	}
