@@ -380,6 +380,13 @@ try {
     }
     Assert-RuntimeHashes $extract $baseline
     Assert-PackagedCodeHashes $extract $codeBaseline
+    # A missing activation label is not proof that no activation UI exists.
+    # Preserve tri-state evidence rather than silently treating null as false.
+    if ($null -eq $launcherActivation.activationScreenVisible -or
+        $null -eq $cmdActivation.activationScreenVisible -or
+        $null -eq $directWithoutOverrideActivation.activationScreenVisible) {
+        Write-Warning 'Activation visibility was indeterminate in at least one entrypoint; cashier license acceptance remains BLOCKED.'
+    }
     Write-Warning 'RELEASE ACCEPTANCE BLOCKED: PIN login screen is not proof of a valid license, successful cashier login, completed sale, printer or scanner.'
     Assert-RuntimeHashes $extract $baseline
     Assert-PackagedCodeHashes $extract $codeBaseline
@@ -423,6 +430,9 @@ try {
         directExeLoginPinScreenVisible = $directWithoutOverrideActivation.loginScreenVisible
         launcherActivationInspectionStatus = $launcherActivation.inspectionStatus
         launcherActivationScreenVisible = $launcherActivation.activationScreenVisible
+        launcherActivationAbsenceConfirmed = ($launcherActivation.activationScreenVisible -eq $false)
+        startCmdActivationAbsenceConfirmed = ($cmdActivation.activationScreenVisible -eq $false)
+        directExeActivationAbsenceConfirmed = ($directWithoutOverrideActivation.activationScreenVisible -eq $false)
         startCmdActivationInspectionStatus = $cmdActivation.inspectionStatus
         startCmdActivationScreenVisible = $cmdActivation.activationScreenVisible
         directExeWithoutConnectionOverrideVerified = $directWithoutOverrideResponsive
