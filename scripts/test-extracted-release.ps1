@@ -171,6 +171,55 @@ try {
         throw 'Extracted portable launcher did not report successful isolated database verification'
     }
     Write-Host 'PASS: extracted launcher imported original SQL fixture into a fresh loopback MariaDB instance'
+    # Verify the real customer startup path, not only -VerifyOnly. The launcher
+    # starts an isolated MariaDB on 3308 and must actually spawn LOGICA.exe.
+    # No activation state is fabricated: a responsive activation window is NOT
+    # evidence that a licensed cashier can complete a sale.
+    $launcherLog = Join-Path $results 'extracted-release-launcher-ui.log'
+    $launcherErr = Join-Path $results 'extracted-release-launcher-ui.stderr.log'
+    $launcherProcess = $null
+    $launcherApp = $null
+    $launcherResponsive = $false
+    try {
+        $launcherArgs = @('-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',
+                          ('"' + (Join-Path $extract 'Launch-LOGICA.ps1') + '"'),
+                          '-ServerBin',('"' + $server.Directory.FullName + '"'),'-Port','3308')
+        $launcherProcess = Start-Process -FilePath 'powershell.exe' -ArgumentList $launcherArgs -WorkingDirectory $extract -PassThru -RedirectStandardOutput $launcherLog -RedirectStandardError $launcherErr
+        $launchTimer = [Diagnostics.Stopwatch]::StartNew()
+        do {
+            Start-Sleep -Seconds 2
+            $launcherProcess.Refresh()
+            $launcherApp = @(Get-Process -Name LOGICA -ErrorAction SilentlyContinue | Where-Object {
+                try { $_.Path -ieq (Join-Path $extract 'LOGICA.exe') } catch { $false }
+            } | Select-Object -First 1)[0]
+            if ($launcherApp) {
+                $launcherApp.Refresh()
+                if (-not $launcherApp.HasExited -and $launcherApp.MainWindowHandle -ne 0 -and $launcherApp.Responding) {
+                    $launcherResponsive = $true
+                    break
+                }
+            }
+            if ($launcherProcess.HasExited) { break }
+        } while ($launchTimer.Elapsed.TotalSeconds -lt 90)
+        if (-not $launcherResponsive) {
+            $details = if (Test-Path -LiteralPath $launcherLog) { (Get-Content -LiteralPath $launcherLog -Tail 12) -join ' | ' } else { 'No launcher output' }
+            throw "Extracted customer launcher did not open responsive LOGICA.exe on local MariaDB 3308: $details"
+        }
+        Write-Host 'PASS: extracted customer launcher started actual LOGICA.exe with local MariaDB 3308'
+    } finally {
+        if ($launcherApp) {
+            try { $launcherApp.Refresh(); if (-not $launcherApp.HasExited) { $launcherApp.Kill(); $launcherApp.WaitForExit(10000) | Out-Null } } catch { Write-Warning "Could not stop launcher child EXE: $_" }
+        }
+        if ($launcherProcess) {
+            try {
+                if (-not $launcherProcess.WaitForExit(20000)) { $launcherProcess.Kill(); $launcherProcess.WaitForExit(10000) | Out-Null }
+            } catch { Write-Warning "Could not stop isolated launcher: $_" }
+        }
+    }
+    if ($launcherProcess.ExitCode -ne 0) { throw "Extracted launcher exited $($launcherProcess.ExitCode); see extracted-release-launcher-ui.log" }
+    Assert-RuntimeHashes $extract $baseline
+    Assert-PackagedCodeHashes $extract $codeBaseline
+    Write-Warning 'RELEASE ACCEPTANCE BLOCKED: responsive WinForms window does not prove valid license, cashier screen, printer, or direct EXE without DB override.'
     Assert-RuntimeHashes $extract $baseline
     Assert-PackagedCodeHashes $extract $codeBaseline
     if (Test-Path -LiteralPath (Join-Path $extract 'bd/mysql-client-temporary.ini')) {
@@ -189,6 +238,10 @@ try {
         sourceCommit = $commit
         extractedExeResponsive = $true
         extractedLauncherVerified = $true
+        extractedLauncherActualExeResponsive = $launcherResponsive
+        licensedCashierScreenVerified = $false
+        directExeWithoutConnectionOverrideVerified = $false
+        realPrinterAndScannerVerified = $false
         immutableRuntimeFilesVerified = $baseline.Count
         packagedCodeFilesVerified = $codeBaseline.Count
         injectedExecutableProbeRejected = $true
