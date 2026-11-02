@@ -58,6 +58,10 @@ Write-Host "desktop-article-delete $deleteStatus"
 Get-Content $deleteLog | Select-Object -First 30 | ForEach-Object{Write-Host $_}
 if($deleteStatus -ne 'PASS') { Get-Content $deleteError | Select-Object -First 40 | ForEach-Object{Write-Host $_} }
 
+# Never ship isolated CI smoke executables or their configs in the customer ZIP.
+# package-runtime.ps1 removes PosSmoke*, but these two harness names are distinct.
+Remove-Item $cultureExe, (Join-Path $dist 'DesktopPaymentCultureSmoke.exe.config'), $deleteExe, (Join-Path $dist 'DesktopArticleDeleteSmoke.exe.config') -Force -ErrorAction SilentlyContinue
+
 # Launch the real Windows entry point as well as exercising forms through the harness.
 $app=Start-Process (Join-Path $dist 'LOGICA.exe') -WorkingDirectory $dist -PassThru
 # Windows cold-start may take longer than the former fixed eight seconds.
