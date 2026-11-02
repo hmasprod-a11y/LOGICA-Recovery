@@ -64,6 +64,41 @@ internal static class CatalogueDuplicateMariaDbSmoke
         }
     }
 
+    // Never accept a database merely because its connection string contains
+    // "logica_ci" or "localhost" in a password, comment or another field.
+    // Check the parsed values before the first database operation.
+    private static bool IsDisposableLoopback(string connectionString, Type connectionType)
+    {
+        Type builderType = connectionType.Assembly.GetType(
+            "MySql.Data.MySqlClient.MySqlConnectionStringBuilder", true);
+        object builder = Activator.CreateInstance(builderType, new object[] { connectionString });
+        string server = Convert.ToString(builderType.GetProperty("Server").GetValue(builder, null));
+        string database = Convert.ToString(builderType.GetProperty("Database").GetValue(builder, null));
+        uint port = Convert.ToUInt32(builderType.GetProperty("Port").GetValue(builder, null),
+            CultureInfo.InvariantCulture);
+        return (string.Equals(server, "127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(server, "localhost", StringComparison.OrdinalIgnoreCase)) &&
+            string.Equals(database, "logica_ci", StringComparison.OrdinalIgnoreCase) &&
+            port == 3307;
+    }
+
+    private static void CheckSafetyGate(Type connectionType)
+    {
+        string safe = "Server=127.0.0.1;Port=3307;Database=logica_ci;Uid=root;Pwd=test;";
+        Require(IsDisposableLoopback(safe, connectionType), "Isolated CI fixture rejected");
+        string[] unsafeStrings = {
+            "Server=remote.example;Port=3307;Database=logica_ci;Uid=localhost;Pwd=test;",
+            "Server=127.0.0.1;Port=3307;Database=shop_logica_ci_backup;Uid=root;Pwd=test;",
+            "Server=127.0.0.1;Port=3306;Database=logica_ci;Uid=root;Pwd=test;",
+            "Server=127.0.0.1;Port=3307;Database=shop;Uid=root;Pwd=logica_ci;",
+            "Server=127.0.0.1;Port=3307;Database=shop;Uid=root;Pwd=localhost;"
+        };
+        foreach (string candidate in unsafeStrings)
+            Require(!IsDisposableLoopback(candidate, connectionType),
+                "Unsafe database target accepted: " + candidate);
+        Console.WriteLine("PASS exact isolated MariaDB target validation (5 negative fixtures)");
+    }
+
     [STAThread]
     private static int Main()
     {
@@ -73,9 +108,9 @@ internal static class CatalogueDuplicateMariaDbSmoke
             Assembly assembly = Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LOGICA.exe"));
             Type module = assembly.GetType("LOGICA.Module1", true);
             connection = (DbConnection)module.GetField("cn_SQL", Static).GetValue(null);
-            string cs = connection.ConnectionString.ToLowerInvariant();
-            Require((cs.Contains("127.0.0.1") || cs.Contains("localhost")) &&
-                    cs.Contains("logica_ci"), "Refusing non-isolated MariaDB connection");
+            CheckSafetyGate(connection.GetType());
+            Require(IsDisposableLoopback(connection.ConnectionString, connection.GetType()),
+                "Refusing non-loopback, non-disposable or non-CI-port MariaDB connection");
             Type lookup = assembly.GetType("LOGICA.Infrastructure.Catalogue.CatalogueDuplicateLookup", true);
             if (connection.State != ConnectionState.Open) connection.Open();
             Execute(connection, "CREATE TEMPORARY TABLE TABLE_ARTICLES (" +

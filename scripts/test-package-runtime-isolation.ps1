@@ -31,6 +31,12 @@ try {
         'unknown_private_setting.sni' = 'PRIVATE-UNKNOWN'
     }
     $original | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $work 'input/original-startup.json') -Encoding UTF8
+    # Simulate a failed POS test leaving a new MariaDB-only harness in dist.
+    # The customer package must remove both its executable and configuration.
+    $qaOnly = @('CatalogueCreationMariaDbSmoke.exe', 'CatalogueCreationMariaDbSmoke.exe.config')
+    foreach ($name in $qaOnly) {
+        [IO.File]::WriteAllText((Join-Path $work ('dist/' + $name)), 'synthetic QA-only executable')
+    }
     # The package script records sourceCommit; give its isolated fixture its own git HEAD.
     Push-Location $work
     try {
@@ -66,6 +72,11 @@ try {
         }
         if (Test-Path -LiteralPath (Join-Path $work 'dist/unknown_private_setting.sni')) {
             throw 'Unexpected private startup setting copied into portable runtime'
+        }
+        foreach ($name in $qaOnly) {
+            if (Test-Path -LiteralPath (Join-Path $work ('dist/' + $name))) {
+                throw "QA-only MariaDB harness leaked into customer package: $name"
+            }
         }
         $runtime = Get-ChildItem -LiteralPath (Join-Path $work 'dist') -File
         foreach ($file in $runtime) {

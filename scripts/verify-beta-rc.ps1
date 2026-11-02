@@ -65,7 +65,7 @@ foreach ($item in $expected) {
         throw "Forbidden persisted test data in manifest: $name"
     }
     # QA-only executables are never customer runtime, even with valid hashes.
-    if ($name -match '(^|/)(PosSmoke|DesktopPaymentCultureSmoke|DesktopArticleDeleteSmoke|DesktopSolderGuardSmoke|CatalogueDuplicateMariaDbSmoke)\.exe(\.config)?$') {
+    if ($name -match '(^|/)(PosSmoke|DesktopPaymentCultureSmoke|DesktopArticleDeleteSmoke|DesktopSolderGuardSmoke|CatalogueDuplicateMariaDbSmoke|CatalogueCreationMariaDbSmoke)\.exe(\.config)?$') {
         throw "QA test executable forbidden in customer release: $name"
     }
     $byPath.Add($name, $item)

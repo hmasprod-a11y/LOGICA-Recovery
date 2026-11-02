@@ -137,7 +137,8 @@ try {
     foreach ($smoke in @('PosSmoke.exe', 'DesktopPaymentCultureSmoke.exe',
                          'DesktopArticleDeleteSmoke.exe', 'DesktopArticleDeleteSmoke.exe.config',
                          'DesktopSolderGuardSmoke.exe', 'DesktopSolderGuardSmoke.exe.config',
-                         'CatalogueDuplicateMariaDbSmoke.exe', 'CatalogueDuplicateMariaDbSmoke.exe.config')) {
+                         'CatalogueDuplicateMariaDbSmoke.exe', 'CatalogueDuplicateMariaDbSmoke.exe.config',
+                         'CatalogueCreationMariaDbSmoke.exe', 'CatalogueCreationMariaDbSmoke.exe.config')) {
         $smokePath = Join-Path $src $smoke
         [IO.File]::WriteAllText($smokePath, 'isolated QA-only binary fixture')
         try {

@@ -1447,6 +1447,9 @@ public class FormDialog_calc : Form
 		((Form)this).Shown += FormDialog_calc_Shown;
 		__ENCAddToList(this);
 		InitializeComponent();
+		// Keep payment-method buttons visible after runtime DPI/layout changes.
+		((Control)Panel_MODE_P).SizeChanged += Form_Shown;
+		((Control)FlowLayoutPanel_MODE_P).SizeChanged += Form_Shown;
 	}
 
 	[DebuggerNonUserCode]
@@ -3032,7 +3035,7 @@ public class FormDialog_calc : Form
 				Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 				DataGridView_CALC.CurrentCell = DataGridView_CALC.Rows[insertedRow].Cells[1];
 				((Control)DataGridView_CALC).Focus();
-				if (!string.Equals(selectedMethod.Text, "ESPECES", StringComparison.Ordinal))
+				if (!string.Equals(selectedMethod.Text.Trim(), "ESPECES", StringComparison.OrdinalIgnoreCase))
 				{
 					Button_RESTE.PerformClick();
 					((Control)Panel_REMARQUE).Visible = true;
@@ -3134,7 +3137,17 @@ public class FormDialog_calc : Form
 	// The cash method is optional; missing icons must not affect availability.
 	private Button CashPaymentButton()
 	{
-		return ((Control)FlowLayoutPanel_MODE_P).Controls["Button_ESPECES"] as Button;
+		Button exact = ((Control)FlowLayoutPanel_MODE_P).Controls["Button_ESPECES"] as Button;
+		if (exact != null) return exact;
+		// Older payment settings may spell cash with different casing or spaces.
+		// The icon file name is unrelated to the method's identity.
+		foreach (Control control in FlowLayoutPanel_MODE_P.Controls)
+		{
+			Button candidate = control as Button;
+			if (candidate != null && string.Equals((candidate.Text ?? "").Trim(), "ESPECES", StringComparison.OrdinalIgnoreCase))
+				return candidate;
+		}
+		return null;
 	}
 
 	private void Button_DEVIS_Click(object sender, EventArgs e)
@@ -3515,7 +3528,15 @@ public class FormDialog_calc : Form
 				Button_REFRESH.PerformClick();
 			}
 			if (DataGridView_CALC.CurrentRow == null || DataGridView_CALC.CurrentRow.IsNewRow) return;
-			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = remainder;
+			DataGridViewCell paidCell = DataGridView_CALC.CurrentRow.Cells[1];
+			decimal alreadyPaid;
+			// RESTE fills the outstanding balance, it must not overwrite a partial
+			// amount already entered for this method (including negative returns).
+			if (!TryGetPaymentNumber(paidCell.Value, out alreadyPaid)) return;
+			decimal completedPayment;
+			try { completedPayment = checked(alreadyPaid + remainder); }
+			catch (OverflowException) { return; } // Preserve the cashier's existing amount.
+			paidCell.Value = completedPayment;
 			Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 			((Control)DataGridView_CALC).Focus();
 		}
