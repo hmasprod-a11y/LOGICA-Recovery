@@ -23,6 +23,9 @@ try {
     # Follow the lookup test with the real creation-movement writer in a fresh
     # disposable schema. Both are Inventory-owned; QA still owns CI wiring.
     & (Join-Path $PSScriptRoot 'test-catalogue-creation-mariadb.ps1')
+    # Exercise the opt-in receipt validation claim on two separate InnoDB
+    # connections. This does not wire or change the legacy receipt handler.
+    & (Join-Path $PSScriptRoot 'test-receipt-claim-mariadb.ps1')
 } finally {
     Remove-Item -LiteralPath $exe,$config -Force -ErrorAction SilentlyContinue
 }
