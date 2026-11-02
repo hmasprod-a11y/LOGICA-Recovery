@@ -2269,6 +2269,17 @@ public class FormDialog_2_Configuration : Form
 		return fallback;
 	}
 
+	// Incomplete optional rows are not valid updates. Never rewrite a setting
+	// to a guessed value when its UI row lacks the value subitem.
+	private static bool TryGetSettingUpdate(ListViewItem item, out string key, out string value)
+	{
+		key = item == null ? "" : item.Text;
+		value = "";
+		if (string.IsNullOrWhiteSpace(key) || item.SubItems.Count < 2) return false;
+		value = item.SubItems[1].Text ?? "";
+		return true;
+	}
+
 	// Portable installs may omit optional UI preferences. Read them without
 	// creating files or overwriting a cashier's existing choices.
 	private static string ReadLocalOption(string fileName, string fallback)
@@ -2326,7 +2337,7 @@ public class FormDialog_2_Configuration : Form
 			foreach (DataGridViewRow item in (IEnumerable)DataGridView_MODELE_TICKET.Rows)
 			{
 				DataGridViewRow val = item;
-				val.Height = (int)Math.Round((double)(((Control)DataGridView_MODELE_TICKET).Height - DataGridView_MODELE_TICKET.ColumnHeadersHeight - 3) / (double)DataGridView_MODELE_TICKET.Rows.Count);
+				val.Height = Math.Max(24, (int)Math.Round((double)(((Control)DataGridView_MODELE_TICKET).Height - DataGridView_MODELE_TICKET.ColumnHeadersHeight - 3) / (double)DataGridView_MODELE_TICKET.Rows.Count));
 			}
 			MySqlCommand val2 = new MySqlCommand();
 			if (Module1.cn_SQL.State != ConnectionState.Open)
@@ -2644,11 +2655,19 @@ public class FormDialog_2_Configuration : Form
 					{
 						break;
 					}
-					val.CommandText = "UPDATE     TABLE_PARAMETRES    SET    VALEUR = N'" + ListView1.Items[num2].SubItems[1].Text + "'     where  OBJET = '" + ListView1.Items[num2].Text + "'      ";
-					val.Connection = Module1.cn_SQL;
-					val.ExecuteNonQuery();
+					string settingKey, settingValue;
+					if (TryGetSettingUpdate(ListView1.Items[num2], out settingKey, out settingValue))
+					{
+						val.Parameters.Clear();
+						val.CommandText = "UPDATE TABLE_PARAMETRES SET VALEUR = @value WHERE OBJET = @key";
+						val.Parameters.AddWithValue("@value", settingValue);
+						val.Parameters.AddWithValue("@key", settingKey);
+						val.Connection = Module1.cn_SQL;
+						val.ExecuteNonQuery();
+					}
 					num2++;
 				}
+				val.Parameters.Clear();
 				val.CommandText = "select    *     from     TABLE_PARAMETRES       ";
 				val.Connection = Module1.cn_SQL;
 				val.ExecuteNonQuery();
