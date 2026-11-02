@@ -2006,9 +2006,9 @@ class PosSmoke {
     keypress.Invoke(form,new object[]{input,key});
     if(key.Handled)throw new Exception("Quantity dialog rejected valid keyboard input");
    }
-   var invalid=new KeyPressEventArgs('Q');
-   keypress.Invoke(form,new object[]{input,invalid});
-   if(!invalid.Handled)throw new Exception("Quantity dialog accepted nonnumeric keyboard input");
+   var invalidKey=new KeyPressEventArgs('Q');
+   keypress.Invoke(form,new object[]{input,invalidKey});
+   if(!invalidKey.Handled)throw new Exception("Quantity dialog accepted nonnumeric keyboard input");
    Console.WriteLine("PASS real quantity dialog keypad, decimal/sign, selected-text replacement and empty backspace");
   }
  }
