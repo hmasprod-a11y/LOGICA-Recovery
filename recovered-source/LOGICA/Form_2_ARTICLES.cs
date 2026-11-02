@@ -14043,11 +14043,16 @@ public class Form_2_ARTICLES : Form
 				// Optional sizing table is absent in the original recovered database.
                 // Keep family and article editor available, without creating/mutating tables.
                 bool hasSizeTable;
-                using (var schemaConnection = new MySqlConnection(Module1.cn_SQL.ConnectionString))
-                using (var check = new MySqlCommand("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'TABLE_LISTE_TAILLES'", schemaConnection))
+                bool wasConnected = Module1.cn_SQL.State == ConnectionState.Open;
+                try
                 {
-                    schemaConnection.Open();
-                    hasSizeTable = Convert.ToInt32(check.ExecuteScalar()) != 0;
+                    if (!wasConnected) Module1.cn_SQL.Open();
+                    using (var check = new MySqlCommand("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'TABLE_LISTE_TAILLES'", Module1.cn_SQL))
+                        hasSizeTable = Convert.ToInt32(check.ExecuteScalar()) != 0;
+                }
+                finally
+                {
+                    if (!wasConnected) Module1.cn_SQL.Close();
                 }
                 if (hasSizeTable)
                 {
