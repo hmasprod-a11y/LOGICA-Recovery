@@ -65,7 +65,19 @@ namespace LOGICA.ApplicationLayer.Checkout
             if (progress == null) throw new ArgumentNullException("progress");
             if (progress.Stage != CheckoutCommitStage.NotStarted)
                 throw new InvalidOperationException("Checkout commit progress cannot be reused.");
-            return Interlocked.CompareExchange(ref active, progress, null) == null;
+            if (Interlocked.CompareExchange(ref active, progress, null) != null)
+                return false;
+            // Claim the progress token while this gate is held. Two cashier
+            // gates can otherwise accept the same token concurrently; the
+            // losing invocation would fail after reserving its gate forever.
+            if (!progress.TryStart())
+            {
+                // This gate has not invoked any posting callback. Only this
+                // failed reservation may be released without DB reconciliation.
+                Interlocked.CompareExchange(ref active, null, progress);
+                throw new InvalidOperationException("Checkout commit progress cannot be reused.");
+            }
+            return true;
         }
 
         private void Release(CheckoutCommitProgress progress, bool valid)
@@ -129,7 +141,9 @@ namespace LOGICA.ApplicationLayer.Checkout
             CheckoutPostingService.Validate(store, input);
             if (!gate.TryBegin(progress))
                 throw new InvalidOperationException("A checkout attempt is already awaiting reconciliation.");
-            PostAndFinalize(store, input, finalizer, progress);
+            // TryBegin has atomically claimed both the cashier gate and
+            // progress. Do not try to claim the same progress a second time.
+            PostStartedAndFinalize(store, input, finalizer, progress);
         }
 
         public static void PostAndFinalize(
@@ -165,7 +179,17 @@ namespace LOGICA.ApplicationLayer.Checkout
             CheckoutPostingService.Validate(store, input);
             if (!progress.TryStart())
                 throw new InvalidOperationException("Checkout commit progress cannot be reused.");
+            PostStartedAndFinalize(store, input, finalizer, progress);
+        }
 
+        // Both the gated and legacy paths run the exact same production
+        // posting/commit sequence once their progress token has been claimed.
+        private static void PostStartedAndFinalize(
+            ICheckoutPostingStore store,
+            CheckoutPostingInput input,
+            ICheckoutTransactionFinalizer finalizer,
+            CheckoutCommitProgress progress)
+        {
             CheckoutPostingService.Post(store, input);
             // Set BEFORE calling Commit: an exception from Commit is ambiguous.
             progress.Advance(CheckoutCommitStage.CommitAttempted);
