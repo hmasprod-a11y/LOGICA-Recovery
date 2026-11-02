@@ -25,6 +25,12 @@ namespace LOGICA.ApplicationLayer.Checkout
                     semantics.CompareOperation(readOperation(), "RETOUR REMBOURSEMENT") == 0)
                 {
                     TicketPaymentContext context = readContext();
+                    // A missing payment context previously escaped as a null
+                    // record into the live SQL writer after stock/ticket writes.
+                    // Reject it at the original lazy read stage, before the
+                    // first payment write; the Form still owns rollback.
+                    if (context == null)
+                        throw new InvalidOperationException("Checkout payment context reader returned null.");
                     if (!readAccessModesEnabled())
                     {
                         yield return new TicketPaymentWrite
