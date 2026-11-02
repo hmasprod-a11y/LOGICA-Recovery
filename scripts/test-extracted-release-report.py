@@ -30,6 +30,14 @@ NOT_FIELD_VERIFIED = (
     # No server-side trace links the child EXE to a successful DB authentication.
     "directExeWithoutOverrideDatabaseConnectionVerified",
 )
+TRANSACTION_FINGERPRINT_TABLES = (
+    "TABLE_ARTICLES",
+    "TABLE_VENTES_ENTETE",
+    "TABLE_VENTES_JOURNAL",
+    "TABLE_VENTES_REGLEMENTS",
+    "TABLE_MOUVEMENTS_STOCK",
+)
+
 STARTUP_VERIFIED = (
     "extractedExeResponsive",
     "extractedLauncherVerified",
@@ -39,6 +47,7 @@ STARTUP_VERIFIED = (
     "directExeWithoutOverrideResponsiveWindow",
     "startupReadOnlyDatabaseCountsVerified",
     "isolatedArticleTicketContentStableAcrossEntrypoints",
+    "transactionTableContentsStableAcrossEntrypoints",
     "originalFixtureContentMatchesFirstStartupVerified",
     "temporaryMariaDbClientCredentialsCleaned",
     "launcherLoginPinScreenVisible",
@@ -68,7 +77,9 @@ def validate(report, expected_commit=None):
     if expected_commit is not None and sha.lower() != expected_commit.lower():
         raise ValueError("Smoke evidence source SHA differs from checked-out release")
     if type(report.get("isolatedSalesDigestCheckCount")) is not int or report["isolatedSalesDigestCheckCount"] != 3:
-        raise ValueError("Expected independent article/ticket content fingerprints after all three entrypoints")
+        raise ValueError("Expected independent checkout persistence fingerprints after all three entrypoints")
+    if report.get("fingerprintedTransactionTables") != list(TRANSACTION_FINGERPRINT_TABLES):
+        raise ValueError("Missing or changed full checkout transaction fingerprint coverage")
     for name in NOT_FIELD_VERIFIED:
         if report.get(name) is not False:
             raise ValueError(f"Unproven field acceptance was promoted or omitted: {name}")
@@ -111,6 +122,7 @@ def self_test():
         "isolatedMariaDbPort": 3308,
         "sourceCommit": "a" * 40,
         "isolatedSalesDigestCheckCount": 3,
+        "fingerprintedTransactionTables": list(TRANSACTION_FINGERPRINT_TABLES),
         "launcherActivationScreenVisible": None,
         "startCmdActivationScreenVisible": False,
         "directExeWithoutOverrideActivationScreenVisible": None,
@@ -144,6 +156,12 @@ def self_test():
         ("isolatedSalesDigestCheckCount", 2),
         ("isolatedSalesDigestCheckCount", True),
         ("isolatedSalesDigestCheckCount", None),
+        ("fingerprintedTransactionTables", None),
+        ("fingerprintedTransactionTables", ["TABLE_ARTICLES", "TABLE_VENTES_ENTETE"]),
+        ("fingerprintedTransactionTables", list(TRANSACTION_FINGERPRINT_TABLES[:-1])),
+        ("fingerprintedTransactionTables", list(reversed(TRANSACTION_FINGERPRINT_TABLES))),
+        ("fingerprintedTransactionTables", list(TRANSACTION_FINGERPRINT_TABLES) + ["TABLE_ARTICLES"]),
+        ("transactionTableContentsStableAcrossEntrypoints", False),
         ("launcherActivationScreenVisible", True),
         ("startCmdActivationScreenVisible", True),
         ("launcherActivationScreenVisible", "unknown"),
