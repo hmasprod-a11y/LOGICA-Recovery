@@ -55,7 +55,7 @@ assert lookup.count('Parameters.AddWithValue("@excludedId"') == 2
 assert 'Parameters.AddWithValue("@articleId"' in lookup
 assert lookup.count('ParseExcludedId(excludedId)') == 2
 assert 'long.TryParse(excludedId, NumberStyles.Integer, CultureInfo.InvariantCulture' in lookup
-assert all("@" in query and "'" not in query for query in queries), "no user input may be interpolated"
+assert all("@" in query and "{" not in query and "+" not in query for query in queries), "no user input may be interpolated"
 
 db = sqlite3.connect(":memory:")
 db.execute("CREATE TABLE TABLE_ARTICLES (ID INTEGER, Code TEXT, Article TEXT, ID_ARTICLE TEXT)")
