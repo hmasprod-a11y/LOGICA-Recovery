@@ -16,6 +16,11 @@ $report = [ordered]@{
     activationLabelVisible = $null
     activationScreenVisible = $null
     licensedCashierVerified = $false
+    loginPinInputLocated = $false
+    loginPinInputVisible = $null
+    cashierMenuLocated = $false
+    cashierMenuVisible = $null
+    loginScreenVisible = $null
 }
 try {
     Add-Type -AssemblyName UIAutomationClient
@@ -36,6 +41,14 @@ try {
             $id = [string]$node.Current.AutomationId
             $name = [string]$node.Current.Name
             $visible = -not [bool]$node.Current.IsOffscreen
+            if ($id -eq 'Text_NUM') {
+                $report.loginPinInputLocated = $true
+                $report.loginPinInputVisible = $visible
+            }
+            if ($id -eq 'Button_VENTE') {
+                $report.cashierMenuLocated = $true
+                $report.cashierMenuVisible = $visible
+            }
             if ($id -eq 'Panel_clé' -or $id -eq 'Panel_cle') {
                 $report.activationPanelLocated = $true
                 $report.activationPanelVisible = $visible
@@ -96,6 +109,11 @@ public static class LogicaActivationCaptionProbe {
         $report.activationLabelVisible = $true
     }
     $report.inspectionStatus = 'inspected'
+    # A visible PIN input establishes the login screen only; it is NOT proof
+    # of a valid license, a completed login, or access to the cashier.
+    if ($report.loginPinInputLocated) {
+        $report.loginScreenVisible = [bool]$report.loginPinInputVisible
+    }
     if ($report.activationPanelVisible -eq $true -or $report.activationLabelVisible -eq $true) {
         $report.activationScreenVisible = $true
     } elseif ($report.activationPanelLocated -or $report.activationLabelLocated) {
