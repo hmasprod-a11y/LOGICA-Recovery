@@ -32,6 +32,7 @@ on:
       - 'scripts/test-release-private-state.ps1'
       - 'scripts/package-beta-rc.ps1'
       - 'scripts/package-runtime.ps1'
+      - 'scripts/test-package-runtime-isolation.ps1'
       - 'scripts/verify-beta-rc.ps1'
       - 'scripts/test-beta-release-verifier.ps1'
       - 'scripts/test-extracted-release.ps1'
@@ -72,6 +73,7 @@ on:
       - 'scripts/test-release-private-state.ps1'
       - 'scripts/package-beta-rc.ps1'
       - 'scripts/package-runtime.ps1'
+      - 'scripts/test-package-runtime-isolation.ps1'
       - 'scripts/verify-beta-rc.ps1'
       - 'scripts/test-beta-release-verifier.ps1'
       - 'scripts/test-extracted-release.ps1'
@@ -122,6 +124,7 @@ jobs:
           foreach ($path in @('scripts/Launch-LOGICA.ps1', 'scripts/package-beta-rc.ps1', 'scripts/test-extracted-release.ps1',
                               'scripts/verify-beta-rc.ps1', 'scripts/test-beta-release-verifier.ps1',
                               'scripts/test-release-candidate.ps1', 'scripts/test-release-private-state.ps1',
+                              'scripts/package-runtime.ps1', 'scripts/test-package-runtime-isolation.ps1',
                               'scripts/test-pr84-mariadb-schema.ps1',
                               'scripts/probe-activation-ui.ps1', 'scripts/test-activation-ui-probe.ps1')) {
             $tokens = $null
@@ -158,6 +161,9 @@ jobs:
       - name: Guard release private-state candidate gate with isolated fixtures
         shell: pwsh
         run: ./scripts/test-release-private-state.ps1
+      - name: Prevent shop-specific settings leaking into customer package (synthetic fixture)
+        shell: pwsh
+        run: ./scripts/test-package-runtime-isolation.ps1
       - name: Compile shared modern core for dual targets when available
         if: ${{ hashFiles('modernization/LOGICA.CoreCompatibility.csproj') != '' }}
         shell: pwsh
