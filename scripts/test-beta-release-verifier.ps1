@@ -114,6 +114,24 @@ try {
     Write-FixtureZip
     Assert-Rejected 'nonempty license state'
     [IO.File]::WriteAllText((Join-Path $src 'hash_licence.sni'), '')
+    # These are dummy bytes only; ensure no temporary plaintext DB credentials can ship.
+    foreach ($private in @('bd/mysql-client-temporary.ini', 'nested/MYSQL-CLIENT-TEMPORARY.INI',
+                           'bd/mysql-credential.xml', 'bd/mysql-import-complete.txt')) {
+        $privatePath = Join-Path $src $private
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $privatePath) | Out-Null
+        [IO.File]::WriteAllText($privatePath, 'CI dummy private state')
+        try {
+            Write-FixtureManifest
+            Write-FixtureZip
+            Assert-Rejected "bundled private database state $private"
+        } finally {
+            Remove-Item -LiteralPath $privatePath -Force
+        }
+    }
+    Write-FixtureManifest
+    Write-FixtureZip
+    & $verifier -ZipPath $zip -ManifestPath $manifest -SumsPath $sums -ExpectedCommit $commit | Out-Null
+    Write-Host 'PASS: clean fixture accepted after private-state rejection probes'
     [IO.File]::WriteAllText((Join-Path $src 'CHEMIN_DB.sni'), '192.0.2.1')
     Write-FixtureManifest
     Write-FixtureZip
