@@ -2911,7 +2911,7 @@ public class FormDialog_calc : Form
 					((Control)val).Height = 94;
 					// A missing image must not prevent payment method buttons from existing.
 					object imageValue = paymentRow.Cells.Count > 1 ? paymentRow.Cells[1].Value : null;
-					string imageName = imageValue == null || imageValue == DBNull.Value ? "" : Convert.ToString(imageValue);
+					string imageName = imageValue == null || imageValue == DBNull.Value ? "" : Convert.ToString(imageValue).Trim();
 					if (!string.IsNullOrWhiteSpace(Module1._CHEMIN_FOLDER) && !string.IsNullOrWhiteSpace(imageName) && imageName == Path.GetFileName(imageName))
 					{
 						string imagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", imageName);
@@ -3048,7 +3048,12 @@ public class FormDialog_calc : Form
 		//IL_00c1: Unknown result type (might be due to invalid IL or missing references)
 		try
 		{
-			if (!HasSelectedPaymentMethod())
+			// Commit the cashier's active editor before checking amounts and methods.
+			// Otherwise a previous valid cell value can be posted while the editor
+			// displays an incomplete replacement amount.
+			if (!DataGridView_CALC.EndEdit()) return;
+			Button_calc_Click(sender, e);
+			if (!((Control)Button_SOLDER).Enabled || !HasSelectedPaymentMethod())
 			{
 				MessageBox.Show("Choisissez une mode de paiement", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 				return;
@@ -3199,8 +3204,12 @@ public class FormDialog_calc : Form
 				decimal due, paid;
 				if (row.Cells.Count < 4 ||
 					!TryGetPaymentNumber(row.Cells[0].Value, out due) ||
-					!TryGetPaymentNumber(row.Cells[1].Value, out paid))
+					!TryGetPaymentNumber(row.Cells[1].Value, out paid) ||
+					row.Cells[3].Value == null || row.Cells[3].Value == DBNull.Value ||
+					string.IsNullOrWhiteSpace(Convert.ToString(row.Cells[3].Value)))
 				{
+					// A partial payment edit must not leave a previously valid remainder visible.
+					((ButtonBase)Button_RESTE).Text = "";
 					((Control)Button_SOLDER).Enabled = false;
 					return;
 				}
@@ -3221,14 +3230,10 @@ public class FormDialog_calc : Form
 				num6 = Conversions.ToDouble(Operators.AddObject(num6, row.Cells[2].Value));
 			}
 			((ButtonBase)Button_RESTE).Text = Conversions.ToString(Module1.FLOUSS(new decimal(Conversion.Val(Text_TOTAL_NET.Text) - Conversion.Val(num5))));
-			if (Conversion.Val(((ButtonBase)Button_RESTE).Text) > 0.0)
-			{
-				((Control)Button_SOLDER).Enabled = false;
-			}
-			else if (Conversion.Val(((ButtonBase)Button_RESTE).Text) <= 0.0)
-			{
-				((Control)Button_SOLDER).Enabled = true;
-			}
+			// A zero/negative total alone is not a settlement: at least one complete
+			// payment method must be present before SOLDER can be clicked.
+			((Control)Button_SOLDER).Enabled = paymentCount > 0 &&
+				HasSelectedPaymentMethod() && Conversion.Val(((ButtonBase)Button_RESTE).Text) <= 0.0;
 			if (paymentCount > 0)
 			{
 				foreach (DataGridViewRow row in DataGridView_CALC.Rows)
