@@ -41,7 +41,11 @@ try {
             $id = [string]$node.Current.AutomationId
             $name = [string]$node.Current.Name
             $visible = -not [bool]$node.Current.IsOffscreen
-            if ($id -eq 'Text_NUM') {
+            # WinForms UIA commonly exposes a numeric native HWND as AutomationId,
+            # not Control.Name. The login PIN is a password Edit control.
+            $isPasswordEdit = ($node.Current.ControlType -eq [System.Windows.Automation.ControlType]::Edit -and
+                               [bool]$node.Current.IsPassword)
+            if ($id -eq 'Text_NUM' -or $name -eq 'Text_NUM' -or $isPasswordEdit) {
                 $report.loginPinInputLocated = $true
                 $report.loginPinInputVisible = $visible
             }
