@@ -36,7 +36,7 @@ namespace LOGICA.ApplicationLayer.Checkout
                 !article.Table.Columns.Contains("Code") ||
                 !article.Table.Columns.Contains("ID_ARTICLE") ||
                 article.IsNull("ID_ARTICLE") ||
-                String.IsNullOrEmpty(Convert.ToString(article["ID_ARTICLE"])))
+                String.IsNullOrWhiteSpace(Convert.ToString(article["ID_ARTICLE"])))
                 throw new InvalidOperationException("Image tile article identity is incomplete.");
             return new CheckoutArticleTileReference(
                 article.IsNull("Code") ? "" : Convert.ToString(article["Code"]),
