@@ -260,6 +260,51 @@ internal static class CheckoutBarcodeSelectionTests
                     sameTable.SelectedRow != null || sameTableReads != 1)
                     throw new Exception("A same-table refresh must fail closed");
                 checks++;
+                // The snapshot-based opt-in adapter and the DataTable modal
+                // bridge must reject the SAME stale table, not just the
+                // scanner-specific SelectWithRefresh wrapper.
+                int modernStaleReads = 0;
+                CheckoutVariantChoiceResult modernStale =
+                    CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(displayedLive,
+                        delegate(System.Collections.Generic.IList<CheckoutVariantSnapshot> variants) {
+                            return 1;
+                        }, delegate { modernStaleReads++; return displayedLive; });
+                if (modernStale.Status != CheckoutVariantChoiceStatus.InvalidCandidates ||
+                    modernStale.SelectedRow != null || modernStaleReads != 1)
+                    throw new Exception("Modern SQL refresh cannot reuse displayed DataTable");
+                checks++;
+                int modalStaleReads = 0;
+                CheckoutVariantChoiceResult modalStale =
+                    CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(displayedLive,
+                        delegate(DataTable shown) {
+                            if (!Object.ReferenceEquals(shown, displayedLive))
+                                throw new Exception("Original modal rows must be displayed");
+                            return 1;
+                        }, delegate { modalStaleReads++; return displayedLive; });
+                if (modalStale.Status != CheckoutVariantChoiceStatus.InvalidCandidates ||
+                    modalStale.SelectedRow != null || modalStaleReads != 1)
+                    throw new Exception("Modal SQL refresh cannot reuse displayed DataTable");
+                checks++;
+                // Cancellation must never query the local store or accidentally
+                // trigger the stale-table guard.
+                int cancelledFreshReads = 0;
+                CheckoutVariantChoiceResult modernCancelled =
+                    CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(displayedLive,
+                        delegate(System.Collections.Generic.IList<CheckoutVariantSnapshot> variants) {
+                            return -1;
+                        }, delegate { cancelledFreshReads++; return displayedLive; });
+                if (modernCancelled.Status != CheckoutVariantChoiceStatus.Cancelled ||
+                    cancelledFreshReads != 0 || modernCancelled.SelectedRow != null)
+                    throw new Exception("Cancelled modern choice must never requery");
+                checks++;
+                CheckoutVariantChoiceResult modalCancelled =
+                    CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(displayedLive,
+                        delegate(DataTable shown) { return -1; },
+                        delegate { cancelledFreshReads++; return displayedLive; });
+                if (modalCancelled.Status != CheckoutVariantChoiceStatus.Cancelled ||
+                    cancelledFreshReads != 0 || modalCancelled.SelectedRow != null)
+                    throw new Exception("Cancelled modal choice must never requery");
+                checks++;
                 DataTable reloadedCopy = displayedLive.Copy();
                 reloadedCopy.Rows[1]["Prix_V_1"] = 55m;
                 reloadedCopy.Rows[1]["REMISE"] = 20m;
@@ -274,6 +319,37 @@ internal static class CheckoutBarcodeSelectionTests
                     (decimal)copiedRefresh.SelectedRow["REMISE"] != 20m ||
                     (decimal)copiedRefresh.SelectedRow["TAUX_TVA"] != 6m)
                     throw new Exception("Distinct live table must preserve refreshed price, discount and tax");
+                checks++;
+                CheckoutVariantChoiceResult modernCopied =
+                    CheckoutSelectionFlowService.ChooseBarcodeWithRefresh(displayedLive,
+                        delegate(System.Collections.Generic.IList<CheckoutVariantSnapshot> variants) {
+                            return 1;
+                        }, delegate { return reloadedCopy; });
+                if (modernCopied.Status != CheckoutVariantChoiceStatus.Selected ||
+                    !Object.ReferenceEquals(modernCopied.SelectedRow, reloadedCopy.Rows[1]) ||
+                    (decimal)modernCopied.SelectedRow["Prix_V_1"] != 55m ||
+                    (decimal)modernCopied.SelectedRow["REMISE"] != 20m ||
+                    (decimal)modernCopied.SelectedRow["TAUX_TVA"] != 6m)
+                    throw new Exception("Modern fresh copy must preserve live price, discount and tax");
+                checks++;
+                CheckoutVariantChoiceResult modalCopied =
+                    CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(displayedLive,
+                        delegate(DataTable shown) { return 1; },
+                        delegate { return reloadedCopy; });
+                if (modalCopied.Status != CheckoutVariantChoiceStatus.Selected ||
+                    !Object.ReferenceEquals(modalCopied.SelectedRow, reloadedCopy.Rows[1]) ||
+                    (decimal)modalCopied.SelectedRow["Prix_V_1"] != 55m)
+                    throw new Exception("Modal fresh copy must use live price");
+                checks++;
+                // The old no-SQL UI contract must remain functional even
+                // though the opt-in refresh methods now require a new table.
+                CheckoutVariantChoiceResult legacyInMemory =
+                    CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialogInMemory(
+                        displayedLive, delegate(DataTable shown) { return 1; },
+                        delegate { return displayedLive; });
+                if (legacyInMemory.Status != CheckoutVariantChoiceStatus.Selected ||
+                    !Object.ReferenceEquals(legacyInMemory.SelectedRow, displayedLive.Rows[1]))
+                    throw new Exception("Explicit legacy in-memory modal path must be preserved");
                 checks++;
                 // The existing real WinForms Select path intentionally has no
                 // second SQL query yet. It must remain functional and distinct
