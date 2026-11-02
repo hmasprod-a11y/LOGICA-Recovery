@@ -14,6 +14,9 @@ try {
     & $exe
     if ($LASTEXITCODE -ne 0) { throw 'Isolated MariaDB duplicate catalogue regression failed' }
     Write-Host 'PASS production CatalogueDuplicateLookup against isolated MariaDB'
+    # Follow the lookup test with the real creation-movement writer in a fresh
+    # disposable schema. Both are Inventory-owned; QA still owns CI wiring.
+    & (Join-Path $PSScriptRoot 'test-catalogue-creation-mariadb.ps1')
 } finally {
     Remove-Item -LiteralPath $exe,$config -Force -ErrorAction SilentlyContinue
 }
