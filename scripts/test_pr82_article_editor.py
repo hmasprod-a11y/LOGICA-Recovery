@@ -18,3 +18,11 @@ sales = Path("recovered-source/LOGICA/Form_3_VENTE.cs").read_text(encoding="utf-
 for field in ("GROUPE", "PRIX_QTE", "PRIX_QTE_MIN"):
     assert 'selectedArticle.Table.Columns.Contains("'+field+'")' in sales,field
 assert 'Module1.dt1.Columns.Contains("GROUPE")' in sales
+
+# Image mode preserves actual on-disk photos and old family classifications.
+loader=Path("recovered-source/LOGICA/Infrastructure/Checkout/CheckoutArticleImageLoader.cs").read_text(encoding="utf-8")
+assert "LoadWithFallback" in loader
+assert 'Path.Combine(root, "bd", "images")' in loader
+assert "Bitmap image = Load(candidate, fileName)" in loader
+assert sales.count("CheckoutArticleImageLoader.LoadWithFallback(") == 2
+assert "inner join TABLE_ARTICLES a on a.Famille = f.Famille" in sales
