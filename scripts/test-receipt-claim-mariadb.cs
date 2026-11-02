@@ -202,6 +202,19 @@ internal static class ReceiptClaimMariaDbSmoke
                 transaction.Rollback();
             }
 
+            // Nontransactional legacy tables cannot guarantee rollback.
+            // Reject them before any receipt header or stock write.
+            Execute(connection, null, "ALTER TABLE TABLE_RECEPTIONS_DETAILS ENGINE=MyISAM");
+            using (var transaction = connection.BeginTransaction())
+            {
+                bool rejected = false;
+                try { Claim(method, connection, transaction, "BR-3"); }
+                catch (InvalidOperationException) { rejected = true; }
+                Require(rejected, "Nontransactional receipt details table was accepted");
+                transaction.Rollback();
+            }
+            Execute(connection, null, "ALTER TABLE TABLE_RECEPTIONS_DETAILS ENGINE=InnoDB");
+
             // Deliberately break uniqueness in SCRATCH ONLY to ensure the
             // helper fails closed on duplicate headers rather than posting.
             Execute(connection, null, "ALTER TABLE TABLE_RECEPTIONS_ENTETE DROP INDEX uq_receipt");
@@ -215,7 +228,7 @@ internal static class ReceiptClaimMariaDbSmoke
                 Require(rejected, "Duplicate receipt header was accepted");
                 transaction.Rollback();
             }
-            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, rollback/retry, invalid/duplicate headers");
+            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, rollback/retry, invalid/duplicate headers, MyISAM rejection");
         }
     }
 
