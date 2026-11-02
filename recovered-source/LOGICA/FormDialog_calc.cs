@@ -22,6 +22,10 @@ public class FormDialog_calc : Form
 
 	private IContainer components;
 
+	// Calculating the derived change cell raises CellValueChanged again.
+	// Keep the outer settlement calculation authoritative and non-reentrant.
+	private bool _calculatingPayments;
+
 	[AccessedThroughProperty("Panel_DEVIS")]
 	private Panel _Panel_DEVIS;
 
@@ -2836,6 +2840,18 @@ public class FormDialog_calc : Form
 
 	// A blank/new payment grid row must never count as a chosen settlement.
 	// The actual payment method is in column 3 of the legacy calculation grid.
+	// Preserve legacy VB numeric conversion while rejecting incomplete edits before
+	// recalculation or checkout posting. A blank cell is not a zero payment.
+	private static bool TryGetPaymentNumber(object value, out decimal number)
+	{
+		number = 0m;
+		if (value == null || value == DBNull.Value || string.IsNullOrWhiteSpace(Convert.ToString(value))) return false;
+		try { number = Conversions.ToDecimal(value); return true; }
+		catch (InvalidCastException) { return false; }
+		catch (FormatException) { return false; }
+		catch (OverflowException) { return false; }
+	}
+
 	private bool HasSelectedPaymentMethod()
 	{
 		bool hasPayment = false;
@@ -2843,6 +2859,9 @@ public class FormDialog_calc : Form
 		{
 			if (row.IsNewRow) continue;
 			if (row.Cells.Count <= 3) return false;
+			decimal due, paid;
+			if (!TryGetPaymentNumber(row.Cells[0].Value, out due) ||
+				!TryGetPaymentNumber(row.Cells[1].Value, out paid)) return false;
 			object method = row.Cells[3].Value;
 			if (method == null || method == DBNull.Value ||
 				string.IsNullOrWhiteSpace(Convert.ToString(method)))
@@ -2850,6 +2869,28 @@ public class FormDialog_calc : Form
 			hasPayment = true;
 		}
 		return hasPayment;
+	}
+
+	// Payment icons are optional catalogue data, not a prerequisite for checkout.
+	// Path.GetFileName/Path.Combine can throw before Image.FromFile for malformed
+	// legacy settings; keep the method button visible even for invalid paths.
+	private static Image TryLoadPaymentIcon(string root, string imageName)
+	{
+		if (string.IsNullOrWhiteSpace(root) || string.IsNullOrWhiteSpace(imageName)) return null;
+		try
+		{
+			if (imageName != Path.GetFileName(imageName)) return null;
+			string path = Path.Combine(root, "bd", "images", imageName);
+			if (!File.Exists(path)) return null;
+			using (Image source = Image.FromFile(path))
+				return new Bitmap(source);
+		}
+		catch (IOException) { return null; }
+		catch (UnauthorizedAccessException) { return null; }
+		catch (ArgumentException) { return null; }
+		catch (NotSupportedException) { return null; }
+		catch (OutOfMemoryException) { return null; }
+		catch (System.Runtime.InteropServices.ExternalException) { return null; }
 	}
 
 	private void FormDialog_calc_Load(object sender, EventArgs e)
@@ -2896,24 +2937,8 @@ public class FormDialog_calc : Form
 					((Control)val).Height = 94;
 					// A missing image must not prevent payment method buttons from existing.
 					object imageValue = paymentRow.Cells.Count > 1 ? paymentRow.Cells[1].Value : null;
-					string imageName = imageValue == null || imageValue == DBNull.Value ? "" : Convert.ToString(imageValue);
-					if (!string.IsNullOrWhiteSpace(Module1._CHEMIN_FOLDER) && !string.IsNullOrWhiteSpace(imageName) && imageName == Path.GetFileName(imageName))
-					{
-						string imagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", imageName);
-						if (File.Exists(imagePath))
-						{
-							try
-							{
-								using (var source = Image.FromFile(imagePath))
-									((ButtonBase)val).Image = new Bitmap(source);
-							}
-							catch (IOException) { }
-							catch (UnauthorizedAccessException) { }
-							catch (ArgumentException) { }
-							catch (OutOfMemoryException) { }
-							catch (System.Runtime.InteropServices.ExternalException) { }
-						}
-					}
+					string imageName = imageValue == null || imageValue == DBNull.Value ? "" : Convert.ToString(imageValue).Trim();
+					((ButtonBase)val).Image = TryLoadPaymentIcon(Module1._CHEMIN_FOLDER, imageName);
 					((ButtonBase)val).ImageAlign = (ContentAlignment)2;
 					((ButtonBase)val).FlatStyle = (FlatStyle)0;
 					((ButtonBase)val).FlatAppearance.BorderSize = 0;
@@ -2984,11 +3009,19 @@ public class FormDialog_calc : Form
 				// Ignore stale or blank controls instead of inserting an unusable payment row.
 				Button selectedMethod = sender as Button;
 				if (selectedMethod == null || string.IsNullOrWhiteSpace(selectedMethod.Text)) return;
+				// Never create a zero-due row from an invalid or stale remainder.
+				// VB Conversion.Val silently truncates comma decimals (e.g. 10,25 -> 10).
+				decimal remainingDue;
+				if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out remainingDue))
+				{
+					Button_calc_Click(sender, e);
+					if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out remainingDue)) return;
+				}
 				int insertedRow = DataGridView_CALC.Rows.Add(new object[4]
 				{
-					Conversion.Val(((ButtonBase)Button_RESTE).Text),
-					0,
-					0,
+					remainingDue,
+					0m,
+					0m,
 					selectedMethod.Text
 				});
 				Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
@@ -3033,7 +3066,12 @@ public class FormDialog_calc : Form
 		//IL_00c1: Unknown result type (might be due to invalid IL or missing references)
 		try
 		{
-			if (!HasSelectedPaymentMethod())
+			// Commit the cashier's active editor before checking amounts and methods.
+			// Otherwise a previous valid cell value can be posted while the editor
+			// displays an incomplete replacement amount.
+			if (!DataGridView_CALC.EndEdit()) return;
+			Button_calc_Click(sender, e);
+			if (!((Control)Button_SOLDER).Enabled || !HasSelectedPaymentMethod())
 			{
 				MessageBox.Show("Choisissez une mode de paiement", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 				return;
@@ -3102,7 +3140,7 @@ public class FormDialog_calc : Form
 		//IL_0036: Expected Obj, but got Unknown
 		try
 		{
-			if (DataGridView_CALC.Rows.Count == 0)
+			if (SelectedPaymentRowCount() == 0)
 			{
 				Button val = CashPaymentButton();
 				if (val == null)
@@ -3113,7 +3151,7 @@ public class FormDialog_calc : Form
 				val.PerformClick();
 				Button_REFRESH.PerformClick();
 			}
-			if (DataGridView_CALC.CurrentRow == null) return;
+			if (DataGridView_CALC.CurrentRow == null || DataGridView_CALC.CurrentRow.IsNewRow) return;
 			int rowIndex = DataGridView_CALC.CurrentRow.Index;
 			DataGridView_CALC.Rows[rowIndex].Cells[1].Value = Operators.AddObject(DataGridView_CALC.Rows[rowIndex].Cells[1].Value, Conversion.Val(RuntimeHelpers.GetObjectValue(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null))));
 			Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
@@ -3172,34 +3210,77 @@ public class FormDialog_calc : Form
 
 	private void Button_calc_Click(object sender, EventArgs e)
 	{
-		//IL_001d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0023: Expected Obj, but got Unknown
+		if (_calculatingPayments) return;
+		_calculatingPayments = true;
+		try
+		{
 		checked
 		{
+			// A missing or unfinished total is not a zero-value sale.
+			decimal total;
+			if (!TryGetPaymentNumber(Text_TOTAL_NET.Text, out total))
+			{
+				((ButtonBase)Button_RESTE).Text = "";
+				((Control)Button_SOLDER).Enabled = false;
+				return;
+			}
+			// CellValueChanged fires while the cashier is still editing. Never
+			// recalculate from a null/partial amount or leave SOLDER enabled.
+			foreach (DataGridViewRow row in DataGridView_CALC.Rows)
+			{
+				if (row.IsNewRow) continue;
+				decimal due, paid;
+				if (row.Cells.Count < 4 ||
+					!TryGetPaymentNumber(row.Cells[0].Value, out due) ||
+					!TryGetPaymentNumber(row.Cells[1].Value, out paid) ||
+					row.Cells[3].Value == null || row.Cells[3].Value == DBNull.Value ||
+					string.IsNullOrWhiteSpace(Convert.ToString(row.Cells[3].Value)))
+				{
+					// A partial payment edit must not leave a previously valid remainder visible.
+					((ButtonBase)Button_RESTE).Text = "";
+					((Control)Button_SOLDER).Enabled = false;
+					return;
+				}
+			}
 			// DataGridView may expose an uncommitted placeholder row when adding
 			// rows is enabled. It is not a payment and has no numeric cell values.
 			int paymentCount = 0;
 			foreach (DataGridViewRow row in DataGridView_CALC.Rows)
 				if (!row.IsNewRow) paymentCount++;
-			double num5 = 0.0;
-			double num6 = 0.0;
+			// Keep monetary arithmetic decimal and culture-aware throughout the
+			// cashier UI; Conversion.Val truncates comma decimals in French locales.
+			decimal paidTotal = 0m;
 			foreach (DataGridViewRow row in DataGridView_CALC.Rows)
 			{
 				if (row.IsNewRow) continue;
 				row.Height = Math.Max(24, (int)Math.Round((double)(((Control)DataGridView_CALC).Height - DataGridView_CALC.ColumnHeadersHeight - 3) / Math.Max(1, paymentCount)));
-				row.Cells[2].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.SubtractObject(row.Cells[1].Value, row.Cells[0].Value)));
-				num5 = Conversions.ToDouble(Operators.AddObject(num5, row.Cells[1].Value));
-				num6 = Conversions.ToDouble(Operators.AddObject(num6, row.Cells[2].Value));
+				decimal due = Conversions.ToDecimal(row.Cells[0].Value);
+				decimal paid = Conversions.ToDecimal(row.Cells[1].Value);
+				try
+				{
+					row.Cells[2].Value = Module1.FLOUSS(checked(paid - due));
+					paidTotal = checked(paidTotal + paid);
+				}
+				catch (OverflowException)
+				{
+					((ButtonBase)Button_RESTE).Text = "";
+					((Control)Button_SOLDER).Enabled = false;
+					return;
+				}
 			}
-			((ButtonBase)Button_RESTE).Text = Conversions.ToString(Module1.FLOUSS(new decimal(Conversion.Val(Text_TOTAL_NET.Text) - Conversion.Val(num5))));
-			if (Conversion.Val(((ButtonBase)Button_RESTE).Text) > 0.0)
+			decimal remainder;
+			try { remainder = Module1.FLOUSS(checked(total - paidTotal)); }
+			catch (OverflowException)
 			{
+				((ButtonBase)Button_RESTE).Text = "";
 				((Control)Button_SOLDER).Enabled = false;
+				return;
 			}
-			else if (Conversion.Val(((ButtonBase)Button_RESTE).Text) <= 0.0)
-			{
-				((Control)Button_SOLDER).Enabled = true;
-			}
+			((ButtonBase)Button_RESTE).Text = Conversions.ToString(remainder);
+			// A zero/negative total alone is not a settlement: at least one complete
+			// payment method must be present before SOLDER can be clicked.
+			((Control)Button_SOLDER).Enabled = paymentCount > 0 &&
+				HasSelectedPaymentMethod() && remainder <= 0m;
 			if (paymentCount > 0)
 			{
 				foreach (DataGridViewRow row in DataGridView_CALC.Rows)
@@ -3210,6 +3291,8 @@ public class FormDialog_calc : Form
 				}
 			}
 		}
+		}
+		finally { _calculatingPayments = false; }
 	}
 
 	private void DataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
@@ -3341,7 +3424,7 @@ public class FormDialog_calc : Form
 
 	private void Button_NUMERIQUE_Click(object sender, EventArgs e)
 	{
-		if (DataGridView_CALC.Rows.Count != 0)
+		if (SelectedPaymentRowCount() > 0)
 		{
 			((Control)Panel_CLAVIER).Visible = true;
 			((Control)Panel_CLAVIER).BringToFront();
@@ -3356,7 +3439,7 @@ public class FormDialog_calc : Form
 		//IL_00fb: Expected Obj, but got Unknown
 		try
 		{
-			if (DataGridView_CALC.Rows.Count != 0 && DataGridView_CALC.CurrentRow != null)
+			if (SelectedPaymentRowCount() > 0 && DataGridView_CALC.CurrentRow != null && !DataGridView_CALC.CurrentRow.IsNewRow)
 			{
 				DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = "0";
 				((Control)DataGridView_CALC).Focus();
@@ -3399,7 +3482,11 @@ public class FormDialog_calc : Form
 		//IL_0036: Expected Obj, but got Unknown
 		try
 		{
-			if (DataGridView_CALC.Rows.Count == 0)
+			// Blank/invalid remainder means the last edit has not been validated.
+			// Do not silently turn that state into a zero cash payment.
+			decimal remainder;
+			if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out remainder)) return;
+			if (SelectedPaymentRowCount() == 0)
 			{
 				Button val = CashPaymentButton();
 				if (val == null)
@@ -3410,8 +3497,8 @@ public class FormDialog_calc : Form
 				val.PerformClick();
 				Button_REFRESH.PerformClick();
 			}
-			if (DataGridView_CALC.CurrentRow == null) return;
-			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = Conversion.Val(((ButtonBase)Button_RESTE).Text);
+			if (DataGridView_CALC.CurrentRow == null || DataGridView_CALC.CurrentRow.IsNewRow) return;
+			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = remainder;
 			Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 			((Control)DataGridView_CALC).Focus();
 		}
@@ -3456,82 +3543,33 @@ public class FormDialog_calc : Form
 
 	private void Butt_Click(object sender, EventArgs e)
 	{
-		Label_NUM.Text = Conversions.ToString(Operators.AddObject(Label_NUM.Text, NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null)));
+		Button key = sender as Button;
+		if (key == null || string.IsNullOrEmpty(key.Text) || key.Text.Length != 1) return;
+		char character = key.Text[0];
+		string current = Label_NUM.Text ?? "";
+		if (character >= '0' && character <= '9')
+			Label_NUM.Text = current + character;
+		else if (character == '.' && current.IndexOf('.') < 0)
+			Label_NUM.Text = (current.Length == 0 || current == "-" ? current + "0" : current) + ".";
+		else if (character == '-' && current.Length == 0)
+			Label_NUM.Text = "-";
+		// Reject duplicate decimal points, misplaced minus and nonnumeric captions.
 	}
 
 	private void Butt_BACK_Click(object sender, EventArgs e)
 	{
-		int try0001_dispatch = -1;
-		int num3 = default;
-		int num = default;
-		int num2 = default;
-		while (true)
-		{
-			try
-			{
-				/*Note: ILSpy has introduced the following switch to emulate a goto from catch-block to try-block*/;
-				switch (try0001_dispatch)
-				{
-				default:
-					ProjectData.ClearProjectError();
-					num3 = -2;
-					break;
-				case 90:
-					{
-						num = num2;
-						switch ((num3 <= -2) ? 1 : num3)
-						{
-						case 1:
-							break;
-						default:
-							goto end_IL_0001;
-						}
-						int num4 = num + 1;
-						num = 0;
-						switch (num4)
-						{
-						case 1:
-							break;
-						case 2:
-							goto end_IL_0001_2;
-						default:
-							goto end_IL_0001;
-						case 3:
-							goto end_IL_0001_3;
-						}
-						goto default;
-					}
-					end_IL_0001_2:
-					break;
-				}
-				num2 = 2;
-				Label_NUM.Text = Label_NUM.Text.Remove(checked(Label_NUM.Text.Length - 1));
-				break;
-				end_IL_0001:;
-			}
-			catch (Exception ex) when ((num3 != 0) & (num == 0))
-			{
-				ProjectData.SetProjectError(ex);
-				try0001_dispatch = 90;
-				continue;
-			}
-			throw ProjectData.CreateProjectError(-2146828237);
-			continue;
-			end_IL_0001_3:
-			break;
-		}
-		if (num != 0)
-		{
-			ProjectData.ClearProjectError();
-		}
+		if (!string.IsNullOrEmpty(Label_NUM.Text))
+			Label_NUM.Text = Label_NUM.Text.Substring(0, Label_NUM.Text.Length - 1);
 	}
 
 	private void Button_CLAVIER_NOSELECT1_Click(object sender, EventArgs e)
 	{
 		try
 		{
-			if (DataGridView_CALC.CurrentRow == null) return;
-			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = Conversion.Val(Label_NUM.Text);
+			if (DataGridView_CALC.CurrentRow == null || DataGridView_CALC.CurrentRow.IsNewRow) return;
+			decimal entered;
+			if (!TryGetPaymentNumber(Label_NUM.Text, out entered)) return;
+			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = entered;
 			((Control)DataGridView_CALC).Focus();
 			SendKeys.Send("{RIGHT}{LEFT}");
 			Label_NUM.Text = "";
