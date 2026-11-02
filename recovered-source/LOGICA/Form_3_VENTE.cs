@@ -15602,22 +15602,32 @@ public class Form_3_VENTE : Form
 	// Keep the normal 10px/2pt steps but bound only the unsafe extremes.
 	private void ResizeArticleTiles(int direction)
 	{
-		foreach (Control tile in ((Control)FlowLayout_ARTICLES).Controls)
+		// Avoid one full flow-layout pass per product while resizing a large
+		// catalogue; always resume layout even if a tile was disposed mid-update.
+		((Control)FlowLayout_ARTICLES).SuspendLayout();
+		try
 		{
-			if (tile.IsDisposed)
+			foreach (Control tile in ((Control)FlowLayout_ARTICLES).Controls)
 			{
-				continue;
+				if (tile.IsDisposed)
+				{
+					continue;
+				}
+				int width = Math.Max(80, Math.Min(320, tile.Width + direction * 10));
+				int height = Math.Max(70, Math.Min(280, tile.Height + direction * 10));
+				float fontSize = Math.Max(7f, Math.Min(22f, tile.Font.Size + direction * 2f));
+				tile.Width = width;
+				tile.Height = height;
+				if (Math.Abs(tile.Font.Size - fontSize) > 0.01f)
+				{
+					// Preserve the existing caption style and the product tile identity.
+					tile.Font = new Font("Segoe UI", fontSize, tile.Font.Style);
+				}
 			}
-			int width = Math.Max(80, Math.Min(320, tile.Width + direction * 10));
-			int height = Math.Max(70, Math.Min(280, tile.Height + direction * 10));
-			float fontSize = Math.Max(7f, Math.Min(22f, tile.Font.Size + direction * 2f));
-			tile.Width = width;
-			tile.Height = height;
-			if (Math.Abs(tile.Font.Size - fontSize) > 0.01f)
-			{
-				// Preserve the existing caption style and the product tile identity.
-				tile.Font = new Font("Segoe UI", fontSize, tile.Font.Style);
-			}
+		}
+		finally
+		{
+			((Control)FlowLayout_ARTICLES).ResumeLayout(true);
 		}
 		// Zoom changes the scrollable extent; the old thumb range was stale until
 		// the next catalogue search, hiding the last products on small displays.
