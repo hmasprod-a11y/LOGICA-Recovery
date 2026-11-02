@@ -1,0 +1,18 @@
+name: Article creation regression checks
+on:
+  pull_request:
+    paths:
+      - recovered-source/LOGICA/Form_2_ARTICLES.cs
+      - scripts/test_article_create_regression.py
+      - .github/workflows/article-create-regression.yml
+  workflow_dispatch:
+jobs:
+  article-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify article creation regression guards
+        run: python scripts/test_article_create_regression.py
