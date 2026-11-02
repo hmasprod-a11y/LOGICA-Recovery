@@ -4,11 +4,13 @@ using LOGICA.ApplicationLayer.Checkout;
 
 internal static class PortablePostingSmoke
 {
-    private sealed class Store : ICheckoutPostingStore
+    private sealed class Store : ICheckoutPostingStore, ICheckoutTransactionFinalizer
     {
         internal readonly List<string> Events = new List<string>();
         internal bool FailSecondPayment;
         internal int PaymentCount;
+        internal int CommitCount;
+        internal int CloseCount;
         internal int StockCount;
         internal TicketPaymentWrite LastPayment;
         internal CheckoutStockLine LastStock;
@@ -23,6 +25,8 @@ internal static class PortablePostingSmoke
             if (FailSecondPayment && payment.AmountText == "2") throw new InvalidOperationException("payment");
         }
         public void Complete(CheckoutCompletionRecord completion) { Events.Add("complete"); }
+        public void Commit() { CommitCount++; Events.Add("commit"); }
+        public void Close() { CloseCount++; Events.Add("close"); }
     }
     private static IEnumerable<CheckoutStockLine> Stocks()
     {
@@ -85,26 +89,30 @@ internal static class PortablePostingSmoke
 
         var failed = new Store { FailSecondPayment = true };
         bool propagated = false;
-        try { CheckoutPostingService.Post(failed, Input(failed)); }
+        try { CheckoutTransactionFinalizationService.PostAndFinalize(failed, Input(failed), failed); }
         catch (InvalidOperationException ex) { propagated = ex.Message == "payment"; }
         if (!propagated) throw new Exception("Payment failure must propagate to the caller-owned transaction");
         Assert(failed, "readStock,stock:A,stock:B,readHeader,header,readJournal,journal,readPayments,payment:1,payment:2");
+        if (failed.CommitCount != 0 || failed.CloseCount != 0)
+            throw new Exception("Failed cash posting must not commit or close transaction");
 
         // P0 cash SOLDER regression: exactly one stock line and one cash
         // payment, followed by completion; never a second payment/stock write.
         var cash = new Store();
-        CheckoutPostingService.Post(cash, SingleCashInput(cash, "1", "10.00"));
-        Assert(cash, "readStock,stock:CASH-ITEM,readHeader,header,readJournal,journal,readPayments,payment:10.00,print,readCompletion,complete");
+        CheckoutTransactionFinalizationService.PostAndFinalize(cash, SingleCashInput(cash, "1", "10.00"), cash);
+        Assert(cash, "readStock,stock:CASH-ITEM,readHeader,header,readJournal,journal,readPayments,payment:10.00,print,readCompletion,complete,commit,close");
         if (cash.StockCount != 1 || cash.PaymentCount != 1 ||
             cash.LastPayment.Kind != TicketPaymentKind.Cash ||
             cash.LastPayment.Context.TicketNumber != "T-1" ||
+            cash.CommitCount != 1 || cash.CloseCount != 1 ||
             Convert.ToString(cash.LastStock.BasketQuantity) != "1")
             throw new Exception("Single cash SOLDER must post one stock line and one cash payment");
         var refund = new Store();
-        CheckoutPostingService.Post(refund, SingleCashInput(refund, "-1", "-10.00"));
+        CheckoutTransactionFinalizationService.PostAndFinalize(refund, SingleCashInput(refund, "-1", "-10.00"), refund);
         if (refund.StockCount != 1 || refund.PaymentCount != 1 ||
             Convert.ToString(refund.LastStock.BasketQuantity) != "-1" ||
-            refund.LastPayment.AmountText != "-10.00")
+            refund.LastPayment.AmountText != "-10.00" ||
+            refund.CommitCount != 1 || refund.CloseCount != 1)
             throw new Exception("Cash refund must preserve negative stock/payment signs");
 
         // A missing late callback used to fail only AFTER stock and payment
