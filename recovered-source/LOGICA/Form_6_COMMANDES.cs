@@ -9161,7 +9161,7 @@ public class Form_6_COMMANDES : Form
 			if (dt_ARTICLE_FIND.Rows.Count != 0)
 			{
 				DataView dataView = new DataView(dt_ARTICLE_FIND);
-				dataView.RowFilter = "Article LIKE '%" + Text_ARTICLE_FIND.Text + "%'       or        Code LIKE '%" + Text_ARTICLE_FIND.Text + "%'";
+				dataView.RowFilter = LOGICA.ApplicationLayer.Purchasing.ReceiptArticleSearchFilter.Build(Text_ARTICLE_FIND.Text);
 				DataGridView_ARTICLES.DataSource = dataView;
 			}
 		}
@@ -9242,9 +9242,11 @@ public class Form_6_COMMANDES : Form
 		//IL_0106: Expected Obj, but got Unknown
 		try
 		{
-			if (DataGridView_ARTICLES.Rows.Count != 0)
+			if (e != null && e.RowIndex >= 0 && e.RowIndex < DataGridView_ARTICLES.Rows.Count &&
+				!DataGridView_ARTICLES.Rows[e.RowIndex].IsNewRow)
 			{
-				Text_CODE_FIND.Text = Conversions.ToString(DataGridView_ARTICLES.Rows[((DataGridViewBand)DataGridView_ARTICLES.CurrentRow).Index].Cells[1].Value);
+				// Header clicks and stale CurrentRow must not select a different article.
+				Text_CODE_FIND.Text = Conversions.ToString(DataGridView_ARTICLES.Rows[e.RowIndex].Cells[1].Value);
 				Button_FIND.PerformClick();
 			}
 		}

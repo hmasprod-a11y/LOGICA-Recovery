@@ -679,6 +679,28 @@ public class Form_6_RECEPTIONS : Form
 
 	private object _sql;
 
+	// Only set during an explicit purchase article-grid choice.
+	private string _receiptSelectedArticleId;
+
+	// True only after a fresh, exact-ID catalogue resolution from the article grid.
+	// Blank Code may be added to a receipt only with this provenance.
+	private bool _receiptResolvedFromArticleGrid;
+
+	// A failed/empty catalogue lookup must never leave a previously selected
+	// article available for addition to the current purchase receipt.
+	private void ClearReceiptArticleEntry()
+	{
+		_receiptResolvedFromArticleGrid = false;
+		Text_ID_ARTICLE.Text = "";
+		Text_CODE.Text = "";
+		Text_ARTICLE.Text = "";
+		Text_STOCK_ACTUEL.Text = "";
+		Text_PRIX_A.Text = "";
+		Text_PRIX_V.Text = "";
+		Text_UNITE.Text = "";
+		Text_QTE.Text = "";
+	}
+
 	internal virtual Button Button_ADD
 	{
 		[DebuggerNonUserCode]
@@ -8891,6 +8913,20 @@ public class Form_6_RECEPTIONS : Form
 					MessageBox.Show("Veuillez remplir la Table ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
+				// Validate totals only AFTER the active cell edit and legacy VB
+				// line/document calculations. Checking stale labels first could
+				// reject a valid receipt or persist an earlier displayed amount.
+				if (!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.PrepareForSave(
+					delegate { return DataGrid_BODY.EndEdit() && ValidateReceiptGridNumbers(); },
+					delegate {
+						for (int lineIndex = 0; lineIndex < DataGrid_BODY.Rows.Count; lineIndex++)
+						{
+							if (!DataGrid_BODY.Rows[lineIndex].IsNewRow)
+								RecalculateReceiptLineValues(DataGrid_BODY.Rows[lineIndex]);
+						}
+					},
+					delegate { Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), e); }))
+					return;
 				if (Operators.CompareString(Label_TOTAL_NET_ACHATS_DOC.Text, "", TextCompare: false) == 0)
 				{
 					MessageBox.Show("Veuillez remplir le champ -TOTAL_NET_ACHATS- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
@@ -8901,8 +8937,6 @@ public class Form_6_RECEPTIONS : Form
 					MessageBox.Show("Veuillez remplir le champ -TOTAL_NET_VENTES- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), e);
-				DataGrid_BODY_CellValidated(null, null);
 				if (Operators.CompareString(Label_TOP.Text, "NOUVEAU", TextCompare: false) == 0)
 				{
 					MySqlCommand val = new MySqlCommand();
@@ -8974,8 +9008,18 @@ public class Form_6_RECEPTIONS : Form
 				}
 				else if (Operators.CompareString(Label_TOP.Text, "MODIFICATION", TextCompare: false) == 0)
 				{
-					DataGridView1.CurrentCell = DataGridView1.Rows[Conversions.ToInteger(Label_INDEX.Text)].Cells[0];
-					DataGridView1.Rows[Conversions.ToInteger(Label_INDEX.Text)].Selected = true;
+					// A receipt can be sorted or filtered after opening its edit panel.
+					// Never use Label_INDEX or BindingContext.Position to update DT:
+					// they can refer to a different receipt than the one opened.
+					DataRow editableReceiptRow =
+						LOGICA.ApplicationLayer.Purchasing.ReceiptDocumentSelectionGuard.ResolveEditableRow(
+							DT, Text_ID.Text, Text_ID_BR.Text);
+					if (editableReceiptRow == null)
+					{
+						MessageBox.Show("Le bon a changé, a été validé ou son numéro a été modifié. Rechargez la réception.",
+							"Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+						return;
+					}
 					DataTable dataTable = new DataTable();
 					MySqlDataAdapter val4 = new MySqlDataAdapter();
 					dataTable.Clear();
@@ -8986,19 +9030,19 @@ public class Form_6_RECEPTIONS : Form
 						MessageBox.Show("Cet ID est déja utilisé", "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
 						return;
 					}
-					int position = ((ContainerControl)this).BindingContext[(object)DT].Position;
-					DT.Rows[position]["ID"] = Text_ID.Text;
-					DT.Rows[position]["ID_BR"] = Text_ID_BR.Text;
-					DT.Rows[position]["Dates"] = DateTimePicker_DATE.Text;
-					DT.Rows[position]["UTILISATEUR"] = Text_UTILISATEUR.Text;
-					DT.Rows[position]["ID_FOURNISSEUR"] = Button_FOURNISSEUR._ID_Button;
-					DT.Rows[position]["CODE_FOURNISSEUR"] = Button_FOURNISSEUR._CODE_Button;
-					DT.Rows[position]["FOURNISSEUR"] = ((ButtonBase)Button_FOURNISSEUR).Text;
-					DT.Rows[position]["N_BON_FOURNISSEUR"] = Text_N_BON_FOURNISSEUR.Text;
-					DT.Rows[position]["TOTAL_NET_ACHATS"] = Module1.FLOUSS(Conversions.ToDecimal(Label_TOTAL_NET_ACHATS_DOC.Text));
-					DT.Rows[position]["TOTAL_NET_VENTES"] = Module1.FLOUSS(Conversions.ToDecimal(Label_TOTAL_NET_VENTES_DOC.Text));
-					DT.Rows[position]["NOTES"] = Text_NOTES.Text;
-					DT.Rows[position]["ETAT"] = "ENREGISTRER";
+					// Update only the exact bound receipt row selected for modification.
+					editableReceiptRow["ID"] = Text_ID.Text;
+					editableReceiptRow["ID_BR"] = Text_ID_BR.Text;
+					editableReceiptRow["Dates"] = DateTimePicker_DATE.Text;
+					editableReceiptRow["UTILISATEUR"] = Text_UTILISATEUR.Text;
+					editableReceiptRow["ID_FOURNISSEUR"] = Button_FOURNISSEUR._ID_Button;
+					editableReceiptRow["CODE_FOURNISSEUR"] = Button_FOURNISSEUR._CODE_Button;
+					editableReceiptRow["FOURNISSEUR"] = ((ButtonBase)Button_FOURNISSEUR).Text;
+					editableReceiptRow["N_BON_FOURNISSEUR"] = Text_N_BON_FOURNISSEUR.Text;
+					editableReceiptRow["TOTAL_NET_ACHATS"] = Module1.FLOUSS(Conversions.ToDecimal(Label_TOTAL_NET_ACHATS_DOC.Text));
+					editableReceiptRow["TOTAL_NET_VENTES"] = Module1.FLOUSS(Conversions.ToDecimal(Label_TOTAL_NET_VENTES_DOC.Text));
+					editableReceiptRow["NOTES"] = Text_NOTES.Text;
+					editableReceiptRow["ETAT"] = "ENREGISTRER";
 					MySqlCommandBuilder val5 = new MySqlCommandBuilder(DA);
 					((DbDataAdapter)(object)DA).Update(DT);
 					DT.AcceptChanges();
@@ -9027,7 +9071,7 @@ public class Form_6_RECEPTIONS : Form
 					}
 					Module1.cn_SQL.Close();
 					MessageBox.Show("Modifié avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
-					string right = Conversions.ToString(Operators.ConcatenateObject("MODIFICATION | ", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_BR"].Value));
+					string right = Conversions.ToString(Operators.ConcatenateObject("MODIFICATION | ", editableReceiptRow["ID_BR"]));
 					File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
 				}
 				((Control)Panel_INFO).Hide();
@@ -9089,12 +9133,7 @@ public class Form_6_RECEPTIONS : Form
 			Text_NOTES.Text = "";
 			Text_CODE_FIND.Text = "";
 			Text_ARTICLE_FIND.Text = "";
-			Text_CODE.Text = "";
-			Text_ARTICLE.Text = "";
-			Text_STOCK_ACTUEL.Text = "";
-			Text_PRIX_A.Text = "";
-			Text_PRIX_V.Text = "";
-			Text_UNITE.Text = "";
+			ClearReceiptArticleEntry();
 			DateTimePicker_PEREMPTION.Value = DateTime.Now.Date;
 			Text_N_LOT.Text = "";
 			Text_QTE.Text = "0";
@@ -9117,7 +9156,11 @@ public class Form_6_RECEPTIONS : Form
 
 	private void DataGridView1_CellEnter(object sender, DataGridViewCellEventArgs e)
 	{
-		Label_TOTAL_LIGNES_BD.Text = Conversions.ToString(Conversions.ToDouble(DataGridView1.CurrentCell.RowIndex.ToString()) + 1.0) + "/" + Conversions.ToString(DataGridView1.Rows.Count);
+		// Rebinding can fire CellEnter while CurrentCell is null or stale.
+		if (e == null || !LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(e.RowIndex, DataGridView1.Rows.Count) ||
+			DataGridView1.Rows[e.RowIndex].IsNewRow)
+			return;
+		Label_TOTAL_LIGNES_BD.Text = Conversions.ToString(e.RowIndex + 1) + "/" + Conversions.ToString(DataGridView1.Rows.Count);
 	}
 
 	private void DataGridView1_DataBindingComplete(object sender, DataGridViewBindingCompleteEventArgs e)
@@ -9275,28 +9318,44 @@ public class Form_6_RECEPTIONS : Form
 		//IL_0279: Expected Obj, but got Unknown
 		try
 		{
+			if (e == null || e.RowIndex < 0 || e.RowIndex >= DataGridView1.Rows.Count ||
+				e.ColumnIndex < 0 || DataGridView1.Rows[e.RowIndex].IsNewRow)
+				return;
+			DataGridViewRow clickedReceiptRow = DataGridView1.Rows[e.RowIndex];
+			DataRow clickedReceiptData = LOGICA.ApplicationLayer.Purchasing.ReceiptDocumentSelectionGuard.ResolveBoundRow(
+				clickedReceiptRow.DataBoundItem as DataRowView,
+				Convert.ToString(clickedReceiptRow.Cells["ID_BR"].Value));
+			if (clickedReceiptData == null)
+				return;
 			if (Operators.ConditionalCompareObjectEqual(e.ColumnIndex, Operators.SubtractObject(NewLateBinding.LateGet(sender, null, "ColumnCount", new object[0], null, null, null), 3), TextCompare: false))
 			{
 				((Control)Panel_INFO).Hide();
-				if (Operators.ConditionalCompareObjectEqual(DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ETAT"].Value, "VALIDER", TextCompare: false))
+				if (Operators.ConditionalCompareObjectEqual(clickedReceiptRow.Cells["ETAT"].Value, "VALIDER", TextCompare: false))
 				{
 					return;
 				}
 				if ((int)MessageBox.Show("Voulez-vous vraiment Supprimer ??", "Annulation", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
 				{
-					string right = Conversions.ToString(Operators.ConcatenateObject("SUPPRESION | ", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells[2].Value));
+					// A modal may change the binding; do not delete another receipt.
+					if (!Object.ReferenceEquals(
+						LOGICA.ApplicationLayer.Purchasing.ReceiptDocumentSelectionGuard.ResolveBoundRow(
+							clickedReceiptRow.DataBoundItem as DataRowView,
+							Convert.ToString(clickedReceiptRow.Cells["ID_BR"].Value)), clickedReceiptData) ||
+						Operators.ConditionalCompareObjectEqual(clickedReceiptRow.Cells["ETAT"].Value, "VALIDER", TextCompare: false))
+						return;
+					string right = Conversions.ToString(Operators.ConcatenateObject("SUPPRESION | ", clickedReceiptRow.Cells[2].Value));
 					File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
 					MySqlCommand val = new MySqlCommand();
 					if (Module1.cn_SQL.State != ConnectionState.Open)
 					{
 						Module1.cn_SQL.Open();
 					}
-					val.CommandText = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("Delete   from     TABLE_RECEPTIONS_DETAILS      WHERE    ID_BR =  '", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_BR"].Value), "'         "));
+					val.CommandText = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("Delete   from     TABLE_RECEPTIONS_DETAILS      WHERE    ID_BR =  '", clickedReceiptRow.Cells["ID_BR"].Value), "'         "));
 					val.Connection = Module1.cn_SQL;
 					val.ExecuteNonQuery();
 					Module1.cn_SQL.Close();
 					int position = ((ContainerControl)this).BindingContext[(object)DT].Position;
-					DT.Rows[position].Delete();
+					clickedReceiptData.Delete();
 					MySqlCommandBuilder val2 = new MySqlCommandBuilder(DA);
 					((DbDataAdapter)(object)DA).Update(DT);
 					DT.AcceptChanges();
@@ -9306,30 +9365,30 @@ public class Form_6_RECEPTIONS : Form
 			}
 			if (Operators.ConditionalCompareObjectEqual(e.ColumnIndex, Operators.SubtractObject(NewLateBinding.LateGet(sender, null, "ColumnCount", new object[0], null, null, null), 2), TextCompare: false))
 			{
-				if (Operators.ConditionalCompareObjectEqual(DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ETAT"].Value, "VALIDER", TextCompare: false))
+				if (Operators.ConditionalCompareObjectEqual(clickedReceiptRow.Cells["ETAT"].Value, "VALIDER", TextCompare: false))
 				{
 					((Control)Panel_INFO).Visible = false;
 					return;
 				}
 				((Control)Panel_INFO).Visible = true;
 				((Control)Panel_INFO).BringToFront();
-				Label_INDEX.Text = Conversions.ToString(((DataGridViewBand)DataGridView1.CurrentRow).Index);
+				Label_INDEX.Text = Conversions.ToString(e.RowIndex);
 				Label_TOP.Text = "MODIFICATION";
 				DataGrid_BODY.Columns["sup"].Visible = true;
 				((Control)Button_SAVE).Visible = true;
 				int position2 = ((ContainerControl)this).BindingContext[(object)DT].Position;
-				Text_ID.Text = DT.Rows[position2]["ID"].ToString();
-				Text_ID_BR.Text = DT.Rows[position2]["ID_BR"].ToString();
-				DateTimePicker_DATE.Text = DT.Rows[position2]["DATES"].ToString();
-				Text_UTILISATEUR.Text = DT.Rows[position2]["UTILISATEUR"].ToString();
-				Button_FOURNISSEUR._ID_Button = DT.Rows[position2]["ID_FOURNISSEUR"].ToString();
-				Button_FOURNISSEUR._CODE_Button = DT.Rows[position2]["CODE_FOURNISSEUR"].ToString();
-				((ButtonBase)Button_FOURNISSEUR).Text = DT.Rows[position2]["FOURNISSEUR"].ToString();
-				Text_N_BON_FOURNISSEUR.Text = DT.Rows[position2]["N_BON_FOURNISSEUR"].ToString();
-				Label_TOTAL_NET_ACHATS_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(DT.Rows[position2]["TOTAL_NET_ACHATS"].ToString())));
-				Label_TOTAL_NET_VENTES_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(DT.Rows[position2]["TOTAL_NET_VENTES"].ToString())));
-				Text_NOTES.Text = DT.Rows[position2]["NOTES"].ToString();
-				Text_ETAT.Text = DT.Rows[position2]["ETAT"].ToString();
+				Text_ID.Text = clickedReceiptData["ID"].ToString();
+				Text_ID_BR.Text = clickedReceiptData["ID_BR"].ToString();
+				DateTimePicker_DATE.Text = clickedReceiptData["DATES"].ToString();
+				Text_UTILISATEUR.Text = clickedReceiptData["UTILISATEUR"].ToString();
+				Button_FOURNISSEUR._ID_Button = clickedReceiptData["ID_FOURNISSEUR"].ToString();
+				Button_FOURNISSEUR._CODE_Button = clickedReceiptData["CODE_FOURNISSEUR"].ToString();
+				((ButtonBase)Button_FOURNISSEUR).Text = clickedReceiptData["FOURNISSEUR"].ToString();
+				Text_N_BON_FOURNISSEUR.Text = clickedReceiptData["N_BON_FOURNISSEUR"].ToString();
+				Label_TOTAL_NET_ACHATS_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(clickedReceiptData["TOTAL_NET_ACHATS"].ToString())));
+				Label_TOTAL_NET_VENTES_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(clickedReceiptData["TOTAL_NET_VENTES"].ToString())));
+				Text_NOTES.Text = clickedReceiptData["NOTES"].ToString();
+				Text_ETAT.Text = clickedReceiptData["ETAT"].ToString();
 				MySqlCommand val3 = new MySqlCommand();
 				if (Module1.cn_SQL.State != ConnectionState.Open)
 				{
@@ -9368,23 +9427,23 @@ public class Form_6_RECEPTIONS : Form
 			}
 			((Control)Panel_INFO).Visible = true;
 			((Control)Panel_INFO).BringToFront();
-			Label_INDEX.Text = Conversions.ToString(((DataGridViewBand)DataGridView1.CurrentRow).Index);
+			Label_INDEX.Text = Conversions.ToString(e.RowIndex);
 			Label_TOP.Text = "CONSULTATION";
 			DataGrid_BODY.Columns["sup"].Visible = false;
 			((Control)Button_SAVE).Visible = false;
 			int position3 = ((ContainerControl)this).BindingContext[(object)DT].Position;
-			Text_ID.Text = DT.Rows[position3]["ID"].ToString();
-			Text_ID_BR.Text = DT.Rows[position3]["ID_BR"].ToString();
-			DateTimePicker_DATE.Text = DT.Rows[position3]["DATES"].ToString();
-			Text_UTILISATEUR.Text = DT.Rows[position3]["UTILISATEUR"].ToString();
-			Button_FOURNISSEUR._ID_Button = DT.Rows[position3]["ID_FOURNISSEUR"].ToString();
-			Button_FOURNISSEUR._CODE_Button = DT.Rows[position3]["CODE_FOURNISSEUR"].ToString();
-			((ButtonBase)Button_FOURNISSEUR).Text = DT.Rows[position3]["FOURNISSEUR"].ToString();
-			Text_N_BON_FOURNISSEUR.Text = DT.Rows[position3]["N_BON_FOURNISSEUR"].ToString();
-			Label_TOTAL_NET_ACHATS_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(DT.Rows[position3]["TOTAL_NET_ACHATS"].ToString())));
-			Label_TOTAL_NET_VENTES_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(DT.Rows[position3]["TOTAL_NET_VENTES"].ToString())));
-			Text_NOTES.Text = DT.Rows[position3]["NOTES"].ToString();
-			Text_ETAT.Text = DT.Rows[position3]["ETAT"].ToString();
+			Text_ID.Text = clickedReceiptData["ID"].ToString();
+			Text_ID_BR.Text = clickedReceiptData["ID_BR"].ToString();
+			DateTimePicker_DATE.Text = clickedReceiptData["DATES"].ToString();
+			Text_UTILISATEUR.Text = clickedReceiptData["UTILISATEUR"].ToString();
+			Button_FOURNISSEUR._ID_Button = clickedReceiptData["ID_FOURNISSEUR"].ToString();
+			Button_FOURNISSEUR._CODE_Button = clickedReceiptData["CODE_FOURNISSEUR"].ToString();
+			((ButtonBase)Button_FOURNISSEUR).Text = clickedReceiptData["FOURNISSEUR"].ToString();
+			Text_N_BON_FOURNISSEUR.Text = clickedReceiptData["N_BON_FOURNISSEUR"].ToString();
+			Label_TOTAL_NET_ACHATS_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(clickedReceiptData["TOTAL_NET_ACHATS"].ToString())));
+			Label_TOTAL_NET_VENTES_DOC.Text = Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(clickedReceiptData["TOTAL_NET_VENTES"].ToString())));
+			Text_NOTES.Text = clickedReceiptData["NOTES"].ToString();
+			Text_ETAT.Text = clickedReceiptData["ETAT"].ToString();
 			MySqlCommand val5 = new MySqlCommand();
 			if (Module1.cn_SQL.State != ConnectionState.Open)
 			{
@@ -9685,7 +9744,15 @@ public class Form_6_RECEPTIONS : Form
 		{
 			try
 			{
-				if (Operators.CompareString(Text_CODE_FIND.Text.Trim(), "", TextCompare: false) == 0)
+				// Clear the previous article before any read, including an empty scan
+				// or a failed local SQL query. Never add a stale receipt line.
+				ClearReceiptArticleEntry();
+				// A scanner with no code must not select an arbitrary blank-code
+				// product. An explicit catalogue-grid click carries ID_ARTICLE and
+				// may legitimately choose a product whose Code is empty. Continue
+				// through the existing local query and exact-ID resolver for it.
+				if (!LOGICA.ApplicationLayer.Purchasing.ReceiptArticleSelectionService.ShouldLookupBarcode(
+					Text_CODE_FIND.Text, _receiptSelectedArticleId))
 				{
 					return;
 				}
@@ -9694,17 +9761,39 @@ public class Form_6_RECEPTIONS : Form
 				dataTable.Clear();
 				val = new MySqlDataAdapter("select       ID_ARTICLE,Code,Article,STOCK,Prix_A,Prix_V_1,UNITE         from TABLE_ARTICLES WHERE Code =  '" + Text_CODE_FIND.Text + "'    ", Module1.cn_SQL);
 				((DbDataAdapter)(object)val).Fill(dataTable);
-				if (dataTable.Rows.Count != 0)
+				DataRow receiptArticle = LOGICA.ApplicationLayer.Purchasing.ReceiptArticleSelectionService.Resolve(
+					dataTable, _receiptSelectedArticleId);
+				if (dataTable.Rows.Count != 0 && receiptArticle == null)
 				{
-					Text_ID_ARTICLE.Text = dataTable.Rows[0]["ID_ARTICLE"].ToString();
-					Text_CODE.Text = dataTable.Rows[0]["Code"].ToString();
-					Text_ARTICLE.Text = dataTable.Rows[0]["Article"].ToString();
-					Text_STOCK_ACTUEL.Text = dataTable.Rows[0]["STOCK"].ToString();
-					Text_PRIX_A.Text = dataTable.Rows[0]["Prix_A"].ToString();
-					Text_PRIX_V.Text = dataTable.Rows[0]["Prix_V_1"].ToString();
-					Text_UNITE.Text = dataTable.Rows[0]["UNITE"].ToString();
+					// Never silently receive stock against the first duplicate barcode variant.
+					// Clear any prior choice so a stale article cannot be added.
+					MessageBox.Show("Plusieurs articles partagent ce code ou l'article choisi a changé. Sélectionnez l'article exact dans la liste.", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					((Control)Text_ARTICLE_FIND).Focus();
+					return;
+				}
+				if (receiptArticle != null)
+				{
+					// A successful fresh lookup alone is insufficient for a blank
+					// barcode: only an explicit exact-ID grid choice authorizes it.
+					_receiptResolvedFromArticleGrid = _receiptSelectedArticleId != null;
+					Text_ID_ARTICLE.Text = receiptArticle["ID_ARTICLE"].ToString();
+					Text_CODE.Text = receiptArticle["Code"].ToString();
+					Text_ARTICLE.Text = receiptArticle["Article"].ToString();
+					Text_STOCK_ACTUEL.Text = receiptArticle["STOCK"].ToString();
+					Text_PRIX_A.Text = receiptArticle["Prix_A"].ToString();
+					Text_PRIX_V.Text = receiptArticle["Prix_V_1"].ToString();
+					Text_UNITE.Text = receiptArticle["UNITE"].ToString();
 					Text_QTE.Text = "";
 					((Control)Text_QTE).Focus();
+					return;
+				}
+				// An explicit grid choice may disappear between the display and
+				// the fresh lookup. Do not offer to create a new article in its place.
+				if (!LOGICA.ApplicationLayer.Purchasing.ReceiptArticleSelectionService.CanOfferCreation(
+					dataTable, _receiptSelectedArticleId))
+				{
+					MessageBox.Show("L'article sélectionné n'est plus disponible. Actualisez la liste.", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					((Control)Text_ARTICLE_FIND).Focus();
 					return;
 				}
 				if (unchecked((int)MessageBox.Show("Article inconnu\r\nvoulez-vous le créer ?", "Erreur", (MessageBoxButtons)4, (MessageBoxIcon)64, (MessageBoxDefaultButton)0)) == 6)
@@ -9790,9 +9879,10 @@ public class Form_6_RECEPTIONS : Form
 					MessageBox.Show("Veuillez remplir le champ -ID_ARTICLE- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Operators.CompareString(Text_CODE.Text, "", TextCompare: false) == 0)
+				if (!LOGICA.ApplicationLayer.Purchasing.ReceiptArticleSelectionService.CanAddResolvedArticle(
+					Text_ID_ARTICLE.Text, Text_CODE.Text, _receiptResolvedFromArticleGrid))
 				{
-					MessageBox.Show("Veuillez remplir le champ -Code- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					MessageBox.Show("Veuillez sélectionner un article valide (code ou identité confirmée).", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
 				if (Operators.CompareString(Text_ARTICLE.Text, "", TextCompare: false) == 0)
@@ -9810,17 +9900,38 @@ public class Form_6_RECEPTIONS : Form
 					MessageBox.Show("Veuillez remplir le champ -Prix_V- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Conversion.Val(Text_QTE.Text) < 0.0)
+				// Validate before VB conversion and FLOUSS. Previously an empty or
+				// malformed quantity reached ToDecimal and raised an exception; Val
+				// could also miss a negative fraction. Keep VB locale semantics.
+				Func<string, bool> isReceiptNumeric = delegate(string value) { return Versioned.IsNumeric(value); };
+				Func<string, decimal> convertReceiptNumber = delegate(string value) { return Conversions.ToDecimal(value); };
+				decimal parsedQuantity;
+				if (!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.TryReadReceiptNumber(
+					Text_QTE.Text, true, isReceiptNumeric, convertReceiptNumber, out parsedQuantity))
 				{
-					MessageBox.Show("Veuillez remplir le champ -Quantité- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					MessageBox.Show("Vérifier le champ -Quantité- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					return;
+				}
+				decimal parsedPurchasePrice;
+				if (!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.TryReadReceiptNumber(
+					Text_PRIX_A.Text, false, isReceiptNumeric, convertReceiptNumber, out parsedPurchasePrice))
+				{
+					MessageBox.Show("Vérifier le champ -Prix_A- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					return;
+				}
+				decimal parsedSalePrice;
+				if (!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.TryReadReceiptNumber(
+					Text_PRIX_V.Text, false, isReceiptNumeric, convertReceiptNumber, out parsedSalePrice))
+				{
+					MessageBox.Show("Vérifier le champ -PRIX_V- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
 				string text = Text_ID_ARTICLE.Text;
 				string text2 = Text_CODE.Text;
 				string text3 = Text_ARTICLE.Text;
-				decimal num = Module1.FLOUSS(Conversions.ToDecimal(Text_PRIX_A.Text));
-				decimal num2 = Module1.FLOUSS(Conversions.ToDecimal(Text_PRIX_V.Text));
-				decimal num3 = Conversions.ToDecimal(Text_QTE.Text);
+				decimal num = Module1.FLOUSS(parsedPurchasePrice);
+				decimal num2 = Module1.FLOUSS(parsedSalePrice);
+				decimal num3 = parsedQuantity;
 				decimal num4 = Module1.FLOUSS(decimal.Multiply(Module1.FLOUSS(Conversions.ToDecimal(Text_QTE.Text)), Module1.FLOUSS(Conversions.ToDecimal(Text_PRIX_A.Text))));
 				decimal num5 = Module1.FLOUSS(decimal.Multiply(Module1.FLOUSS(Conversions.ToDecimal(Text_QTE.Text)), Module1.FLOUSS(Conversions.ToDecimal(Text_PRIX_V.Text))));
 				string text4 = DateTimePicker_PEREMPTION.Text;
@@ -9841,8 +9952,10 @@ public class Form_6_RECEPTIONS : Form
 					return;
 				}
 				DataGrid_BODY.Rows.Add(new object[10] { text, text2, text3, num, num2, num3, num4, num5, text4, text5 });
+				_receiptResolvedFromArticleGrid = false;
+				// Added lines already carry their rounded totals in num4/num5.
+				// No synthetic CellValidated event with a null row is needed.
 				Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), e);
-				DataGrid_BODY_CellValidated(null, null);
 				Text_ID_ARTICLE.Text = "";
 				Text_CODE.Text = "";
 				Text_ARTICLE.Text = "";
@@ -9948,14 +10061,55 @@ public class Form_6_RECEPTIONS : Form
 		((Control)Panel_INFO).Hide();
 	}
 
+	// Manual grid edits and imported lines bypass the Add button's numeric
+	// preflight. Validate the committed cell values before any SQL save or
+	// legacy total calculation. Keep the existing VB numeric locale behavior.
+	private bool ValidateReceiptGridNumbers()
+	{
+		Func<string, bool> isNumeric = delegate(string value) { return Versioned.IsNumeric(value); };
+		Func<string, decimal> convert = delegate(string value) { return Conversions.ToDecimal(value); };
+		int validRows = 0;
+		foreach (DataGridViewRow line in DataGrid_BODY.Rows)
+		{
+			if (line.IsNewRow)
+				continue;
+			validRows++;
+			decimal parsed;
+			if (!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.TryReadReceiptNumber(
+					Convert.ToString(line.Cells["Qté"].Value), true, isNumeric, convert, out parsed) ||
+				!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.TryReadReceiptNumber(
+					Convert.ToString(line.Cells["Prix_A"].Value), false, isNumeric, convert, out parsed) ||
+				!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.TryReadReceiptNumber(
+					Convert.ToString(line.Cells["Prix_V"].Value), false, isNumeric, convert, out parsed))
+			{
+				MessageBox.Show("Vérifier la quantité et les prix de la ligne " + validRows + ".",
+					"Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+				return false;
+			}
+		}
+		return validRows > 0;
+	}
+
+	// One legacy arithmetic path for edited and programmatically saved lines.
+	// Keep VB MultiplyObject and FLOUSS semantics unchanged.
+	private void RecalculateReceiptLineValues(DataGridViewRow editedLine)
+	{
+		editedLine.Cells["TOTAL_NET_ACHATS"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(editedLine.Cells["Qté"].Value, editedLine.Cells["Prix_A"].Value)));
+		editedLine.Cells["TOTAL_NET_VENTES"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(editedLine.Cells["Qté"].Value, editedLine.Cells["Prix_V"].Value)));
+	}
+
 	private void DataGrid_BODY_CellValidated(object sender, DataGridViewCellEventArgs e)
 	{
 		//IL_0202: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0209: Expected Obj, but got Unknown
 		try
 		{
-			DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["TOTAL_NET_ACHATS"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["Qté"].Value, DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["Prix_A"].Value)));
-			DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["TOTAL_NET_VENTES"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["Qté"].Value, DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["Prix_V"].Value)));
+			// CellValidated reports the edited row, which may differ from CurrentRow
+			// after keyboard navigation. Never overwrite another receipt line's totals.
+			if (e == null || !LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(
+				e.RowIndex, DataGrid_BODY.Rows.Count) || DataGrid_BODY.Rows[e.RowIndex].IsNewRow)
+				return;
+			RecalculateReceiptLineValues(DataGrid_BODY.Rows[e.RowIndex]);
 			Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
 		}
 		catch (Exception ex)
@@ -9992,10 +10146,17 @@ public class Form_6_RECEPTIONS : Form
 		//IL_0046: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0053: Unknown result type (might be due to invalid IL or missing references)
 		//IL_005d: Expected Obj, but got Unknown
-		if ((DataGrid_BODY.CurrentCell.ColumnIndex == 3) | (DataGrid_BODY.CurrentCell.ColumnIndex == 4) | (DataGrid_BODY.CurrentCell.ColumnIndex == 5))
-		{
-			((Control)(TextBox)e.Control).KeyPress += TextBox_keyPress;
-		}
+		// WinForms reuses the editing TextBox across cells. Reattaching on every
+		// edit previously stacked duplicate KeyPress handlers.
+		TextBox editingBox = e == null ? null : e.Control as TextBox;
+		if (editingBox == null)
+			return;
+		editingBox.KeyPress -= TextBox_keyPress;
+		if (DataGrid_BODY.CurrentCell != null &&
+			(DataGrid_BODY.CurrentCell.ColumnIndex == 3 ||
+			 DataGrid_BODY.CurrentCell.ColumnIndex == 4 ||
+			 DataGrid_BODY.CurrentCell.ColumnIndex == 5))
+			editingBox.KeyPress += TextBox_keyPress;
 	}
 
 	private void TextBox_keyPress(object sender, KeyPressEventArgs e)
@@ -10008,7 +10169,10 @@ public class Form_6_RECEPTIONS : Form
 
 	private void DataGrid_BODY_CellEnter(object sender, DataGridViewCellEventArgs e)
 	{
-		Label_TOTAL_LIGNES.Text = Conversions.ToString(Conversions.ToDouble(DataGrid_BODY.CurrentCell.RowIndex.ToString()) + 1.0) + "/" + Conversions.ToString(DataGrid_BODY.Rows.Count);
+		if (e == null || !LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(e.RowIndex, DataGrid_BODY.Rows.Count) ||
+			DataGrid_BODY.Rows[e.RowIndex].IsNewRow)
+			return;
+		Label_TOTAL_LIGNES.Text = Conversions.ToString(e.RowIndex + 1) + "/" + Conversions.ToString(DataGrid_BODY.Rows.Count);
 	}
 
 	private void DataGrid_BODY_CellContentClick(object sender, DataGridViewCellEventArgs e)
@@ -10019,9 +10183,24 @@ public class Form_6_RECEPTIONS : Form
 		//IL_005c: Invalid comparison between Unknown and I4
 		try
 		{
-			if (((Operators.ConditionalCompareObjectEqual(e.ColumnIndex, Operators.SubtractObject(NewLateBinding.LateGet(sender, null, "ColumnCount", new object[0], null, null, null), 1), TextCompare: false) && e.RowIndex >= 0) ? true : false) && (int)MessageBox.Show("Voulez-vous vraiment supprimer ??", "Suppression", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
+			if (e == null || !LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(
+				e.RowIndex, DataGrid_BODY.Rows.Count) || e.ColumnIndex != DataGrid_BODY.ColumnCount - 1 ||
+				DataGrid_BODY.Rows[e.RowIndex].IsNewRow)
+				return;
+			// CurrentCell can point at a different line from the clicked delete
+			// button, and a modal can reorder/remove rows before confirmation.
+			DataGridViewRow clickedLine = DataGrid_BODY.Rows[e.RowIndex];
+			string confirmedArticleId = Convert.ToString(clickedLine.Cells["ID_ARTICLE"].Value);
+			string confirmedCode = Convert.ToString(clickedLine.Cells["Code"].Value);
+			if ((int)MessageBox.Show("Voulez-vous vraiment supprimer ??", "Suppression", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
 			{
-				DataGrid_BODY.Rows.RemoveAt(DataGrid_BODY.CurrentCell.RowIndex);
+				if (clickedLine.DataGridView != DataGrid_BODY || clickedLine.IsNewRow ||
+					!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.MatchesLine(
+						confirmedArticleId, confirmedCode,
+						Convert.ToString(clickedLine.Cells["ID_ARTICLE"].Value),
+						Convert.ToString(clickedLine.Cells["Code"].Value)))
+					return;
+				DataGrid_BODY.Rows.Remove(clickedLine);
 				Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
 			}
 		}
@@ -10229,20 +10408,54 @@ public class Form_6_RECEPTIONS : Form
 			try
 			{
 				((Control)Button_VALIDER).Enabled = false;
-				if (DataGridView1.Rows.Count == 0)
+				// Capture the actual selected receipt before confirmation. A grid may
+				// have rows but no CurrentRow, or its CurrentCell may be stale.
+				DataGridViewRow confirmedReceiptRow = DataGridView1.CurrentRow;
+				if (confirmedReceiptRow == null || confirmedReceiptRow.IsNewRow)
 				{
 					((Control)Button_VALIDER).Enabled = true;
 					return;
 				}
-				if (Operators.ConditionalCompareObjectEqual(DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ETAT"].Value, "VALIDER", TextCompare: false))
+				string confirmedReceiptId = Convert.ToString(confirmedReceiptRow.Cells["ID_BR"].Value);
+				if (String.IsNullOrWhiteSpace(confirmedReceiptId))
 				{
 					((Control)Button_VALIDER).Enabled = true;
 					return;
 				}
-				if (unchecked((int)MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Voulez-vous vraiment Valider le Bon N° ", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_BR"].Value)), "Attention", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0)) == 1)
+				// Keep the original confirmation path for EN_COURS and ENREGISTRER;
+				// the consulted receipt is rechecked before any stock transaction.
+				if (Operators.ConditionalCompareObjectEqual(confirmedReceiptRow.Cells["ETAT"].Value, "VALIDER", TextCompare: false))
 				{
-					DataGridViewCellEventArgs e2 = new DataGridViewCellEventArgs(((DataGridViewBand)DataGridView1.Columns["cons"]).Index, DataGridView1.CurrentCell.RowIndex);
+					((Control)Button_VALIDER).Enabled = true;
+					return;
+				}
+				if (unchecked((int)MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Voulez-vous vraiment Valider le Bon N° ", confirmedReceiptId)), "Attention", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0)) == 1)
+				{
+					// A modal confirmation may allow the current grid selection to move.
+					// Never post a different receipt than the one just confirmed.
+					if (confirmedReceiptRow.DataGridView != DataGridView1 ||
+						!Object.ReferenceEquals(DataGridView1.CurrentRow, confirmedReceiptRow))
+					{
+						((Control)Button_VALIDER).Enabled = true;
+						return;
+					}
+					DataGridViewCellEventArgs e2 = new DataGridViewCellEventArgs(
+						((DataGridViewBand)DataGridView1.Columns["cons"]).Index, confirmedReceiptRow.Index);
+					// Invalidate any prior consultation ID before loading. A swallowed
+					// reader error must never leave a matching stale ID behind.
+					Text_ID_BR.Text = "";
 					DataGridView1_CellClick(DataGridView1, e2);
+					// Consultation populates Text_ID_BR and DataGrid_BODY. If the
+					// binding cursor was stale or the read failed, abort before SQL.
+					if (!LOGICA.ApplicationLayer.Purchasing.ReceiptDocumentSelectionGuard.MayValidate(
+						confirmedReceiptId, Text_ID_BR.Text,
+						Convert.ToString(confirmedReceiptRow.Cells["ETAT"].Value), Text_ETAT.Text))
+					{
+						((Control)Button_VALIDER).Enabled = true;
+						MessageBox.Show("Le bon sélectionné a changé ou est déjà validé. Rechargez la réception.",
+							"Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+						return;
+					}
 					MySqlCommand val = new MySqlCommand();
 					if (Module1.cn_SQL.State != ConnectionState.Open)
 					{
@@ -10364,7 +10577,7 @@ public class Form_6_RECEPTIONS : Form
 			if (dt_ARTICLE_FIND.Rows.Count != 0)
 			{
 				DataView dataView = new DataView(dt_ARTICLE_FIND);
-				dataView.RowFilter = "Article LIKE '%" + Text_ARTICLE_FIND.Text + "%'       or        Code LIKE '%" + Text_ARTICLE_FIND.Text + "%'";
+				dataView.RowFilter = LOGICA.ApplicationLayer.Purchasing.ReceiptArticleSearchFilter.Build(Text_ARTICLE_FIND.Text);
 				DataGridView_ARTICLES.DataSource = dataView;
 			}
 		}
@@ -10407,7 +10620,23 @@ public class Form_6_RECEPTIONS : Form
 		{
 			if ((int)e.KeyCode == 13)
 			{
-				DataGridView_ARTICLES_CellClick(null, null);
+				// Enter in the filtered search must select the visible focused
+				// article, not call CellClick with a null event (a no-op).
+				DataGridViewCell activeCell = DataGridView_ARTICLES.CurrentCell;
+				// A freshly filtered DataView may have visible rows but no
+				// CurrentCell yet. Enter should choose the first visible result,
+				// never a stale row from the unfiltered backing DataTable.
+				int selectedRowIndex = activeCell == null ? 0 : activeCell.RowIndex;
+				int selectedColumnIndex = activeCell == null ? 0 : activeCell.ColumnIndex;
+				if (LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(
+					selectedRowIndex, DataGridView_ARTICLES.Rows.Count) &&
+					!DataGridView_ARTICLES.Rows[selectedRowIndex].IsNewRow)
+				{
+					DataGridView_ARTICLES_CellClick(DataGridView_ARTICLES,
+						new DataGridViewCellEventArgs(selectedColumnIndex, selectedRowIndex));
+					e.Handled = true;
+					e.SuppressKeyPress = true;
+				}
 			}
 		}
 		catch (Exception ex)
@@ -10445,10 +10674,21 @@ public class Form_6_RECEPTIONS : Form
 		//IL_0106: Expected Obj, but got Unknown
 		try
 		{
-			if (DataGridView_ARTICLES.Rows.Count != 0)
+			if (e != null && e.RowIndex >= 0 && e.RowIndex < DataGridView_ARTICLES.Rows.Count &&
+				!DataGridView_ARTICLES.Rows[e.RowIndex].IsNewRow)
 			{
-				Text_CODE_FIND.Text = Conversions.ToString(DataGridView_ARTICLES.Rows[((DataGridViewBand)DataGridView_ARTICLES.CurrentRow).Index].Cells[1].Value);
-				Button_FIND.PerformClick();
+				// The clicked row, not a potentially stale CurrentRow, owns the article identity.
+				DataGridViewRow chosenReceiptRow = DataGridView_ARTICLES.Rows[e.RowIndex];
+				_receiptSelectedArticleId = Conversions.ToString(chosenReceiptRow.Cells[0].Value);
+				try
+				{
+					Text_CODE_FIND.Text = Conversions.ToString(chosenReceiptRow.Cells[1].Value);
+					Button_FIND.PerformClick();
+				}
+				finally
+				{
+					_receiptSelectedArticleId = null;
+				}
 			}
 		}
 		catch (Exception ex)
@@ -10516,7 +10756,12 @@ public class Form_6_RECEPTIONS : Form
 		//IL_0064: Expected Obj, but got Unknown
 		try
 		{
-			if (Operators.ConditionalCompareObjectEqual(DataGridView_FAMILLES.Rows[((DataGridViewBand)DataGridView_FAMILLES.CurrentRow).Index].Cells[0].Value, "TOUT", TextCompare: false))
+			if (e == null || e.RowIndex < 0 || e.RowIndex >= DataGridView_FAMILLES.Rows.Count ||
+				DataGridView_FAMILLES.Rows[e.RowIndex].IsNewRow)
+				return;
+			// The clicked family may differ from the old CurrentRow while sorting.
+			DataGridViewRow clickedFamilyRow = DataGridView_FAMILLES.Rows[e.RowIndex];
+			if (Operators.ConditionalCompareObjectEqual(clickedFamilyRow.Cells[0].Value, "TOUT", TextCompare: false))
 			{
 				dt_ARTICLE_FIND.Clear();
 				da_ARTICLE_FIND = new MySqlDataAdapter("select    ID_ARTICLE,Code,Article    from   TABLE_ARTICLES     ", Module1.cn_SQL);
@@ -10525,7 +10770,7 @@ public class Form_6_RECEPTIONS : Form
 			else
 			{
 				dt_ARTICLE_FIND.Clear();
-				da_ARTICLE_FIND = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("select    ID_ARTICLE,Code,Article    from   TABLE_ARTICLES    Where   Famille = '", DataGridView_FAMILLES.Rows[((DataGridViewBand)DataGridView_FAMILLES.CurrentRow).Index].Cells[0].Value), "'  ")), Module1.cn_SQL);
+				da_ARTICLE_FIND = new MySqlDataAdapter(Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject("select    ID_ARTICLE,Code,Article    from   TABLE_ARTICLES    Where   Famille = '", clickedFamilyRow.Cells[0].Value), "'  ")), Module1.cn_SQL);
 				((DbDataAdapter)(object)da_ARTICLE_FIND).Fill(dt_ARTICLE_FIND);
 			}
 			DataGridView_ARTICLES.AutoGenerateColumns = false;
@@ -11838,8 +12083,9 @@ public class Form_6_RECEPTIONS : Form
 					{
 						DataGrid_BODY.Rows.Add(new object[10] { text, text2, text3, num13, "0", num14, num17, "0", text4, text5 });
 					}
+					// Imported rows already have computed totals; do not send a
+					// synthetic null CellValidated event.
 					Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), e);
-					DataGrid_BODY_CellValidated(null, null);
 					DataGrid_BODY.CurrentCell = DataGrid_BODY.Rows[DataGrid_BODY.Rows.Count - 1].Cells[0];
 					DataGrid_BODY.Rows[DataGrid_BODY.Rows.Count - 1].Selected = true;
 					num9++;
