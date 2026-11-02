@@ -173,61 +173,11 @@ try {
     Assert-PackagedCodeHashes $extract $codeBaseline
     Write-Host "PASS: extracted EXE startup preserved $($baseline.Count) immutable runtime files"
 
-    # Reproduce the reported double-click path without the CI-only DB override.
-    # Never attempt this if another service owns loopback 3306. A responsive
-    # error dialog is NOT proof that the legacy fallback connected to MariaDB.
+    # The direct-EXE path is verified below, after offline server binaries have
+    # been provisioned. Never let CI download MariaDB or touch port 3306.
     $directWithoutOverrideAttempted = $false
     $directWithoutOverrideResponsive = $false
     $directWithoutOverrideActivation = $null
-    $legacyHost = [IO.File]::ReadAllText((Join-Path $extract 'CHEMIN_DB.sni')).Trim()
-    if ($legacyHost -ne '127.0.0.1') { throw 'Refusing unconfigured direct EXE probe: non-loopback legacy host' }
-    $legacyPortOccupied = $false
-    $portProbe = New-Object Net.Sockets.TcpClient
-    try {
-        $pending = $portProbe.BeginConnect('127.0.0.1', 3306, $null, $null)
-        if ($pending.AsyncWaitHandle.WaitOne(500)) {
-            try { $portProbe.EndConnect($pending); $legacyPortOccupied = $true } catch {}
-        }
-    } finally { $portProbe.Dispose() }
-    if ($legacyPortOccupied) {
-        Write-Warning 'Direct EXE without DB override skipped: port 3306 has an existing listener; no foreign DB touched.'
-    } else {
-        $directNoOverride = $null
-        $savedConnection = [string]$env:LOGICA_DB_CONNECTION_STRING
-        try {
-            Remove-Item Env:LOGICA_DB_CONNECTION_STRING -ErrorAction SilentlyContinue
-            $directNoOverride = Start-Process -FilePath (Join-Path $extract 'LOGICA.exe') -WorkingDirectory $extract -PassThru
-            $directWithoutOverrideAttempted = $true
-        } finally {
-            $env:LOGICA_DB_CONNECTION_STRING = $savedConnection
-        }
-        try {
-            $directTimer = [Diagnostics.Stopwatch]::StartNew()
-            do {
-                Start-Sleep -Seconds 2
-                $directNoOverride.Refresh()
-                if ($directNoOverride.HasExited) { break }
-                if ($directNoOverride.MainWindowHandle -ne 0 -and $directNoOverride.Responding) {
-                    $directWithoutOverrideResponsive = $true
-                    $directWithoutOverrideActivation = Inspect-ActivationUI $directNoOverride 'extracted-release-direct-no-override-activation.json'
-                    break
-                }
-            } while ($directTimer.Elapsed.TotalSeconds -lt 20)
-            Write-Warning ("Direct EXE without DB override: responsiveWindow={0}; databaseConnectionVerified=False; expected legacy 3306 fallback may fail." -f $directWithoutOverrideResponsive)
-        } finally {
-            if ($directNoOverride) {
-                try {
-                    $directNoOverride.Refresh()
-                    if (-not $directNoOverride.HasExited) {
-                        $directNoOverride.Kill()
-                        $directNoOverride.WaitForExit(10000) | Out-Null
-                    }
-                } catch { Write-Warning "Could not stop isolated direct EXE probe: $_" }
-            }
-        }
-        Assert-RuntimeHashes $extract $baseline
-        Assert-PackagedCodeHashes $extract $codeBaseline
-    }
     # Verify the launcher *inside* the customer ZIP with the already-downloaded
     # CI MariaDB server, in a fresh isolated data directory (never a shop DB).
     $log = Join-Path $results 'extracted-release-launcher.log'
