@@ -1,5 +1,6 @@
 using System;
 using System.Data;
+using System.Collections.Generic;
 using MySql.Data.MySqlClient;
 
 namespace LOGICA.Infrastructure.Purchasing
@@ -11,6 +12,53 @@ namespace LOGICA.Infrastructure.Purchasing
     // Do not call this until QA/Checkout approve the posting contract/schema.
     internal static class ReceiptValidationClaim
     {
+        private static void EnsureTransactionalSchema(MySqlConnection connection,
+            MySqlTransaction transaction)
+        {
+            var required = new HashSet<string>(StringComparer.Ordinal) {
+                "TABLE_RECEPTIONS_ENTETE", "TABLE_RECEPTIONS_DETAILS",
+                "TABLE_ARTICLES", "TABLE_MOUVEMENTS_STOCK"
+            };
+            using (var command = new MySqlCommand(
+                "SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN " +
+                "('TABLE_RECEPTIONS_ENTETE','TABLE_RECEPTIONS_DETAILS'," +
+                "'TABLE_ARTICLES','TABLE_MOUVEMENTS_STOCK')",
+                connection, transaction))
+            using (MySqlDataReader reader = command.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    string name = Convert.ToString(reader.GetValue(0));
+                    string engine = reader.IsDBNull(1) ? "" : Convert.ToString(reader.GetValue(1));
+                    if (!required.Remove(name) ||
+                        !String.Equals(engine, "InnoDB", StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("Receipt posting requires transactional InnoDB tables.");
+                }
+            }
+            if (required.Count != 0)
+                throw new InvalidOperationException("Receipt posting schema is incomplete.");
+
+            // A unique composite index does not protect ID_BR alone.
+            bool uniqueReceiptNumber = false;
+            using (var command = new MySqlCommand(
+                "SELECT COUNT(*), SUM(CASE WHEN COLUMN_NAME = 'ID_BR' THEN 1 ELSE 0 END) " +
+                "FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() " +
+                "AND TABLE_NAME = 'TABLE_RECEPTIONS_ENTETE' AND NON_UNIQUE = 0 " +
+                "GROUP BY INDEX_NAME",
+                connection, transaction))
+            using (MySqlDataReader reader = command.ExecuteReader())
+            {
+                while (reader.Read())
+                    if (!reader.IsDBNull(0) && !reader.IsDBNull(1) &&
+                        Convert.ToInt32(reader.GetValue(0)) == 1 &&
+                        Convert.ToInt32(reader.GetValue(1)) == 1)
+                        uniqueReceiptNumber = true;
+            }
+            if (!uniqueReceiptNumber)
+                throw new InvalidOperationException("Receipt ID_BR requires a single-column UNIQUE index.");
+        }
+
         // Must be the FIRST write before applying stock or movements.
         // A false result means missing/already validated; caller must not post.
         // Throws on malformed/duplicate headers or a broken transaction boundary.
@@ -25,6 +73,9 @@ namespace LOGICA.Infrastructure.Purchasing
                 !Object.ReferenceEquals(transaction.Connection, connection))
                 throw new InvalidOperationException("Receipt claim requires its caller's open transaction.");
 
+            // Fail closed if a legacy/non-transactional table or non-unique
+            // receipt number would invalidate exactly-once/rollback guarantees.
+            EnsureTransactionalSchema(connection, transaction);
             string state;
             using (var select = new MySqlCommand(
                 "SELECT ETAT FROM TABLE_RECEPTIONS_ENTETE WHERE ID_BR = @receiptId FOR UPDATE",
