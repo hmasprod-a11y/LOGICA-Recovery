@@ -29,8 +29,8 @@ function Get-OriginalDataDigest() {
 }
 $script = (Resolve-Path 'input/migrations/20261102-article-add-compatibility.sql').Path.Replace('\\','/')
 try {
-    Invoke-CiSql "CREATE DATABASE `$target CHARACTER SET utf8mb4;" | Out-Null
-    Invoke-CiSql "CREATE TABLE `$target`.TABLE_ARTICLES LIKE `$source`.TABLE_ARTICLES; INSERT INTO `$target`.TABLE_ARTICLES SELECT * FROM `$source`.TABLE_ARTICLES;" | Out-Null
+    Invoke-CiSql "CREATE DATABASE $target CHARACTER SET utf8mb4;" | Out-Null
+    Invoke-CiSql "CREATE TABLE $target`.TABLE_ARTICLES LIKE $source`.TABLE_ARTICLES; INSERT INTO $target`.TABLE_ARTICLES SELECT * FROM $source`.TABLE_ARTICLES;" | Out-Null
     $before = Get-OriginalDataDigest
     $rowCount = @(Invoke-CiSql 'SELECT COUNT(*) FROM TABLE_ARTICLES;' $target)[0]
     for ($pass = 1; $pass -le 2; $pass++) {
@@ -48,6 +48,6 @@ try {
         Write-Host "PASS: PR84 additive schema migration pass $pass preserved $rowCount recovered article rows and original columns"
     }
 } finally {
-    Invoke-CiSql "DROP DATABASE IF EXISTS `$target;" | Out-Null
+    Invoke-CiSql "DROP DATABASE IF EXISTS $target;" | Out-Null
 }
 Write-Host 'PASS: isolated MariaDB article migration is idempotent and data-preserving'
