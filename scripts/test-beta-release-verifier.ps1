@@ -132,6 +132,20 @@ try {
             Remove-Item -LiteralPath $privatePath -Force
         }
     }
+    # The real Windows POS suite builds these executables for CI only.
+    # Even a correctly hashed manifest must not allow them into the customer ZIP.
+    foreach ($smoke in @('PosSmoke.exe', 'DesktopPaymentCultureSmoke.exe',
+                         'DesktopArticleDeleteSmoke.exe', 'DesktopArticleDeleteSmoke.exe.config')) {
+        $smokePath = Join-Path $src $smoke
+        [IO.File]::WriteAllText($smokePath, 'isolated QA-only binary fixture')
+        try {
+            Write-FixtureManifest
+            Write-FixtureZip
+            Assert-Rejected "bundled QA executable $smoke" "QA test executable forbidden in customer release"
+        } finally {
+            Remove-Item -LiteralPath $smokePath -Force
+        }
+    }
     Write-FixtureManifest
     Write-FixtureZip
     & $verifier -ZipPath $zip -ManifestPath $manifest -SumsPath $sums -ExpectedCommit $commit | Out-Null
