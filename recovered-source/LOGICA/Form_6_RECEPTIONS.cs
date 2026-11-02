@@ -8908,6 +8908,20 @@ public class Form_6_RECEPTIONS : Form
 					MessageBox.Show("Veuillez remplir la Table ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
+				// Validate totals only AFTER the active cell edit and legacy VB
+				// line/document calculations. Checking stale labels first could
+				// reject a valid receipt or persist an earlier displayed amount.
+				if (!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.PrepareForSave(
+					delegate { return DataGrid_BODY.EndEdit(); },
+					delegate {
+						for (int lineIndex = 0; lineIndex < DataGrid_BODY.Rows.Count; lineIndex++)
+						{
+							if (!DataGrid_BODY.Rows[lineIndex].IsNewRow)
+								RecalculateReceiptLineValues(DataGrid_BODY.Rows[lineIndex]);
+						}
+					},
+					delegate { Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), e); }))
+					return;
 				if (Operators.CompareString(Label_TOTAL_NET_ACHATS_DOC.Text, "", TextCompare: false) == 0)
 				{
 					MessageBox.Show("Veuillez remplir le champ -TOTAL_NET_ACHATS- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
@@ -8918,17 +8932,6 @@ public class Form_6_RECEPTIONS : Form
 					MessageBox.Show("Veuillez remplir le champ -TOTAL_NET_VENTES- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				// Commit the in-progress grid edit before saving the receipt.
-				// CellValidated(null, null) used to silently do nothing after the
-				// event-row fix, leaving edited totals stale in persisted lines.
-				if (!DataGrid_BODY.EndEdit())
-					return;
-				for (int lineIndex = 0; lineIndex < DataGrid_BODY.Rows.Count; lineIndex++)
-				{
-					if (!DataGrid_BODY.Rows[lineIndex].IsNewRow)
-						RecalculateReceiptLineValues(DataGrid_BODY.Rows[lineIndex]);
-				}
-				Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), e);
 				if (Operators.CompareString(Label_TOP.Text, "NOUVEAU", TextCompare: false) == 0)
 				{
 					MySqlCommand val = new MySqlCommand();
