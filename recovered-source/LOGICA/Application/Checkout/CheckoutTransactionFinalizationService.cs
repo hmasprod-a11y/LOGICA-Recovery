@@ -14,6 +14,16 @@ namespace LOGICA.ApplicationLayer.Checkout
         Closed
     }
 
+    // A UI recovery decision, not an authorization to retry. The cashier
+    // must still verify rollback, durable ticket state, or basket reset.
+    internal enum CheckoutAttemptRecoveryAction
+    {
+        None,
+        VerifyRollback,
+        ReconcileDatabase,
+        ResetBasket
+    }
+
     internal sealed class CheckoutCommitProgress
     {
         // Atomic start also guards against concurrent/reentrant calls that
@@ -35,6 +45,28 @@ namespace LOGICA.ApplicationLayer.Checkout
         internal void Advance(CheckoutCommitStage next)
         {
             Interlocked.Exchange(ref stage, (int)next);
+        }
+
+        // Single source of truth for the Desktop/QA error path. A failed
+        // Commit is UNKNOWN, and a failed Close follows a confirmed Commit:
+        // neither may clear the basket or retry without DB reconciliation.
+        public CheckoutAttemptRecoveryAction RecoveryAction
+        {
+            get
+            {
+                switch (Stage)
+                {
+                    case CheckoutCommitStage.Posting:
+                        return CheckoutAttemptRecoveryAction.VerifyRollback;
+                    case CheckoutCommitStage.CommitAttempted:
+                    case CheckoutCommitStage.CommitConfirmed:
+                        return CheckoutAttemptRecoveryAction.ReconcileDatabase;
+                    case CheckoutCommitStage.Closed:
+                        return CheckoutAttemptRecoveryAction.ResetBasket;
+                    default:
+                        return CheckoutAttemptRecoveryAction.None;
+                }
+            }
         }
 
         public bool CommitOutcomeUnknown
@@ -92,13 +124,15 @@ namespace LOGICA.ApplicationLayer.Checkout
         // Call ONLY after the Form has verified rollback succeeded.
         public void ReleaseAfterVerifiedRollback(CheckoutCommitProgress progress)
         {
-            Release(progress, progress != null && progress.Stage == CheckoutCommitStage.Posting);
+            Release(progress, progress != null &&
+                progress.RecoveryAction == CheckoutAttemptRecoveryAction.VerifyRollback);
         }
 
         // Call ONLY after successful settlement and basket/UI reset.
         public void ReleaseAfterBasketReset(CheckoutCommitProgress progress)
         {
-            Release(progress, progress != null && progress.Stage == CheckoutCommitStage.Closed);
+            Release(progress, progress != null &&
+                progress.RecoveryAction == CheckoutAttemptRecoveryAction.ResetBasket);
         }
 
         // For failed Commit or failed Close after Commit: the caller must
@@ -106,8 +140,7 @@ namespace LOGICA.ApplicationLayer.Checkout
         public void ReleaseAfterDatabaseReconciliation(CheckoutCommitProgress progress)
         {
             Release(progress, progress != null &&
-                (progress.CommitOutcomeUnknown ||
-                 progress.Stage == CheckoutCommitStage.CommitConfirmed));
+                progress.RecoveryAction == CheckoutAttemptRecoveryAction.ReconcileDatabase);
         }
     }
 
