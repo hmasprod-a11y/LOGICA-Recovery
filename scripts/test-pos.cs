@@ -1848,6 +1848,24 @@ class PosSmoke {
     if(modified.Handled||modified.SuppressKeyPress)
      throw new Exception("Modified Enter must not initiate barcode lookup: "+modifiedKey);
    }
+   // Real scanner event with a nonempty code must not reach SQL when checkout
+   // is disabled (e.g. during payment). The form has no database connection.
+   var find=(Control)Get(form,"Button_FIND");
+   if(find==null)throw new Exception("Checkout find button missing");
+   bool wasEnabled=find.Enabled;
+   try {
+    find.Enabled=false;
+    code.Text="SCANNER-DISABLED-001";
+    var blockedScan=new KeyEventArgs(Keys.Enter);
+    barcodeHandler.Invoke(form,new object[]{code,blockedScan});
+    if(!blockedScan.Handled||!blockedScan.SuppressKeyPress)
+     throw new Exception("Disabled checkout did not consume scanner terminator");
+    if(code.Text!="SCANNER-DISABLED-001")
+     throw new Exception("Disabled checkout mutated scanner barcode");
+    var findHandler=form.GetType().GetMethod("Button_FIND_Click",Flags);
+    if(findHandler==null)throw new Exception("Real product lookup event missing");
+    findHandler.Invoke(form,new object[]{find,EventArgs.Empty});
+   } finally {find.Enabled=wasEnabled;code.Text="";}
    var enter=new KeyEventArgs(Keys.Enter);
    barcodeHandler.Invoke(form,new object[]{code,enter});
    if(!enter.Handled||!enter.SuppressKeyPress)
