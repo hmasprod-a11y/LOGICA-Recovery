@@ -67,3 +67,13 @@ assert 'audit.Length > 255' not in source, 'character count is unsafe for UTF-8 
 assert 'movement.Parameters.AddWithValue("@delta", plan.Delta);' in source, 'decimal delta must be bound as numeric, not culture-sensitive text'
 assert 'plan.Delta.ToString(CultureInfo.InvariantCulture)' not in source
 print('PASS: UTF-8 audit bound and typed decimal movement parameter')
+
+# A legacy STOCK column may silently round decimal quantities. The audit delta
+# must describe the value actually stored, or the local savepoint must roll back.
+readback = 'Persisted stock differs from adjustment; rollback required.'
+assert readback in source
+assert source.index('UPDATE TABLE_ARTICLES SET STOCK') < source.index(readback)
+assert source.index(readback) < source.index('INSERT INTO TABLE_MOUVEMENTS_STOCK')
+assert 'Convert.ToDecimal(reader.GetValue(0), CultureInfo.InvariantCulture) != plan.AfterStock' in source
+assert source.count('WHERE ID_ARTICLE = @id FOR UPDATE') >= 2
+print('PASS: exact persisted stock checked before audit insert; rollback on rounding')
