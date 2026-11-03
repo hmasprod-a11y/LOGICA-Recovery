@@ -51,3 +51,10 @@ assert source.index('"ROLLBACK TO SAVEPOINT " + savepointName') > source.index('
 assert 'SAVEPOINT hanouty_stock_adjustment' not in source, "fixed name could overwrite caller savepoint"
 assert 'catch\n            {' in source, 'rollback must run on write/audit exceptions'
 print('PASS: failed audit rolls back local stock update without committing outer transaction')
+
+# Catch accidentally committed literal backslash-n escapes inside C# source.
+# Such escapes outside strings/comments break Windows compilation entirely.
+assert r'\n            // nested adjustment' not in source, 'escaped newline corrupted C# source'
+assert r'\n            string savepointName' not in source, 'escaped newline corrupted savepoint declaration'
+assert 'string savepointName = "hanouty_sa_"' in source.splitlines()[source[:source.index('string savepointName')].count('\n')], 'savepoint declaration must be on its own C# line'
+print('PASS: savepoint block uses real C# source lines')
