@@ -92,6 +92,42 @@ internal static class PortableCheckoutSmoke
                     deletedDuringCompare.Delete();
                     return true;
                 }), "Deleted basket line during equality must never be reused");
+            // Regression: legacy callbacks can mutate basket row order or
+            // replace DataColumn objects while retaining identical ID/code.
+            // Previously both cases were accepted as the original line.
+            DataTable reorderedBasket = variants.Clone();
+            DataRow reorderedLine = reorderedBasket.Rows.Add("123", "ORDER");
+            reorderedBasket.Rows.Add("123", "OTHER");
+            int reorderCalls = 0;
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                reorderedLine, "123", "ORDER", delegate(object left, object right) {
+                    reorderCalls++;
+                    if (reorderCalls == 1) {
+                        reorderedBasket.Rows.Remove(reorderedLine);
+                        reorderedBasket.Rows.InsertAt(reorderedLine, 1);
+                    }
+                    return String.Equals(Convert.ToString(left), Convert.ToString(right),
+                        StringComparison.Ordinal);
+                }), "Moved basket line during legacy callback must not increment quantity");
+            Require(reorderCalls == 1, "Reordered basket must stop before second equality");
+            DataTable swappedSchema = variants.Clone();
+            DataRow swappedLine = swappedSchema.Rows.Add("123", "SCHEMA");
+            int schemaCalls = 0;
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                swappedLine, "123", "SCHEMA", delegate(object left, object right) {
+                    schemaCalls++;
+                    if (schemaCalls == 1) {
+                        swappedSchema.Columns["Code"].ColumnName = "OldCode";
+                        swappedSchema.Columns.Add("Code", typeof(string));
+                        swappedLine["Code"] = "123";
+                    }
+                    return String.Equals(Convert.ToString(left), Convert.ToString(right),
+                        StringComparison.Ordinal);
+                }), "Replaced barcode column during legacy callback must not increment sale");
+            Require(schemaCalls == 1, "Schema mutation must stop before article-ID comparison");
+            Require(swappedLine["ID_ARTICLE"].ToString() == "SCHEMA" &&
+                swappedLine["Code"].ToString() == "123",
+                "Schema safety check must not mutate the selected basket identity");
             int callsBeforeInvalidSelection = equalityCalls;
             Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
                 basketLine, "123", null, compare), "Null selected article ID must not match");
