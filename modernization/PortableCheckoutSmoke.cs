@@ -62,6 +62,36 @@ internal static class PortableCheckoutSmoke
                 basketLine, "123", "A", compare), "Live basket row must match exact barcode and ID");
             Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
                 basketLine, "123", "B", compare), "Different variant must not increment basket quantity");
+            // Production basket identity comparison must fail closed when a
+            // legacy VB callback changes the row while the cashier is scanning.
+            DataRow changedCode = basket.Rows.Add("123", "CALLBACK-CODE");
+            int changedCodeCalls = 0;
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                changedCode, "123", "CALLBACK-CODE", delegate(object left, object right) {
+                    changedCodeCalls++;
+                    if (changedCodeCalls == 1) changedCode["Code"] = "999";
+                    return String.Equals(Convert.ToString(left), Convert.ToString(right),
+                        StringComparison.Ordinal);
+                }), "Changed basket barcode during equality must not increment a sale line");
+            Require(changedCodeCalls == 1,
+                "A changed barcode must stop before the article-ID equality callback");
+            DataRow changedId = basket.Rows.Add("123", "CALLBACK-ID");
+            int changedIdCalls = 0;
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                changedId, "123", "CALLBACK-ID", delegate(object left, object right) {
+                    changedIdCalls++;
+                    if (changedIdCalls == 2) changedId["ID_ARTICLE"] = "OTHER";
+                    return String.Equals(Convert.ToString(left), Convert.ToString(right),
+                        StringComparison.Ordinal);
+                }), "Changed basket ID during equality must not increment a different variant");
+            Require(changedIdCalls == 2,
+                "Both equality callbacks must run for an initially valid basket line");
+            DataRow deletedDuringCompare = basket.Rows.Add("123", "CALLBACK-DELETE");
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                deletedDuringCompare, "123", "CALLBACK-DELETE", delegate(object left, object right) {
+                    deletedDuringCompare.Delete();
+                    return true;
+                }), "Deleted basket line during equality must never be reused");
             int callsBeforeInvalidSelection = equalityCalls;
             Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
                 basketLine, "123", null, compare), "Null selected article ID must not match");
