@@ -1961,6 +1961,16 @@ class PosSmoke {
      if(control==null||control.Text!="value"+i)
       throw new Exception("Article presentation mismatch: "+controls[i]);
     }
+    // Production presenter is callable without a form or SQL and respects the
+    // selected price tier; the real WinForms mapping above is still exercised.
+    var presenter=assembly.GetType("LOGICA.DesktopArticleFieldPresenter",true);
+    var read=presenter.GetMethod("Read",BindingFlags.Static|BindingFlags.NonPublic);
+    if(read==null)throw new Exception("Production article presenter unavailable");
+    table.Columns.Add("Prix_V_2",typeof(string));
+    row["Prix_V_2"]="tier-two";
+    var tierValues=(string[])read.Invoke(null,new object[]{row,"Prix_V_2"});
+    if(tierValues.Length!=14||tierValues[6]!="tier-two"||tierValues[0]!="value0")
+     throw new Exception("Article presenter changed selected price tier or identity");
     table.Columns.Remove("GROUPE");
     table.Columns.Remove("PRIX_QTE");
     table.Columns.Remove("PRIX_QTE_MIN");
