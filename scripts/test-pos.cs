@@ -1865,6 +1865,15 @@ class PosSmoke {
     var findHandler=form.GetType().GetMethod("Button_FIND_Click",Flags);
     if(findHandler==null)throw new Exception("Real product lookup event missing");
     findHandler.Invoke(form,new object[]{find,EventArgs.Empty});
+    // The actual image-tile event also must fail closed before the SQL adapter.
+    // Tag type is intentionally not fabricated: a disabled event must never
+    // inspect the tile or require any database connection.
+    var imageTile=new Button();
+    imageTile.Tag="stale-image-reference";
+    try {findHandler.Invoke(form,new object[]{imageTile,EventArgs.Empty});}
+    finally {imageTile.Dispose();}
+    if(code.Text!="SCANNER-DISABLED-001")
+     throw new Exception("Disabled image lookup mutated barcode state");
    } finally {find.Enabled=wasEnabled;code.Text="";}
    var enter=new KeyEventArgs(Keys.Enter);
    barcodeHandler.Invoke(form,new object[]{code,enter});
