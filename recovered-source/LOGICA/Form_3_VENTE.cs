@@ -12492,6 +12492,41 @@ public class Form_3_VENTE : Form
 	{
 	}
 
+	// Keep the whole product photo visible inside the 127x117 cashier tile.
+	// WinForms Button.Image paints at the source's native size: large photos
+	// otherwise show only a clipped patch. Reserve top space for the price
+	// badge and bottom space for the product name, without cropping the photo.
+	private static Bitmap MakeCheckoutArticleTileImage(Bitmap original)
+	{
+		if (original == null) return null;
+		using (original)
+		{
+			const int canvasWidth = 115, canvasHeight = 87;
+			const int photoTop = 19, photoHeight = 64;
+			Bitmap thumbnail = new Bitmap(canvasWidth, canvasHeight);
+			try
+			{
+				using (Graphics graphics = Graphics.FromImage(thumbnail))
+				{
+					graphics.Clear(Color.Transparent);
+					graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+					graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+					double ratio = Math.Min((double)canvasWidth / original.Width, (double)photoHeight / original.Height);
+					int width = Math.Max(1, (int)Math.Round(original.Width * ratio));
+					int height = Math.Max(1, (int)Math.Round(original.Height * ratio));
+					graphics.DrawImage(original, new Rectangle((canvasWidth - width) / 2,
+						photoTop + (photoHeight - height) / 2, width, height));
+				}
+				return thumbnail;
+			}
+			catch
+			{
+				thumbnail.Dispose();
+				throw;
+			}
+		}
+	}
+
 	// Search and family switching create independent image bitmaps for each
 	// tile. Clear() alone detaches controls without disposing their GDI images.
 	private void ClearArticleImageTiles()
@@ -12578,7 +12613,7 @@ public class Form_3_VENTE : Form
 					((ButtonBase)button_RJ_ARTICLE).FlatStyle = (FlatStyle)2;
 					((Control)button_RJ_ARTICLE).Font = new Font("Segoe UI", 9f, (FontStyle)1);
 					((Control)button_RJ_ARTICLE).ForeColor = Color.Black;
-					((ButtonBase)button_RJ_ARTICLE).Image = (Image)articleImage;
+					((ButtonBase)button_RJ_ARTICLE).Image = MakeCheckoutArticleTileImage(articleImage);
 					((ButtonBase)button_RJ_ARTICLE).ImageAlign = (ContentAlignment)2;
 					Padding margin = new Padding(2, 2, 0, 0);
 					((Control)button_RJ_ARTICLE).Margin = margin;
@@ -15647,7 +15682,7 @@ public class Form_3_VENTE : Form
 							((ButtonBase)button_RJ_ARTICLE).FlatStyle = (FlatStyle)2;
 							((Control)button_RJ_ARTICLE).Font = new Font("Segoe UI", 9f, (FontStyle)1);
 							((Control)button_RJ_ARTICLE).ForeColor = Color.Black;
-							((ButtonBase)button_RJ_ARTICLE).Image = (Image)articleImage;
+							((ButtonBase)button_RJ_ARTICLE).Image = MakeCheckoutArticleTileImage(articleImage);
 							((ButtonBase)button_RJ_ARTICLE).ImageAlign = (ContentAlignment)2;
 							Padding margin = new Padding(2, 2, 0, 0);
 							((Control)button_RJ_ARTICLE).Margin = margin;
