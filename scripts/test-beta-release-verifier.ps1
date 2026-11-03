@@ -160,7 +160,7 @@ try {
     }
     # Regression for the complete private-state predicate: both filename and
     # nested-directory forms must be rejected by the independent verifier.
-    foreach ($private in @('nested/.env', 'nested/credentials.json', 'nested/private.pfx',
+    foreach ($private in @('nested/.env', 'nested/.env.production', 'nested/.env.test', 'nested/credentials.json', 'nested/private.pfx',
                            'nested/backup.sql', 'nested/dump.sql.gz',
                            'nested/mysql-data/table.ibd', '.ssh/known_hosts')) {
         $privatePath = Join-Path $src $private
