@@ -22,6 +22,11 @@ namespace LOGICA.ApplicationLayer.Checkout
             if (selectedArticleId == null || selectedArticleId == DBNull.Value ||
                 String.IsNullOrWhiteSpace(Convert.ToString(selectedArticleId)))
                 return false;
+            // The scanner cannot legitimately supply SQL NULL. Do not pass a
+            // missing scan to VB coercion: a blank string is still a valid
+            // explicit code for an image-only catalogue article.
+            if (scannedCode == null || scannedCode == DBNull.Value)
+                return false;
             // A basket line removed while the duplicate-variant dialog was open
             // must never be reused for a second sale. Fail closed without
             // invoking the caller's legacy equality callback.
