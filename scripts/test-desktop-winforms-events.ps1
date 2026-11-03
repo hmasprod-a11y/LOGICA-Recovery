@@ -52,10 +52,10 @@ try {
     })
     $raise = [System.Windows.Forms.Control].GetMethod('OnKeyDown', [Reflection.BindingFlags]'Instance,NonPublic')
     if (-not $raise) { throw 'Cannot locate WinForms OnKeyDown' }
-    $enter = New-Object System.Windows.Forms.KeyEventArgs([System.Windows.Forms.Keys]::Enter)
+    $enter = [System.Windows.Forms.KeyEventArgs]::new([System.Windows.Forms.Keys]::Enter)
     $raise.Invoke($text, @($enter)) | Out-Null
     Assert ($script:scanCount -eq 1 -and $enter.SuppressKeyPress) 'Enter event must submit and suppress'
-    $shiftEnter = New-Object System.Windows.Forms.KeyEventArgs([System.Windows.Forms.Keys]([int][System.Windows.Forms.Keys]::Enter -bor [int][System.Windows.Forms.Keys]::Shift))
+    $shiftEnter = [System.Windows.Forms.KeyEventArgs]::new([System.Windows.Forms.Keys]([int][System.Windows.Forms.Keys]::Enter -bor [int][System.Windows.Forms.Keys]::Shift))
     $raise.Invoke($text, @($shiftEnter)) | Out-Null
     Assert ($script:scanCount -eq 1) 'Shift+Enter must not submit'
     Assert ([PresenterHarness]::Lookup($true, '12345', $null)) 'barcode selection'
