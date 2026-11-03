@@ -128,6 +128,31 @@ internal static class PortableCheckoutSmoke
             Require(swappedLine["ID_ARTICLE"].ToString() == "SCHEMA" &&
                 swappedLine["Code"].ToString() == "123",
                 "Schema safety check must not mutate the selected basket identity");
+            // Characterization: legacy equality can pump UI callbacks that add a
+            // different sale line or reshape the table without changing this ID.
+            // Previously the original row still matched despite a stale basket snapshot.
+            DataTable insertedBasket = variants.Clone();
+            DataRow insertedLine = insertedBasket.Rows.Add("123", "INSERT");
+            int insertedCalls = 0;
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                insertedLine, "123", "INSERT", delegate(object left, object right) {
+                    insertedCalls++;
+                    if (insertedCalls == 1) insertedBasket.Rows.Add("123", "ANOTHER");
+                    return String.Equals(Convert.ToString(left), Convert.ToString(right),
+                        StringComparison.Ordinal);
+                }), "Inserted basket row during equality must invalidate the stale comparison");
+            Require(insertedCalls == 1, "Basket insertion must stop before ID equality");
+            DataTable expandedSchema = variants.Clone();
+            DataRow expandedLine = expandedSchema.Rows.Add("123", "EXTRA-COLUMN");
+            int expandedCalls = 0;
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                expandedLine, "123", "EXTRA-COLUMN", delegate(object left, object right) {
+                    expandedCalls++;
+                    if (expandedCalls == 1) expandedSchema.Columns.Add("Unexpected", typeof(string));
+                    return String.Equals(Convert.ToString(left), Convert.ToString(right),
+                        StringComparison.Ordinal);
+                }), "Schema expansion during equality must invalidate the stale comparison");
+            Require(expandedCalls == 1, "Schema expansion must stop before ID equality");
             int callsBeforeInvalidSelection = equalityCalls;
             Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
                 basketLine, "123", null, compare), "Null selected article ID must not match");
