@@ -14849,10 +14849,8 @@ public class Form_3_VENTE : Form
     // Match ONLY these known quantity identifiers; do not rename other columns.
     private static bool IsLegacyCheckoutQuantityColumn(string name)
     {
-        return string.Equals(name, "QtÃ©", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(name, "QtÃƒÂ©", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(name, "Qte", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(name, "Quantite", StringComparison.OrdinalIgnoreCase);
+        return LegacyColumnCompatibility.IsQuantityAlias(name) &&
+               !string.Equals(name, "Qté", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void RemapCheckoutCommandSourceColumns(MySqlCommand command)
@@ -14881,7 +14879,7 @@ public class Form_3_VENTE : Form
         if (openedHere) connection.Open();
         try
         {
-            foreach (string candidate in new[] { "Qté", "QtÃ©", "QtÃƒÂ©", "Qte", "Quantite" })
+            foreach (string candidate in LegacyColumnCompatibility.QuantityAliases)
             {
                 try
                 {
@@ -14910,7 +14908,7 @@ public class Form_3_VENTE : Form
         if (command == null) return;
         // Generated SQL has connector-normalized schema names; only replace
         // quoted, allowlisted identifier tokens, not parameter names or values.
-        foreach (string alias in new[] { "Qté", "QtÃ©", "QtÃƒÂ©", "Qte", "Quantite" })
+        foreach (string alias in LegacyColumnCompatibility.QuantityAliases)
             if (!string.Equals(alias, physical, StringComparison.Ordinal))
                 command.CommandText = command.CommandText.Replace("`" + alias + "`", "`" + physical + "`");
     }
