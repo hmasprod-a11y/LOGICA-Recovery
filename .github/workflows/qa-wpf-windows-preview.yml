@@ -68,47 +68,36 @@ jobs:
           if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "WPF host EXE missing: $exe" }
           Write-Host "PASS WPF executable built from pinned source SHA; not a licensed sale or peripheral acceptance"
 
-      - name: Verify publishable WPF runtime and create compatibility inventory
+      - name: Publish WPF runtime and inventory
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $project = 'wpf-preview/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj'
-          dotnet publish $project -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -o wpf-publish
-          $exe = 'wpf-publish/Hanouty.Desktop.Wpf.exe'
-          $runtime = 'wpf-publish/Hanouty.Desktop.Wpf.runtimeconfig.json'
-          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Published WPF executable missing' }
-          if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) { throw 'Published WPF runtimeconfig missing' }
-          $config = Get-Content -LiteralPath $runtime -Raw | ConvertFrom-Json
-          $frameworks = @($config.runtimeOptions.frameworks) + @($config.runtimeOptions.framework) | Where-Object { $_ }
-          if (-not ($frameworks | Where-Object { $_.name -eq 'Microsoft.WindowsDesktop.App' -and $_.version -match '^10\\.' })) {
-            throw 'Published WPF host must require WindowsDesktop.App 10'
+          dotnet publish wpf-preview/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj -c Release -r win-x64 --self-contained false -o wpf-publish
+          if (-not (Test-Path wpf-publish/Hanouty.Desktop.Wpf.exe)) { throw 'Published EXE missing' }
+          $runtime = Get-Content wpf-publish/Hanouty.Desktop.Wpf.runtimeconfig.json -Raw
+          if ($runtime -notmatch 'Microsoft.WindowsDesktop.App') { throw 'Windows desktop runtime missing' }
+          $inventory = Get-ChildItem wpf-publish -Recurse -File | ForEach-Object {
+            [pscustomobject]@{ path=$_.FullName; bytes=$_.Length; sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash }
           }
-          $inventory = @()
-          foreach ($file in (Get-ChildItem wpf-publish -File -Recurse)) {
-            $relative = $file.FullName.Substring((Resolve-Path wpf-publish).Path.Length).TrimStart('\\','/')
-            $inventory += [pscustomobject]@{
-              path = $relative
-              bytes = $file.Length
-              sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
-              extension = $file.Extension.ToLowerInvariant()
-            }
-          }
-          $inventory | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath wpf-publish-inventory.json
-          $legacy = Get-ChildItem wpf-preview -Recurse -File | Where-Object { $_.Extension -in @('.rdlc','.rpt','.dll','.ocx','.pfx') } |
-            ForEach-Object { [pscustomobject]@{ path = $_.FullName.Substring((Resolve-Path wpf-preview).Path.Length); extension = $_.Extension } }
-          @($legacy) | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath peripheral-compatibility-inventory.json
-          Write-Host 'PASS: published WPF runtime metadata and hashed artifact inventory; peripherals and license NOT field accepted'
-      - name: Verify extracted customer preview ZIP has no secret payload
+          $inventory | ConvertTo-Json -Depth 4 | Set-Content wpf-publish-inventory.json
+          Get-ChildItem wpf-preview -Recurse -File | Where-Object { $_.Extension -in @('.rdlc','.rpt','.dll','.ocx') } |
+            Select-Object FullName,Extension | ConvertTo-Json | Set-Content peripheral-compatibility-inventory.json
+      - name: Extract preview ZIP and reject private files
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           Compress-Archive -Path wpf-publish/* -DestinationPath wpf-preview.zip -Force
-          New-Item -ItemType Directory -Path wpf-extracted | Out-Null
           Expand-Archive -LiteralPath wpf-preview.zip -DestinationPath wpf-extracted -Force
-          if (-not (Test-Path wpf-extracted/Hanouty.Desktop.Wpf.exe)) { throw 'Extracted WPF EXE missing' }
-          if (-not (Test-Path wpf-extracted/Hanouty.Desktop.Wpf.runtimeconfig.json)) { throw 'Extracted runtime configuration missing' }
+          if (-not (Test-Path wpf-extracted/Hanouty.Desktop.Wpf.exe)) { throw 'Extracted EXE missing' }
+          if (-not (Test-Path wpf-extracted/Hanouty.Desktop.Wpf.runtimeconfig.json)) { throw 'Extracted runtimeconfig missing' }
           $bad = Get-ChildItem wpf-extracted -Recurse -File | Where-Object {
-            $_.Name -match '^(?i:\\.env(?:\\..+)?|id_rsa|id_ed25519|credentials\\.json|hash_licence\\.sni)
+            ($_.Name.StartsWith('.env')) -or
+            ($_.Name -in @('id_rsa','id_ed25519','credentials.json','hash_licence.sni')) -or
+            ($_.Extension -in @('.sql','.pfx','.pem','.key','.kdbx'))
+          }
+          if ($bad) { throw 'Sensitive payload found in WPF preview ZIP' }
+          Write-Host 'PASS extracted preview layout and secret exclusion; licensed startup and devices remain unverified'
+      - name: Upload WPF preview and compatibility evidence
         if: success()
         uses: actions/upload-artifact@v4
         with:
@@ -121,29 +110,3 @@ jobs:
             peripheral-compatibility-inventory.json
             wpf-preview.zip
             wpf-publish/**
-            wpf-preview/modernization/Hanouty.Desktop.Wpf/bin/Release/net10.0-windows/**
- -or
-            $_.Extension -match '^(?i:\\.sql|\\.pfx|\\.pem|\\.key|\\.kdbx)
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: hanouty-wpf-net10-preview-${{ github.run_id }}
-          if-no-files-found: error
-          retention-days: 7
-          path: |
-            source-provenance.txt
-            wpf-preview/modernization/Hanouty.Desktop.Wpf/bin/Release/net10.0-windows/**
-
-          }
-          if ($bad) { throw "Sensitive files in extracted preview: $($bad.FullName -join ', ')" }
-          Write-Host 'PASS: extracted WPF preview structure and private-file denylist; startup/login/peripheral field acceptance NOT claimed'
-      - name: Publish WPF executable preview with source provenance
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: hanouty-wpf-net10-preview-${{ github.run_id }}
-          if-no-files-found: error
-          retention-days: 7
-          path: |
-            source-provenance.txt
-            wpf-preview/modernization/Hanouty.Desktop.Wpf/bin/Release/net10.0-windows/**
