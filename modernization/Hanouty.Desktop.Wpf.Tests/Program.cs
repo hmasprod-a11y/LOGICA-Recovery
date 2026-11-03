@@ -50,6 +50,18 @@ var preview = new CatalogueViewModel(new Reader(items));
 preview.ScannerText = "456";
 preview.ScanBarcode();
 Check(preview.ScanFeedback == "Checkout unavailable in preview", "default host must fail closed");
+Check(vm.LayoutDirection == System.Windows.FlowDirection.RightToLeft, "RTL must change actual WPF layout direction");
+vm.IsRightToLeft = false;
+Check(vm.LayoutDirection == System.Windows.FlowDirection.LeftToRight, "LTR must restore actual WPF layout direction");
+vm.ScannerText = "";
+vm.ScanBarcode();
+Check(vm.BarcodeCandidates.Count == 0, "empty scanner input must clear stale barcode candidates");
+vm.SearchText = "";
+vm.ScannerText = "777";
+vm.ScanBarcode();
+vm.SelectedProduct = vm.BarcodeCandidates[1];
+vm.SelectCommand.Execute(null);
+Check(selection.Selected.Last().Id == "5", "explicit ambiguous barcode candidate must dispatch selected article");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
