@@ -20,7 +20,10 @@ internal static class DesktopSolderSubmissionSmoke
         int mark=s.IndexOf("_solderSubmissionGuard.MarkPostingAttempt();",StringComparison.Ordinal);
         int rollback=s.IndexOf("CheckoutTransactionBoundaryService.Rollback(checkoutBoundary);",StringComparison.Ordinal);
         int abort=rollback<0 ? -1 : s.IndexOf("return;",rollback,StringComparison.Ordinal);
-        int reset=s.IndexOf("Module1.dt1.Clear();",post,StringComparison.Ordinal);
+        // Successful checkout resets the basket by binding a newly filled
+        // DataTable; the old Clear() implementation is intentionally gone.
+        int reset=s.IndexOf("Module1.dt1 = new DataTable();",post,StringComparison.Ordinal);
+        int rebind=reset<0 ? -1 : s.IndexOf("DataGridView1.DataSource = Module1.dt1;",reset,StringComparison.Ordinal);
         int complete=s.IndexOf("_solderSubmissionGuard.MarkCompleted();",StringComparison.Ordinal);
         Check(wrapper>=0 && core>wrapper && core<post,"event wrapper missing");
         string entry=s.Substring(wrapper,core-wrapper);
@@ -28,7 +31,8 @@ internal static class DesktopSolderSubmissionSmoke
               entry.Contains("finally") && entry.Contains("EndAttempt()"),"reentrant click guard missing");
         Check(mark>core && mark<post,"posting latch must precede finalizer");
         Check(rollback>post && abort>rollback && abort<reset,"failure must abort before basket reset");
-        Check(complete>reset,"completion must follow basket reset");
+        Check(reset>post && rebind>reset && complete>rebind,
+              "completion must follow successful new basket rebind");
         Check(s.Contains("catch (Exception rollbackFailure)"),"rollback error handling missing");
     }
     private static void TestGuard()
