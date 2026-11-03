@@ -704,6 +704,43 @@ internal static class PortableCheckoutSmoke
             Require(reassignedDuringPricing,
                 "Checkout preview must reject article reassigned during pricing");
             duringPricing.Rows[0]["ID_ARTICLE"] = "ORIGINAL";
+            // Financial fields can change in a re-entrant UI callback without
+            // changing the article identity. Never return a mixed-version
+            // sale or return preview when price, discount or tax was edited.
+            foreach (string field in new[] { "UnitPrice", "Discount" })
+            {
+                DataTable changedPricing = flowMatches.Clone();
+                changedPricing.Rows.Add("DUP", "STABLE", 7.50m, 0m);
+                CheckoutVariantChoiceResult changedChoice =
+                    CheckoutSelectionFlowService.ChooseBarcode(changedPricing, null);
+                bool rejectedFinancialEdit = false;
+                try {
+                    CheckoutSelectionFlowService.Preview(changedChoice, 0m,
+                        delegate(DataRow article) {
+                            article[field] = field == "UnitPrice" ? 8.50m : 1m;
+                            return SalesLinePricing.CalculateNetAmount(7.50m, -2m, 0m);
+                        }, "-15", port);
+                }
+                catch (InvalidOperationException) { rejectedFinancialEdit = true; }
+                Require(rejectedFinancialEdit,
+                    "Checkout return preview must reject in-flight " + field + " mutation");
+            }
+            DataTable changedTax = flowMatches.Copy();
+            changedTax.Columns.Add("TAUX_TVA", typeof(decimal));
+            changedTax.Rows[0]["TAUX_TVA"] = 7m;
+            CheckoutVariantChoiceResult taxChoice =
+                CheckoutSelectionFlowService.ChooseBarcode(changedTax,
+                    delegate(IList<CheckoutVariantSnapshot> rows) { return 0; });
+            bool rejectedTaxEdit = false;
+            try {
+                CheckoutSelectionFlowService.Preview(taxChoice, 0m,
+                    delegate(DataRow article) {
+                        article["TAUX_TVA"] = 20m;
+                        return 15m;
+                    }, "15", port);
+            }
+            catch (InvalidOperationException) { rejectedTaxEdit = true; }
+            Require(rejectedTaxEdit, "Checkout sale preview must reject in-flight TVA mutation");
             bool deletedDuringPricing = false;
             try {
                 CheckoutSelectionFlowService.Preview(mutableChoice, 0m,
