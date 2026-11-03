@@ -189,6 +189,17 @@ try {
         "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
         Assert-Rejected "invalid ZIP directories $($directoryNames -join ',')"
     }
+    # An attacker must not smuggle private-state or unrelated empty directories
+    # through a ZIP even though the manifest contains only file entries.
+    foreach ($orphan in @('bd/mysql-data/', 'private-secrets/', 'unrelated/subfolder/')) {
+        Write-FixtureZip
+        $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
+        try { $null = $archive.CreateEntry($orphan) }
+        finally { $archive.Dispose() }
+        $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+        "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
+        Assert-Rejected "orphan ZIP directory $orphan" 'Unexpected ZIP directory without manifest descendants'
+    }
     # Bound malicious ZIP metadata growth before reading file streams.
     Write-FixtureZip
     $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
