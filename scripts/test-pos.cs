@@ -1709,6 +1709,8 @@ class PosSmoke {
    var findButton=(Control)Get(form,"Button_FIND");
    var selected=form.GetType().GetMethod("SelectedProductListRow",Flags);
    var reference=form.GetType().GetMethod("BlankBarcodeListArticleReference",Flags);
+   var exactReference=form.GetType().GetMethod("ProductListArticleReference",Flags);
+   if(exactReference==null)throw new Exception("List identity resolver is missing");
    var click=form.GetType().GetMethod("DataGridView100_Click",Flags);
    var doubleClick=form.GetType().GetMethod("DataGridView100_DoubleClick",Flags);
    if(list==null||code==null||findButton==null||selected==null||reference==null||click==null||doubleClick==null)
@@ -1726,6 +1728,10 @@ class PosSmoke {
    var tagType=assembly.GetType("LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference",true);
    if(!tagType.IsInstanceOfType(tag) || Convert.ToString(tagType.GetProperty("ArticleId",Flags).GetValue(tag,null))!="101" || Convert.ToString(tag)!="")
     throw new Exception("Barcode-free list row lost its exact article identity");
+   var listedBarcode=exactReference.Invoke(null,new object[]{rows.Rows[1]});
+   if(!tagType.IsInstanceOfType(listedBarcode) ||
+      Convert.ToString(tagType.GetProperty("ArticleId",Flags).GetValue(listedBarcode,null))!="102")
+    throw new Exception("Barcode-bearing list row must use exact ID_ARTICLE, like image tiles");
    findButton.Tag="CI_KEEP_TAG";
    findButton.Enabled=false;
    code.Text="KEEP-SCAN";
