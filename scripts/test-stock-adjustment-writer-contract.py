@@ -58,3 +58,12 @@ assert r'\n            // nested adjustment' not in source, 'escaped newline cor
 assert r'\n            string savepointName' not in source, 'escaped newline corrupted savepoint declaration'
 assert 'string savepointName = "hanouty_sa_"' in source.splitlines()[source[:source.index('string savepointName')].count('\n')], 'savepoint declaration must be on its own C# line'
 print('PASS: savepoint block uses real C# source lines')
+
+# UTF-8 audit payloads can exceed the legacy 255-byte column even when
+# their .NET character count is below 255 (Arabic product reasons/user IDs).
+assert 'Encoding.UTF8.GetByteCount(audit) > 255' in source, 'audit must be bounded by encoded bytes'
+assert 'using System.Text;' in source
+assert 'audit.Length > 255' not in source, 'character count is unsafe for UTF-8 payloads'
+assert 'movement.Parameters.AddWithValue("@delta", plan.Delta);' in source, 'decimal delta must be bound as numeric, not culture-sensitive text'
+assert 'plan.Delta.ToString(CultureInfo.InvariantCulture)' not in source
+print('PASS: UTF-8 audit bound and typed decimal movement parameter')
