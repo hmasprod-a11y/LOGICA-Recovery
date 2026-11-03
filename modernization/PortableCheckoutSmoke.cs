@@ -62,6 +62,15 @@ internal static class PortableCheckoutSmoke
                 basketLine, "123", "A", compare), "Live basket row must match exact barcode and ID");
             Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
                 basketLine, "123", "B", compare), "Different variant must not increment basket quantity");
+            int callsBeforeInvalidSelection = equalityCalls;
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                basketLine, "123", null, compare), "Null selected article ID must not match");
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                basketLine, "123", DBNull.Value, compare), "SQL NULL selected ID must not match");
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                basketLine, "123", "  ", compare), "Blank selected ID must not match");
+            Require(equalityCalls == callsBeforeInvalidSelection,
+                "Invalid selected ID must not call legacy equality");
             int callsBeforeRemoval = equalityCalls;
             basket.Rows.Remove(basketLine);
             Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
