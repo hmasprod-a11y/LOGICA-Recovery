@@ -270,7 +270,14 @@ try {
         try {
             Write-FixtureManifest
             Write-FixtureZip
-            Assert-Rejected "private payload $private" 'Credential, database state or backup forbidden in release manifest'
+            # Legacy bd/mysql-data is rejected by the earlier dedicated guard;
+            # all other private payloads use the general manifest guard.
+            $expectedDiagnostic = if ($private -eq 'bd/mysql-data/ibdata1') {
+                'Forbidden persisted test data in manifest'
+            } else {
+                'Credential, database state or backup forbidden in release manifest'
+            }
+            Assert-Rejected "private payload $private" $expectedDiagnostic
         } finally {
             Remove-Item -LiteralPath $privatePath -Force
         }
