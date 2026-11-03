@@ -40,7 +40,14 @@ def check(source):
         raise AssertionError("Failed SOLDER must roll back before returning, and return before basket reset")
     if "Module1.dt1.Clear();" in handler:
         raise AssertionError("Failed SOLDER catch cleared cashier basket")
-    next_reset = source.find("Module1.dt1.Clear();", end)
+    # Legacy checkout cleared the same DataTable; the corrected checkout
+    # creates a fresh DataTable so the old quantity-column schema cannot leak
+    # across a successful sale. Both are success-only resets.
+    reset_match = re.search(
+        r"Module1\\.dt1\\s*(?:\\.Clear\\(\\)|=\\s*new\\s+DataTable\\(\\))\\s*;",
+        source[end:],
+    )
+    next_reset = end + reset_match.start() if reset_match else -1
     if next_reset < 0 or next_reset - end > 500:
         raise AssertionError("Expected success-only basket reset missing or moved")
     between = source[end + 1:next_reset]
@@ -61,6 +68,8 @@ def self_test():
       Module1.dt1.Clear();
     """
     check(base)
+    # A fresh DataTable after a successful checkout is also a valid reset.
+    check(base.replace("Module1.dt1.Clear();", "Module1.dt1 = new DataTable();"))
     broken = (
         base.replace("return;", ""),
         base.replace("return;", "/* no abort */"),
