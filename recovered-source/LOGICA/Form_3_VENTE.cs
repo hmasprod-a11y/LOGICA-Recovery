@@ -14852,8 +14852,11 @@ public class Form_3_VENTE : Form
                 Module1.da1.DeleteCommand = builder.GetDeleteCommand();
                 RemapCheckoutCommandSourceColumns(Module1.da1.DeleteCommand);
             }
-            ((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
         }
+        // Dispose CommandBuilder and its RowUpdating hook BEFORE the update:
+        // otherwise regenerated commands can restore the legacy physical SourceColumn.
+        // The explicit commands retain the physical SQL identifiers, but bind to "Qté".
+        ((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
     }
 
     private static void NormalizeLoadedCheckoutQuantityColumn()
@@ -15120,18 +15123,11 @@ public class Form_3_VENTE : Form
 					((Control)Text_CODE).Focus();
 					return;
 				}
-				if (Operators.CompareString(Text_PRIX_QTE.Text.Trim(), "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ - PRIX_QTE- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					((Control)Text_CODE).Focus();
-					return;
-				}
-				if (Operators.CompareString(Text_PRIX_QTE_MIN.Text.Trim(), "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ - QTE_MIN- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					((Control)Text_CODE).Focus();
-					return;
-				}
+				// Optional quantity-tier price; regular price remains authoritative.
+				if (string.IsNullOrWhiteSpace(Text_PRIX_QTE.Text))
+					Text_PRIX_QTE.Text = "0";
+				if (string.IsNullOrWhiteSpace(Text_PRIX_QTE_MIN.Text))
+					Text_PRIX_QTE_MIN.Text = "0";
 				if (((Control)Panel_RAPPEL).Visible)
 				{
 					((Control)Panel_RAPPEL).Visible = false;
