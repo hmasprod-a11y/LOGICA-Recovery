@@ -301,6 +301,11 @@ namespace LOGICA.ApplicationLayer.Checkout
             // Keep the original VB amount and rounding calculations intact.
             string selectedId = Convert.ToString(selected["ID_ARTICLE"]);
             string selectedCode = selected.IsNull("Code") ? null : Convert.ToString(selected["Code"]);
+            // Capture the entire live pricing row, not just its identity. A UI
+            // callback can edit unit price, discount or TVA while legacy VB
+            // arithmetic runs. Returning a total from mixed versions would
+            // make the preview unsafe even when ID_ARTICLE remains unchanged.
+            object[] pricingSnapshot = selected.ItemArray;
             decimal lineNet = calculateLegacyLineNet(selected);
             if (selected.RowState == DataRowState.Deleted ||
                 selected.RowState == DataRowState.Detached ||
@@ -313,6 +318,12 @@ namespace LOGICA.ApplicationLayer.Checkout
                 !String.Equals(selected.IsNull("Code") ? null : Convert.ToString(selected["Code"]),
                     selectedCode, StringComparison.Ordinal))
                 throw new InvalidOperationException("The selected article changed during checkout pricing.");
+            object[] pricedValues = selected.ItemArray;
+            if (pricedValues.Length != pricingSnapshot.Length)
+                throw new InvalidOperationException("The selected article schema changed during checkout pricing.");
+            for (int column = 0; column < pricingSnapshot.Length; column++)
+                if (!Object.Equals(pricingSnapshot[column], pricedValues[column]))
+                    throw new InvalidOperationException("The selected article values changed during checkout pricing.");
             decimal basketNet = decimal.Add(existingBasketNet, lineNet);
             bool differs = BasketTotalConsistency.AreDifferent(basketNet, displayedTotal, legacy);
             return new CheckoutBasketPreview(
