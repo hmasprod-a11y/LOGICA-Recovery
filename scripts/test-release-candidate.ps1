@@ -75,10 +75,12 @@ foreach ($name in $expectedSettings.Keys) {
   $actual = [IO.File]::ReadAllText($path).Trim()
   if ($actual -cne $expectedSettings[$name]) { throw "Unsafe beta startup setting: $name" }
 }
-# Test harnesses must not ship even if a prior build left them in dist.
-# Cover all smoke executables and their adjacent .config files, not only PosSmoke.
+# Test harnesses must never ship in customer packages.
 foreach ($candidate in @(Get-ChildItem -LiteralPath $dist -Recurse -File -Force -ErrorAction Stop)) {
-  if ($candidate.Name -match '(?i)Smoke\\.exe(?:\\.config)?
+  if ($candidate.Name -match 'Smoke[.]exe([.]config)?$') {
+    throw "QA smoke harness forbidden in release package: $($candidate.FullName)"
+  }
+}
 $files = @(Get-ChildItem -LiteralPath $dist -Recurse -File -Force)
 if ($files.Count -eq 0) { throw 'Empty release candidate' }
 # Windows file names are case-insensitive. Reject ambiguous release paths before ZIP creation.
