@@ -20,6 +20,16 @@ namespace LOGICA.Infrastructure.Inventory
                 !Object.ReferenceEquals(transaction.Connection, connection))
                 throw new InvalidOperationException("An open caller-owned transaction is required.");
 
+            // Validate the audit payload before any database mutation. A too-long
+            // reason/user must never leave an uncommittable stock update behind.
+            string audit = "Ajustement [" + plan.UserId + "] " +
+                plan.BeforeStock.ToString(CultureInfo.InvariantCulture) + " -> " +
+                plan.AfterStock.ToString(CultureInfo.InvariantCulture) + " : " + plan.Reason;
+            if (audit.Length > 255)
+                throw new InvalidOperationException("Stock adjustment audit exceeds legacy column size.");
+            if (plan.ArticleId.Length > 128)
+                throw new InvalidOperationException("Article identity exceeds supported length.");
+
             // Fail closed if rollback cannot cover both the stock row and its audit entry.
             using (var schema = new MySqlCommand(
                 "SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() " +
@@ -83,10 +93,6 @@ namespace LOGICA.Infrastructure.Inventory
 
             // Legacy movement schema has no dedicated before/after/user columns.
             // Keep a bounded, explicit audit in LIBELLE without changing shop schema.
-            string audit = "Ajustement [" + plan.UserId + "] " + plan.BeforeStock.ToString(CultureInfo.InvariantCulture) +
-                " -> " + plan.AfterStock.ToString(CultureInfo.InvariantCulture) + " : " + plan.Reason;
-            if (audit.Length > 255)
-                throw new InvalidOperationException("Stock adjustment audit exceeds legacy column size.");
             using (var movement = new MySqlCommand(
                 "INSERT INTO TABLE_MOUVEMENTS_STOCK " +
                 "(DATES, HEURE, LIBELLE, ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE) " +
