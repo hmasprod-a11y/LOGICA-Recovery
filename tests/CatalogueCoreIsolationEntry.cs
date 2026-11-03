@@ -20,5 +20,7 @@ internal static class CatalogueCoreIsolationEntry
         if (revalidation != 0) return revalidation;
         int movement = StockMovementAuditSmoke.Run();
         if (movement != 0) return movement;
-        return PurchaseOrderReceiptReconciliationSmoke.Run(); }
+        int receipt = PurchaseOrderReceiptReconciliationSmoke.Run();
+        if (receipt != 0) return receipt;
+        return StockMovementFlowReportSmoke.Run(); }
 }
