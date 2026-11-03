@@ -34,27 +34,11 @@ public class Form_3_VENTE_JOURNAL : Form
 
 	private IContainer components;
 
-	// Journal reports can receive the aggregate alias as Qté, QTé, or
-	// Connector/NET mojibake on older store databases. Read the actual
-	// returned column instead of assuming one exact DataTable label.
+	// All Journal views consume the same fail-closed legacy schema contract.
 	private static object JournalQuantity(DataRow row)
 	{
-		if (row == null) throw new ArgumentNullException("row");
-		foreach (DataColumn column in row.Table.Columns)
-		{
-			string name = column.ColumnName;
-			if (string.Equals(name, "Qté", StringComparison.OrdinalIgnoreCase) ||
-				string.Equals(name, "QTÃ©", StringComparison.OrdinalIgnoreCase) ||
-				string.Equals(name, "QtÃ©", StringComparison.OrdinalIgnoreCase) ||
-				string.Equals(name, "QtÃƒÂ©", StringComparison.OrdinalIgnoreCase) ||
-				string.Equals(name, "Qte", StringComparison.OrdinalIgnoreCase) ||
-				string.Equals(name, "Quantite", StringComparison.OrdinalIgnoreCase))
-				return row[column];
-		}
-		throw new InvalidOperationException("Journal quantity column missing from result: " +
-			string.Join(", ", Array.ConvertAll(row.Table.Columns.Cast<DataColumn>().ToArray(), c => c.ColumnName)));
+		return LegacyColumnCompatibility.QuantityValue(row);
 	}
-
 
 
 	[AccessedThroughProperty("Panel1")]
