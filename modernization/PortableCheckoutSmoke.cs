@@ -697,6 +697,35 @@ internal static class PortableCheckoutSmoke
                 flowChoice, 5m, delegate(DataRow article) { return 15m; }, "19", port);
             Require(flowMismatch.DisplayedTotalDiffers == true,
                 "Preview must invoke production basket total consistency rule");
+            // Selection can become stale after a valid barcode choice but before
+            // pricing. The production preview must not invoke legacy arithmetic
+            // for a deleted or detached article (including a return).
+            DataTable staleBeforePricing = flowMatches.Copy();
+            CheckoutVariantChoiceResult selectedBeforeDelete =
+                CheckoutSelectionFlowService.ChooseBarcode(staleBeforePricing,
+                    delegate(IList<CheckoutVariantSnapshot> displayed) { return 1; });
+            Require(selectedBeforeDelete.Status == CheckoutVariantChoiceStatus.Selected,
+                "Precondition: selected variant exists before removal");
+            staleBeforePricing.AcceptChanges();
+            selectedBeforeDelete.SelectedRow.Delete();
+            int stalePriceCalls = 0;
+            bool stalePriceRejected = false;
+            try {
+                CheckoutSelectionFlowService.Preview(selectedBeforeDelete, 20m,
+                    delegate(DataRow row) { stalePriceCalls++; return -15m; }, "5", port);
+            }
+            catch (InvalidOperationException) { stalePriceRejected = true; }
+            Require(stalePriceRejected && stalePriceCalls == 0,
+                "Deleted selected article must not run sale/return pricing");
+            staleBeforePricing.Rows.Remove(selectedBeforeDelete.SelectedRow);
+            stalePriceRejected = false;
+            try {
+                CheckoutSelectionFlowService.Preview(selectedBeforeDelete, 20m,
+                    delegate(DataRow row) { stalePriceCalls++; return -15m; }, "5", port);
+            }
+            catch (InvalidOperationException) { stalePriceRejected = true; }
+            Require(stalePriceRejected && stalePriceCalls == 0,
+                "Detached selected article must not run sale/return pricing");
             DataTable flowSingle = flowMatches.Clone();
             flowSingle.ImportRow(flowMatches.Rows[0]);
             Require(CheckoutSelectionFlowService.ChooseBarcode(flowSingle, null).Status ==
