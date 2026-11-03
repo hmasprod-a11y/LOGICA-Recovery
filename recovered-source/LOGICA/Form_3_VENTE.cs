@@ -15744,9 +15744,11 @@ public class Form_3_VENTE : Form
 	// Preserve its force-refresh behavior when search is already empty.
 	private static void ClearProductSearch(TextBox search, Action refreshWhenEmpty)
 	{
-		if (search.Text.Length != 0)
+		// One UI event per reset: changing text raises TextChanged, an already
+		// empty search needs one explicit refresh. Keep DB access in the form.
+		if (ProductSearchResetPresenter.ShouldClearText(search.Text))
 		{
-			search.Clear(); // TextChanged performs one refresh.
+			search.Clear();
 		}
 		else
 		{
@@ -17578,5 +17580,14 @@ internal static class BarcodeEnterPresenter
 	internal static bool ShouldSubmit(Keys key, Keys modifiers)
 	{
 		return key == Keys.Enter && modifiers == Keys.None;
+	}
+}
+
+// Pure reset policy: no database access and no WinForms control dependency.
+internal static class ProductSearchResetPresenter
+{
+	internal static bool ShouldClearText(string currentText)
+	{
+		return !string.IsNullOrEmpty(currentText);
 	}
 }
