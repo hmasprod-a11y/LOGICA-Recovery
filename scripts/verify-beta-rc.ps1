@@ -79,6 +79,16 @@ try {
         if ($name.EndsWith('/')) {
             Assert-SafePath $name.TrimEnd('/')
             $directory = $name.TrimEnd('/')
+            # Directory entries are optional, but any present must be ancestors of
+            # a manifest file. Reject orphan directories and private data trees.
+            $hasManifestChild = $false
+            foreach ($manifestName in $byPath.Keys) {
+                if ($manifestName.StartsWith($directory + '/', [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $hasManifestChild = $true
+                    break
+                }
+            }
+            if (-not $hasManifestChild) { throw "Unexpected ZIP directory without manifest descendants: $name" }
             if (-not $zipDirectories.Add($directory)) { throw "Duplicate ZIP directory (including case collision): $name" }
             if ($seen.Contains($directory)) { throw "ZIP directory collides with previously seen file: $name" }
             if ($byPath.ContainsKey($directory)) { throw "ZIP directory collides with manifest file: $name" }
