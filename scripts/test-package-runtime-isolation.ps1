@@ -147,6 +147,19 @@ try {
             if (-not $rejected) { throw "Release candidate accepted database state fixture: $relative" }
         }
         Write-Host 'PASS: release candidate rejects nested MariaDB data directories'
+        foreach ($extension in @('.ibd', '.frm', '.myd', '.myi', '.mad', '.mai', '.sst')) {
+            $tablePath = Join-Path $work ('dist/synthetic-table' + $extension)
+            [IO.File]::WriteAllText($tablePath, 'FAKE-TABLE-BYTES')
+            $rejected = $false
+            try { & $candidateGate | Out-Null }
+            catch {
+                if ($_.Exception.Message -notlike '*Database table state forbidden*') { throw }
+                $rejected = $true
+            } finally { Remove-Item -LiteralPath $tablePath -Force }
+            if (-not $rejected) { throw "Release candidate accepted database table fixture: $extension" }
+        }
+        Write-Host 'PASS: release candidate rejects loose MariaDB table files'
+
 
 
         Write-Host 'PASS: release candidate rejects synthetic environment files and private keys'
