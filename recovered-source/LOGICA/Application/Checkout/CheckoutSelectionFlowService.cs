@@ -295,7 +295,24 @@ namespace LOGICA.ApplicationLayer.Checkout
                 throw new ArgumentNullException("calculateLegacyLineNet");
             if (legacy == null) throw new ArgumentNullException("legacy");
 
-            decimal lineNet = calculateLegacyLineNet(choice.SelectedRow);
+            // The legacy pricing delegate may trigger UI callbacks while
+            // evaluating a line. Do not return a saleable preview if its
+            // catalogue identity was removed or reassigned during pricing.
+            // Keep the original VB amount and rounding calculations intact.
+            string selectedId = Convert.ToString(selected["ID_ARTICLE"]);
+            string selectedCode = selected.IsNull("Code") ? null : Convert.ToString(selected["Code"]);
+            decimal lineNet = calculateLegacyLineNet(selected);
+            if (selected.RowState == DataRowState.Deleted ||
+                selected.RowState == DataRowState.Detached ||
+                selected.Table == null ||
+                !selected.Table.Columns.Contains("ID_ARTICLE") ||
+                !selected.Table.Columns.Contains("Code") ||
+                selected.IsNull("ID_ARTICLE") ||
+                !String.Equals(Convert.ToString(selected["ID_ARTICLE"]), selectedId,
+                    StringComparison.Ordinal) ||
+                !String.Equals(selected.IsNull("Code") ? null : Convert.ToString(selected["Code"]),
+                    selectedCode, StringComparison.Ordinal))
+                throw new InvalidOperationException("The selected article changed during checkout pricing.");
             decimal basketNet = decimal.Add(existingBasketNet, lineNet);
             bool differs = BasketTotalConsistency.AreDifferent(basketNet, displayedTotal, legacy);
             return new CheckoutBasketPreview(
