@@ -104,6 +104,18 @@ try {
             } finally { Remove-Item -LiteralPath $secretPath -Force }
             if (-not $rejected) { throw "Release candidate accepted forbidden credential fixture: $secretName" }
         }
+        foreach ($folderName in @('.git', '.ssh', '.aws', '.azure', '.gnupg')) {
+            $folderPath = Join-Path $work ('dist/' + $folderName)
+            New-Item -ItemType Directory -Force -Path $folderPath | Out-Null
+            $rejected = $false
+            try { & $candidateGate | Out-Null }
+            catch {
+                if ($_.Exception.Message -notlike '*Excluded folder in release candidate*') { throw }
+                $rejected = $true
+            } finally { Remove-Item -LiteralPath $folderPath -Recurse -Force }
+            if (-not $rejected) { throw "Release candidate accepted excluded folder fixture: $folderName" }
+        }
+        Write-Host 'PASS: release candidate rejects private configuration folders'
         Write-Host 'PASS: release candidate rejects synthetic environment files and private keys'
         Write-Host 'PASS: portable package preserves approved visual preferences only; private shop, device, login and license defaults are isolated'
     } finally { Pop-Location }
