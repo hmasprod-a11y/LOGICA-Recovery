@@ -54,9 +54,11 @@ internal static class CheckoutQuantityMariaDbSmoke
             adapter.Fill(table);
             module.GetField("da1", Flags).SetValue(null, adapter);
             module.GetField("dt1", Flags).SetValue(null, table);
+            Console.WriteLine("TRACE quantity before normalization: " + ColumnNames(table));
             normalize.Invoke(null, null);
+            Console.WriteLine("TRACE quantity after normalization: " + ColumnNames(table));
             if (!table.Columns.Contains("Qté") || table.Columns.Contains("QtÃ©"))
-                throw new Exception("In-memory quantity normalization failed");
+                throw new Exception("In-memory quantity normalization failed: " + ColumnNames(table));
 
             var row = table.NewRow();
             row["ID"] = 1;
@@ -101,6 +103,14 @@ internal static class CheckoutQuantityMariaDbSmoke
                 catch (Exception ex) { Console.WriteLine("Cleanup warning: " + ex.Message); }
             }
         }
+    }
+
+    private static string ColumnNames(DataTable table)
+    {
+        var names = new System.Collections.Generic.List<string>();
+        foreach (DataColumn col in table.Columns)
+            names.Add(col.ColumnName + " [" + System.BitConverter.ToString(System.Text.Encoding.UTF8.GetBytes(col.ColumnName)) + "]");
+        return string.Join(", ", names.ToArray());
     }
 
     private static void CheckPhysical(IDbConnection connection, int expectedRows,
