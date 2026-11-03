@@ -13125,9 +13125,10 @@ public class Form_3_VENTE : Form
 					// Never fall through into the successful-sale reset below.
 					return;
 				}
-				Module1.dt1.Clear();
+				Module1.dt1 = new DataTable();
 				Module1.da1 = CreateCheckoutCartAdapter();
 				((DbDataAdapter)(object)Module1.da1).Fill(Module1.dt1);
+				AssertCheckoutCartColumns();
 				DataGridView1.DataSource = Module1.dt1;
 				((ButtonBase)Button_VENDEUR).Text = "";
 				if (((Control)Button_CLIENT).Visible)
@@ -14801,12 +14802,11 @@ public class Form_3_VENTE : Form
 
         MySqlDataAdapter adapter = new MySqlDataAdapter(
             "select * from TABLE_" + poste + " order by ID asc", Module1.cn_SQL);
-        DataTableMapping mapping = adapter.TableMappings.Add("Table", "Table");
-        // SourceColumn remains the physical SQL identifier; DataSetColumn
-        // becomes Qté for all existing POS UI calculations and updates.
-        mapping.ColumnMappings.Add("QtÃ©", "Qté");
-        mapping.ColumnMappings.Add("Qte", "Qté");
-        mapping.ColumnMappings.Add("Quantite", "Qté");
+        // Do NOT add DataTableMappings here: DbDataAdapter.Update may then
+        // resolve generated SourceColumn against the wrong DataTable column.
+        // Fill uses physical names; NormalizeLoadedCheckoutQuantityColumn()
+        // renames the loaded quantity only in memory. UpdateCheckoutCart()
+        // binds generated SQL parameter SourceColumn to that in-memory name.
         return adapter;
     }
 
@@ -15363,9 +15363,10 @@ public class Form_3_VENTE : Form
 					Exception ex5 = ex4;
 					ProjectData.ClearProjectError();
 				}
-				Module1.dt1.Clear();
+				Module1.dt1 = new DataTable();
 				Module1.da1 = CreateCheckoutCartAdapter();
 				((DbDataAdapter)(object)Module1.da1).Fill(Module1.dt1);
+				AssertCheckoutCartColumns();
 				DataGridView1.DataSource = Module1.dt1;
 				Text_TOTAL_NET_Click(RuntimeHelpers.GetObjectValue(sender), e);
 				ProjectData.ClearProjectError();
@@ -16011,6 +16012,7 @@ public class Form_3_VENTE : Form
 				Module1.dt1.Clear();
 				Module1.da1 = new MySqlDataAdapter("select * from    TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "  ", Module1.cn_SQL);
 				((DbDataAdapter)(object)Module1.da1).Fill(Module1.dt1);
+				AssertCheckoutCartColumns();
 				DataGridView1.DataSource = Module1.dt1;
 				NewLateBinding.LateSet(sender, null, "enabled", new object[1] { true }, null, null);
 				((ButtonBase)Button_VENDEUR).Text = "";
@@ -16191,9 +16193,10 @@ public class Form_3_VENTE : Form
 			dataTable.Clear();
 			val = new MySqlDataAdapter("Delete  from TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "   ", Module1.cn_SQL);
 			((DbDataAdapter)(object)val).Fill(dataTable);
-			Module1.dt1.Clear();
+			Module1.dt1 = new DataTable();
 			Module1.da1 = CreateCheckoutCartAdapter();
 			((DbDataAdapter)(object)Module1.da1).Fill(Module1.dt1);
+			AssertCheckoutCartColumns();
 			DataGridView1.DataSource = Module1.dt1;
 			Text_TOTAL_NET_Click(RuntimeHelpers.GetObjectValue(sender), e);
 		}
