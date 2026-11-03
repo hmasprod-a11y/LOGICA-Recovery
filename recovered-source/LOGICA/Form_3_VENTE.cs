@@ -14711,15 +14711,12 @@ public class Form_3_VENTE : Form
 		//IL_00d1: Expected Obj, but got Unknown
 		try
 		{
-			if (BarcodeEnterPresenter.ShouldSubmit(e.KeyCode, e.Modifiers))
+			BarcodeEnterPresenter.Dispatch(e, delegate
 			{
-				// Barcode scanners commonly terminate scans with Enter. Consume that
-				// terminator once; do not forward it to a focused button or dialog.
-				e.SuppressKeyPress = true;
 				Button_FIND_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
 				((TextBoxBase)Text_CODE).HideSelection = false;
 				((TextBoxBase)Text_CODE).SelectAll();
-			}
+			});
 		}
 		catch (Exception ex)
 		{
@@ -17580,6 +17577,16 @@ internal static class BarcodeEnterPresenter
 	internal static bool ShouldSubmit(Keys key, Keys modifiers)
 	{
 		return key == Keys.Enter && modifiers == Keys.None;
+	}
+
+	// Same production event adapter is executable from a real WinForms TextBox
+	// in Windows tests; keep the database and basket callback in the form.
+	internal static bool Dispatch(KeyEventArgs e, Action submit)
+	{
+		if (e == null || !ShouldSubmit(e.KeyCode, e.Modifiers)) return false;
+		e.SuppressKeyPress = true;
+		if (submit != null) submit();
+		return true;
 	}
 }
 
