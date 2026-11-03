@@ -1600,11 +1600,11 @@ internal static class PortableCheckoutSmoke
 
             int quantities = 0;
             var lookup = new Lookup();
-            var rows = new[] {
+            var stockValidationRows = new[] {
                 new StockValidationRow { ArticleCode = "A", ReadQuantity = delegate { quantities++; return 2m; } },
                 new StockValidationRow { ArticleCode = "B", ReadQuantity = delegate { throw new Exception("Second row must not be read"); } }
             };
-            StockShortage shortage = StockValidationService.FindFirstShortage(lookup, rows, port);
+            StockShortage shortage = StockValidationService.FindFirstShortage(lookup, stockValidationRows, port);
             Require(shortage != null && Object.Equals(shortage.ArticleName, "First"), "First shortage name");
             Require(lookup.Calls == 1 && lookup.Names == 1 && quantities == 1, "Lazy first-shortage order");
             const string familySql = "select      *     from      TABLE_ARTICLES        WHERE      Famille = @family            order by Article asc ";
