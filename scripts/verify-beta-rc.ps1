@@ -67,7 +67,8 @@ foreach ($item in $expected) {
     # Independently enforce the same private-state exclusions as the dist gate.
     # A valid SHA manifest must never authorize shipping credentials or DB dumps.
     $leaf = ($name.Split('/') | Select-Object -Last 1).ToLowerInvariant()
-    if ($leaf -match '^\.env(?:\..+)?,'credentials.json','secrets.json','backup.sql','dump.sql','mysqldump.sql') -or
+    if ($leaf -match '^\.env(?:\..+)?$' -or
+        $leaf -in @('id_rsa','id_ed25519','credentials.json','secrets.json','backup.sql','dump.sql','mysqldump.sql') -or
         $leaf -match '\.(pem|pfx|p12|key|kdbx|ibd|frm|myd|myi|mad|mai|sst|dump)$' -or
         $leaf -match '\.sql\.(gz|zip|bak)$' -or
         $name -match '(^|/)(\.git|\.ssh|\.aws|\.azure|\.gnupg|mysql-data)(/|$)') {
