@@ -39,24 +39,39 @@ namespace LOGICA.Infrastructure.Purchasing
             if (required.Count != 0)
                 throw new InvalidOperationException("Receipt posting schema is incomplete.");
 
-            // A unique composite index does not protect ID_BR alone.
-            bool uniqueReceiptNumber = false;
-            using (var command = new MySqlCommand(
-                "SELECT COUNT(*), SUM(CASE WHEN COLUMN_NAME = 'ID_BR' THEN 1 ELSE 0 END) " +
-                "FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() " +
-                "AND TABLE_NAME = 'TABLE_RECEPTIONS_ENTETE' AND NON_UNIQUE = 0 " +
-                "GROUP BY INDEX_NAME",
-                connection, transaction))
-            using (MySqlDataReader reader = command.ExecuteReader())
-            {
-                while (reader.Read())
-                    if (!reader.IsDBNull(0) && !reader.IsDBNull(1) &&
-                        Convert.ToInt32(reader.GetValue(0)) == 1 &&
-                        Convert.ToInt32(reader.GetValue(1)) == 1)
-                        uniqueReceiptNumber = true;
-            }
-            if (!uniqueReceiptNumber)
+            // The recovered legacy schema indexes ID_BR and ID_ARTICLE but
+            // does not declare them UNIQUE. A receipt number or article ID
+            // with duplicate rows cannot be safely posted exactly once.
+            // Never add indexes or deduplicate a shop database here.
+            if (!HasUniqueSingleColumnIndex(connection, transaction,
+                "TABLE_RECEPTIONS_ENTETE", "ID_BR"))
                 throw new InvalidOperationException("Receipt ID_BR requires a single-column UNIQUE index.");
+            if (!HasUniqueSingleColumnIndex(connection, transaction,
+                "TABLE_ARTICLES", "ID_ARTICLE"))
+                throw new InvalidOperationException("Article ID_ARTICLE requires a single-column UNIQUE index.");
+        }
+
+        private static bool HasUniqueSingleColumnIndex(MySqlConnection connection,
+            MySqlTransaction transaction, string tableName, string columnName)
+        {
+            using (var command = new MySqlCommand(
+                "SELECT COUNT(*), SUM(CASE WHEN COLUMN_NAME = @columnName THEN 1 ELSE 0 END) " +
+                "FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() " +
+                "AND TABLE_NAME = @tableName AND NON_UNIQUE = 0 GROUP BY INDEX_NAME",
+                connection, transaction))
+            {
+                command.Parameters.AddWithValue("@tableName", tableName);
+                command.Parameters.AddWithValue("@columnName", columnName);
+                using (MySqlDataReader reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                        if (!reader.IsDBNull(0) && !reader.IsDBNull(1) &&
+                            Convert.ToInt32(reader.GetValue(0)) == 1 &&
+                            Convert.ToInt32(reader.GetValue(1)) == 1)
+                            return true;
+                }
+            }
+            return false;
         }
 
         // Must be the FIRST write before applying stock or movements.
