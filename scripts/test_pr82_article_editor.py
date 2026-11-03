@@ -18,7 +18,7 @@ assert 'using (Image articleImage = Image.FromFile(articleImagePath))' not in f
 
 m=Path("recovered-source/LOGICA/Application/Catalogue/CatalogueRowMapper.cs").read_text(encoding="utf-8")
 sql=Path("input/migrations/20261102-article-add-compatibility.sql").read_text(encoding="utf-8")
-assert 'Text_LIEN_PICTURE.Text != "0" && File.Exists(articleImagePath)' in f
+assert 'Image selectedImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.LoadWithFallback(' in f
 assert 'DataGridView1.Rows[e.RowIndex].DataBoundItem as DataRowView' in f
 assert 'CatalogueRowMapper.ResolveUniqueExistingRow(' in f
 assert 'CatalogueRowMapper.PopulateEdited(editTarget,' in f
