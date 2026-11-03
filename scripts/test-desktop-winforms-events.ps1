@@ -7,7 +7,7 @@ if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
 }
 $sourcePath = Join-Path $PSScriptRoot '..\recovered-source\LOGICA\Form_3_VENTE.cs'
 $source = [IO.File]::ReadAllText((Resolve-Path $sourcePath))
-$classes = @('BarcodeEnterPresenter', 'ProductSearchResetPresenter', 'ProductSelectionPresenter', 'ArticleImageScrollPresenter', 'ProductSearchFocusPresenter', 'BarcodeInputFocusPresenter')
+$classes = @('BarcodeEnterPresenter', 'ProductSearchResetPresenter', 'ProductSelectionPresenter', 'ArticleImageScrollPresenter', 'ProductSearchFocusPresenter', 'BarcodeInputFocusPresenter', 'CartBarcodeFocusPresenter')
 $production = foreach ($name in $classes) {
     $pattern = '(?s)internal static class ' + [regex]::Escape($name) + '\s*\{.*?\n\}'
     $match = [regex]::Match($source, $pattern)
@@ -19,6 +19,7 @@ $code += @'
 public static class PresenterHarness {
     public static void SelectBarcode(System.Windows.Forms.TextBoxBase input) { BarcodeInputFocusPresenter.SelectAll(input); }
     public static System.Drawing.Color Focus(bool focused) { return ProductSearchFocusPresenter.Background(focused); }
+    public static void RestoreBarcode(System.Windows.Forms.Control input) { CartBarcodeFocusPresenter.Restore(input); }
     public static bool Clear(string value) { return ProductSearchResetPresenter.ShouldClearText(value); }
     public static bool Submit(Keys key, Keys modifiers) { return BarcodeEnterPresenter.ShouldSubmit(key, modifiers); }
     public static bool Dispatch(KeyEventArgs e, Action callback) { return BarcodeEnterPresenter.Dispatch(e, callback); }
@@ -117,6 +118,36 @@ try {
         $tiles.Dispose()
         $list.Dispose()
         $catalogue.Dispose()
+    }
+    # Cart click and double-click dispatch through the production focus adapter.
+    # A real visible Form provides a focus context; no checkout/DB is involved.
+    $cartForm = New-Object System.Windows.Forms.Form
+    $cartGrid = New-Object System.Windows.Forms.DataGridView
+    $barcode = New-Object System.Windows.Forms.TextBox
+    try {
+        $cartForm.Controls.Add($cartGrid)
+        $cartForm.Controls.Add($barcode)
+        $cartGrid.Dock = [System.Windows.Forms.DockStyle]::Top
+        $barcode.Dock = [System.Windows.Forms.DockStyle]::Bottom
+        $cartForm.Show()
+        [System.Windows.Forms.Application]::DoEvents()
+        $script:cartEvents = 0
+        $cartGrid.add_Click({ $script:cartEvents++; [PresenterHarness]::RestoreBarcode($barcode) })
+        $cartGrid.add_DoubleClick({ $script:cartEvents++; [PresenterHarness]::RestoreBarcode($barcode) })
+        $raiseGridClick = [System.Windows.Forms.Control].GetMethod('OnClick', [Reflection.BindingFlags]'Instance,NonPublic')
+        $raiseGridDouble = [System.Windows.Forms.Control].GetMethod('OnDoubleClick', [Reflection.BindingFlags]'Instance,NonPublic')
+        Assert ($null -ne $raiseGridClick -and $null -ne $raiseGridDouble) 'cart grid event methods'
+        $raiseGridClick.Invoke($cartGrid, @([EventArgs]::Empty)) | Out-Null
+        [System.Windows.Forms.Application]::DoEvents()
+        Assert ($script:cartEvents -eq 1 -and $barcode.Focused) 'cart click restores scanner focus'
+        $raiseGridDouble.Invoke($cartGrid, @([EventArgs]::Empty)) | Out-Null
+        [System.Windows.Forms.Application]::DoEvents()
+        Assert ($script:cartEvents -eq 2 -and $barcode.Focused) 'cart double-click restores scanner focus'
+        [PresenterHarness]::RestoreBarcode($null)
+        $barcode.Dispose()
+        [PresenterHarness]::RestoreBarcode($barcode)
+    } finally {
+        $cartForm.Dispose()
     }
     Write-Host 'PASS: real WinForms TextChanged/KeyDown events and production presenters'
 } finally {
