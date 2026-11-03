@@ -3033,24 +3033,21 @@ static void CheckoutCartPrimaryKeyUpdate(Assembly assembly) {
  var type=assembly.GetType("LOGICA.Form_3_VENTE",true);
  var method=type.GetMethod("MatchCheckoutUpdateByPrimaryKey",Flags);
  if(method==null)throw new Exception("Cart primary key update guard missing");
- var conn=assembly.GetType("MySql.Data.MySqlClient.MySqlConnection",false);
  var mysql=Assembly.Load("MySql.Data");
- var command=Activator.CreateInstance(mysql.GetType("MySql.Data.MySqlClient.MySqlCommand"));
- var parameters=command.GetType().GetProperty("Parameters").GetValue(command,null);
- var add=parameters.GetType().GetMethod("AddWithValue",new[]{typeof(string),typeof(object)});
- var key=add.Invoke(parameters,new object[]{"@p0",17});
- key.GetType().GetProperty("SourceColumn").SetValue(key,"ID",null);
- key.GetType().GetProperty("SourceVersion").SetValue(key,DataRowVersion.Original,null);
- var query=command.GetType().GetProperty("CommandText");
- query.SetValue(command,"UPDATE TABLE_CI_TEST SET Qté = @p1 WHERE STOCK = @p2 AND ID = @p0",null);
- method.Invoke(null,new[]{command});
- var sql=(string)query.GetValue(command,null);
- if(!sql.EndsWith("WHERE `ID` = @p0"))throw new Exception("Update WHERE not stable row key: "+sql);
- var missing=Activator.CreateInstance(mysql.GetType("MySql.Data.MySqlClient.MySqlCommand"));
- query=missing.GetType().GetProperty("CommandText");
- query.SetValue(missing,"UPDATE cart SET quantity=2 WHERE ID=1",null);
+ var cmd=(System.Data.Common.DbCommand)Activator.CreateInstance(mysql.GetType("MySql.Data.MySqlClient.MySqlCommand"));
+ var param=(System.Data.Common.DbParameter)Activator.CreateInstance(mysql.GetType("MySql.Data.MySqlClient.MySqlParameter"));
+ param.ParameterName="@p0";
+ param.Value=17;
+ param.SourceColumn="ID";
+ param.SourceVersion=DataRowVersion.Original;
+ cmd.Parameters.Add(param);
+ cmd.CommandText="UPDATE TABLE_CI_TEST SET Qté = @p1 WHERE STOCK = @p2 AND ID = @p0";
+ method.Invoke(null,new object[]{cmd});
+ if(!cmd.CommandText.EndsWith("WHERE `ID` = @p0"))throw new Exception("Update WHERE not stable row key: "+cmd.CommandText);
+ var missing=(System.Data.Common.DbCommand)Activator.CreateInstance(mysql.GetType("MySql.Data.MySqlClient.MySqlCommand"));
+ missing.CommandText="UPDATE cart SET quantity=2 WHERE ID=1";
  bool threw=false;
- try{method.Invoke(null,new[]{missing});}catch(TargetInvocationException ex){threw=ex.InnerException is InvalidOperationException;}
+ try{method.Invoke(null,new object[]{missing});}catch(TargetInvocationException ex){threw=ex.InnerException is InvalidOperationException;}
  if(!threw)throw new Exception("Cart primary-key resolution must fail on missing identity");
  Console.WriteLine("PASS cart update uses stable original ID and refuses missing identity");
 }
