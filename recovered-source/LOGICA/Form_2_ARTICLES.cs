@@ -13846,7 +13846,7 @@ public class Form_2_ARTICLES : Form
 				Text_PROMOTION.Text = editRow["PROMOTION"].ToString();
 				Combo_BALANCE.Text = editRow["BALANCE"].ToString();
 				Combo_FENETRE_PESEE.Text = editRow["FENETRE_PESAGE"].ToString();
-				((Control)Text_STOCK).Enabled = string.Equals(TextBox_MODIF_STOCK_MANUEL.Text, "True", StringComparison.OrdinalIgnoreCase);
+				ApplyManualStockEditorPermission(false);
 				DataGrid_RECEPTIONS.DataSource = null;
 				DataGrid_VENTES.DataSource = null;
 				DataGrid_SORTIES.DataSource = null;
@@ -14289,7 +14289,7 @@ public class Form_2_ARTICLES : Form
 			Text_PROMOTION.Text = "0";
 			Combo_FENETRE_PESEE.Text = "";
 			Combo_BALANCE.Text = "";
-			((Control)Text_STOCK).Enabled = string.Equals(TextBox_AJOUT_STOCK_MANUEL.Text, "True", StringComparison.OrdinalIgnoreCase);
+			ApplyManualStockEditorPermission(true);
 			((Control)Text_CODE).Focus();
 		}
 		catch (Exception ex)
@@ -14327,6 +14327,21 @@ public class Form_2_ARTICLES : Form
 
 	// UI disabling is not authorization. A disabled manual-stock option
 	// must also be enforced at persistence, including programmatic input.
+	private void ApplyManualStockEditorPermission(bool isNew)
+	{
+		// Resolve the current option each time the editor is opened.
+		// A cached hidden TextBox can be stale after settings are changed.
+		string option = isNew ? "AJOUT_STOCK_MANUEL" : "MODIF_STOCK_MANUEL";
+		bool permitted;
+		permitted = bool.TryParse(ReadArticleSetting(option, "False"), out permitted) && permitted;
+		Text_STOCK.ReadOnly = !permitted;
+		((Control)Text_STOCK).Enabled = permitted;
+		// Initial stock is a persisted inventory field, not an unrestricted
+		// catalogue property.
+		Text_STOCK_INITIAL.ReadOnly = !permitted;
+		((Control)Text_STOCK_INITIAL).Enabled = permitted;
+	}
+
 	private bool ValidateManualStockPermission()
 	{
 		bool isNew = string.Equals(Label_TOP.Text, "NOUVEAU", StringComparison.Ordinal);
@@ -14335,7 +14350,7 @@ public class Form_2_ARTICLES : Form
 		string option = isNew ? "AJOUT_STOCK_MANUEL" : "MODIF_STOCK_MANUEL";
 		bool allowed;
 		allowed = bool.TryParse(ReadArticleSetting(option, "False"), out allowed) && allowed;
-		((Control)Text_STOCK).Enabled = allowed;
+		ApplyManualStockEditorPermission(isNew);
 		if (allowed) return true;
 		string original = "0";
 		if (isEdit)
