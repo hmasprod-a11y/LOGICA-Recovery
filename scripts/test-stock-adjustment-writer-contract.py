@@ -29,3 +29,12 @@ assert "Commit()" not in source, "writer must never commit caller-owned transact
 assert "Rollback()" not in source, "caller owns rollback"
 assert "ALTER TABLE" not in source and "DROP TABLE" not in source
 print("PASS: stock adjustment writer source safety contract (not a MariaDB integration test)")
+
+# Preflight rejection must happen before any stock write; an oversized audit
+# must never rely on a later SQL error and a caller remembering to roll back.
+preflight = source.index("Stock adjustment audit exceeds legacy column size.")
+update = source.index("UPDATE TABLE_ARTICLES SET STOCK")
+assert preflight < update, "audit must be validated before stock mutation"
+assert source.index("Article identity exceeds supported length.") < update
+assert source.count("string audit =") == 1, "audit must be constructed once"
+print("PASS: audit and identity validation precede stock update")
