@@ -1293,11 +1293,14 @@ public class Form_2_Familles : Form
 				DataGridView1.AllowUserToOrderColumns = true;
 				DataGridView1.AllowUserToResizeColumns = true;
 				DataGridView1.AllowUserToResizeRows = false;
-				if (Conversions.ToBoolean(MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("GROUPES", false, 0).Index].SubItems[1].Text))
+				// The recovered shop may have no GROUPES or GROUPES_LISTE
+				// setting. Do not let an optional preference abort Form.Load.
+				bool groupsEnabled = RequiresFamilyGroup();
+				((Control)Panel_GROUPE).Visible = groupsEnabled;
+				Combo_GROUPES.Items.Clear();
+				if (groupsEnabled)
 				{
-					((Control)Panel_GROUPE).Visible = true;
-					StringReader stringReader = new StringReader(MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("GROUPES_LISTE", false, 0).Index].SubItems[1].Text);
-					Combo_GROUPES.Items.Clear();
+					StringReader stringReader = new StringReader(ReadFamilySetting("GROUPES_LISTE", string.Empty));
 					while (stringReader.Peek() != -1)
 					{
 						Combo_GROUPES.Items.Add((object)stringReader.ReadLine());
@@ -1625,16 +1628,24 @@ public class Form_2_Familles : Form
 		((Control)Panel_INFO).Visible = false;
 	}
 
+	private static string ReadFamilySetting(string name, string fallback)
+	{
+		// Iterate rather than FindItemWithText(..., 0): WinForms throws for
+		// empty lists, and prefix-based matching can select the wrong option.
+		ListView settings = MyProject.Forms.Form_0_TEMPLATE.ListView1;
+		if (settings == null) return fallback;
+		foreach (ListViewItem setting in settings.Items)
+		{
+			if (string.Equals(setting.Text, name, StringComparison.OrdinalIgnoreCase))
+				return setting.SubItems.Count > 1 ? setting.SubItems[1].Text : fallback;
+		}
+		return fallback;
+	}
+
 	private static bool RequiresFamilyGroup()
 	{
-		// Old shop installations can omit the optional GROUPES setting.
-		// Never dereference a missing ListViewItem while adding a family.
-		ListView settings = MyProject.Forms.Form_0_TEMPLATE.ListView1;
-		if (settings == null || settings.Items.Count == 0) return false;
-		ListViewItem setting = settings.FindItemWithText("GROUPES", false, 0);
-		if (setting == null || setting.SubItems.Count < 2) return false;
 		bool enabled;
-		return bool.TryParse(setting.SubItems[1].Text, out enabled) && enabled;
+		return bool.TryParse(ReadFamilySetting("GROUPES", "False"), out enabled) && enabled;
 	}
 
 	private void Button_SAVE_Click(object sender, EventArgs e)
