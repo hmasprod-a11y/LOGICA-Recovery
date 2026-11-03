@@ -31,8 +31,13 @@ foreach ($name in $forbidden) {
   $matches = @(Get-ChildItem -LiteralPath $dist -Recurse -File -Force -ErrorAction Stop | Where-Object { $_.Name -eq $name })
   if ($matches.Count -gt 0) { throw "Private test/runtime state included: $name" }
 }
-$mysqlData = Join-Path $dist 'bd/mysql-data'
-if (Test-Path -LiteralPath $mysqlData) { throw 'Test database state leaked into release package' }
+# Database data directories must never be embedded in a portable customer ZIP,
+# including nested or renamed test fixture locations.
+foreach ($directory in @(Get-ChildItem -LiteralPath $dist -Recurse -Directory -Force -ErrorAction Stop)) {
+  if ($directory.Name -ieq 'mysql-data') {
+    throw "Test database state leaked into release package: $($directory.FullName)"
+  }
+}
 # Check that the distributed runtime is self-contained and does not inherit shop state.
 if (-not (Test-Path -LiteralPath (Join-Path $dist 'LOGICA.exe.config') -PathType Leaf)) {
   throw 'LOGICA.exe.config missing from release candidate'
