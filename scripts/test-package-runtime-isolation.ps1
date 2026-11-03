@@ -85,6 +85,26 @@ try {
                 throw "Portable runtime leaked synthetic shop state in $($file.Name)"
             }
         }
+        # Exercise the production release gate against a disposable complete fixture.
+        # First require a valid baseline; otherwise a negative test could pass for
+        # unrelated missing runtime files and conceal a broken assertion.
+        foreach ($name in @('LOGICA.exe','Dependency.dll','LOGICA.exe.config')) {
+            [IO.File]::WriteAllText((Join-Path $work ('dist/' + $name)), 'synthetic runtime')
+        }
+        $candidateGate = Join-Path $root 'scripts/test-release-candidate.ps1'
+        & $candidateGate | Out-Null
+        foreach ($secretName in @('.env','shop-backup.pfx','private.key','id_rsa')) {
+            $secretPath = Join-Path $work ('dist/' + $secretName)
+            [IO.File]::WriteAllText($secretPath, 'SYNTHETIC-NOT-A-REAL-SECRET')
+            $rejected = $false
+            try { & $candidateGate | Out-Null }
+            catch {
+                if ($_.Exception.Message -notlike '*Credential or private-key material forbidden*') { throw }
+                $rejected = $true
+            } finally { Remove-Item -LiteralPath $secretPath -Force }
+            if (-not $rejected) { throw "Release candidate accepted forbidden credential fixture: $secretName" }
+        }
+        Write-Host 'PASS: release candidate rejects synthetic environment files and private keys'
         Write-Host 'PASS: portable package preserves approved visual preferences only; private shop, device, login and license defaults are isolated'
     } finally { Pop-Location }
 } finally {
