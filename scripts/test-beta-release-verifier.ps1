@@ -132,6 +132,22 @@ try {
             Remove-Item -LiteralPath $privatePath -Force
         }
     }
+    # Regression for the complete private-state predicate: both filename and
+    # nested-directory forms must be rejected by the independent verifier.
+    foreach ($private in @('nested/.env', 'nested/credentials.json', 'nested/private.pfx',
+                           'nested/backup.sql', 'nested/dump.sql.gz',
+                           'nested/mysql-data/table.ibd', '.ssh/known_hosts')) {
+        $privatePath = Join-Path $src $private
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $privatePath) | Out-Null
+        [IO.File]::WriteAllText($privatePath, 'isolated dummy fixture')
+        try {
+            Write-FixtureManifest
+            Write-FixtureZip
+            Assert-Rejected "private manifest entry $private" 'Credential, database state or backup forbidden in release manifest'
+        } finally {
+            Remove-Item -LiteralPath $privatePath -Force
+        }
+    }
     # The real Windows POS suite builds these executables for CI only.
     # Even a correctly hashed manifest must not allow them into the customer ZIP.
     foreach ($smoke in @('PosSmoke.exe', 'DesktopPaymentCultureSmoke.exe',
