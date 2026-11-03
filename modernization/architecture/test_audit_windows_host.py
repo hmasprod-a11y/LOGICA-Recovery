@@ -54,6 +54,21 @@ class WindowsHostAuditTests(unittest.TestCase):
         self.assertEqual([{"path": "recovered-source/Checkout.cs", "matching_lines": 1}],
                          result["production_coupling"]["sql"])
 
+    def test_coupling_inventory_matches_real_tokens_not_substrings(self):
+        source = self.root / "recovered-source" / "Business.cs"
+        source.write_text(
+            "Microsoft.VisualBasic.CompilerServices.Conversions.ToDecimal(x);\\n"
+            "Operators.AddObject(a,b);\\n"
+            "MySqlConnection connection;\\n"
+            "MySqlTransaction tx;\\n"
+            "MySqlCommandFactory fake;\\n"
+            "NotConversions.ToDecimal(x);\\n", encoding="utf-8")
+        result = audit(self.root)
+        self.assertEqual([{"path": "recovered-source/Business.cs", "matching_lines": 2}],
+                         result["production_coupling"]["vb"])
+        self.assertEqual([{"path": "recovered-source/Business.cs", "matching_lines": 2}],
+                         result["production_coupling"]["sql"])
+
     def test_modern_host_is_not_misclassified_as_legacy(self):
         p = self.root / "recovered-source/LOGICA.csproj"
         p.write_text('<Project><PropertyGroup><TargetFramework>net10.0-windows</TargetFramework>'
