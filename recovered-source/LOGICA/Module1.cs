@@ -1233,3 +1233,55 @@ internal sealed class Module1
 		}
 	}
 }
+
+/*
+ * One read-side contract for legacy schema aliases. Never rename live DB
+ * columns, never silently choose between two distinct quantity columns and
+ * never confuse a missing column with a numeric zero.
+ *
+ * SQL writes still resolve the actual server identifier independently;
+ * the in-memory name and the SQL identifier are NOT interchangeable.
+ */
+internal static class LegacyColumnCompatibility
+{
+    internal static readonly string[] QuantityAliases = {
+        "Qté", "QtÃ©", "QtÃƒÂ©", "Qte", "Quantite"
+    };
+
+    internal static bool IsQuantityAlias(string candidate)
+    {
+        if (string.IsNullOrEmpty(candidate)) return false;
+        foreach (string alias in QuantityAliases)
+            if (string.Equals(candidate, alias, StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
+
+    internal static DataColumn ResolveQuantityColumn(DataTable table)
+    {
+        if (table == null) throw new ArgumentNullException("table");
+        DataColumn found = null;
+        foreach (DataColumn column in table.Columns)
+        {
+            if (!IsQuantityAlias(column.ColumnName)) continue;
+            if (found != null)
+                throw new InvalidOperationException("Ambiguous legacy quantity columns: " +
+                    found.ColumnName + " and " + column.ColumnName);
+            found = column;
+        }
+        if (found == null)
+        {
+            var names = new System.Collections.Generic.List<string>();
+            foreach (DataColumn column in table.Columns) names.Add(column.ColumnName);
+            throw new InvalidOperationException("Missing legacy quantity column; returned: " +
+                string.Join(", ", names.ToArray()));
+        }
+        return found;
+    }
+
+    internal static object QuantityValue(DataRow row)
+    {
+        if (row == null) throw new ArgumentNullException("row");
+        return row[ResolveQuantityColumn(row.Table)];
+    }
+}
