@@ -143,8 +143,12 @@ namespace LOGICA.Infrastructure.Inventory
             }
             catch
             {
+                // ROLLBACK TO retains the savepoint in MariaDB. Release it after
+                // undoing the adjustment, so callers may continue the transaction.
                 using (var rollback = new MySqlCommand("ROLLBACK TO SAVEPOINT " + savepointName, connection, transaction))
                     rollback.ExecuteNonQuery();
+                using (var release = new MySqlCommand("RELEASE SAVEPOINT " + savepointName, connection, transaction))
+                    release.ExecuteNonQuery();
                 throw;
             }
         }
