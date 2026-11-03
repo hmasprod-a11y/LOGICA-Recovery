@@ -15424,17 +15424,17 @@ public class Form_3_VENTE : Form
 
 	private void DataGridView1_CellClick(object sender, DataGridViewCellEventArgs e)
 	{
-		((Control)Text_CODE).Focus();
+		CartBarcodeFocusPresenter.Restore(Text_CODE);
 	}
 
 	private void DataGridView1_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
 	{
-		((Control)Text_CODE).Focus();
+		CartBarcodeFocusPresenter.Restore(Text_CODE);
 	}
 
 	private void DataGridView1_Click(object sender, EventArgs e)
 	{
-		((Control)Text_CODE).Focus();
+		CartBarcodeFocusPresenter.Restore(Text_CODE);
 	}
 
 	private void Button_SOLDER_PRINTER_GotFocus(object sender, EventArgs e)
@@ -17653,5 +17653,18 @@ internal static class BarcodeInputFocusPresenter
 		if (input == null) return;
 		input.HideSelection = false;
 		input.SelectAll();
+	}
+}
+
+// Presentation-only cart navigation: keep the barcode scanner ready after
+// click/double-click without modifying the basket, prices or stock.
+internal static class CartBarcodeFocusPresenter
+{
+	internal static void Restore(Control barcodeInput)
+	{
+		if (barcodeInput != null && !barcodeInput.IsDisposed)
+		{
+			barcodeInput.Focus();
+		}
 	}
 }
