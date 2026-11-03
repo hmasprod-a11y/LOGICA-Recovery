@@ -11,6 +11,35 @@ namespace LOGICA.Infrastructure.Inventory
     // Legacy WinForms is not yet wired to this entry point.
     internal static class StockAdjustmentWriter
     {
+        // Transaction-owning entry point for the new Application/WPF workflow.
+        // The existing Apply overload remains available to an explicitly coordinated
+        // caller-owned transaction; this method never shares a checkout transaction.
+        internal static void Execute(string connectionString, StockAdjustmentPlan plan)
+        {
+            if (String.IsNullOrWhiteSpace(connectionString))
+                throw new ArgumentException("A local database connection is required.", "connectionString");
+            if (plan == null) throw new ArgumentNullException("plan");
+            using (var connection = new MySqlConnection(connectionString))
+            {
+                connection.Open();
+                using (var transaction = connection.BeginTransaction(IsolationLevel.ReadCommitted))
+                {
+                    try
+                    {
+                        Apply(connection, transaction, plan);
+                        transaction.Commit();
+                    }
+                    catch
+                    {
+                        // Never commit a partially applied stock change or audit.
+                        // Preserve the original exception even if the connection died.
+                        try { transaction.Rollback(); } catch { }
+                        throw;
+                    }
+                }
+            }
+        }
+
         internal static void Apply(MySqlConnection connection, MySqlTransaction transaction,
             StockAdjustmentPlan plan)
         {
