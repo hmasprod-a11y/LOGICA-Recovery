@@ -164,6 +164,22 @@ class BoundaryTests(unittest.TestCase):
             '<Compile Generator="UnreviewedTask" Include='))
         self.assertTrue(any("unreviewed metadata" in e for e in validate(self.root)["errors"]))
 
+    def test_manifest_item_definition_cannot_override_compile_metadata(self):
+        p = self.root / "modernization/CoreSources.props"
+        p.write_text(p.read_text().replace("</Project>",
+            '<ItemDefinitionGroup><Compile><Link>Injected.cs</Link></Compile>'
+            '</ItemDefinitionGroup></Project>'))
+        self.assertTrue(any("manifest unexpected MSBuild element" in e
+                            for e in validate(self.root)["errors"]))
+
+    def test_manifest_property_cannot_override_compiler_settings(self):
+        p = self.root / "modernization/CoreSources.props"
+        p.write_text(p.read_text().replace("</Project>",
+            '<PropertyGroup><DefineConstants>INJECTED</DefineConstants>'
+            '</PropertyGroup></Project>'))
+        self.assertTrue(any("manifest unexpected MSBuild element" in e
+                            for e in validate(self.root)["errors"]))
+
     def test_unreviewed_import_rejected(self):
         p = self.root / "modernization/LOGICA.CorePortability.csproj"
         p.write_text(p.read_text().replace("</Project>",
