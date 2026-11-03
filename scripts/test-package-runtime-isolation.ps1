@@ -116,6 +116,22 @@ try {
             if (-not $rejected) { throw "Release candidate accepted excluded folder fixture: $folderName" }
         }
         Write-Host 'PASS: release candidate rejects private configuration folders'
+        # Windows Hidden attributes must not bypass the recursive security gate.
+        $hiddenSecret = Join-Path $work 'dist/.env'
+        [IO.File]::WriteAllText($hiddenSecret, 'SYNTHETIC-HIDDEN-SECRET')
+        [IO.File]::SetAttributes($hiddenSecret, [IO.FileAttributes]::Hidden)
+        $hiddenRejected = $false
+        try { & $candidateGate | Out-Null }
+        catch {
+            if ($_.Exception.Message -notlike '*Credential or private-key material forbidden*') { throw }
+            $hiddenRejected = $true
+        } finally {
+            [IO.File]::SetAttributes($hiddenSecret, [IO.FileAttributes]::Normal)
+            Remove-Item -LiteralPath $hiddenSecret -Force
+        }
+        if (-not $hiddenRejected) { throw 'Release candidate accepted hidden credential fixture' }
+        Write-Host 'PASS: release candidate rejects hidden credential files'
+
         Write-Host 'PASS: release candidate rejects synthetic environment files and private keys'
         Write-Host 'PASS: portable package preserves approved visual preferences only; private shop, device, login and license defaults are isolated'
     } finally { Pop-Location }
