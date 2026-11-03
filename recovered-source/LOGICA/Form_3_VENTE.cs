@@ -16023,39 +16023,31 @@ public class Form_3_VENTE : Form
 
 	private void DataGridView100_DoubleClick(object sender, EventArgs e)
 	{
-		// Match PerformClick's disabled-button behavior on both lookup paths.
-		if (!Button_FIND.Enabled)
-		{
-			return;
-		}
+		if (!Button_FIND.Enabled) return;
 		DataRow row = SelectedProductListRow();
-		if (row == null || !row.Table.Columns.Contains("Code"))
-		{
-			return;
-		}
-		LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference identity = BlankBarcodeListArticleReference(row);
+		if (row == null || !row.Table.Columns.Contains("Code")) return;
+		// A list row is an exact product selection, just like an image tile.
+		// Barcode scanning still uses the separate exact-barcode/chooser path.
+		// Going through barcode lookup here can select another product when
+		// duplicate barcodes exist, and can re-enter a stale basket row.
+		LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference identity = null;
+		if (row.Table.Columns.Contains("ID_ARTICLE") &&
+			!string.IsNullOrWhiteSpace(Convert.ToString(row["ID_ARTICLE"])))
+			identity = LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(row);
 		if (identity == null)
 		{
-			// Preserve the original exact-barcode lookup and duplicate chooser.
-			if (string.IsNullOrWhiteSpace(row["Code"].ToString()))
-			{
-				return;
-			}
-			Text_CODE.Text = row["Code"].ToString();
+			if (string.IsNullOrWhiteSpace(Convert.ToString(row["Code"]))) return;
+			Text_CODE.Text = Convert.ToString(row["Code"]);
 			Button_FIND.PerformClick();
 			return;
 		}
-		// Reuse the proven image-tile identity lookup without leaving Tag changed.
 		object originalTag = Button_FIND.Tag;
 		try
 		{
 			Button_FIND.Tag = identity;
 			Button_FIND_Click(Button_FIND, e);
 		}
-		finally
-		{
-			Button_FIND.Tag = originalTag;
-		}
+		finally { Button_FIND.Tag = originalTag; }
 	}
 
 	private void DataGridView100_Click(object sender, EventArgs e)
