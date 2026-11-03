@@ -102,6 +102,7 @@ try {
     $list = New-Object System.Windows.Forms.DataGridView
     $tiles = New-Object System.Windows.Forms.FlowLayoutPanel
     try {
+        $list.AllowUserToAddRows = $false
         $list.AutoGenerateColumns = $true
         $list.DataSource = $catalogue
         Assert ($list.Rows.Count -eq 2) 'all products remain in the catalogue list'
