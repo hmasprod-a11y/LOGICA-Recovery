@@ -42,8 +42,29 @@ namespace LOGICA.ApplicationLayer.Checkout
                 basketLine.IsNull("ID_ARTICLE") ||
                 String.IsNullOrWhiteSpace(Convert.ToString(basketLine["ID_ARTICLE"])))
                 return false;
-            return legacyEquals(basketLine["Code"], scannedCode) &&
-                   legacyEquals(basketLine["ID_ARTICLE"], selectedArticleId);
+            // The VB equality callback is user-supplied legacy code and can pump UI
+            // events. Snapshot both identity fields before invoking it, then
+            // reject a row deleted/reassigned during either comparison.
+            object originalCode = basketLine["Code"];
+            object originalId = basketLine["ID_ARTICLE"];
+            if (!legacyEquals(originalCode, scannedCode))
+                return false;
+            if (!IsUnchangedBasketIdentity(basketLine, originalCode, originalId))
+                return false;
+            bool idMatches = legacyEquals(originalId, selectedArticleId);
+            return idMatches && IsUnchangedBasketIdentity(basketLine, originalCode, originalId);
+        }
+
+        private static bool IsUnchangedBasketIdentity(DataRow row, object code, object articleId)
+        {
+            return row.RowState != DataRowState.Deleted &&
+                row.RowState != DataRowState.Detached &&
+                row.Table != null &&
+                row.Table.Columns.Contains("Code") &&
+                row.Table.Columns.Contains("ID_ARTICLE") &&
+                !row.IsNull("Code") && !row.IsNull("ID_ARTICLE") &&
+                Object.Equals(row["Code"], code) &&
+                Object.Equals(row["ID_ARTICLE"], articleId);
         }
 
         // This is called by the existing Form_3_VENTE handler. Keep the original
