@@ -117,6 +117,30 @@ internal static class CheckoutBarcodeSelectionTests
                         throw new Exception("Basket comparison exception identity changed");
                 }
                 checks++;
+                // A SQL-null/blank article ID must never be matched to a
+                // scanned candidate, even when the legacy comparer equates
+                // DBNull with another missing value. Image-only articles may
+                // still have a null barcode when their article ID is valid.
+                DataTable incompleteBasket = Candidates();
+                incompleteBasket.Rows[0]["ID_ARTICLE"] = DBNull.Value;
+                comparisons = 0;
+                if (CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                        incompleteBasket.Rows[0], "ABC-001", DBNull.Value, equal) ||
+                    comparisons != 0)
+                    throw new Exception("SQL-null basket article ID must fail before equality");
+                checks++;
+                incompleteBasket.Rows[0]["ID_ARTICLE"] = "   ";
+                if (CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                        incompleteBasket.Rows[0], "ABC-001", "   ", equal) ||
+                    comparisons != 0)
+                    throw new Exception("Blank basket article ID must fail before equality");
+                checks++;
+                incompleteBasket.Rows[0]["ID_ARTICLE"] = "1";
+                incompleteBasket.Rows[0]["Code"] = DBNull.Value;
+                if (!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                        incompleteBasket.Rows[0], DBNull.Value, "1", equal))
+                    throw new Exception("Image-only SQL-null barcode must remain compatible");
+                checks++;
                 // Real Form_3_VENTE passes the original DataTable into a modal
                 // chooser. A timer/refresh can reorder its rows before the
                 // selected index is consumed: never sell the next variant.
