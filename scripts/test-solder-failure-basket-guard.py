@@ -44,7 +44,7 @@ def check(source):
     # creates a fresh DataTable so the old quantity-column schema cannot leak
     # across a successful sale. Both are success-only resets.
     reset_match = re.search(
-        r"Module1\\.dt1\\s*(?:\\.Clear\\(\\)|=\\s*new\\s+DataTable\\(\\))\\s*;",
+        r"Module1\.dt1\s*(?:\.Clear\(\)|=\s*new\s+DataTable\(\))\s*;",
         source[end:],
     )
     next_reset = end + reset_match.start() if reset_match else -1
