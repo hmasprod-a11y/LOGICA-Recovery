@@ -14856,22 +14856,24 @@ public class Form_3_VENTE : Form
 
 	// Presentation adapter: the checkout service selects the identity; this maps the
 	// selected live row to existing controls without SQL, stock or pricing decisions.
+	// WinForms writes only: the presenter resolves the legacy row and optional fields.
 	private void PopulateSelectedArticleFields(DataRow selectedArticle)
 	{
-		Text_ID_ARTICLE.Text = selectedArticle["ID_ARTICLE"].ToString();
-		Text_CODE.Text = selectedArticle["Code"].ToString();
-		Text_ARTICLE.Text = selectedArticle["Article"].ToString();
-		Text_FAMILLE.Text = selectedArticle["Famille"].ToString();
-		Text_PRIX_A.Text = selectedArticle["PRIX_A"].ToString();
-		Text_PRIX_MP.Text = selectedArticle["PRIX_MP"].ToString();
-		Text_PRIXV.Text = selectedArticle["Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5)].ToString();
-		Text_TAUX_TVA.Text = selectedArticle["TAUX_TVA"].ToString();
-		Text_PROMOTION.Text = selectedArticle["PROMOTION"].ToString();
-		Text_PRINTER.Text = selectedArticle["PRINTER"].ToString();
-		Text_PRINTER_DUPLICATA.Text = selectedArticle["PRINTER_DUPLICATA"].ToString();
-		Text_GROUPE.Text = (selectedArticle.Table.Columns.Contains("GROUPE") ? selectedArticle["GROUPE"].ToString() : "");
-		Text_PRIX_QTE.Text = (selectedArticle.Table.Columns.Contains("PRIX_QTE") ? selectedArticle["PRIX_QTE"].ToString() : "0");
-		Text_PRIX_QTE_MIN.Text = (selectedArticle.Table.Columns.Contains("PRIX_QTE_MIN") ? selectedArticle["PRIX_QTE_MIN"].ToString() : "0");
+		string[] values = DesktopArticleFieldPresenter.Read(selectedArticle, "Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5));
+		Text_ID_ARTICLE.Text = values[0];
+		Text_CODE.Text = values[1];
+		Text_ARTICLE.Text = values[2];
+		Text_FAMILLE.Text = values[3];
+		Text_PRIX_A.Text = values[4];
+		Text_PRIX_MP.Text = values[5];
+		Text_PRIXV.Text = values[6];
+		Text_TAUX_TVA.Text = values[7];
+		Text_PROMOTION.Text = values[8];
+		Text_PRINTER.Text = values[9];
+		Text_PRINTER_DUPLICATA.Text = values[10];
+		Text_GROUPE.Text = values[11];
+		Text_PRIX_QTE.Text = values[12];
+		Text_PRIX_QTE_MIN.Text = values[13];
 	}
 
 	// Presenter boundary: use the production checkout identity services; no SQL or
@@ -17693,5 +17695,27 @@ internal static class CartBarcodeFocusPresenter
 		{
 			barcodeInput.Focus();
 		}
+	}
+}
+
+// Transitional presentation boundary: no WinForms, SQL, or database writes.
+// Keep the original catalogue field order for the legacy checkout controls.
+internal static class DesktopArticleFieldPresenter
+{
+	internal static string[] Read(DataRow row, string priceColumn)
+	{
+		if (row == null) throw new ArgumentNullException(nameof(row));
+		string[] names = { "ID_ARTICLE", "Code", "Article", "Famille", "PRIX_A", "PRIX_MP",
+			priceColumn, "TAUX_TVA", "PROMOTION", "PRINTER", "PRINTER_DUPLICATA",
+			"GROUPE", "PRIX_QTE", "PRIX_QTE_MIN" };
+		string[] result = new string[names.Length];
+		for (int i = 0; i < names.Length; i++)
+		{
+			if (i >= 11 && !row.Table.Columns.Contains(names[i]))
+				result[i] = i == 11 ? "" : "0";
+			else
+				result[i] = row[names[i]].ToString();
+		}
+		return result;
 	}
 }
