@@ -14835,31 +14835,50 @@ public class Form_3_VENTE : Form
     // while leaving the physical SQL column identifier unchanged.
     private static void UpdateCheckoutCart()
     {
+        // MySqlCommandBuilder owns its generated commands and RowUpdating hook.
+        // Make independent copies BEFORE disposing it; then remap only their
+        // parameter SourceColumn to the normalized in-memory DataTable column.
+        MySqlCommand insert = null, update = null, delete = null;
         using (MySqlCommandBuilder builder = new MySqlCommandBuilder(Module1.da1))
         {
             if (Module1.dt1.Rows.Cast<DataRow>().Any(row => row.RowState == DataRowState.Added))
-            {
-                Module1.da1.InsertCommand = builder.GetInsertCommand();
-                RemapCheckoutCommandSourceColumns(Module1.da1.InsertCommand);
-            }
+                insert = (MySqlCommand)((ICloneable)builder.GetInsertCommand()).Clone();
             if (Module1.dt1.Rows.Cast<DataRow>().Any(row => row.RowState == DataRowState.Modified))
-            {
-                Module1.da1.UpdateCommand = builder.GetUpdateCommand();
-                RemapCheckoutCommandSourceColumns(Module1.da1.UpdateCommand);
-            }
+                update = (MySqlCommand)((ICloneable)builder.GetUpdateCommand()).Clone();
             if (Module1.dt1.Rows.Cast<DataRow>().Any(row => row.RowState == DataRowState.Deleted))
-            {
-                Module1.da1.DeleteCommand = builder.GetDeleteCommand();
-                RemapCheckoutCommandSourceColumns(Module1.da1.DeleteCommand);
-            }
+                delete = (MySqlCommand)((ICloneable)builder.GetDeleteCommand()).Clone();
         }
-        // Dispose CommandBuilder and its RowUpdating hook BEFORE the update:
-        // otherwise regenerated commands can restore the legacy physical SourceColumn.
-        // The explicit commands retain the physical SQL identifiers, but bind to "Qté".
-        ((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+        // Generated commands were detached with the builder; the clones are
+        // independent and keep physical SQL column names for legacy schemas.
+        try
+        {
+            if (insert != null)
+            {
+                RemapCheckoutCommandSourceColumns(insert);
+                Module1.da1.InsertCommand = insert;
+            }
+            if (update != null)
+            {
+                RemapCheckoutCommandSourceColumns(update);
+                Module1.da1.UpdateCommand = update;
+            }
+            if (delete != null)
+            {
+                RemapCheckoutCommandSourceColumns(delete);
+                Module1.da1.DeleteCommand = delete;
+            }
+            ((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+        }
+        finally
+        {
+            // Keep adapter commands available only within this update cycle.
+            if (insert != null) { Module1.da1.InsertCommand = null; insert.Dispose(); }
+            if (update != null) { Module1.da1.UpdateCommand = null; update.Dispose(); }
+            if (delete != null) { Module1.da1.DeleteCommand = null; delete.Dispose(); }
+        }
     }
 
-    private static void NormalizeLoadedCheckoutQuantityColumn()
+        private static void NormalizeLoadedCheckoutQuantityColumn()
     {
         if (Module1.dt1 == null)
             throw new InvalidOperationException("POS cart table has not been loaded.");
