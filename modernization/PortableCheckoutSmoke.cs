@@ -85,6 +85,13 @@ internal static class PortableCheckoutSmoke
             Require(CheckoutBarcodeSelectionService.IsSameBasketArticle(
                 imageOnlyLine, "", "IMG-1", compare),
                 "Empty barcode image-only article must retain exact ID matching");
+            int callsBeforeMissingScan = equalityCalls;
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                basketLine, null, "A", compare), "Missing scanner value must fail closed");
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                basketLine, DBNull.Value, "A", compare), "SQL NULL scanner value must fail closed");
+            Require(equalityCalls == callsBeforeMissingScan,
+                "Missing scanner value must not invoke legacy equality");
             int callsBeforeRemoval = equalityCalls;
             basket.Rows.Remove(basketLine);
             Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
