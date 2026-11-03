@@ -38,3 +38,13 @@ assert preflight < update, "audit must be validated before stock mutation"
 assert source.index("Article identity exceeds supported length.") < update
 assert source.count("string audit =") == 1, "audit must be constructed once"
 print("PASS: audit and identity validation precede stock update")
+
+# A movement insert can fail after a successful stock UPDATE. The writer must
+# undo its own partial work even if the caller later commits the outer transaction.
+assert 'SAVEPOINT hanouty_stock_adjustment' in source
+assert 'ROLLBACK TO SAVEPOINT hanouty_stock_adjustment' in source
+assert 'RELEASE SAVEPOINT hanouty_stock_adjustment' in source
+assert source.index('SAVEPOINT hanouty_stock_adjustment') < source.index('UPDATE TABLE_ARTICLES SET STOCK')
+assert source.index('ROLLBACK TO SAVEPOINT hanouty_stock_adjustment') > source.index('INSERT INTO TABLE_MOUVEMENTS_STOCK')
+assert 'catch\n            {' in source, 'rollback must run on write/audit exceptions'
+print('PASS: failed audit rolls back local stock update without committing outer transaction')
