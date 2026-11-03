@@ -91,6 +91,32 @@ try {
     Assert ([PresenterHarness]::Lookup($false, $null, '42')) 'image tile selection'
     Assert (-not [PresenterHarness]::Lookup($false, $null, ' ')) 'empty image ID'
     Assert ([PresenterHarness]::ScrollBounded(500, 100, -900)) 'scroll position clamped'
+    # Real WinForms catalogue binding: image-less products remain in the full list.
+    # The image grid is a separate visual projection, not the catalogue source.
+    $catalogue = New-Object System.Data.DataTable
+    [void]$catalogue.Columns.Add('ID_ARTICLE', [string])
+    [void]$catalogue.Columns.Add('Article', [string])
+    [void]$catalogue.Columns.Add('Images', [string])
+    [void]$catalogue.Rows.Add('1', 'No image', '')
+    [void]$catalogue.Rows.Add('2', 'With image', 'article.png')
+    $list = New-Object System.Windows.Forms.DataGridView
+    $tiles = New-Object System.Windows.Forms.FlowLayoutPanel
+    try {
+        $list.AutoGenerateColumns = $true
+        $list.DataSource = $catalogue
+        Assert ($list.Rows.Count -eq 2) 'all products remain in the catalogue list'
+        $tile = New-Object System.Windows.Forms.Button
+        $tile.Tag = '2'
+        $tile.Text = 'With image'
+        $tiles.Controls.Add($tile)
+        Assert ($tiles.Controls.Count -eq 1) 'only image-bearing item in visual grid'
+        Assert ($list.Rows.Count -eq 2) 'image grid must not filter full product list'
+        Assert ([PresenterHarness]::Lookup($false, $null, [string]$tile.Tag)) 'image tile routes valid article ID'
+    } finally {
+        $tiles.Dispose()
+        $list.Dispose()
+        $catalogue.Dispose()
+    }
     Write-Host 'PASS: real WinForms TextChanged/KeyDown events and production presenters'
 } finally {
     $text.Dispose()
