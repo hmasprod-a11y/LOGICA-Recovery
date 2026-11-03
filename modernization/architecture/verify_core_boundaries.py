@@ -2,6 +2,7 @@
 """Check that both portable projects use one explicit set of real production sources."""
 import argparse
 import json
+import re
 from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
@@ -9,6 +10,7 @@ import xml.etree.ElementTree as ET
 PROJECTS = ("LOGICA.CoreCompatibility.csproj", "LOGICA.CorePortability.csproj")
 FORBIDDEN_DIRS = {"forms", "winforms", "bunifu", "obj", "bin"}
 FORBIDDEN_IMPORTS = ("System.Windows.Forms", "Bunifu", "MySql.", "Microsoft.VisualBasic")
+FORBIDDEN_QUALIFIED_TYPES = re.compile(r"(?<![A-Za-z0-9_])(?:global::)?(?:System\\.Windows\\.Forms|Bunifu(?:\\.[A-Za-z_][A-Za-z0-9_]*)?|MySql(?:\\.[A-Za-z_][A-Za-z0-9_]*)?|Microsoft\\.VisualBasic)(?:\\.|::)")
 FORBIDDEN_REFERENCES = ("System.Windows.Forms", "Bunifu", "MySql", "Microsoft.VisualBasic")
 
 def local_name(tag):
@@ -77,6 +79,8 @@ def validate(root):
                 for prefix in FORBIDDEN_IMPORTS:
                     if "using " + prefix in code or "Imports " + prefix in code:
                         errors.append("platform dependency in " + str(relative) + ": " + prefix)
+                if FORBIDDEN_QUALIFIED_TYPES.search(code):
+                    errors.append("fully qualified platform dependency in " + str(relative))
             paths.append(relative.as_posix())
     except (OSError, ET.ParseError) as exc:
         errors.append("CoreSources.props: " + str(exc))
