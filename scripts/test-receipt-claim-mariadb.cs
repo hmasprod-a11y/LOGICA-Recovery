@@ -121,7 +121,8 @@ internal static class ReceiptClaimMariaDbSmoke
                 "UNIQUE KEY uq_receipt (ID_BR)) ENGINE=InnoDB");
             Execute(connection, null,
                 "CREATE TABLE TABLE_RECEPTIONS_DETAILS (" +
-                "SEQ BIGINT AUTO_INCREMENT PRIMARY KEY, ID_BR VARCHAR(96)) ENGINE=InnoDB");
+                "SEQ BIGINT AUTO_INCREMENT PRIMARY KEY, ID_BR VARCHAR(96), " +
+                "ETAT VARCHAR(32) NULL DEFAULT 'ENREGISTRER') ENGINE=InnoDB");
             Execute(connection, null,
                 "CREATE TABLE TABLE_ARTICLES (ID_ARTICLE VARCHAR(96) PRIMARY KEY, " +
                 "STOCK DECIMAL(18,3) NOT NULL) ENGINE=InnoDB");
@@ -136,6 +137,22 @@ internal static class ReceiptClaimMariaDbSmoke
             Seed(connection, "BR-UNKNOWN", "ART-UNKNOWN", "OTHER");
             Seed(connection, "BR-EMPTY", "ART-EMPTY", "ENREGISTRER", false);
             Seed(connection, "BR-LOCK", "ART-LOCK");
+            Seed(connection, "BR-DETAIL-CANCEL", "ART-DETAIL-CANCEL");
+            Seed(connection, "BR-DETAIL-VALID", "ART-DETAIL-VALID");
+            Seed(connection, "BR-DETAIL-NULL", "ART-DETAIL-NULL");
+            Seed(connection, "BR-DETAIL-MIX", "ART-DETAIL-MIX");
+            Execute(connection, null,
+                "UPDATE TABLE_RECEPTIONS_DETAILS SET ETAT = 'ANNULE' WHERE ID_BR = @id",
+                "@id", "BR-DETAIL-CANCEL");
+            Execute(connection, null,
+                "UPDATE TABLE_RECEPTIONS_DETAILS SET ETAT = 'VALIDER' WHERE ID_BR = @id",
+                "@id", "BR-DETAIL-VALID");
+            Execute(connection, null,
+                "UPDATE TABLE_RECEPTIONS_DETAILS SET ETAT = NULL WHERE ID_BR = @id",
+                "@id", "BR-DETAIL-NULL");
+            Execute(connection, null,
+                "INSERT INTO TABLE_RECEPTIONS_DETAILS (ID_BR, ETAT) VALUES (@id, 'ANNULE')",
+                "@id", "BR-DETAIL-MIX");
 
             using (var transaction = connection.BeginTransaction())
             {
@@ -298,6 +315,45 @@ internal static class ReceiptClaimMariaDbSmoke
                 Check(scratch, blocked[i], blockedArticles[i], 0m, 0, blockedStates[i]);
             }
 
+            // Header state alone is insufficient: persisted lines may have
+            // been cancelled, already validated, corrupted or mixed. A claim
+            // must reject all such cases without changing header/stock/movement.
+            string[] invalidDetails = {
+                "BR-DETAIL-CANCEL", "BR-DETAIL-VALID",
+                "BR-DETAIL-NULL", "BR-DETAIL-MIX"
+            };
+            string[] invalidDetailArticles = {
+                "ART-DETAIL-CANCEL", "ART-DETAIL-VALID",
+                "ART-DETAIL-NULL", "ART-DETAIL-MIX"
+            };
+            for (int i = 0; i < invalidDetails.Length; i++)
+            {
+                using (var transaction = connection.BeginTransaction())
+                {
+                    bool rejected = false;
+                    try { Claim(method, connection, transaction, invalidDetails[i]); }
+                    catch (InvalidOperationException) { rejected = true; }
+                    Require(rejected, "Unsafe persisted receipt detail state accepted: " + invalidDetails[i]);
+                    transaction.Rollback();
+                }
+                Check(scratch, invalidDetails[i], invalidDetailArticles[i],
+                    0m, 0, "ENREGISTRER");
+            }
+            // After an authorized editor repairs the persisted detail state,
+            // the same receipt must be claimable exactly once, not poisoned.
+            Execute(connection, null,
+                "UPDATE TABLE_RECEPTIONS_DETAILS SET ETAT = 'ENREGISTRER' WHERE ID_BR = @id",
+                "@id", "BR-DETAIL-MIX");
+            using (var transaction = connection.BeginTransaction())
+            {
+                Require(Claim(method, connection, transaction, "BR-DETAIL-MIX"),
+                    "Repaired persisted receipt detail states could not retry");
+                Post(connection, transaction, "BR-DETAIL-MIX", "ART-DETAIL-MIX", 3.125m);
+                transaction.Commit();
+            }
+            Check(scratch, "BR-DETAIL-MIX", "ART-DETAIL-MIX",
+                3.125m, 1, "VALIDER");
+
             // Nontransactional legacy tables cannot guarantee rollback.
             // Reject them before any receipt header or stock write.
             string[] protectedTables = {
@@ -347,7 +403,7 @@ internal static class ReceiptClaimMariaDbSmoke
                 Require(rejected, "Duplicate receipt header was accepted");
                 transaction.Rollback();
             }
-            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, detail row locks, rollback/retry, blocked states, orphan header/recovery, invalid/duplicate headers, composite index, four MyISAM table rejections");
+            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, detail row locks, rollback/retry, blocked header/detail states, mixed detail recovery, orphan header/recovery, invalid/duplicate headers, composite index, four MyISAM table rejections");
         }
     }
 
