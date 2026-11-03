@@ -15246,8 +15246,13 @@ public class Form_3_VENTE : Form
 	{
 		// Keep the original numeric/backspace/minus input, but reject a second
 		// decimal separator before it can reach the checkout quantity parser.
-		if ((e.KeyChar == '.' && Label_QTE.Text.IndexOf('.') >= 0)
-			|| (e.KeyChar == '-' && (Label_QTE.Text.Length != 0 || Label_QTE.Text.IndexOf('-') >= 0)))
+		string remaining = Label_QTE.Text;
+		if (Label_QTE is TextBoxBase quantityInput)
+		{
+			remaining = quantityInput.Text.Remove(quantityInput.SelectionStart, quantityInput.SelectionLength);
+		}
+		if ((e.KeyChar == '.' && remaining.IndexOf('.') >= 0)
+			|| (e.KeyChar == '-' && (remaining.Length != 0 || remaining.IndexOf('-') >= 0)))
 		{
 			// A second decimal point or a misplaced minus sign is not a valid quantity.
 			e.Handled = true;
