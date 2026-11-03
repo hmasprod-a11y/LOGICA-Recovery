@@ -20,7 +20,7 @@ public static class PresenterHarness {
     public static void SelectBarcode(System.Windows.Forms.TextBoxBase input) { BarcodeInputFocusPresenter.SelectAll(input); }
     public static System.Drawing.Color Focus(bool focused) { return ProductSearchFocusPresenter.Background(focused); }
     public static bool Clear(string value) { return ProductSearchResetPresenter.ShouldClearText(value); }
-    public static bool Submit(Keys key, Keys modifiers) { return BarcodeEnterPresenter.ShouldSubmit(key, modifiers); }
+    public static bool Submit(Keys key, Keys modifiers) { return BarcodeEnterPresenter.ShouldSubmit(key, modifiers); }\n    public static bool Dispatch(KeyEventArgs e, Action callback) { return BarcodeEnterPresenter.Dispatch(e, callback); }
     public static bool Lookup(bool scanner, string barcode, string id) { return ProductSelectionPresenter.CanLookup(scanner, barcode, id); }
     public static bool ScrollBounded(int content, int viewport, int position) {
         var state = ArticleImageScrollPresenter.Calculate(content, viewport, position);
@@ -47,10 +47,7 @@ try {
     $script:scanCount = 0
     $text.add_KeyDown({
         param($sender, $e)
-        if ([PresenterHarness]::Submit($e.KeyCode, $e.Modifiers)) {
-            $e.SuppressKeyPress = $true
-            $script:scanCount++
-        }
+        [PresenterHarness]::Dispatch($e, [Action]{ $script:scanCount++ }) | Out-Null
     })
     $raise = [System.Windows.Forms.Control].GetMethod('OnKeyDown', [Reflection.BindingFlags]'Instance,NonPublic')
     if (-not $raise) { throw 'Cannot locate WinForms OnKeyDown' }
@@ -59,7 +56,7 @@ try {
     Assert ($script:scanCount -eq 1 -and $enter.SuppressKeyPress) 'Enter event must submit and suppress'
     $shiftEnter = [System.Windows.Forms.KeyEventArgs]::new([System.Windows.Forms.Keys]([int][System.Windows.Forms.Keys]::Enter -bor [int][System.Windows.Forms.Keys]::Shift))
     $raise.Invoke($text, @($shiftEnter)) | Out-Null
-    Assert ($script:scanCount -eq 1) 'Shift+Enter must not submit'
+    Assert ($script:scanCount -eq 1 -and -not $shiftEnter.SuppressKeyPress) 'Shift+Enter must not submit or suppress'\n    $nullEventCount = $script:scanCount\n    Assert (-not [PresenterHarness]::Dispatch($null, [Action]{ $script:scanCount++ })) 'null key event ignored'\n    Assert ($script:scanCount -eq $nullEventCount) 'null key event must not call checkout'
     # Focus transitions are real WinForms Enter/Leave events on a textbox.
     # They remain presentation-only and do not change search text or query SQL.
     $text.add_Enter({ $text.BackColor = [PresenterHarness]::Focus($true) })
