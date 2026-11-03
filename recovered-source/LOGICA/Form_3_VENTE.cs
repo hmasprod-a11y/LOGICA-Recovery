@@ -16021,6 +16021,16 @@ public class Form_3_VENTE : Form
 		return LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(row);
 	}
 
+	private static LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference ProductListArticleReference(DataRow row)
+	{
+		if (row == null || row.Table == null ||
+			row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached ||
+			!row.Table.Columns.Contains("ID_ARTICLE") ||
+			string.IsNullOrWhiteSpace(Convert.ToString(row["ID_ARTICLE"])))
+			return null;
+		return LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(row);
+	}
+
 	private void DataGridView100_DoubleClick(object sender, EventArgs e)
 	{
 		if (!Button_FIND.Enabled) return;
@@ -16030,10 +16040,7 @@ public class Form_3_VENTE : Form
 		// Barcode scanning still uses the separate exact-barcode/chooser path.
 		// Going through barcode lookup here can select another product when
 		// duplicate barcodes exist, and can re-enter a stale basket row.
-		LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference identity = null;
-		if (row.Table.Columns.Contains("ID_ARTICLE") &&
-			!string.IsNullOrWhiteSpace(Convert.ToString(row["ID_ARTICLE"])))
-			identity = LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.TagFor(row);
+		LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference identity = ProductListArticleReference(row);
 		if (identity == null)
 		{
 			if (string.IsNullOrWhiteSpace(Convert.ToString(row["Code"]))) return;
