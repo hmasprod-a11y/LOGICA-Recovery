@@ -33,6 +33,29 @@ public class Form_3_VENTE_JOURNAL : Form
 
 	private IContainer components;
 
+	// Journal reports can receive the aggregate alias as Qté, QTé, or
+	// Connector/NET mojibake on older store databases. Read the actual
+	// returned column instead of assuming one exact DataTable label.
+	private static object JournalQuantity(DataRow row)
+	{
+		if (row == null) throw new ArgumentNullException("row");
+		foreach (DataColumn column in row.Table.Columns)
+		{
+			string name = column.ColumnName;
+			if (string.Equals(name, "Qté", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(name, "QTÃ©", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(name, "QtÃ©", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(name, "QtÃƒÂ©", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(name, "Qte", StringComparison.OrdinalIgnoreCase) ||
+				string.Equals(name, "Quantite", StringComparison.OrdinalIgnoreCase))
+				return row[column];
+		}
+		throw new InvalidOperationException("Journal quantity column missing from result: " +
+			string.Join(", ", Array.ConvertAll(row.Table.Columns.Cast<DataColumn>().ToArray(), c => c.ColumnName)));
+	}
+
+
+
 	[AccessedThroughProperty("Panel1")]
 	private Panel _Panel1;
 
@@ -7083,7 +7106,7 @@ public class Form_3_VENTE_JOURNAL : Form
 								DataGridView2.Rows.Add(new object[3]
 								{
 									"  " + dataTable2.Rows[num6]["Article"].ToString(),
-									Strings.FormatNumber(Conversion.Val(dataTable2.Rows[num6]["Qté"].ToString())),
+									Strings.FormatNumber(Conversion.Val(JournalQuantity(dataTable2.Rows[num6]).ToString())),
 									Strings.FormatNumber(Conversion.Val(dataTable2.Rows[num6]["TOTAL_NET"].ToString()))
 								});
 								num6++;
@@ -7094,7 +7117,7 @@ public class Form_3_VENTE_JOURNAL : Form
 							DataGridView2.Rows.Add(new object[3]
 							{
 								"* TOTAL FAMILLE *",
-								"*" + Strings.FormatNumber(Conversion.Val(dataTable2.Rows[0]["Qté"].ToString())) + "*",
+								"*" + Strings.FormatNumber(Conversion.Val(JournalQuantity(dataTable2.Rows[0]).ToString())) + "*",
 								"*" + Strings.FormatNumber(Conversion.Val(dataTable2.Rows[0]["TOTAL_NET"].ToString())) + "*"
 							});
 						}
@@ -7106,7 +7129,7 @@ public class Form_3_VENTE_JOURNAL : Form
 							DataGridView2.Rows.Add(new object[3]
 							{
 								"",
-								Strings.FormatNumber(Conversion.Val(dataTable2.Rows[0]["Qté"].ToString())),
+								Strings.FormatNumber(Conversion.Val(JournalQuantity(dataTable2.Rows[0]).ToString())),
 								Strings.FormatNumber(Conversion.Val(dataTable2.Rows[0]["TOTAL_NET"].ToString()))
 							});
 						}
@@ -7378,7 +7401,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num39]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num39]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num39]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num39]["Article"].ToString() });
 						num39++;
 					}
 				}
@@ -7398,7 +7421,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num42]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num42]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num42]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num42]["Article"].ToString() });
 						num42++;
 					}
 				}
@@ -7418,7 +7441,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num45]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num45]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num45]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num45]["Article"].ToString() });
 						num45++;
 					}
 				}
@@ -7438,7 +7461,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num48]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num48]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num48]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num48]["Article"].ToString() });
 						num48++;
 					}
 				}
@@ -7506,7 +7529,7 @@ public class Form_3_VENTE_JOURNAL : Form
 							{
 								break;
 							}
-							DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num56]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num56]["Article"].ToString() });
+							DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num56]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num56]["Article"].ToString() });
 							num56++;
 						}
 					}
@@ -7756,7 +7779,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						DataGridView2.Rows.Add(new object[3]
 						{
 							"  " + dataTable2.Rows[num6]["Article"].ToString(),
-							dataTable2.Rows[num6]["Qté"].ToString(),
+							JournalQuantity(dataTable2.Rows[num6]).ToString(),
 							dataTable2.Rows[num6]["TOTAL_NET"].ToString()
 						});
 						num6++;
@@ -8048,7 +8071,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						DataGridView2.Rows.Add(new object[3]
 						{
 							"  " + dataTable2.Rows[num6]["Article"].ToString(),
-							Strings.FormatNumber(Conversion.Val(dataTable2.Rows[num6]["Qté"].ToString())),
+							Strings.FormatNumber(Conversion.Val(JournalQuantity(dataTable2.Rows[num6]).ToString())),
 							Strings.FormatNumber(Conversion.Val(dataTable2.Rows[num6]["TOTAL_NET"].ToString()))
 						});
 						num6++;
@@ -8650,7 +8673,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						DataGridView2.Rows.Add(new object[3]
 						{
 							"  " + dataTable2.Rows[num6]["Article"].ToString(),
-							Strings.FormatNumber(Conversion.Val(dataTable2.Rows[num6]["Qté"].ToString())),
+							Strings.FormatNumber(Conversion.Val(JournalQuantity(dataTable2.Rows[num6]).ToString())),
 							Strings.FormatNumber(Conversion.Val(dataTable2.Rows[num6]["TOTAL_NET"].ToString()))
 						});
 						num6++;
@@ -8661,7 +8684,7 @@ public class Form_3_VENTE_JOURNAL : Form
 					DataGridView2.Rows.Add(new object[3]
 					{
 						"* TOTAL FAMILLE *",
-						"*" + Strings.FormatNumber(Conversion.Val(dataTable2.Rows[0]["Qté"].ToString())) + "*",
+						"*" + Strings.FormatNumber(Conversion.Val(JournalQuantity(dataTable2.Rows[0]).ToString())) + "*",
 						"*" + Strings.FormatNumber(Conversion.Val(dataTable2.Rows[0]["TOTAL_NET"].ToString())) + "*"
 					});
 					DataGridView2.Rows.Add(new object[3] { "", "", "" });
@@ -8778,7 +8801,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num20]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num20]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num20]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num20]["Article"].ToString() });
 						num20++;
 					}
 				}
@@ -8798,7 +8821,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num23]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num23]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num23]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num23]["Article"].ToString() });
 						num23++;
 					}
 				}
@@ -8818,7 +8841,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num26]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num26]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num26]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num26]["Article"].ToString() });
 						num26++;
 					}
 				}
@@ -8838,7 +8861,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num29]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num29]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num29]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num29]["Article"].ToString() });
 						num29++;
 					}
 				}
@@ -8906,7 +8929,7 @@ public class Form_3_VENTE_JOURNAL : Form
 							{
 								break;
 							}
-							DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num37]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num37]["Article"].ToString() });
+							DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num37]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num37]["Article"].ToString() });
 							num37++;
 						}
 					}
@@ -9277,7 +9300,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num17]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num17]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num17]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num17]["Article"].ToString() });
 						num17++;
 					}
 				}
@@ -9297,7 +9320,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num20]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num20]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num20]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num20]["Article"].ToString() });
 						num20++;
 					}
 				}
@@ -9317,7 +9340,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num23]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num23]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num23]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num23]["Article"].ToString() });
 						num23++;
 					}
 				}
@@ -9337,7 +9360,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num26]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num26]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num26]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num26]["Article"].ToString() });
 						num26++;
 					}
 				}
@@ -9405,7 +9428,7 @@ public class Form_3_VENTE_JOURNAL : Form
 							{
 								break;
 							}
-							DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num34]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num34]["Article"].ToString() });
+							DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num34]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num34]["Article"].ToString() });
 							num34++;
 						}
 					}
@@ -9637,7 +9660,7 @@ public class Form_3_VENTE_JOURNAL : Form
 					DataGridView2.Rows.Add(new object[3]
 					{
 						dataTable.Rows[num2]["Famille"].ToString(),
-						Strings.FormatNumber(Conversion.Val(dataTable2.Rows[0]["Qté"].ToString())),
+						Strings.FormatNumber(Conversion.Val(JournalQuantity(dataTable2.Rows[0]).ToString())),
 						Strings.FormatNumber(Conversion.Val(dataTable2.Rows[0]["TOTAL_NET"].ToString() + "*"))
 					});
 					DataGridView2.Rows.Add(new object[3] { "", "", "" });
@@ -10026,7 +10049,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						DataGridView2.Rows.Add(new object[3]
 						{
 							"  " + dataTable2.Rows[num6]["Article"].ToString(),
-							Strings.FormatNumber(Conversion.Val(dataTable2.Rows[num6]["Qté"].ToString())),
+							Strings.FormatNumber(Conversion.Val(JournalQuantity(dataTable2.Rows[num6]).ToString())),
 							Math.Round(Conversions.ToDecimal(Strings.FormatNumber(Conversion.Val(dataTable2.Rows[num6]["TOTAL_NET"].ToString()))), 2)
 						});
 						num6++;
@@ -10565,7 +10588,7 @@ public class Form_3_VENTE_JOURNAL : Form
 							DataGridView2.Rows.Add(new object[3]
 							{
 								"  " + dataTable2.Rows[num6]["Article"].ToString(),
-								Strings.FormatNumber(Conversion.Val(dataTable2.Rows[num6]["Qté"].ToString())),
+								Strings.FormatNumber(Conversion.Val(JournalQuantity(dataTable2.Rows[num6]).ToString())),
 								Strings.FormatNumber(Conversion.Val(dataTable2.Rows[num6]["TOTAL_NET"].ToString()))
 							});
 							num6++;
@@ -10579,7 +10602,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						DataGridView2.Rows.Add(new object[3]
 						{
 							"  *TOTAL FAMILLE*",
-							Strings.FormatNumber(Conversion.Val(dataTable2.Rows[0]["Qté"].ToString())),
+							Strings.FormatNumber(Conversion.Val(JournalQuantity(dataTable2.Rows[0]).ToString())),
 							Strings.FormatNumber(Conversion.Val(dataTable2.Rows[0]["TOTAL_NET"].ToString()))
 						});
 					}
@@ -10983,7 +11006,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num29]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num29]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num29]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num29]["Article"].ToString() });
 						num29++;
 					}
 				}
@@ -11003,7 +11026,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num32]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num32]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num32]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num32]["Article"].ToString() });
 						num32++;
 					}
 				}
@@ -11023,7 +11046,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num35]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num35]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num35]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num35]["Article"].ToString() });
 						num35++;
 					}
 				}
@@ -11043,7 +11066,7 @@ public class Form_3_VENTE_JOURNAL : Form
 						{
 							break;
 						}
-						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Module1._DT_TEMP.Rows[num38]["Qté"].ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num38]["Article"].ToString() });
+						DataGridView3.Rows.Add(new object[1] { "  " + Strings.LSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(JournalQuantity(Module1._DT_TEMP.Rows[num38]).ToString()))) + "x", 7) + Module1._DT_TEMP.Rows[num38]["Article"].ToString() });
 						num38++;
 					}
 				}
