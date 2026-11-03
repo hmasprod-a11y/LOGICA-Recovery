@@ -270,7 +270,7 @@ try {
         try {
             Write-FixtureManifest
             Write-FixtureZip
-            Assert-Rejected "private payload $private" 'Private credentials or database state forbidden in release manifest'
+            Assert-Rejected "private payload $private" 'Credential, database state or backup forbidden in release manifest'
         } finally {
             Remove-Item -LiteralPath $privatePath -Force
         }
