@@ -63,7 +63,18 @@ def validate(root):
     try:
         manifest = ET.parse(directory / "CoreSources.props").getroot()
         for entry in manifest.iter():
-            if local_name(entry.tag) != "Compile":
+            kind = local_name(entry.tag)
+            if kind == "Import":
+                errors.append("manifest unreviewed import: " + str(entry.attrib.get("Project", "")))
+            if kind in ("ItemGroup", "PropertyGroup") and entry.attrib.get("Condition"):
+                errors.append("manifest conditional structure requires review: " + kind)
+            if kind in ("ProjectReference", "Reference", "PackageReference"):
+                reference = entry.attrib.get("Include", "")
+                if kind == "ProjectReference" or is_forbidden_reference(reference):
+                    errors.append("manifest nonportable reference: " + reference)
+            if kind == "EnableDefaultCompileItems" and (entry.text or "").strip().lower() != "false":
+                errors.append("manifest cannot re-enable default compile items")
+            if kind != "Compile":
                 continue
             raw = entry.attrib.get("Include", "")
             if entry.attrib.get("Condition") or any(k in entry.attrib for k in ("Update", "Remove", "Exclude")):
