@@ -40,12 +40,15 @@ assert "EnsureCheckoutQuantityColumn();" in sales
 assert 'NormalizeLoadedCheckoutQuantityColumn();' in sales
 assert 'string.Equals(column.ColumnName, "QtÃ©", StringComparison.OrdinalIgnoreCase)' in sales
 assert 'legacy.ColumnName = "Qté";' in sales
-# The actual INSERT/UPDATE path uses MySqlCommandBuilder: map physical DB
-# quantity names before Fill, rather than only renaming a DataColumn afterward.
+# The cart DataTable is loaded with physical SQL column names and then
+# normalized in memory. Adapter TableMappings previously caused a missing
+# SourceColumn exception during real INSERT/UPDATE.
 assert 'private static MySqlDataAdapter CreateCheckoutCartAdapter()' in sales
-assert 'adapter.TableMappings.Add("Table", "Table")' in sales
+assert 'adapter.TableMappings.Add("Table", "Table")' not in sales
+assert 'mapping.ColumnMappings.Add(' not in sales
 for physical in ("QtÃ©", "Qte", "Quantite"):
-    assert 'mapping.ColumnMappings.Add("' + physical + '", "Qté")' in sales
+    assert 'string.Equals(parameter.SourceColumn, "' + physical + '"' in sales
+assert sales.count('AssertCheckoutCartColumns();') >= 4
 assert sales.count('Module1.da1 = CreateCheckoutCartAdapter();') == 4
 assert 'using (MySqlCommandBuilder builder = new MySqlCommandBuilder(Module1.da1))' in sales
 assert 'parameter.SourceColumn = "Qté";' in sales
