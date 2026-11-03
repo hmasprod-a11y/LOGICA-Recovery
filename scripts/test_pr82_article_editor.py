@@ -34,10 +34,15 @@ assert "Bitmap image = Load(candidate, fileName)" in loader
 assert sales.count("CheckoutArticleImageLoader.LoadWithFallback(") == 2
 assert "inner join TABLE_ARTICLES a on a.Famille = f.Famille" in sales
 
-# Checkout must repair legacy station quantity schema BEFORE binding the cart.
+# Checkout must accept legacy quantity labels in the loaded DataTable without
+# writing or migrating real store database tables at cashier startup.
 assert "EnsureCheckoutQuantityColumn();" in sales
-assert "CREATE TABLE `" in sales and "_BACKUP_" in sales
-assert "ADD COLUMN `Qté` DOUBLE NOT NULL DEFAULT 0" in sales
+assert 'NormalizeLoadedCheckoutQuantityColumn();' in sales
+assert 'string.Equals(column.ColumnName, "QtÃ©", StringComparison.OrdinalIgnoreCase)' in sales
+assert 'legacy.ColumnName = "Qté";' in sales
+assert sales.index("NormalizeLoadedCheckoutQuantityColumn();") < sales.index('foreach (string required in new[]')
+startup = sales.split("private static void EnsureCheckoutQuantityColumn()", 1)[1].split("private static string ExactImageArticleSql()", 1)[0]
+assert "ALTER TABLE" not in startup and "CREATE TABLE" not in startup and "UPDATE `" not in startup
 assert sales.index("EnsureCheckoutQuantityColumn();") < sales.index('Module1.dt1 = new DataTable();')
 
 
