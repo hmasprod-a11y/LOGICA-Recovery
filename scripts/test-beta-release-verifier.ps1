@@ -35,7 +35,19 @@ function Write-FixtureManifest {
 }
 function Write-FixtureZip {
     if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
-    Compress-Archive -Path (Join-Path $src '*') -DestinationPath $zip -CompressionLevel Optimal
+    # Compress-Archive silently omits hidden files (notably .env on Linux).
+    # Construct the fixture from the same -Force file inventory as the manifest,
+    # so security regressions actually exercise every private filename.
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($fixtureFile in @(Get-ChildItem -LiteralPath $src -Recurse -File -Force)) {
+            $entryName = $fixtureFile.FullName.Substring($src.Length + 1).Replace([char]92, '/')
+            [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $archive, $fixtureFile.FullName, $entryName,
+                [System.IO.Compression.CompressionLevel]::Optimal)
+        }
+    } finally { $archive.Dispose() }
     $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
 }
