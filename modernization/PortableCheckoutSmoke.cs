@@ -685,6 +685,36 @@ internal static class PortableCheckoutSmoke
                 "Selected duplicate variant must flow through real pricing and basket consistency");
             Require(flowPreview.LineNet == (7.50m * 2m - 7.50m * 2m * 0m / 100m),
                 "Simple sale sample matches recovered line arithmetic before formatting");
+            // A pricing callback can synchronously mutate the catalogue.
+            // Never expose a preview based on a row whose identity changed
+            // between selection and completion of the legacy calculation.
+            DataTable duringPricing = flowMatches.Clone();
+            duringPricing.Rows.Add("DUP", "ORIGINAL", 7.50m, 0m);
+            CheckoutVariantChoiceResult mutableChoice =
+                CheckoutSelectionFlowService.ChooseBarcode(duringPricing, null);
+            bool reassignedDuringPricing = false;
+            try {
+                CheckoutSelectionFlowService.Preview(mutableChoice, 0m,
+                    delegate(DataRow article) {
+                        article["ID_ARTICLE"] = "REASSIGNED";
+                        return SalesLinePricing.CalculateNetAmount(7.50m, 2m, 0m);
+                    }, "15", port);
+            }
+            catch (InvalidOperationException) { reassignedDuringPricing = true; }
+            Require(reassignedDuringPricing,
+                "Checkout preview must reject article reassigned during pricing");
+            duringPricing.Rows[0]["ID_ARTICLE"] = "ORIGINAL";
+            bool deletedDuringPricing = false;
+            try {
+                CheckoutSelectionFlowService.Preview(mutableChoice, 0m,
+                    delegate(DataRow article) {
+                        article.Delete();
+                        return SalesLinePricing.CalculateNetAmount(7.50m, -2m, 0m);
+                    }, "-15", port);
+            }
+            catch (InvalidOperationException) { deletedDuringPricing = true; }
+            Require(deletedDuringPricing,
+                "Return preview must reject article deleted during pricing");
             CheckoutBasketPreview flowReturn = CheckoutSelectionFlowService.Preview(
                 flowChoice, 20m, delegate(DataRow article) {
                     return SalesLinePricing.CalculateNetAmount(
