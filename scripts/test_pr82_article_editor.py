@@ -63,9 +63,14 @@ assert sales.count('AssertCheckoutCartColumns();') >= 4
 assert sales.count('Module1.da1 = CreateCheckoutCartAdapter();') == 4
 assert 'using (MySqlCommandBuilder builder = new MySqlCommandBuilder(Module1.da1))' in sales
 assert 'parameter.SourceColumn = "Qté";' in sales
-assert 'RemapCheckoutCommandSourceColumns(Module1.da1.InsertCommand);' in sales
-assert 'RemapCheckoutCommandSourceColumns(Module1.da1.UpdateCommand);' in sales
-assert 'RemapCheckoutCommandSourceColumns(Module1.da1.DeleteCommand);' in sales
+# Clone the generated commands so their SourceColumn normalization cannot be
+# undone by CommandBuilder RowUpdating, and they survive builder disposal.
+for kind in ("Insert", "Update", "Delete"):
+    assert f'(MySqlCommand)((ICloneable)builder.Get{kind}Command()).Clone()' in sales
+for name in ("insert", "update", "delete"):
+    assert f'RemapCheckoutCommandSourceColumns({name});' in sales
+    assert f'{name}.Dispose();' in sales
+assert sales.index('((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);') > sales.index('RemapCheckoutCommandSourceColumns(delete);')
 assert sales.count('UpdateCheckoutCart();') == 8
 assert 'row.Cells["Qté"].Value != DBNull.Value' in sales
 assert '!row.IsNewRow' in sales
