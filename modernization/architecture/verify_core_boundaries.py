@@ -9,6 +9,15 @@ import xml.etree.ElementTree as ET
 PROJECTS = ("LOGICA.CoreCompatibility.csproj", "LOGICA.CorePortability.csproj")
 FORBIDDEN_DIRS = {"forms", "winforms", "bunifu", "obj", "bin"}
 FORBIDDEN_IMPORTS = ("System.Windows.Forms", "Bunifu", "MySql.", "Microsoft.VisualBasic")
+FORBIDDEN_REFERENCES = ("System.Windows.Forms", "Bunifu", "MySql", "Microsoft.VisualBasic")
+
+def local_name(tag):
+    return tag.rsplit("}", 1)[-1]
+
+def is_forbidden_reference(name):
+    return any(name.lower() == p.lower() or name.lower().startswith(p.lower() + ".")
+               for p in FORBIDDEN_REFERENCES)
+
 
 def validate(root):
     root = Path(root).resolve()
@@ -19,12 +28,22 @@ def validate(root):
         try:
             project = ET.parse(directory / name).getroot()
             targets[name] = ";".join((n.text or "") for n in project.iter()
-                                     if n.tag in ("TargetFramework", "TargetFrameworks"))
-            imports = [n.attrib.get("Project") for n in project.iter("Import")]
+                                     if local_name(n.tag) in ("TargetFramework", "TargetFrameworks"))
+            imports = [n.attrib.get("Project") for n in project.iter()
+                       if local_name(n.tag) == "Import"]
             if imports.count("CoreSources.props") != 1:
                 errors.append(name + ": shared manifest must be imported once")
-            if any(n.attrib.get("Include") for n in project.iter("Compile")):
+            if any(n.attrib.get("Include") or n.attrib.get("Update")
+                   for n in project.iter() if local_name(n.tag) == "Compile"):
                 errors.append(name + ": direct Compile bypasses shared manifest")
+            for node in project.iter():
+                kind = local_name(node.tag)
+                if kind in ("ProjectReference", "Reference", "PackageReference"):
+                    reference = node.attrib.get("Include", "")
+                    if kind == "ProjectReference" or is_forbidden_reference(reference):
+                        errors.append(name + ": nonportable reference: " + reference)
+                if kind == "EnableDefaultCompileItems" and (node.text or "").strip().lower() != "false":
+                    errors.append(name + ": default compile items must be disabled")
         except (OSError, ET.ParseError) as exc:
             errors.append(name + ": " + str(exc))
     if targets.get(PROJECTS[0]) != "netstandard2.0;net10.0":
@@ -33,7 +52,9 @@ def validate(root):
         errors.append("portability project must target net10.0")
     try:
         manifest = ET.parse(directory / "CoreSources.props").getroot()
-        for entry in manifest.iter("Compile"):
+        for entry in manifest.iter():
+            if local_name(entry.tag) != "Compile":
+                continue
             raw = entry.attrib.get("Include", "")
             if not raw or any(c in raw for c in ("$(", "*", "?")):
                 errors.append("non-explicit source path: " + raw)
