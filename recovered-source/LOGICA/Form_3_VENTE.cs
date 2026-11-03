@@ -12513,12 +12513,14 @@ public class Form_3_VENTE : Form
 	{
 		VScrollBar bar = vScrollBar1;
 		int contentHeight = Math.Max(0, ((ScrollableControl)FlowLayout_ARTICLES).DisplayRectangle.Height);
+		ArticleImageScrollPresenter.ScrollState scroll = ArticleImageScrollPresenter.Calculate(
+			contentHeight, ((Control)FlowLayout_ARTICLES).Height,
+			((ScrollableControl)FlowLayout_ARTICLES).AutoScrollPosition.Y);
 		bar.Minimum = 0;
-		bar.Maximum = contentHeight;
-		bar.LargeChange = Math.Max(1, Math.Min(contentHeight + 1, ((Control)FlowLayout_ARTICLES).Height));
+		bar.Maximum = scroll.Maximum;
+		bar.LargeChange = scroll.LargeChange;
 		bar.SmallChange = 15;
-		int maxValue = Math.Max(0, bar.Maximum - bar.LargeChange + 1);
-		bar.Value = Math.Min(maxValue, Math.Abs(((ScrollableControl)FlowLayout_ARTICLES).AutoScrollPosition.Y));
+		bar.Value = scroll.Value;
 	}
 
 	public void FAM2_click(object sender, EventArgs e)
@@ -17598,5 +17600,31 @@ internal static class ProductSelectionPresenter
 	internal static bool CanLookup(bool barcodeSelection, string barcode, string articleId)
 	{
 		return barcodeSelection ? !string.IsNullOrWhiteSpace(barcode) : !string.IsNullOrWhiteSpace(articleId);
+	}
+}
+
+// Pure viewport policy: bounded values for compact layouts and DPI changes.
+internal static class ArticleImageScrollPresenter
+{
+	internal struct ScrollState
+	{
+		internal int Maximum;
+		internal int LargeChange;
+		internal int Value;
+	}
+
+	internal static ScrollState Calculate(int contentHeight, int viewportHeight, int scrollY)
+	{
+		int content = Math.Max(0, contentHeight);
+		int viewport = Math.Max(0, viewportHeight);
+		int largeChange = Math.Max(1, (int)Math.Min((long)content + 1L, (long)viewport));
+		int maxValue = Math.Max(0, content - largeChange + 1);
+		long position = Math.Abs((long)scrollY);
+		return new ScrollState
+		{
+			Maximum = content,
+			LargeChange = largeChange,
+			Value = (int)Math.Min((long)maxValue, position)
+		};
 	}
 }
