@@ -15468,12 +15468,12 @@ public class Form_3_VENTE : Form
 
 	private void Text_FIND_GotFocus(object sender, EventArgs e)
 	{
-		((TextBoxBase)Text_FIND).BackColor = Color.Yellow;
+		((TextBoxBase)Text_FIND).BackColor = ProductSearchFocusPresenter.Background(true);
 	}
 
 	private void Text_FIND_LostFocus(object sender, EventArgs e)
 	{
-		((TextBoxBase)Text_FIND).BackColor = Color.White;
+		((TextBoxBase)Text_FIND).BackColor = ProductSearchFocusPresenter.Background(false);
 	}
 
 	private void Text_FIND_TextChanged(object sender, EventArgs e)
@@ -17626,5 +17626,14 @@ internal static class ArticleImageScrollPresenter
 			LargeChange = largeChange,
 			Value = (int)Math.Min((long)maxValue, position)
 		};
+	}
+}
+
+// UI-only focus policy shared by search focus events; independent of DB and RTL.
+internal static class ProductSearchFocusPresenter
+{
+	internal static Color Background(bool focused)
+	{
+		return focused ? Color.Yellow : Color.White;
 	}
 }
