@@ -685,6 +685,40 @@ internal static class PortableCheckoutSmoke
                 "Selected duplicate variant must flow through real pricing and basket consistency");
             Require(flowPreview.LineNet == (7.50m * 2m - 7.50m * 2m * 0m / 100m),
                 "Simple sale sample matches recovered line arithmetic before formatting");
+            // A column rename can preserve every ItemArray value while changing
+            // what the legacy pricing callback actually read. This regression
+            // fails on the previous implementation, which checked values only.
+            DataTable schemaDuringPricing = flowMatches.Clone();
+            schemaDuringPricing.Rows.Add("DUP", "SCHEMA", 7.50m, 0m);
+            CheckoutVariantChoiceResult schemaChoice =
+                CheckoutSelectionFlowService.ChooseBarcode(schemaDuringPricing, null);
+            bool renamedDuringPricing = false;
+            try {
+                CheckoutSelectionFlowService.Preview(schemaChoice, 0m,
+                    delegate(DataRow article) {
+                        decimal amount = SalesLinePricing.CalculateNetAmount(
+                            (decimal)article["UnitPrice"], 2m, (decimal)article["Discount"]);
+                        article.Table.Columns["UnitPrice"].ColumnName = "OldUnitPrice";
+                        return amount;
+                    }, "15", port);
+            }
+            catch (InvalidOperationException) { renamedDuringPricing = true; }
+            Require(renamedDuringPricing,
+                "Checkout preview rejects a renamed pricing column even when amounts remain unchanged");
+            schemaDuringPricing.Columns["OldUnitPrice"].ColumnName = "UnitPrice";
+            bool reorderedColumnsDuringPricing = false;
+            try {
+                CheckoutSelectionFlowService.Preview(schemaChoice, 0m,
+                    delegate(DataRow article) {
+                        decimal amount = SalesLinePricing.CalculateNetAmount(
+                            (decimal)article["UnitPrice"], 2m, (decimal)article["Discount"]);
+                        article.Table.Columns["UnitPrice"].SetOrdinal(3);
+                        return amount;
+                    }, "15", port);
+            }
+            catch (InvalidOperationException) { reorderedColumnsDuringPricing = true; }
+            Require(reorderedColumnsDuringPricing,
+                "Checkout preview rejects reordered pricing columns without changed values");
             // A pricing callback can synchronously mutate the catalogue.
             // Never expose a preview based on a row whose identity changed
             // between selection and completion of the legacy calculation.
