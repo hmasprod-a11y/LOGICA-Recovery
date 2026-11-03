@@ -14416,16 +14416,13 @@ public class Form_2_ARTICLES : Form
 					MessageBox.Show("Veuillez remplir le champ -PRIX_V_2- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Operators.CompareString(Text_PRIX_QTE.Text, "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -PRIX_QTE- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
-				if (Operators.CompareString(Text_PRIX_QTE_MIN.Text, "", TextCompare: false) == 0)
-				{
-					MessageBox.Show("Veuillez remplir le champ -PRIX_QTE_MIN- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
-					return;
-				}
+				// Quantity-tier prices are optional, unlike the standard sale price.
+				// On legacy edits these fields can be empty or absent in old rows.
+				// Zero means the optional quantity tier is disabled.
+				if (string.IsNullOrWhiteSpace(Text_PRIX_QTE.Text))
+					Text_PRIX_QTE.Text = "0";
+				if (string.IsNullOrWhiteSpace(Text_PRIX_QTE_MIN.Text))
+					Text_PRIX_QTE_MIN.Text = "0";
 				if (Operators.CompareString(Text_STOCK.Text, "", TextCompare: false) == 0)
 				{
 					MessageBox.Show("Veuillez remplir le champ -STOCK- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
