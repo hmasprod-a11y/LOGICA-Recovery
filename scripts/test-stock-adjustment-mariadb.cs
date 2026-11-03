@@ -96,6 +96,21 @@ internal static class StockAdjustmentMariaDbSmoke
                 }
                 Require(Scalar(c, null, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == 1m,
                     "Rejected attempts must not write audit");
+
+                // Force a journal insert failure after the stock UPDATE. Even when
+                // the caller catches the exception and commits its outer transaction,
+                // the writer's savepoint must undo the stock mutation.
+                Sql(c, null, "DELETE FROM TABLE_ARTICLES WHERE Article='Duplicate'");
+                Sql(c, null, "ALTER TABLE TABLE_MOUVEMENTS_STOCK ADD CONSTRAINT ci_audit_reject CHECK (QUANTITE < 3)");
+                using (var tx = c.BeginTransaction())
+                {
+                    ExpectFailure(() => Apply(apply, plan(12, 16), c, tx), "audit insert failure");
+                    tx.Commit();
+                }
+                Require(Scalar(c, null, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CI-ARTICLE'") == 12m &&
+                    Scalar(c, null, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == 1m,
+                    "Savepoint must undo stock after failed audit even if caller commits");
+                Sql(c, null, "ALTER TABLE TABLE_MOUVEMENTS_STOCK DROP CONSTRAINT ci_audit_reject");
                 Console.WriteLine("PASS production MariaDB permission, rollback, commit, stale and duplicate-ID checks");
             }
             finally
