@@ -3002,7 +3002,21 @@ static void JournalQuantityLegacyAliases(Assembly assembly) {
   var actual=Convert.ToDecimal(read.Invoke(null,new object[]{row}));
   if(actual!=2.5m)throw new Exception("Journal alias failed: "+column);
  }
- Console.WriteLine("PASS Journal report quantity aliases across legacy MariaDB decoding");
+ // The common reader must fail closed on missing and ambiguous columns,
+ // rather than silently returning zero or selecting an arbitrary field.
+ var compatibility=assembly.GetType("LOGICA.LegacyColumnCompatibility",true);
+ var resolve=compatibility.GetMethod("ResolveQuantityColumn",Flags);
+ foreach(var names in new[]{new string[]{"Prix_V"},new string[]{"Qté","Qte"}}){
+  var table=new DataTable();
+  foreach(string name in names)table.Columns.Add(name,typeof(decimal));
+  bool threw=false;
+  try{resolve.Invoke(null,new object[]{table});}
+  catch(System.Reflection.TargetInvocationException ex) {
+   if(ex.InnerException is InvalidOperationException)threw=true;
+  }
+  if(!threw)throw new Exception("Quantity mapper must reject missing/ambiguous schema");
+ }
+ Console.WriteLine("PASS common quantity aliases + missing/ambiguous failure guards");
 }
 [STAThread] static int Main(string[] args) {
   try {
