@@ -17491,6 +17491,17 @@ public class Form_2_ARTICLES : Form
 		{
 			try
 			{
+				bool allowInitialQuantity;
+				bool.TryParse(ReadArticleSetting("AJOUT_STOCK_MANUEL", "False"), out allowInitialQuantity);
+				((Control)Text_QTE_COLLECTION).Enabled = allowInitialQuantity;
+				((Control)Button_PLUS).Enabled = allowInitialQuantity;
+				((Control)Button_MOINS).Enabled = allowInitialQuantity;
+				if (!allowInitialQuantity && (!decimal.TryParse(Text_QTE_COLLECTION.Text, out decimal collectionQuantity) || collectionQuantity != 0m))
+				{
+					MessageBox.Show("Ajout manuel de stock interdit par les paramètres.", "Stock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+					Text_QTE_COLLECTION.Text = "0";
+					return;
+				}
 				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_CODE_COLLECTION.Text, LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance))
 				{
 					MessageBox.Show("Veuillez remplir le champ -Code- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
