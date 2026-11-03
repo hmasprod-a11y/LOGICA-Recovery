@@ -13901,6 +13901,16 @@ public class Form_2_ARTICLES : Form
 		}
 	}
 
+	private static string ReadArticleSetting(string name, string fallback)
+	{
+		var settings = MyProject.Forms.Form_0_TEMPLATE.ListView1;
+		if (settings == null) return fallback;
+		foreach (ListViewItem row in settings.Items)
+			if (string.Equals(row.Text, name, StringComparison.OrdinalIgnoreCase))
+				return row.SubItems.Count > 1 ? row.SubItems[1].Text : fallback;
+		return fallback;
+	}
+
 	private void Form_Me_Load(object sender, EventArgs e)
 	{
 		//IL_01eb: Unknown result type (might be due to invalid IL or missing references)
@@ -13934,10 +13944,10 @@ public class Form_2_ARTICLES : Form
 				{
 					((ButtonBase)Button244).Image = MyProject.Forms.Form_0_TEMPLATE.PictureBox_SORTIE.Image;
 				}
-				if (Conversions.ToBoolean(MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("GROUPES", false, 0).Index].SubItems[1].Text))
+				if (Conversions.ToBoolean(ReadArticleSetting("GROUPES", "False")))
 				{
 					((Control)Panel_GROUPE).Visible = true;
-					StringReader stringReader = new StringReader(MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("GROUPES_LISTE", false, 0).Index].SubItems[1].Text);
+					StringReader stringReader = new StringReader(ReadArticleSetting("GROUPES_LISTE", ""));
 					Combo_GROUPES.Items.Clear();
 					while (stringReader.Peek() != -1)
 					{
@@ -14030,8 +14040,25 @@ public class Form_2_ARTICLES : Form
 					num9++;
 				}
 				dataTable.Clear();
-				val = new MySqlDataAdapter("select   *    from TABLE_LISTE_TAILLES ", Module1.cn_SQL);
-				((DbDataAdapter)(object)val).Fill(dataTable);
+				// Optional sizing table is absent in the original recovered database.
+                // Keep family and article editor available, without creating/mutating tables.
+                bool hasSizeTable;
+                bool wasConnected = Module1.cn_SQL.State == ConnectionState.Open;
+                try
+                {
+                    if (!wasConnected) Module1.cn_SQL.Open();
+                    using (var check = new MySqlCommand("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'TABLE_LISTE_TAILLES'", Module1.cn_SQL))
+                        hasSizeTable = Convert.ToInt32(check.ExecuteScalar()) != 0;
+                }
+                finally
+                {
+                    if (!wasConnected) Module1.cn_SQL.Close();
+                }
+                if (hasSizeTable)
+                {
+                    val = new MySqlDataAdapter("select * from TABLE_LISTE_TAILLES", Module1.cn_SQL);
+                    ((DbDataAdapter)(object)val).Fill(dataTable);
+                }
 				Combo_TAILLES.Items.Clear();
 				DataGridView_TAILLES.Rows.Clear();
 				int num11 = dataTable.Rows.Count - 1;
@@ -14057,8 +14084,26 @@ public class Form_2_ARTICLES : Form
 				((ListControl)Combo_TAILLES).ValueMember = "Key";
 				((ListControl)Combo_TAILLES).DisplayMember = "Value";
 				dataTable.Clear();
-				val = new MySqlDataAdapter("select   *    from TABLE_LISTE_COULEURS ", Module1.cn_SQL);
-				((DbDataAdapter)(object)val).Fill(dataTable);
+				// Color variants are optional in recovered local database snapshots.
+                // Use the existing authenticated connection and leave the controls empty
+                // when TABLE_LISTE_COULEURS was not part of the recovered schema.
+                bool hasColorTable;
+                bool colorConnectionWasOpen = Module1.cn_SQL.State == ConnectionState.Open;
+                try
+                {
+                    if (!colorConnectionWasOpen) Module1.cn_SQL.Open();
+                    using (var check = new MySqlCommand("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'TABLE_LISTE_COULEURS'", Module1.cn_SQL))
+                        hasColorTable = Convert.ToInt32(check.ExecuteScalar()) != 0;
+                }
+                finally
+                {
+                    if (!colorConnectionWasOpen) Module1.cn_SQL.Close();
+                }
+                if (hasColorTable)
+                {
+                    val = new MySqlDataAdapter("select * from TABLE_LISTE_COULEURS", Module1.cn_SQL);
+                    ((DbDataAdapter)(object)val).Fill(dataTable);
+                }
 				Combo_COULEURS.Items.Clear();
 				DataGridView_COULEURS.Rows.Clear();
 				int num14 = dataTable.Rows.Count - 1;
@@ -14087,10 +14132,10 @@ public class Form_2_ARTICLES : Form
 				TabControl tabControl = TabControl1;
 				Size itemSize = new Size((int)Math.Round((double)((Control)TabControl1).Width / (double)TabControl1.TabCount - 4.0), 30);
 				tabControl.ItemSize = itemSize;
-				TextBox_MODIF_STOCK_MANUEL.Text = MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("MODIF_STOCK_MANUEL", false, 0).Index].SubItems[1].Text;
-				TextBox_AJOUT_STOCK_MANUEL.Text = MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("AJOUT_STOCK_MANUEL", false, 0).Index].SubItems[1].Text;
-				TextBox_NBR_CODE_ARTICLE.Text = MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("NBR_CODE_ARTICLE", false, 0).Index].SubItems[1].Text;
-				TextBox_NBR_CODE_BALANCE.Text = MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("NBR_CODE_BALANCE", false, 0).Index].SubItems[1].Text;
+				TextBox_MODIF_STOCK_MANUEL.Text = ReadArticleSetting("MODIF_STOCK_MANUEL", "False");
+				TextBox_AJOUT_STOCK_MANUEL.Text = ReadArticleSetting("AJOUT_STOCK_MANUEL", "False");
+				TextBox_NBR_CODE_ARTICLE.Text = ReadArticleSetting("NBR_CODE_ARTICLE", "0");
+				TextBox_NBR_CODE_BALANCE.Text = ReadArticleSetting("NBR_CODE_BALANCE", "0");
 				FUN_CAT_ACCES();
 			}
 			catch (Exception ex)
@@ -14370,7 +14415,7 @@ public class Form_2_ARTICLES : Form
 					MessageBox.Show("Veuillez remplir le champ -IMAGE- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Conversions.ToBoolean(MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("GROUPES", false, 0).Index].SubItems[1].Text) && Operators.CompareString(Combo_GROUPES.Text, "", TextCompare: false) == 0)
+				if (Conversions.ToBoolean(ReadArticleSetting("GROUPES", "False")) && Operators.CompareString(Combo_GROUPES.Text, "", TextCompare: false) == 0)
 				{
 					MessageBox.Show("Veuillez remplir le champ -GROUPE- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;

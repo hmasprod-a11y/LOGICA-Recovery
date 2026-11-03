@@ -12798,6 +12798,21 @@ public class Form_3_VENTE : Form
 			LOGICA.Infrastructure.Compatibility.VisualBasicCheckoutPaymentReadSemantics.Instance);
 	}
 
+	// Original restored TABLE_PARAMETRES does not contain this optional key.
+	// A missing stock-block switch must not crash checkout or mutate store data.
+	private static bool IsInsufficientStockBlockingEnabled()
+	{
+		var settings = MyProject.Forms.Form_0_TEMPLATE.ListView1;
+		if (settings == null) return false;
+		foreach (ListViewItem row in settings.Items)
+		{
+			if (string.Equals(row.Text, "BLOCAGE_STOCK_INSUFFISANT", StringComparison.OrdinalIgnoreCase))
+				return row.SubItems.Count > 1 &&
+					string.Equals(row.SubItems[1].Text, "True", StringComparison.OrdinalIgnoreCase);
+		}
+		return false;
+	}
+
 	private void Button_Click(object sender, EventArgs e)
 	{
 		//IL_038a: Unknown result type (might be due to invalid IL or missing references)
@@ -12910,7 +12925,7 @@ public class Form_3_VENTE : Form
 					NewLateBinding.LateSet(sender, null, "Enabled", new object[1] { true }, null, null);
 					return;
 				}
-				if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 && Operators.CompareString(MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("BLOCAGE_STOCK_INSUFFISANT", false, 0).Index].SubItems[1].Text, "True", TextCompare: false) == 0)
+				if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0 && IsInsufficientStockBlockingEnabled())
 				{
 					var shortage = FindFirstBlankCodeStockShortage() ??
 						LOGICA.ApplicationLayer.Checkout.StockValidationService.FindFirstShortage(

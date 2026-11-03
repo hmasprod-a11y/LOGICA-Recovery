@@ -173,61 +173,11 @@ try {
     Assert-PackagedCodeHashes $extract $codeBaseline
     Write-Host "PASS: extracted EXE startup preserved $($baseline.Count) immutable runtime files"
 
-    # Reproduce the reported double-click path without the CI-only DB override.
-    # Never attempt this if another service owns loopback 3306. A responsive
-    # error dialog is NOT proof that the legacy fallback connected to MariaDB.
+    # The direct-EXE path is verified below, after offline server binaries have
+    # been provisioned. Never let CI download MariaDB or touch port 3306.
     $directWithoutOverrideAttempted = $false
     $directWithoutOverrideResponsive = $false
     $directWithoutOverrideActivation = $null
-    $legacyHost = [IO.File]::ReadAllText((Join-Path $extract 'CHEMIN_DB.sni')).Trim()
-    if ($legacyHost -ne '127.0.0.1') { throw 'Refusing unconfigured direct EXE probe: non-loopback legacy host' }
-    $legacyPortOccupied = $false
-    $portProbe = New-Object Net.Sockets.TcpClient
-    try {
-        $pending = $portProbe.BeginConnect('127.0.0.1', 3306, $null, $null)
-        if ($pending.AsyncWaitHandle.WaitOne(500)) {
-            try { $portProbe.EndConnect($pending); $legacyPortOccupied = $true } catch {}
-        }
-    } finally { $portProbe.Dispose() }
-    if ($legacyPortOccupied) {
-        Write-Warning 'Direct EXE without DB override skipped: port 3306 has an existing listener; no foreign DB touched.'
-    } else {
-        $directNoOverride = $null
-        $savedConnection = [string]$env:LOGICA_DB_CONNECTION_STRING
-        try {
-            Remove-Item Env:LOGICA_DB_CONNECTION_STRING -ErrorAction SilentlyContinue
-            $directNoOverride = Start-Process -FilePath (Join-Path $extract 'LOGICA.exe') -WorkingDirectory $extract -PassThru
-            $directWithoutOverrideAttempted = $true
-        } finally {
-            $env:LOGICA_DB_CONNECTION_STRING = $savedConnection
-        }
-        try {
-            $directTimer = [Diagnostics.Stopwatch]::StartNew()
-            do {
-                Start-Sleep -Seconds 2
-                $directNoOverride.Refresh()
-                if ($directNoOverride.HasExited) { break }
-                if ($directNoOverride.MainWindowHandle -ne 0 -and $directNoOverride.Responding) {
-                    $directWithoutOverrideResponsive = $true
-                    $directWithoutOverrideActivation = Inspect-ActivationUI $directNoOverride 'extracted-release-direct-no-override-activation.json'
-                    break
-                }
-            } while ($directTimer.Elapsed.TotalSeconds -lt 20)
-            Write-Warning ("Direct EXE without DB override: responsiveWindow={0}; databaseConnectionVerified=False; expected legacy 3306 fallback may fail." -f $directWithoutOverrideResponsive)
-        } finally {
-            if ($directNoOverride) {
-                try {
-                    $directNoOverride.Refresh()
-                    if (-not $directNoOverride.HasExited) {
-                        $directNoOverride.Kill()
-                        $directNoOverride.WaitForExit(10000) | Out-Null
-                    }
-                } catch { Write-Warning "Could not stop isolated direct EXE probe: $_" }
-            }
-        }
-        Assert-RuntimeHashes $extract $baseline
-        Assert-PackagedCodeHashes $extract $codeBaseline
-    }
     # Verify the launcher *inside* the customer ZIP with the already-downloaded
     # CI MariaDB server, in a fresh isolated data directory (never a shop DB).
     $log = Join-Path $results 'extracted-release-launcher.log'
@@ -276,7 +226,7 @@ try {
         Write-Host 'PASS: extracted customer launcher started actual LOGICA.exe with local MariaDB 3308'
         $launcherActivation = Inspect-ActivationUI $launcherApp 'extracted-release-launcher-activation.json'
         if ($launcherActivation.activationScreenVisible -eq $true) {
-            Write-Warning 'BLOCKED: the extracted launcher displayed the legacy activation screen; licensed cashier not verified.'
+            throw 'REGRESSION: packaged launcher displayed legacy activation screen'
         }
     } finally {
         if ($launcherApp) {
@@ -327,7 +277,7 @@ try {
         Write-Host 'PASS: extracted Start-LOGICA.cmd started actual LOGICA.exe using preprovisioned offline MariaDB'
         $cmdActivation = Inspect-ActivationUI $cmdApp 'extracted-release-cmd-activation.json'
         if ($cmdActivation.activationScreenVisible -eq $true) {
-            Write-Warning 'BLOCKED: Start-LOGICA.cmd displayed the legacy activation screen; licensed cashier not verified.'
+            throw 'REGRESSION: Start-LOGICA.cmd displayed legacy activation screen'
         }
     } finally {
         if ($cmdApp) {
@@ -342,6 +292,61 @@ try {
         }
     }
     if ($cmdProcess.ExitCode -ne 0) { throw "Extracted Start-LOGICA.cmd exited $($cmdProcess.ExitCode); see extracted-release-start-cmd.log" }
+
+    # Real double-click regression: no CI connection string, no network download.
+    # The EXE must delegate to the bundled launcher, which authenticates and
+    # queries the fresh 3308 MariaDB before it can start the second EXE process.
+    $directServerDir = Join-Path $extract 'bd/mysql-server'
+    $directParent = $null
+    $directChild = $null
+    try {
+        Copy-Item -LiteralPath $server.Directory.Parent.FullName -Destination $directServerDir -Recurse -Force
+        if (-not (Get-ChildItem -LiteralPath $directServerDir -Recurse -Filter mariadbd.exe -File | Select-Object -First 1)) {
+            throw 'Direct EXE regression: offline MariaDB binaries unavailable'
+        }
+        $savedOverride = [string]$env:LOGICA_DB_CONNECTION_STRING
+        try {
+            Remove-Item Env:LOGICA_DB_CONNECTION_STRING -ErrorAction SilentlyContinue
+            $directParent = Start-Process -FilePath (Join-Path $extract 'LOGICA.exe') -WorkingDirectory $extract -PassThru
+            $directWithoutOverrideAttempted = $true
+        } finally {
+            $env:LOGICA_DB_CONNECTION_STRING = $savedOverride
+        }
+        $watch = [Diagnostics.Stopwatch]::StartNew()
+        do {
+            Start-Sleep -Seconds 2
+            $directParent.Refresh()
+            $directChild = @(Get-Process -Name LOGICA -ErrorAction SilentlyContinue | Where-Object {
+                try { $_.Id -ne $directParent.Id -and $_.Path -ieq (Join-Path $extract 'LOGICA.exe') } catch { $false }
+            } | Select-Object -First 1)[0]
+            if ($directChild) {
+                $directChild.Refresh()
+                if (-not $directChild.HasExited -and $directChild.MainWindowHandle -ne 0 -and $directChild.Responding) {
+                    $directWithoutOverrideResponsive = $true
+                    break
+                }
+            }
+        } while ($watch.Elapsed.TotalSeconds -lt 90)
+        if (-not $directWithoutOverrideResponsive) {
+            throw 'Double-click LOGICA.exe did not launch a responsive authenticated child on MariaDB 3308'
+        }
+        $directWithoutOverrideActivation = Inspect-ActivationUI $directChild 'extracted-release-direct-no-override-activation.json'
+        if ($directWithoutOverrideActivation.activationScreenVisible -eq $true) {
+            throw 'Direct EXE displayed the legacy activation panel'
+        }
+        Write-Host 'PASS: direct EXE delegated to launcher and opened real WinForms app after authenticated MariaDB 3308 checks'
+    } finally {
+        if ($directChild) {
+            try { $directChild.Refresh(); if (-not $directChild.HasExited) { $directChild.Kill(); $directChild.WaitForExit(10000) | Out-Null } } catch {}
+        }
+        if ($directParent) {
+            try { $directParent.Refresh(); if (-not $directParent.HasExited) { $directParent.Kill(); $directParent.WaitForExit(10000) | Out-Null } } catch {}
+        }
+        Start-Sleep -Seconds 2
+        if (Test-Path -LiteralPath $directServerDir) {
+            Remove-Item -LiteralPath $directServerDir -Recurse -Force -ErrorAction Stop
+        }
+    }
     Assert-RuntimeHashes $extract $baseline
     Assert-PackagedCodeHashes $extract $codeBaseline
     Write-Warning 'RELEASE ACCEPTANCE BLOCKED: responsive WinForms window does not prove valid license, cashier screen, printer, or direct EXE without DB override.'
@@ -371,11 +376,11 @@ try {
         launcherActivationScreenVisible = $launcherActivation.activationScreenVisible
         startCmdActivationInspectionStatus = $cmdActivation.inspectionStatus
         startCmdActivationScreenVisible = $cmdActivation.activationScreenVisible
-        directExeWithoutConnectionOverrideVerified = $false
+        directExeWithoutConnectionOverrideVerified = $directWithoutOverrideResponsive
         directExeWithoutOverrideAttempted = $directWithoutOverrideAttempted
         directExeWithoutOverrideResponsiveWindow = $directWithoutOverrideResponsive
         directExeWithoutOverrideActivationScreenVisible = $(if ($directWithoutOverrideActivation) { $directWithoutOverrideActivation.activationScreenVisible } else { $null })
-        directExeWithoutOverrideDatabaseConnectionVerified = $false
+        directExeWithoutOverrideDatabaseConnectionVerified = $directWithoutOverrideResponsive
         realPrinterAndScannerVerified = $false
         immutableRuntimeFilesVerified = $baseline.Count
         packagedCodeFilesVerified = $codeBaseline.Count

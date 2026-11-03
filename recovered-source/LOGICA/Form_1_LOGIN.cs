@@ -2099,14 +2099,15 @@ public class Form_1_LOGIN : Form
 			}
 			DataTable dataTable = new DataTable();
 			MySqlDataAdapter val = new MySqlDataAdapter();
-			val = new MySqlDataAdapter("select ListUser,Catégorie From    TABLE_PASS    WHERE    ListPass = '" + Strings.Trim(Text_NUM.Text) + "'   ", Module1.cn_SQL);
+			val = new MySqlDataAdapter("SELECT `ListUser`, `Catégorie` AS `Categorie` FROM `TABLE_PASS` WHERE `ListPass` = @password", Module1.cn_SQL);
+			val.SelectCommand.Parameters.AddWithValue("@password", Strings.Trim(Text_NUM.Text));
 			dataTable = new DataTable();
 			dataTable.Clear();
 			((DbDataAdapter)(object)val).Fill(dataTable);
 			if (dataTable.Rows.Count != 0)
 			{
 				Module1._USERNAME = Conversions.ToString(dataTable.Rows[0]["ListUser"]);
-				Module1._USERCATEGORIE = Conversions.ToString(dataTable.Rows[0]["Catégorie"]);
+				Module1._USERCATEGORIE = Conversions.ToString(dataTable.Rows[0]["Categorie"]);
 				((Control)Panel_login).Visible = false;
 				if ((Operators.CompareString(Module1._USERCATEGORIE, "ADMIN", TextCompare: false) == 0) | (Operators.CompareString(Module1._USERCATEGORIE, "MANAGER", TextCompare: false) == 0))
 				{

@@ -67,6 +67,33 @@ internal class MyApplication : WindowsFormsApplicationBase
 		finally
 		{
 		}
+		// In the isolated portable package, a direct EXE launch must use the same
+		// authenticated MariaDB setup as Start-LOGICA.cmd. Do not expose or
+		// duplicate the per-user DPAPI-protected database credentials.
+		if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("LOGICA_DB_CONNECTION_STRING")))
+		{
+			string launcher = System.IO.Path.Combine(Application.StartupPath, "Launch-LOGICA.ps1");
+			if (System.IO.File.Exists(launcher))
+			{
+				try
+				{
+					var start = new ProcessStartInfo("powershell.exe",
+						"-NoLogo -NoProfile -ExecutionPolicy Bypass -File \""+ launcher + "\"")
+					{
+						WorkingDirectory = Application.StartupPath,
+						UseShellExecute = false
+					};
+					Process.Start(start);
+					return; // Launcher will run LOGICA.exe with verified DB connection.
+				}
+				catch (Exception ex)
+				{
+					MessageBox.Show("Unable to start the local MariaDB launcher: " + ex.Message,
+						"Hanouty POS", MessageBoxButtons.OK, MessageBoxIcon.Error);
+					return;
+				}
+			}
+		}
 		((WindowsFormsApplicationBase)MyProject.Application).Run(Args);
 	}
 

@@ -319,7 +319,11 @@ internal sealed class Module1
 		_PORT_DB = "3306";
 		_USER_ID = "allo_superette_todo_market_user";
 		_PASS_ID = "F#@1f%lx8@EI#Ff@3c@b#";
-		cn_SQL = new MySqlConnection(Environment.GetEnvironmentVariable("LOGICA_DB_CONNECTION_STRING") ?? new MySqlConnectionStringBuilder { Server = _CHEMIN_DB, Port = uint.Parse(_PORT_DB), Database = _NAME_DB, UserID = _USER_ID, Password = _PASS_ID, CharacterSet = "utf8", ConnectionTimeout = 10 }.ConnectionString);
+		// Legacy Access records may contain MySQL zero dates. Convert those only to
+		// DateTime.MinValue on read, leaving every stored database value unchanged.
+		var connectionOptions = new MySqlConnectionStringBuilder(Environment.GetEnvironmentVariable("LOGICA_DB_CONNECTION_STRING") ?? new MySqlConnectionStringBuilder { Server = _CHEMIN_DB, Port = uint.Parse(_PORT_DB), Database = _NAME_DB, UserID = _USER_ID, Password = _PASS_ID, CharacterSet = "utf8", ConnectionTimeout = 10 }.ConnectionString);
+		connectionOptions.ConvertZeroDateTime = true;
+		cn_SQL = new MySqlConnection(connectionOptions.ConnectionString);
 		da1 = new MySqlDataAdapter();
 		dt1 = new DataTable();
 		dt_LA = new DataTable();
