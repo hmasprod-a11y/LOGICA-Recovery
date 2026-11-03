@@ -41,6 +41,19 @@ class WindowsHostAuditTests(unittest.TestCase):
         self.assertEqual(["dependencies/vendor/printer.dll"], result["bundled_dll_paths"])
         self.assertIn("binary_compatibility_validation_required", result["blockers"])
 
+    def test_production_coupling_inventory_excludes_build_output(self):
+        source = self.root / "recovered-source" / "Checkout.cs"
+        source.write_text("Conversions.ToDecimal(value);\nMySqlCommand command;\n", encoding="utf-8")
+        generated = self.root / "recovered-source" / "obj" / "Generated.cs"
+        generated.parent.mkdir()
+        generated.write_text("MySqlCommand generated;", encoding="utf-8")
+        result = audit(self.root)
+        self.assertEqual(1, result["production_source_count"])
+        self.assertEqual([{"path": "recovered-source/Checkout.cs", "matching_lines": 1}],
+                         result["production_coupling"]["vb"])
+        self.assertEqual([{"path": "recovered-source/Checkout.cs", "matching_lines": 1}],
+                         result["production_coupling"]["sql"])
+
     def test_modern_host_is_not_misclassified_as_legacy(self):
         p = self.root / "recovered-source/LOGICA.csproj"
         p.write_text('<Project><PropertyGroup><TargetFramework>net10.0-windows</TargetFramework>'
