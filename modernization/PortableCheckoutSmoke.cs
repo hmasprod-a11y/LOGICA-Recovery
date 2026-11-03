@@ -71,6 +71,20 @@ internal static class PortableCheckoutSmoke
                 basketLine, "123", "  ", compare), "Blank selected ID must not match");
             Require(equalityCalls == callsBeforeInvalidSelection,
                 "Invalid selected ID must not call legacy equality");
+            // SQL NULL and a legitimate empty image-only barcode are distinct.
+            // Reject the former without invoking legacy VB equality, while
+            // retaining the latter when article identity is valid.
+            DataRow nullBarcodeLine = basket.Rows.Add(DBNull.Value, "IMG-1");
+            int callsBeforeNullBarcode = equalityCalls;
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                nullBarcodeLine, "", "IMG-1", compare),
+                "SQL NULL basket barcode must not match an empty scan");
+            Require(equalityCalls == callsBeforeNullBarcode,
+                "SQL NULL basket barcode must not invoke legacy equality");
+            DataRow imageOnlyLine = basket.Rows.Add("", "IMG-1");
+            Require(CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                imageOnlyLine, "", "IMG-1", compare),
+                "Empty barcode image-only article must retain exact ID matching");
             int callsBeforeRemoval = equalityCalls;
             basket.Rows.Remove(basketLine);
             Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
