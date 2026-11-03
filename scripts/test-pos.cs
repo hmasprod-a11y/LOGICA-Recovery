@@ -668,7 +668,12 @@ class PosSmoke {
   connection.Close();
   var forms=assembly.GetType("LOGICA.My.MyProject",true).GetProperty("Forms",Flags).GetValue(null,null);
   var template=Get(forms,"Form_0_TEMPLATE");
-  ((ListView)Get(template,"ListView1")).Items.Add("GROUPES").SubItems.Add("False");
+  // These catalogue persistence fixtures intentionally exercise authorized
+  // stock creation/edit; denial cases must use separate disabled-option tests.
+  var appSettings=(ListView)Get(template,"ListView1");
+  appSettings.Items.Add("GROUPES").SubItems.Add("False");
+  appSettings.Items.Add("AJOUT_STOCK_MANUEL").SubItems.Add("True");
+  appSettings.Items.Add("MODIF_STOCK_MANUEL").SubItems.Add("True");
   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_2_ARTICLES",true))) {
    var adapterType=connection.GetType().Assembly.GetType("MySql.Data.MySqlClient.MySqlDataAdapter",true);
    using(var adapter=(System.Data.Common.DbDataAdapter)Activator.CreateInstance(adapterType,new object[]{"SELECT * FROM TABLE_ARTICLES",connection})) {
