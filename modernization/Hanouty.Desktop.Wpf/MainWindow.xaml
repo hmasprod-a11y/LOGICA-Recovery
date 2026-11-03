@@ -1,0 +1,38 @@
+<Window x:Class="Hanouty.Desktop.Wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Hanouty POS V2.0 — Desktop Preview" Height="650" Width="1080"
+        MinHeight="480" MinWidth="760" WindowStartupLocation="CenterScreen">
+    <DockPanel Margin="20">
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,16">
+            <TextBlock Text="Hanouty POS" FontSize="28" FontWeight="SemiBold"/>
+            <TextBlock Text="Offline desktop preview — no sales or inventory writes"
+                       Foreground="DimGray" Margin="0,4,0,0"/>
+        </StackPanel>
+        <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Margin="0,0,18,0">
+                <TextBlock Text="Catalogue" FontWeight="SemiBold" FontSize="18"/>
+                <TextBox Margin="0,10,0,10" Padding="8" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.Name="Search catalogue"/>
+                <DataGrid ItemsSource="{Binding VisibleProducts}" AutoGenerateColumns="False"
+                          IsReadOnly="True" SelectionMode="Single" SelectionUnit="FullRow"
+                          SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
+                          AutomationProperties.Name="Product list">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Article" Binding="{Binding Name}" Width="*"/>
+                        <DataGridTextColumn Header="Barcode" Binding="{Binding Barcode}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </StackPanel>
+            <StackPanel Grid.Column="1">
+                <TextBlock Text="Selected product" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding SelectedProduct.Name, TargetNullValue=No product selected}"
+                           Margin="0,12,0,6" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding SelectedProduct.Barcode, TargetNullValue=—}"/>
+                <TextBlock Text="Checkout, stock posting, printing and licensing are disabled until their application contracts are integrated and verified."
+                           Margin="0,22,0,0" TextWrapping="Wrap" Foreground="DimGray"/>
+            </StackPanel>
+        </Grid>
+    </DockPanel>
+</Window>
