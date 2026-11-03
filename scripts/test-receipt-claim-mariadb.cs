@@ -452,9 +452,45 @@ internal static class ReceiptClaimMariaDbSmoke
             }
             Check(scratch, "BR-3", "ART-3", 4m, 1, "VALIDER");
 
+            // The recovered-original.sql TABLE_ARTICLES schema has only a
+            // non-unique Code index and PRIMARY KEY(ID), not UNIQUE(ID_ARTICLE).
+            // Recreate that unsafe identity shape in SCRATCH ONLY and refuse it.
+            Execute(connection, null, "ALTER TABLE TABLE_ARTICLES DROP PRIMARY KEY");
+            Execute(connection, null,
+                "ALTER TABLE TABLE_ARTICLES ADD INDEX legacy_article_identity (ID_ARTICLE)");
+            using (var transaction = connection.BeginTransaction())
+            {
+                bool rejected = false;
+                try { Claim(method, connection, transaction, "BR-3"); }
+                catch (InvalidOperationException) { rejected = true; }
+                Require(rejected, "Legacy non-unique ID_ARTICLE index accepted for stock posting");
+                transaction.Rollback();
+            }
+            Execute(connection, null,
+                "ALTER TABLE TABLE_ARTICLES DROP INDEX legacy_article_identity");
+            Execute(connection, null,
+                "ALTER TABLE TABLE_ARTICLES ADD PRIMARY KEY (ID_ARTICLE)");
+            Check(scratch, "BR-3", "ART-3", 4m, 1, "VALIDER");
+
+            // The original receipt header uses ordinary INDEX ID_BL(ID_BR),
+            // not UNIQUE(ID_BR). A duplicate-free current data sample is NOT
+            // proof of future unique identity under concurrent inserts.
+            Execute(connection, null, "ALTER TABLE TABLE_RECEPTIONS_ENTETE DROP INDEX uq_receipt");
+            Execute(connection, null,
+                "ALTER TABLE TABLE_RECEPTIONS_ENTETE ADD INDEX ID_BL (ID_BR)");
+            using (var transaction = connection.BeginTransaction())
+            {
+                bool rejected = false;
+                try { Claim(method, connection, transaction, "BR-3"); }
+                catch (InvalidOperationException) { rejected = true; }
+                Require(rejected, "Legacy non-unique receipt ID_BL index accepted");
+                transaction.Rollback();
+            }
+            Execute(connection, null,
+                "ALTER TABLE TABLE_RECEPTIONS_ENTETE DROP INDEX ID_BL");
+
             // A UNIQUE(ID_BR, ETAT) composite index is not a unique receipt ID.
             // This scratch-only fixture must fail closed even without duplicates.
-            Execute(connection, null, "ALTER TABLE TABLE_RECEPTIONS_ENTETE DROP INDEX uq_receipt");
             Execute(connection, null,
                 "ALTER TABLE TABLE_RECEPTIONS_ENTETE ADD UNIQUE KEY uq_composite (ID_BR, ETAT)");
             using (var transaction = connection.BeginTransaction())
@@ -479,7 +515,7 @@ internal static class ReceiptClaimMariaDbSmoke
                 Require(rejected, "Duplicate receipt header was accepted");
                 transaction.Rollback();
             }
-            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, detail row locks, rollback/retry, blocked header/detail states, mixed detail recovery, orphan header/recovery, invalid/duplicate headers, composite index, four MyISAM table rejections");
+            Console.WriteLine("PASS receipt claim: quoted IDs, exact-once, two connections, detail row locks, rollback/retry, blocked header/detail states, mixed detail recovery, orphan header/recovery, invalid/duplicate headers, composite index, legacy non-unique receipt/article indexes, four MyISAM table rejections");
         }
     }
 
