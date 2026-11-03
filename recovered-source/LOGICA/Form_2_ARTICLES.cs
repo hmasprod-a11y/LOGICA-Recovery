@@ -13833,10 +13833,11 @@ public class Form_2_ARTICLES : Form
 				Combo_PRINTER.Text = editRow["PRINTER"].ToString();
 				Combo_PRINTER_DUPLICATA.Text = editRow["PRINTER_DUPLICATA"].ToString();
 				Text_LIEN_PICTURE.Text = editRow["Images"].ToString();
-				string articleImagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", Text_LIEN_PICTURE.Text);
-				Image selectedImage = !string.IsNullOrWhiteSpace(Text_LIEN_PICTURE.Text) && Text_LIEN_PICTURE.Text != "0" && File.Exists(articleImagePath)
-					? LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.Load(Path.GetDirectoryName(articleImagePath), Text_LIEN_PICTURE.Text)
-					: LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.LoadWithFallback(Module1._CHEMIN_FOLDER, Application.StartupPath, Text_LIEN_PICTURE.Text);
+				// Use the same resilient image path search as the cashier grid.
+				// A corrupt/inaccessible file in the preferred shop folder must
+				// not hide a valid existing photo in the portable fallback folder.
+				Image selectedImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.LoadWithFallback(
+					Module1._CHEMIN_FOLDER, Application.StartupPath, Text_LIEN_PICTURE.Text);
 				ReplaceArticlePreview(selectedImage);
 				Text_LIEN_PICTURE_ANC.Text = editRow["Images"].ToString();
 				Combo_TAILLES.Text = (DT.Columns.Contains("Taille") ? editRow["Taille"].ToString() : "");
