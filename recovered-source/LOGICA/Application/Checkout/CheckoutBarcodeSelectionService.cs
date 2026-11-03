@@ -16,6 +16,15 @@ namespace LOGICA.ApplicationLayer.Checkout
         {
             if (basketLine == null) throw new ArgumentNullException("basketLine");
             if (legacyEquals == null) throw new ArgumentNullException("legacyEquals");
+            // A basket line removed while the duplicate-variant dialog was open
+            // must never be reused for a second sale. Fail closed without
+            // invoking the caller's legacy equality callback.
+            if (basketLine.RowState == DataRowState.Deleted ||
+                basketLine.RowState == DataRowState.Detached ||
+                basketLine.Table == null ||
+                !basketLine.Table.Columns.Contains("Code") ||
+                !basketLine.Table.Columns.Contains("ID_ARTICLE"))
+                return false;
             return legacyEquals(basketLine["Code"], scannedCode) &&
                    legacyEquals(basketLine["ID_ARTICLE"], selectedArticleId);
         }
