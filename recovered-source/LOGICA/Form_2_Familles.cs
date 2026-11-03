@@ -1402,7 +1402,7 @@ public class Form_2_Familles : Form
 				Text_ID.Text = Conversions.ToString(_DT_TEMP.Rows[position2]["ID"]);
 				Numeric_ORDRE.Text = Conversions.ToString(_DT_TEMP.Rows[position2]["Ordre"]);
 				Text_FAMILLE.Text = Conversions.ToString(_DT_TEMP.Rows[position2]["FAMILLE"]);
-				Combo_GROUPES.Text = _DT_TEMP.Rows[position2]["GROUPE"].ToString();
+				Combo_GROUPES.Text = _DT_TEMP.Columns.Contains("GROUPE") ? _DT_TEMP.Rows[position2]["GROUPE"].ToString() : "";
 				Combo_VISIBLE_FAM.Text = Conversions.ToString(_DT_TEMP.Rows[position2]["VISIBLE"]);
 				Combo_TYPE.Text = Conversions.ToString(_DT_TEMP.Rows[position2]["TYPE"]);
 			}
@@ -1704,7 +1704,7 @@ public class Form_2_Familles : Form
 					_DT_TEMP.Rows[index]["ID"] = Text_ID.Text;
 					_DT_TEMP.Rows[index]["Ordre"] = Numeric_ORDRE.Text;
 					_DT_TEMP.Rows[index]["FAMILLE"] = Strings.Trim(Text_FAMILLE.Text);
-					_DT_TEMP.Rows[index]["GROUPE"] = Combo_GROUPES.Text;
+					if (_DT_TEMP.Columns.Contains("GROUPE")) _DT_TEMP.Rows[index]["GROUPE"] = Combo_GROUPES.Text;
 					_DT_TEMP.Rows[index]["VISIBLE"] = Combo_VISIBLE_FAM.Text;
 					_DT_TEMP.Rows[index]["TYPE"] = Combo_TYPE.Text;
 					MySqlCommandBuilder val = new MySqlCommandBuilder(_DA_TEMP);
@@ -1725,7 +1725,7 @@ public class Form_2_Familles : Form
 					_DT_TEMP.Rows[position]["ID"] = Text_ID.Text;
 					_DT_TEMP.Rows[position]["Ordre"] = Numeric_ORDRE.Text;
 					_DT_TEMP.Rows[position]["FAMILLE"] = Strings.Trim(Text_FAMILLE.Text);
-					_DT_TEMP.Rows[position]["GROUPE"] = Combo_GROUPES.Text;
+					if (_DT_TEMP.Columns.Contains("GROUPE")) _DT_TEMP.Rows[position]["GROUPE"] = Combo_GROUPES.Text;
 					_DT_TEMP.Rows[position]["VISIBLE"] = Combo_VISIBLE_FAM.Text;
 					_DT_TEMP.Rows[position]["TYPE"] = Combo_TYPE.Text;
 					MySqlCommandBuilder val3 = new MySqlCommandBuilder(_DA_TEMP);
