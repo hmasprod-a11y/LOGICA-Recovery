@@ -7,5 +7,5 @@
     <AssemblyName>Hanouty.ArchitectureBridge</AssemblyName>
   </PropertyGroup>
   <Import Project="CoreSources.ArchitectureBridge.props" />
-  <ItemGroup><Compile Include="CheckoutSelectionGateway.cs" /><Compile Include="CheckoutSelectionWorkflow.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="CheckoutSelectionGateway.cs" /><Compile Include="CheckoutSelectionWorkflow.cs" /><Compile Include="CheckoutSelectionController.cs" /></ItemGroup>
 </Project>
