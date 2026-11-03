@@ -244,6 +244,46 @@ internal static class ReceiptClaimMariaDbSmoke
                 CultureInfo.InvariantCulture) == 1,
                 "Detail row was lost after both concurrent transactions rolled back");
 
+            // A second editor must not flip a persisted detail's ETAT after
+            // the first transaction has locked/validated all receipt lines.
+            using (var first = connection.BeginTransaction())
+            {
+                Require(Claim(method, connection, first, "BR-LOCK"),
+                    "Detail-state lock fixture claim failed");
+                using (var started = new ManualResetEventSlim(false))
+                {
+                    Task<bool> edit = Task.Factory.StartNew(delegate
+                    {
+                        using (var secondConnection = new MySqlConnection(scratch.ConnectionString))
+                        {
+                            secondConnection.Open();
+                            using (var second = secondConnection.BeginTransaction())
+                            {
+                                started.Set();
+                                Execute(secondConnection, second,
+                                    "UPDATE TABLE_RECEPTIONS_DETAILS SET ETAT = 'ANNULE' WHERE ID_BR = @id",
+                                    "@id", "BR-LOCK");
+                                second.Rollback();
+                                return true;
+                            }
+                        }
+                    });
+                    Require(started.Wait(TimeSpan.FromSeconds(5)),
+                        "Concurrent detail state editor did not start");
+                    Thread.Sleep(300);
+                    Require(!edit.IsCompleted,
+                        "Concurrent detail state change bypassed receipt claim lock");
+                    first.Rollback();
+                    Require(edit.Wait(TimeSpan.FromSeconds(15)),
+                        "Concurrent detail state editor remained blocked after rollback");
+                    Require(edit.Result, "Concurrent detail state editor failed");
+                }
+            }
+            Check(scratch, "BR-LOCK", "ART-LOCK", 0m, 0, "ENREGISTRER");
+            Require(Convert.ToString(Scalar(connection,
+                "SELECT ETAT FROM TABLE_RECEPTIONS_DETAILS WHERE ID_BR = 'BR-LOCK'")) == "ENREGISTRER",
+                "Concurrent detail state editor changed the persisted line");
+
             // Inject failure after header claim and stock mutation. Rollback must
             // restore header, stock and movements together, allowing one retry.
             using (var transaction = connection.BeginTransaction())
