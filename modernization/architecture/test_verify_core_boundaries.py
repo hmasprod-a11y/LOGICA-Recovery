@@ -151,6 +151,19 @@ class BoundaryTests(unittest.TestCase):
             '<Choose><When Condition="true"><ItemGroup /></When></Choose></Project>'))
         self.assertTrue(any("manifest executable/conditional" in e for e in validate(self.root)["errors"]))
 
+    def test_conditional_target_framework_property_rejected(self):
+        p = self.root / "modernization/LOGICA.CorePortability.csproj"
+        p.write_text(p.read_text().replace(
+            "<TargetFramework>net10.0</TargetFramework>",
+            '<TargetFramework Condition="\'$(Configuration)\' == \'Release\'">net10.0</TargetFramework>'))
+        self.assertTrue(any("conditional MSBuild element" in e for e in validate(self.root)["errors"]))
+
+    def test_manifest_compile_unreviewed_metadata_rejected(self):
+        p = self.root / "modernization/CoreSources.props"
+        p.write_text(p.read_text().replace("<Compile Include=",
+            '<Compile Generator="UnreviewedTask" Include='))
+        self.assertTrue(any("unreviewed metadata" in e for e in validate(self.root)["errors"]))
+
     def test_unreviewed_import_rejected(self):
         p = self.root / "modernization/LOGICA.CorePortability.csproj"
         p.write_text(p.read_text().replace("</Project>",
