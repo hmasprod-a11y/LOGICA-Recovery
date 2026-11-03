@@ -102,6 +102,23 @@ namespace LOGICA.Infrastructure.Inventory
                         throw new InvalidOperationException("Concurrent stock change; rollback required.");
                 }
     
+                // A legacy STOCK column may round a decimal quantity on write.
+                // Never record a movement delta that differs from the persisted stock.
+                using (var verify = new MySqlCommand(
+                    "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE = @id FOR UPDATE",
+                    connection, transaction))
+                {
+                    verify.Parameters.AddWithValue("@id", plan.ArticleId);
+                    using (var reader = verify.ExecuteReader())
+                    {
+                        if (!reader.Read() || reader.IsDBNull(0) ||
+                            Convert.ToDecimal(reader.GetValue(0), CultureInfo.InvariantCulture) != plan.AfterStock ||
+                            reader.Read())
+                            throw new InvalidOperationException(
+                                "Persisted stock differs from adjustment; rollback required.");
+                    }
+                }
+
                 // Legacy movement schema has no dedicated before/after/user columns.
                 // Keep a bounded, explicit audit in LIBELLE without changing shop schema.
                 using (var movement = new MySqlCommand(
