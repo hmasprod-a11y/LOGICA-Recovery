@@ -44,14 +44,27 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public System.Windows.Input.ICommand SelectCommand { get; }
     public string ScannerText { get => _scannerText; set { _scannerText = value ?? ""; OnPropertyChanged(); } }
     public string ScanFeedback { get => _scanFeedback; private set { _scanFeedback = value; OnPropertyChanged(); } }
-    public bool IsRightToLeft { get; set; }
+    private bool _isRightToLeft;
+    public bool IsRightToLeft
+    {
+        get => _isRightToLeft;
+        set { if (_isRightToLeft == value) return; _isRightToLeft = value; OnPropertyChanged(); }
+    }
+    public IReadOnlyList<ProductSummary> BarcodeCandidates { get; private set; } = Array.Empty<ProductSummary>();
 
     public void ScanBarcode()
     {
         var code = ScannerText.Trim();
-        if (code.Length == 0) { ScanFeedback = "Empty barcode"; return; }
+        if (code.Length == 0) { BarcodeCandidates = Array.Empty<ProductSummary>(); ScanFeedback = "Empty barcode"; return; }
         var matches = _all.Where(p => string.Equals(p.Barcode, code, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(p.Barcode)).ToArray();
-        if (matches.Length != 1) { ScanFeedback = matches.Length == 0 ? "Product not found" : "Ambiguous barcode"; return; }
+        BarcodeCandidates = matches;
+        OnPropertyChanged(nameof(BarcodeCandidates));
+        if (matches.Length != 1)
+        {
+            SelectedProduct = null;
+            ScanFeedback = matches.Length == 0 ? "Product not found" : "Ambiguous barcode";
+            return;
+        }
         SelectedProduct = matches[0];
         SelectCurrent();
         ScannerText = "";
@@ -60,6 +73,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public void SelectCurrent()
     {
         if (SelectedProduct is null) { ScanFeedback = "No product selected"; return; }
+        if (string.IsNullOrWhiteSpace(SelectedProduct.Id)) { ScanFeedback = "Invalid product identity"; return; }
         // Preview port explicitly never posts a sale or updates stock.
         ScanFeedback = _selection.Select(SelectedProduct) ? "Selection accepted" : "Checkout unavailable in preview";
     }
@@ -96,6 +110,8 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         PhotoProducts.Clear();
         foreach (var product in matches.Where(p => !string.IsNullOrWhiteSpace(p.ImagePath))) PhotoProducts.Add(product);
         if (SelectedProduct is not null && !matches.Contains(SelectedProduct)) SelectedProduct = null;
+        BarcodeCandidates = Array.Empty<ProductSummary>();
+        OnPropertyChanged(nameof(BarcodeCandidates));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
