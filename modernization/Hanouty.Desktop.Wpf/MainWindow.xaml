@@ -3,9 +3,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Hanouty POS V2.0 — Desktop Preview" Height="650" Width="1080"
         MinHeight="480" MinWidth="760" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" SnapsToDevicePixels="True">
-    <DockPanel Margin="20">
+    <DockPanel Margin="20" FlowDirection="{Binding LayoutDirection}">
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,16">
             <TextBlock Text="Hanouty POS" FontSize="28" FontWeight="SemiBold"/>
+            <CheckBox Content="Right-to-left layout" IsChecked="{Binding IsRightToLeft, Mode=TwoWay}" Margin="0,8,0,0" AutomationProperties.Name="Right-to-left layout"/>
             <TextBlock Text="Offline desktop preview — no sales or inventory writes"
                        Foreground="DimGray" Margin="0,4,0,0"/>
         </StackPanel>
@@ -24,6 +25,10 @@
                 </TextBox>
                 <TextBlock Text="{Binding ScanFeedback}" Margin="0,6,0,10"
                            AutomationProperties.Name="Barcode result"/>
+                <TextBlock Text="Barcode matches — select explicitly when barcode is shared" Margin="0,4,0,4"/>
+                <ListBox ItemsSource="{Binding BarcodeCandidates}" Height="65" DisplayMemberPath="Name"
+                         SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
+                         AutomationProperties.Name="Barcode candidates"/>
                 <DataGrid ItemsSource="{Binding VisibleProducts}" AutoGenerateColumns="False"
                           IsReadOnly="True" SelectionMode="Single" SelectionUnit="FullRow"
                           SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
