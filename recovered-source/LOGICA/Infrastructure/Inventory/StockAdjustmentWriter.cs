@@ -80,35 +80,51 @@ namespace LOGICA.Infrastructure.Inventory
             if (current != plan.BeforeStock)
                 throw new InvalidOperationException("Stale stock snapshot; refresh before adjustment.");
 
-            using (var update = new MySqlCommand(
-                "UPDATE TABLE_ARTICLES SET STOCK = @after WHERE ID_ARTICLE = @id AND STOCK = @before",
-                connection, transaction))
+            // A caller might catch an audit failure and accidentally commit its
+            // outer transaction. A local savepoint makes the stock + audit pair
+            // indivisible even under that misuse; caller still owns final commit.
+            using (var savepoint = new MySqlCommand("SAVEPOINT hanouty_stock_adjustment", connection, transaction))
+                savepoint.ExecuteNonQuery();
+            try
             {
-                update.Parameters.AddWithValue("@after", plan.AfterStock);
-                update.Parameters.AddWithValue("@before", plan.BeforeStock);
-                update.Parameters.AddWithValue("@id", plan.ArticleId);
-                if (update.ExecuteNonQuery() != 1)
-                    throw new InvalidOperationException("Concurrent stock change; rollback required.");
+                using (var update = new MySqlCommand(
+                    "UPDATE TABLE_ARTICLES SET STOCK = @after WHERE ID_ARTICLE = @id AND STOCK = @before",
+                    connection, transaction))
+                {
+                    update.Parameters.AddWithValue("@after", plan.AfterStock);
+                    update.Parameters.AddWithValue("@before", plan.BeforeStock);
+                    update.Parameters.AddWithValue("@id", plan.ArticleId);
+                    if (update.ExecuteNonQuery() != 1)
+                        throw new InvalidOperationException("Concurrent stock change; rollback required.");
+                }
+    
+                // Legacy movement schema has no dedicated before/after/user columns.
+                // Keep a bounded, explicit audit in LIBELLE without changing shop schema.
+                using (var movement = new MySqlCommand(
+                    "INSERT INTO TABLE_MOUVEMENTS_STOCK " +
+                    "(DATES, HEURE, LIBELLE, ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE) " +
+                    "VALUES (@date, @time, @audit, @id, @code, @name, @delta)",
+                    connection, transaction))
+                {
+                    DateTime now = DateTime.Now;
+                    movement.Parameters.AddWithValue("@date", now);
+                    movement.Parameters.AddWithValue("@time", now.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
+                    movement.Parameters.AddWithValue("@audit", audit);
+                    movement.Parameters.AddWithValue("@id", plan.ArticleId);
+                    movement.Parameters.AddWithValue("@code", code);
+                    movement.Parameters.AddWithValue("@name", name);
+                    movement.Parameters.AddWithValue("@delta", plan.Delta.ToString(CultureInfo.InvariantCulture));
+                    if (movement.ExecuteNonQuery() != 1)
+                        throw new InvalidOperationException("Stock movement audit failed; rollback required.");
+                }
+                using (var release = new MySqlCommand("RELEASE SAVEPOINT hanouty_stock_adjustment", connection, transaction))
+                    release.ExecuteNonQuery();
             }
-
-            // Legacy movement schema has no dedicated before/after/user columns.
-            // Keep a bounded, explicit audit in LIBELLE without changing shop schema.
-            using (var movement = new MySqlCommand(
-                "INSERT INTO TABLE_MOUVEMENTS_STOCK " +
-                "(DATES, HEURE, LIBELLE, ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE) " +
-                "VALUES (@date, @time, @audit, @id, @code, @name, @delta)",
-                connection, transaction))
+            catch
             {
-                DateTime now = DateTime.Now;
-                movement.Parameters.AddWithValue("@date", now);
-                movement.Parameters.AddWithValue("@time", now.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
-                movement.Parameters.AddWithValue("@audit", audit);
-                movement.Parameters.AddWithValue("@id", plan.ArticleId);
-                movement.Parameters.AddWithValue("@code", code);
-                movement.Parameters.AddWithValue("@name", name);
-                movement.Parameters.AddWithValue("@delta", plan.Delta.ToString(CultureInfo.InvariantCulture));
-                if (movement.ExecuteNonQuery() != 1)
-                    throw new InvalidOperationException("Stock movement audit failed; rollback required.");
+                using (var rollback = new MySqlCommand("ROLLBACK TO SAVEPOINT hanouty_stock_adjustment", connection, transaction))
+                    rollback.ExecuteNonQuery();
+                throw;
             }
         }
     }
