@@ -14687,8 +14687,7 @@ public class Form_3_VENTE : Form
 
 	public void Text_CODE_Click(object sender, EventArgs e)
 	{
-		((TextBoxBase)Text_CODE).HideSelection = false;
-		((TextBoxBase)Text_CODE).SelectAll();
+		BarcodeInputFocusPresenter.SelectAll(Text_CODE);
 		NewLateBinding.LateCall(sender, null, "focus", new object[0], null, null, null, IgnoreReturn: true);
 	}
 
@@ -17635,5 +17634,17 @@ internal static class ProductSearchFocusPresenter
 	internal static Color Background(bool focused)
 	{
 		return focused ? Color.Yellow : Color.White;
+	}
+}
+
+// WinForms-only adapter: keep barcode input ready for the next scan.
+// No catalogue, pricing, or checkout side effects.
+internal static class BarcodeInputFocusPresenter
+{
+	internal static void SelectAll(TextBoxBase input)
+	{
+		if (input == null) return;
+		input.HideSelection = false;
+		input.SelectAll();
 	}
 }
