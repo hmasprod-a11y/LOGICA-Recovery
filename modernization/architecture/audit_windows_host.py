@@ -5,6 +5,7 @@ Read-only: this reports dependencies; it never edits project or shop data.
 """
 import argparse
 import json
+import re
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -25,6 +26,20 @@ def audit(root):
                       and n.attrib.get("Include", "").lower().endswith(".rdlc")})
     dependency_dir = root / "dependencies"
     dlls = sorted(p.relative_to(root).as_posix() for p in dependency_dir.rglob("*.dll")) if dependency_dir.exists() else []
+    source_root = root / "recovered-source"
+    sources = sorted(p for p in source_root.rglob("*.cs")
+                     if not set(p.relative_to(source_root).parts) & {"obj", "bin"})
+    patterns = {
+        "vb": re.compile(r"\\b(?:Microsoft\\.VisualBasic|Conversions\\.|Operators\\.|Interaction\\.)"),
+        "sql": re.compile(r"\\b(?:MySqlCommand|MySqlConnection|MySqlDataAdapter|MySqlTransaction)\\b"),
+    }
+    coupling = {key: [] for key in patterns}
+    for source in sources:
+        lines = source.read_text(encoding="utf-8-sig", errors="replace").splitlines()
+        for key, pattern in patterns.items():
+            count = sum(bool(pattern.search(line)) for line in lines)
+            if count:
+                coupling[key].append({"path": source.relative_to(root).as_posix(), "matching_lines": count})
     blockers = []
     if "net48" in values("TargetFramework"):
         blockers.append("legacy_net48_host")
@@ -45,6 +60,8 @@ def audit(root):
             "references": refs, "packages": packages,
             "rdlc_count": len(reports), "rdlc_paths": reports,
             "bundled_dll_count": len(dlls), "bundled_dll_paths": dlls,
+            "production_source_count": len(sources),
+            "production_coupling": coupling,
             "blockers": blockers,
             "net10_windows_host_verified": False,
             "peripheral_compatibility_verified": False}
