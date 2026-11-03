@@ -10,6 +10,16 @@ foreach ($name in @('Launch-LOGICA.ps1', 'Start-LOGICA.cmd')) {
 }
 # The launcher writes a plaintext client INI during database startup. Never ship it.
 $forbidden = @('mysql-credential.xml', 'mysql-import-complete.txt', 'mysql-client-temporary.ini')
+# Never ship credential/key material even when its filename differs from legacy defaults.
+# Match case-insensitively on Windows; inspect the entire portable tree.
+$privateNames = @('.env', '.env.local', 'id_rsa', 'id_ed25519', 'credentials.json', 'secrets.json')
+$privateExtensions = @('.pem', '.pfx', '.p12', '.key', '.kdbx')
+foreach ($candidate in @(Get-ChildItem -LiteralPath $dist -Recurse -File -ErrorAction Stop)) {
+  if ($privateNames -contains $candidate.Name.ToLowerInvariant() -or
+      $privateExtensions -contains $candidate.Extension.ToLowerInvariant()) {
+    throw "Credential or private-key material forbidden in customer package: $($candidate.Name)"
+  }
+}
 foreach ($name in $forbidden) {
   $matches = @(Get-ChildItem -LiteralPath $dist -Recurse -File -ErrorAction Stop | Where-Object { $_.Name -eq $name })
   if ($matches.Count -gt 0) { throw "Private test/runtime state included: $name" }
