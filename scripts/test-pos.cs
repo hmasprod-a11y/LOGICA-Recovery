@@ -1985,6 +1985,12 @@ class PosSmoke {
    var duplicateDot=new KeyPressEventArgs('.');
    keypress.Invoke(form,new object[]{input,duplicateDot});
    if(!duplicateDot.Handled)throw new Exception("Physical keyboard accepted duplicate decimal in quantity dialog");
+   // The sales quantity control may be a label; selection-aware validation must
+   // preserve its original fallback and reject a second separator.
+   quantity.Text="1.25";
+   var labelDecimal=new KeyPressEventArgs('.');
+   qtyKeyPress.Invoke(form,new object[]{quantity,labelDecimal});
+   if(!labelDecimal.Handled)throw new Exception("Label quantity accepted a second decimal separator");
    var misplacedMinus=new KeyPressEventArgs('-');
    keypress.Invoke(form,new object[]{input,misplacedMinus});
    if(!misplacedMinus.Handled)throw new Exception("Physical keyboard accepted misplaced minus in quantity dialog");
