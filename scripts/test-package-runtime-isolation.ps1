@@ -177,6 +177,19 @@ try {
 
 
 
+        foreach ($harnessName in @('PosSmoke.exe', 'CatalogueCreationMariaDbSmoke.exe', 'NewDomainSmoke.exe.config')) {
+            $harnessPath = Join-Path $work ('dist/' + $harnessName)
+            [IO.File]::WriteAllText($harnessPath, 'SYNTHETIC-QA-HARNESS')
+            $rejected = $false
+            try { & $candidateGate | Out-Null }
+            catch {
+                if ($_.Exception.Message -notlike '*QA smoke harness forbidden*') { throw }
+                $rejected = $true
+            } finally { Remove-Item -LiteralPath $harnessPath -Force }
+            if (-not $rejected) { throw "Release candidate accepted QA harness fixture: $harnessName" }
+        }
+        & $candidateGate | Out-Null
+        Write-Host 'PASS: release candidate rejects smoke harness executables and configs'
         Write-Host 'PASS: release candidate rejects synthetic environment files and private keys'
         Write-Host 'PASS: portable package preserves approved visual preferences only; private shop, device, login and license defaults are isolated'
     } finally { Pop-Location }
