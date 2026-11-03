@@ -26,15 +26,17 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private string _scannerText = "";
     private string _scanFeedback = "";
     private readonly IProductSelection _selection;
+    private readonly IProductImageAvailability _images;
 
-    public CatalogueViewModel(ICatalogueReader reader, IProductSelection? selection = null)
+    public CatalogueViewModel(ICatalogueReader reader, IProductSelection? selection = null, IProductImageAvailability? images = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         _all = reader.ReadProducts() ?? throw new InvalidOperationException("Catalogue unavailable");
         _selection = selection ?? new PreviewProductSelection();
+        _images = images ?? new LocalProductImageAvailability();
         ScanCommand = new DelegateCommand(_ => ScanBarcode());
         SelectCommand = new DelegateCommand(_ => SelectCurrent());
-        PhotoProducts = new ObservableCollection<ProductSummary>(_all.Where(p => !string.IsNullOrWhiteSpace(p.ImagePath)));
+        PhotoProducts = new ObservableCollection<ProductSummary>(_all.Where(HasPhoto));
         VisibleProducts = new ObservableCollection<ProductSummary>(_all);
     }
 
@@ -102,6 +104,8 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         }
     }
 
+    private bool HasPhoto(ProductSummary product) => !string.IsNullOrWhiteSpace(product.ImagePath) && _images.Exists(product.ImagePath);
+
     private void Refresh()
     {
         var matches = _all.Where(p => p.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase)
@@ -109,7 +113,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         VisibleProducts.Clear();
         foreach (var product in matches) VisibleProducts.Add(product);
         PhotoProducts.Clear();
-        foreach (var product in matches.Where(p => !string.IsNullOrWhiteSpace(p.ImagePath))) PhotoProducts.Add(product);
+        foreach (var product in matches.Where(HasPhoto)) PhotoProducts.Add(product);
         if (SelectedProduct is not null && !matches.Contains(SelectedProduct)) SelectedProduct = null;
         BarcodeCandidates = Array.Empty<ProductSummary>();
         OnPropertyChanged(nameof(BarcodeCandidates));
@@ -138,4 +142,24 @@ public sealed class DelegateCommand : System.Windows.Input.ICommand
     public bool CanExecute(object? parameter) => true;
     public void Execute(object? parameter) => _action(parameter);
     public event EventHandler? CanExecuteChanged { add { } remove { } }
+}
+
+// The view-model does not load or decode images. An image tile is only shown
+// when the resolved local file exists; barcode-free products remain eligible.
+public interface IProductImageAvailability
+{
+    bool Exists(string path);
+}
+
+public sealed class LocalProductImageAvailability : IProductImageAvailability
+{
+    public bool Exists(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try { return System.IO.File.Exists(path); }
+        catch (ArgumentException) { return false; }
+        catch (System.IO.IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+        catch (NotSupportedException) { return false; }
+    }
 }
