@@ -217,6 +217,26 @@ try {
     $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
     Assert-Rejected 'excessive ZIP entry count' 'Beta ZIP entry count exceeds safety limit'
+    # The independent ZIP verifier must reject sensitive files even when the
+    # attacker supplies a matching manifest and ZIP SHA256 (not just extra files).
+    foreach ($private in @('nested/.env', 'nested/credentials.json', 'nested/private-key.pem',
+                           'nested/backup.sql', 'nested/data.ibd', 'nested/dump.sql.gz',
+                           '.ssh/id_rsa', 'bd/mysql-data/ibdata1')) {
+        $privatePath = Join-Path $src $private
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $privatePath) | Out-Null
+        [IO.File]::WriteAllText($privatePath, 'isolated dummy private state')
+        try {
+            Write-FixtureManifest
+            Write-FixtureZip
+            Assert-Rejected "private payload $private" 'Private credentials or database state forbidden in release manifest'
+        } finally {
+            Remove-Item -LiteralPath $privatePath -Force
+        }
+    }
+    Write-FixtureManifest
+    Write-FixtureZip
+    & $verifier -ZipPath $zip -ManifestPath $manifest -SumsPath $sums -ExpectedCommit $commit | Out-Null
+    Write-Host 'PASS: clean release accepted after private payload probes'
     # Highly compressible payloads must fail before content is streamed or extracted.
     Write-FixtureZip
     $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)
