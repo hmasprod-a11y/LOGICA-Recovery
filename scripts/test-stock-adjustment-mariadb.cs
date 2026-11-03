@@ -75,6 +75,16 @@ internal static class StockAdjustmentMariaDbSmoke
                 Sql(c, null, "UPDATE TABLE_PARAMETRES SET VALEUR='True'");
                 using (var tx = c.BeginTransaction())
                 {
+                    ExpectFailure(() => Apply(apply, plan(10, 12), c, tx),
+                        "missing unique article identity index");
+                    tx.Rollback();
+                }
+                Require(Scalar(c, null, "SELECT STOCK FROM TABLE_ARTICLES") == 10m &&
+                    Scalar(c, null, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == 0m,
+                    "Unsafe schema rejection mutated stock");
+                Sql(c, null, "ALTER TABLE TABLE_ARTICLES ADD UNIQUE KEY ci_article_identity (ID_ARTICLE)");
+                using (var tx = c.BeginTransaction())
+                {
                     Apply(apply, plan(10, 12), c, tx);
                     tx.Rollback();
                 }
@@ -94,19 +104,16 @@ internal static class StockAdjustmentMariaDbSmoke
                     ExpectFailure(() => Apply(apply, plan(10, 15), c, tx), "stale snapshot");
                     tx.Rollback();
                 }
-                Sql(c, null, "INSERT INTO TABLE_ARTICLES VALUES ('CI-ARTICLE',12,'CI','Duplicate')");
-                using (var tx = c.BeginTransaction())
-                {
-                    ExpectFailure(() => Apply(apply, plan(12, 15), c, tx), "duplicate article identity");
-                    tx.Rollback();
-                }
+                bool duplicateRejected = false;
+                try { Sql(c, null, "INSERT INTO TABLE_ARTICLES VALUES ('CI-ARTICLE',12,'CI','Duplicate')"); }
+                catch (MySqlException ex) { duplicateRejected = ex.Number == 1062; }
+                Require(duplicateRejected, "UNIQUE identity must reject concurrent duplicate inserts");
                 Require(Scalar(c, null, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == 1m,
                     "Rejected attempts must not write audit");
 
                 // Force a journal insert failure after the stock UPDATE. Even when
                 // the caller catches the exception and commits its outer transaction,
                 // the writer's savepoint must undo the stock mutation.
-                Sql(c, null, "DELETE FROM TABLE_ARTICLES WHERE Article='Duplicate'");
                 Sql(c, null, "ALTER TABLE TABLE_MOUVEMENTS_STOCK ADD CONSTRAINT ci_audit_reject CHECK (QUANTITE < 3)");
                 using (var tx = c.BeginTransaction())
                 {
