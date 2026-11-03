@@ -20,7 +20,8 @@ class BoundaryTests(unittest.TestCase):
                              ("LOGICA.CorePortability.csproj", "net10.0")):
             tag = "TargetFrameworks" if ";" in target else "TargetFramework"
             (self.root / "modernization" / name).write_text(
-                f'<Project><PropertyGroup><{tag}>{target}</{tag}></PropertyGroup>'
+                f'<Project><PropertyGroup><{tag}>{target}</{tag}>'
+                '<EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup>'
                 '<Import Project="CoreSources.props" /></Project>')
         self.manifest("../recovered-source/LOGICA/Domain/Rules.cs")
 
@@ -50,6 +51,34 @@ class BoundaryTests(unittest.TestCase):
     def test_ui_dependency_rejected(self):
         self.rule.write_text("using System.Windows.Forms;")
         self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_missing_default_compile_opt_out_rejected(self):
+        p = self.root / "modernization/LOGICA.CorePortability.csproj"
+        p.write_text(p.read_text().replace(
+            "<EnableDefaultCompileItems>false</EnableDefaultCompileItems>", ""))
+        self.assertTrue(any("default compile items" in e for e in validate(self.root)["errors"]))
+
+    def test_nonportable_package_reference_rejected(self):
+        p = self.root / "modernization/LOGICA.CorePortability.csproj"
+        p.write_text(p.read_text().replace("</Project>",
+            '<ItemGroup><PackageReference Include="MySql.Data" Version="8.0.0" />'
+            '</ItemGroup></Project>'))
+        self.assertTrue(any("nonportable reference" in e for e in validate(self.root)["errors"]))
+
+    def test_project_reference_rejected(self):
+        p = self.root / "modernization/LOGICA.CorePortability.csproj"
+        p.write_text(p.read_text().replace("</Project>",
+            '<ItemGroup><ProjectReference Include="../WinForms.csproj" />'
+            '</ItemGroup></Project>'))
+        self.assertTrue(any("nonportable reference" in e for e in validate(self.root)["errors"]))
+
+    def test_namespaced_direct_compile_rejected(self):
+        p = self.root / "modernization/LOGICA.CorePortability.csproj"
+        p.write_text(p.read_text().replace(
+            "<Project>", '<Project xmlns="urn:msbuild">').replace(
+            "</Project>", '<ItemGroup><Compile Include="other.cs" />'
+            '</ItemGroup></Project>'))
+        self.assertTrue(any("direct Compile" in e for e in validate(self.root)["errors"]))
 
     def test_direct_compile_rejected(self):
         p = self.root / "modernization/LOGICA.CorePortability.csproj"
