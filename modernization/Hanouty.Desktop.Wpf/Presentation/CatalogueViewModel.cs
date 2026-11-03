@@ -48,14 +48,15 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public bool IsRightToLeft
     {
         get => _isRightToLeft;
-        set { if (_isRightToLeft == value) return; _isRightToLeft = value; OnPropertyChanged(); }
+        set { if (_isRightToLeft == value) return; _isRightToLeft = value; OnPropertyChanged(); OnPropertyChanged(nameof(LayoutDirection)); }
     }
+    public System.Windows.FlowDirection LayoutDirection => IsRightToLeft ? System.Windows.FlowDirection.RightToLeft : System.Windows.FlowDirection.LeftToRight;
     public IReadOnlyList<ProductSummary> BarcodeCandidates { get; private set; } = Array.Empty<ProductSummary>();
 
     public void ScanBarcode()
     {
         var code = ScannerText.Trim();
-        if (code.Length == 0) { BarcodeCandidates = Array.Empty<ProductSummary>(); ScanFeedback = "Empty barcode"; return; }
+        if (code.Length == 0) { BarcodeCandidates = Array.Empty<ProductSummary>(); OnPropertyChanged(nameof(BarcodeCandidates)); ScanFeedback = "Empty barcode"; return; }
         var matches = _all.Where(p => string.Equals(p.Barcode, code, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(p.Barcode)).ToArray();
         BarcodeCandidates = matches;
         OnPropertyChanged(nameof(BarcodeCandidates));
