@@ -14831,6 +14831,55 @@ public class Form_3_VENTE : Form
         }
     }
 
+    // MySql.Data can decode a mojibake identifier again while reading schema
+    // metadata (QtÃ© -> QtÃƒÂ©). Discover the *SQL-addressable* column using
+    // read-only probes, never by trusting connector DataTable metadata.
+    private static string ResolveCheckoutQuantitySqlIdentifier()
+    {
+        string poste = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text;
+        if (string.IsNullOrWhiteSpace(poste) ||
+            !System.Text.RegularExpressions.Regex.IsMatch(poste, @"^[A-Za-z0-9_]{1,32}$"))
+            throw new InvalidOperationException("Invalid POS workstation table identifier.");
+
+        MySqlConnection connection = Module1.cn_SQL;
+        bool openedHere = connection.State != ConnectionState.Open;
+        if (openedHere) connection.Open();
+        try
+        {
+            foreach (string candidate in new[] { "Qté", "QtÃ©", "QtÃƒÂ©", "Qte", "Quantite" })
+            {
+                try
+                {
+                    using (MySqlCommand probe = new MySqlCommand(
+                        "SELECT `" + candidate + "` FROM `TABLE_" + poste + "` LIMIT 0", connection))
+                    {
+                        probe.ExecuteNonQuery();
+                        return candidate;
+                    }
+                }
+                catch (MySqlException ex)
+                {
+                    if (ex.Number != 1054) throw; // Only unknown-column permits another alias.
+                }
+            }
+            throw new InvalidOperationException("No supported checkout quantity SQL column exists.");
+        }
+        finally
+        {
+            if (openedHere) connection.Close();
+        }
+    }
+
+    private static void MatchCheckoutCommandSqlColumn(MySqlCommand command, string physical)
+    {
+        if (command == null) return;
+        // Generated SQL has connector-normalized schema names; only replace
+        // quoted, allowlisted identifier tokens, not parameter names or values.
+        foreach (string alias in new[] { "Qté", "QtÃ©", "QtÃƒÂ©", "Qte", "Quantite" })
+            if (!string.Equals(alias, physical, StringComparison.Ordinal))
+                command.CommandText = command.CommandText.Replace("`" + alias + "`", "`" + physical + "`");
+    }
+
     // Bind generated SQL parameters to the cashier's in-memory column name,
     // while leaving the physical SQL column identifier unchanged.
     private static void UpdateCheckoutCart()
@@ -14848,23 +14897,27 @@ public class Form_3_VENTE : Form
             if (Module1.dt1.Rows.Cast<DataRow>().Any(row => row.RowState == DataRowState.Deleted))
                 delete = (MySqlCommand)((ICloneable)builder.GetDeleteCommand()).Clone();
         }
-        // Generated commands were detached with the builder; the clones are
-        // independent and keep physical SQL column names for legacy schemas.
+        // Resolve the real server-side identifier, which can differ from what
+        // Connector/NET returns in metadata even after SourceColumn remapping.
+        string physicalQuantity = ResolveCheckoutQuantitySqlIdentifier();
         try
         {
             if (insert != null)
             {
                 RemapCheckoutCommandSourceColumns(insert);
+                MatchCheckoutCommandSqlColumn(insert, physicalQuantity);
                 Module1.da1.InsertCommand = insert;
             }
             if (update != null)
             {
                 RemapCheckoutCommandSourceColumns(update);
+                MatchCheckoutCommandSqlColumn(update, physicalQuantity);
                 Module1.da1.UpdateCommand = update;
             }
             if (delete != null)
             {
                 RemapCheckoutCommandSourceColumns(delete);
+                MatchCheckoutCommandSqlColumn(delete, physicalQuantity);
                 Module1.da1.DeleteCommand = delete;
             }
             ((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
