@@ -1,4 +1,19 @@
 from pathlib import Path
+
+# PR82 compatibility must survive later checkout/UI modernization.
+# Both sale tiles and the article editor must use the same real-file fallback
+# loader. Never switch back to direct Image.FromFile or a single-path preview.
+loader = Path("recovered-source/LOGICA/Infrastructure/Checkout/CheckoutArticleImageLoader.cs").read_text(encoding="utf-8")
+assert 'internal static Bitmap LoadWithFallback(' in loader
+assert 'Path.Combine(root, "bd", "images")' in loader
+assert 'Path.Combine(root, "images")' in loader
+assert 'FileShare.ReadWrite' in loader
+assert 'new Bitmap(source)' in loader
+assert 'Image selectedImage = LOGICA.Infrastructure.Checkout.CheckoutArticleImageLoader.LoadWithFallback(' in f
+assert 'ReplaceArticlePreview(selectedImage);' in f
+assert 'string articleImagePath = Path.Combine(Module1._CHEMIN_FOLDER' not in f
+assert 'using (Image articleImage = Image.FromFile(articleImagePath))' not in f
+
 f=Path("recovered-source/LOGICA/Form_2_ARTICLES.cs").read_text(encoding="utf-8")
 m=Path("recovered-source/LOGICA/Application/Catalogue/CatalogueRowMapper.cs").read_text(encoding="utf-8")
 sql=Path("input/migrations/20261102-article-add-compatibility.sql").read_text(encoding="utf-8")
