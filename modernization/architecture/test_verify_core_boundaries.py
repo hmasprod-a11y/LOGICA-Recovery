@@ -107,6 +107,32 @@ class BoundaryTests(unittest.TestCase):
             '<Compile Condition="\'$(Configuration)\' == \'Debug\'" Include='))
         self.assertTrue(any("conditional/indirect" in e for e in validate(self.root)["errors"]))
 
+    def test_manifest_import_rejected(self):
+        p = self.root / "modernization/CoreSources.props"
+        p.write_text(p.read_text().replace("</Project>",
+            '<Import Project="Injected.targets" /></Project>'))
+        self.assertTrue(any("manifest unreviewed import" in e for e in validate(self.root)["errors"]))
+
+    def test_manifest_project_reference_rejected(self):
+        p = self.root / "modernization/CoreSources.props"
+        p.write_text(p.read_text().replace("</Project>",
+            '<ItemGroup><ProjectReference Include="../WinForms.csproj" />'
+            '</ItemGroup></Project>'))
+        self.assertTrue(any("manifest nonportable reference" in e for e in validate(self.root)["errors"]))
+
+    def test_manifest_conditional_itemgroup_rejected(self):
+        p = self.root / "modernization/CoreSources.props"
+        p.write_text(p.read_text().replace("<ItemGroup>",
+            '<ItemGroup Condition="\'$(Configuration)\' == \'Release\'">'))
+        self.assertTrue(any("manifest conditional structure" in e for e in validate(self.root)["errors"]))
+
+    def test_manifest_default_compile_reenable_rejected(self):
+        p = self.root / "modernization/CoreSources.props"
+        p.write_text(p.read_text().replace("</Project>",
+            '<PropertyGroup><EnableDefaultCompileItems>true</EnableDefaultCompileItems>'
+            '</PropertyGroup></Project>'))
+        self.assertTrue(any("manifest cannot re-enable" in e for e in validate(self.root)["errors"]))
+
     def test_unreviewed_import_rejected(self):
         p = self.root / "modernization/LOGICA.CorePortability.csproj"
         p.write_text(p.read_text().replace("</Project>",
