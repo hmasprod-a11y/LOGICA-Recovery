@@ -14810,15 +14810,23 @@ public class Form_3_VENTE : Form
         return adapter;
     }
 
+    // Both legacy byte-decoding variants have been observed in Windows/MariaDB.
+    // Match ONLY these known quantity identifiers; do not rename other columns.
+    private static bool IsLegacyCheckoutQuantityColumn(string name)
+    {
+        return string.Equals(name, "QtÃ©", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "QtÃƒÂ©", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "Qte", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(name, "Quantite", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static void RemapCheckoutCommandSourceColumns(MySqlCommand command)
     {
         if (command == null)
             return;
         foreach (MySqlParameter parameter in command.Parameters)
         {
-            if (string.Equals(parameter.SourceColumn, "QtÃ©", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(parameter.SourceColumn, "Qte", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(parameter.SourceColumn, "Quantite", StringComparison.OrdinalIgnoreCase))
+            if (IsLegacyCheckoutQuantityColumn(parameter.SourceColumn))
                 parameter.SourceColumn = "Qté";
         }
     }
@@ -14857,10 +14865,7 @@ public class Form_3_VENTE : Form
             return;
 
         DataColumn legacy = Module1.dt1.Columns.Cast<DataColumn>()
-            .FirstOrDefault(column =>
-                string.Equals(column.ColumnName, "QtÃ©", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(column.ColumnName, "Qte", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(column.ColumnName, "Quantite", StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(column => IsLegacyCheckoutQuantityColumn(column.ColumnName));
         if (legacy == null)
             return; // Preserve the strict missing-column diagnostic for unknown schemas.
 
