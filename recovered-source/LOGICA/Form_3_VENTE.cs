@@ -34,6 +34,10 @@ public class Form_3_VENTE : Form
 
 	private IContainer components;
 
+	// Shared by all SOLDER buttons; no retry when Commit outcome is unknown.
+	private readonly LOGICA.Presentation.Checkout.SolderSubmissionGuard _solderSubmissionGuard =
+		new LOGICA.Presentation.Checkout.SolderSubmissionGuard();
+
 	[AccessedThroughProperty("Button_SOLDER_PRINTER")]
 	private Button_CLAVIER_NOSELECT _Button_SOLDER_PRINTER;
 
@@ -12509,12 +12513,14 @@ public class Form_3_VENTE : Form
 	{
 		VScrollBar bar = vScrollBar1;
 		int contentHeight = Math.Max(0, ((ScrollableControl)FlowLayout_ARTICLES).DisplayRectangle.Height);
+		ArticleImageScrollPresenter.ScrollState scroll = ArticleImageScrollPresenter.Calculate(
+			contentHeight, ((Control)FlowLayout_ARTICLES).Height,
+			((ScrollableControl)FlowLayout_ARTICLES).AutoScrollPosition.Y);
 		bar.Minimum = 0;
-		bar.Maximum = contentHeight;
-		bar.LargeChange = Math.Max(1, Math.Min(contentHeight + 1, ((Control)FlowLayout_ARTICLES).Height));
+		bar.Maximum = scroll.Maximum;
+		bar.LargeChange = scroll.LargeChange;
 		bar.SmallChange = 15;
-		int maxValue = Math.Max(0, bar.Maximum - bar.LargeChange + 1);
-		bar.Value = Math.Min(maxValue, Math.Abs(((ScrollableControl)FlowLayout_ARTICLES).AutoScrollPosition.Y));
+		bar.Value = scroll.Value;
 	}
 
 	public void FAM2_click(object sender, EventArgs e)
@@ -12848,6 +12854,25 @@ public class Form_3_VENTE : Form
 
 	private void Button_Click(object sender, EventArgs e)
 	{
+		// A modal payment dialog pumps events: disabling one button is not enough.
+		if (!_solderSubmissionGuard.TryBegin())
+		{
+			if (_solderSubmissionGuard.RequiresReconciliation)
+				MessageBox.Show("Résultat SOLDER incertain. Vérifiez le ticket, les paiements et le stock avant toute nouvelle validation, même après redémarrage.", "Validation bloquée", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+			return;
+		}
+		try
+		{
+			Button_ClickCore(sender, e);
+		}
+		finally
+		{
+			_solderSubmissionGuard.EndAttempt();
+		}
+	}
+
+	private void Button_ClickCore(object sender, EventArgs e)
+	{
 		//IL_038a: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0391: Expected Obj, but got Unknown
 		//IL_1931: Unknown result type (might be due to invalid IL or missing references)
@@ -13013,6 +13038,8 @@ public class Form_3_VENTE : Form
 				{
 					string text2 = "";
 					DateTime dateTime = default(DateTime);
+					// Commit may succeed even if printing or Close subsequently throws.
+					_solderSubmissionGuard.MarkPostingAttempt();
 					LOGICA.ApplicationLayer.Checkout.CheckoutTransactionFinalizationService.PostAndFinalize(
 						new LOGICA.Infrastructure.Checkout.MySqlCheckoutPostingStore(val4, Module1.cn_SQL),
 						new LOGICA.ApplicationLayer.Checkout.CheckoutPostingInput
@@ -13067,8 +13094,16 @@ public class Form_3_VENTE : Form
 					StackTrace stackTrace2 = new StackTrace(ex6, fNeedFileInfo: true);
 					StackFrame frame2 = stackTrace2.GetFrame(stackTrace2.FrameCount - 1);
 					int fileLineNumber2 = frame2.GetFileLineNumber();
-					LOGICA.ApplicationLayer.Checkout.CheckoutTransactionBoundaryService.Rollback(checkoutBoundary);
-					Interaction.MsgBox(ex6.Message + "\r\nLigne : " + Conversions.ToString(fileLineNumber2) + "\r\n");
+					try
+					{
+						LOGICA.ApplicationLayer.Checkout.CheckoutTransactionBoundaryService.Rollback(checkoutBoundary);
+					}
+					catch (Exception rollbackFailure)
+					{
+						// A durable Commit cannot be undone by a late Rollback.
+						Debug.WriteLine("SOLDER rollback uncertain: " + rollbackFailure.GetType().Name);
+					}
+					Interaction.MsgBox("Résultat du paiement incertain. Ne répétez pas SOLDER sans vérifier le ticket et les mouvements.\r\n" + ex6.Message + "\r\nLigne : " + Conversions.ToString(fileLineNumber2) + "\r\n");
 					try
 					{
 						string text3 = Strings.Format(DateTime.Now, "yyMMddHHmmssfff");
@@ -13087,6 +13122,8 @@ public class Form_3_VENTE : Form
 						ProjectData.ClearProjectError();
 					}
 					ProjectData.ClearProjectError();
+					// Do not clear the cashier basket or retry an uncertain Commit.
+					return;
 				}
 				Module1.dt1.Clear();
 				Module1.da1 = new MySqlDataAdapter("select * from TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + " order by ID asc", Module1.cn_SQL);
@@ -13135,6 +13172,8 @@ public class Form_3_VENTE : Form
 				((Control)Label_QTE).BackColor = Color.White;
 				Label_QTE.Text = Conversions.ToString(1);
 				((Control)Text_CODE).Focus();
+				// Unlock only after successful posting and cashier UI reset.
+				_solderSubmissionGuard.MarkCompleted();
 				if (Operators.ConditionalCompareObjectEqual(NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null), "Button_SOLDER_CREDIT", TextCompare: false) && unchecked((int)MessageBox.Show("Voulez-vous effectuer un Réglement ??", "", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0)) == 1)
 				{
 					((Component)(object)MyProject.Forms.Form_5_CLIENTS_REGLE).Dispose();
@@ -14648,8 +14687,7 @@ public class Form_3_VENTE : Form
 
 	public void Text_CODE_Click(object sender, EventArgs e)
 	{
-		((TextBoxBase)Text_CODE).HideSelection = false;
-		((TextBoxBase)Text_CODE).SelectAll();
+		BarcodeInputFocusPresenter.SelectAll(Text_CODE);
 		NewLateBinding.LateCall(sender, null, "focus", new object[0], null, null, null, IgnoreReturn: true);
 	}
 
@@ -14673,15 +14711,12 @@ public class Form_3_VENTE : Form
 		//IL_00d1: Expected Obj, but got Unknown
 		try
 		{
-			if (e.KeyCode == Keys.Enter && e.Modifiers == Keys.None)
+			BarcodeEnterPresenter.Dispatch(e, delegate
 			{
-				// Barcode scanners commonly terminate scans with Enter. Consume that
-				// terminator once; do not forward it to a focused button or dialog.
-				e.SuppressKeyPress = true;
 				Button_FIND_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
 				((TextBoxBase)Text_CODE).HideSelection = false;
 				((TextBoxBase)Text_CODE).SelectAll();
-			}
+			});
 		}
 		catch (Exception ex)
 		{
@@ -14819,6 +14854,41 @@ public class Form_3_VENTE : Form
 		return "select * from TABLE_ARTICLES WHERE ID_ARTICLE = @id";
 	}
 
+	// Presentation adapter: the checkout service selects the identity; this maps the
+	// selected live row to existing controls without SQL, stock or pricing decisions.
+	// WinForms writes only: the presenter resolves the legacy row and optional fields.
+	private void PopulateSelectedArticleFields(DataRow selectedArticle)
+	{
+		string[] values = DesktopArticleFieldPresenter.Read(selectedArticle, "Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5));
+		Text_ID_ARTICLE.Text = values[0];
+		Text_CODE.Text = values[1];
+		Text_ARTICLE.Text = values[2];
+		Text_FAMILLE.Text = values[3];
+		Text_PRIX_A.Text = values[4];
+		Text_PRIX_MP.Text = values[5];
+		Text_PRIXV.Text = values[6];
+		Text_TAUX_TVA.Text = values[7];
+		Text_PROMOTION.Text = values[8];
+		Text_PRINTER.Text = values[9];
+		Text_PRINTER_DUPLICATA.Text = values[10];
+		Text_GROUPE.Text = values[11];
+		Text_PRIX_QTE.Text = values[12];
+		Text_PRIX_QTE_MIN.Text = values[13];
+	}
+
+	// Presenter boundary: use the production checkout identity services; no SQL or
+	// basket mutation here. The existing modal chooser remains unchanged.
+	private DataRow ResolveDesktopArticleChoice(LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference clickedImage)
+	{
+		return clickedImage != null
+			? LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.FindExact(Module1.dt_find, clickedImage)
+			: LOGICA.ApplicationLayer.Checkout.CheckoutBarcodeSelectionService.Select(
+				Module1.dt_find, delegate(DataTable matches) {
+					return LOGICA.Presentation.Checkout.CheckoutBarcodeChoiceDialog.Choose(
+						matches, "Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5));
+				});
+	}
+
 	private void Button_FIND_Click(object sender, EventArgs e)
 	{
 		//IL_052d: Unknown result type (might be due to invalid IL or missing references)
@@ -14830,57 +14900,28 @@ public class Form_3_VENTE : Form
 		//IL_0409: Unknown result type (might be due to invalid IL or missing references)
 		try
 		{
+			// Disabled checkout must never reach catalogue SQL from a scanner or image tile.
+			if (!Button_FIND.Enabled) return;
 			Control clickedControl = sender as Control;
 			LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference clickedImage = clickedControl == null
 				? null : clickedControl.Tag as LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference;
 			// An image tile is identified by ID_ARTICLE, even when it has no barcode.
 			// Keep the scanner's original exact-barcode path and chooser unchanged.
-			if ((clickedImage == null && Operators.CompareString(Text_CODE.Text.Trim(), "", TextCompare: false) == 0)
-				|| (clickedImage != null && string.IsNullOrWhiteSpace(clickedImage.ArticleId)))
+			if (!ProductSelectionPresenter.CanLookup(clickedImage == null, Text_CODE.Text, clickedImage == null ? null : clickedImage.ArticleId))
 			{
 				((Control)Text_CODE).Focus();
 				return;
 			}
-			Module1.dt_find.Clear();
-			if (clickedImage != null)
-			{
-				Module1.da_find = new MySqlDataAdapter(ExactImageArticleSql(), Module1.cn_SQL);
-				Module1.da_find.SelectCommand.Parameters.AddWithValue("@id", clickedImage.ArticleId);
-			}
-			else
-			{
-				Module1.da_find = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.ExactBarcode(), Module1.cn_SQL);
-				Module1.da_find.SelectCommand.Parameters.AddWithValue("@code", Text_CODE.Text);
-			}
-			((DbDataAdapter)(object)Module1.da_find).Fill(Module1.dt_find);
+			DesktopArticleLookupAdapter.Fill(clickedImage == null ? null : clickedImage.ArticleId, Text_CODE.Text);
 			if (Module1.dt_find.Rows.Count != 0)
 			{
-				DataRow selectedArticle = clickedImage != null
-					? LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.FindExact(Module1.dt_find, clickedImage)
-					: LOGICA.ApplicationLayer.Checkout.CheckoutBarcodeSelectionService.Select(
-						Module1.dt_find, delegate(DataTable matches) {
-							return LOGICA.Presentation.Checkout.CheckoutBarcodeChoiceDialog.Choose(
-								matches, "Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5));
-						});
+				DataRow selectedArticle = ResolveDesktopArticleChoice(clickedImage);
 				if (selectedArticle == null)
 				{
 					((Control)Text_CODE).Focus();
 					return;
 				}
-				Text_ID_ARTICLE.Text = selectedArticle["ID_ARTICLE"].ToString();
-				Text_CODE.Text = selectedArticle["Code"].ToString();
-				Text_ARTICLE.Text = selectedArticle["Article"].ToString();
-				Text_FAMILLE.Text = selectedArticle["Famille"].ToString();
-				Text_PRIX_A.Text = selectedArticle["PRIX_A"].ToString();
-				Text_PRIX_MP.Text = selectedArticle["PRIX_MP"].ToString();
-				Text_PRIXV.Text = selectedArticle["Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5)].ToString();
-				Text_TAUX_TVA.Text = selectedArticle["TAUX_TVA"].ToString();
-				Text_PROMOTION.Text = selectedArticle["PROMOTION"].ToString();
-				Text_PRINTER.Text = selectedArticle["PRINTER"].ToString();
-				Text_PRINTER_DUPLICATA.Text = selectedArticle["PRINTER_DUPLICATA"].ToString();
-				Text_GROUPE.Text = (selectedArticle.Table.Columns.Contains("GROUPE") ? selectedArticle["GROUPE"].ToString() : "");
-				Text_PRIX_QTE.Text = (selectedArticle.Table.Columns.Contains("PRIX_QTE") ? selectedArticle["PRIX_QTE"].ToString() : "0");
-				Text_PRIX_QTE_MIN.Text = (selectedArticle.Table.Columns.Contains("PRIX_QTE_MIN") ? selectedArticle["PRIX_QTE_MIN"].ToString() : "0");
+				PopulateSelectedArticleFields(selectedArticle);
 				if (Operators.CompareString(selectedArticle["FENETRE_PESAGE"].ToString(), "OUI", TextCompare: false) == 0)
 				{
 					MyProject.Forms.FormDialog_PESEE_BALANCE.Text_PRIX_V.Text = selectedArticle["Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5)].ToString();
@@ -15390,17 +15431,17 @@ public class Form_3_VENTE : Form
 
 	private void DataGridView1_CellClick(object sender, DataGridViewCellEventArgs e)
 	{
-		((Control)Text_CODE).Focus();
+		CartBarcodeFocusPresenter.Restore(Text_CODE);
 	}
 
 	private void DataGridView1_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
 	{
-		((Control)Text_CODE).Focus();
+		CartBarcodeFocusPresenter.Restore(Text_CODE);
 	}
 
 	private void DataGridView1_Click(object sender, EventArgs e)
 	{
-		((Control)Text_CODE).Focus();
+		CartBarcodeFocusPresenter.Restore(Text_CODE);
 	}
 
 	private void Button_SOLDER_PRINTER_GotFocus(object sender, EventArgs e)
@@ -15430,12 +15471,12 @@ public class Form_3_VENTE : Form
 
 	private void Text_FIND_GotFocus(object sender, EventArgs e)
 	{
-		((TextBoxBase)Text_FIND).BackColor = Color.Yellow;
+		((TextBoxBase)Text_FIND).BackColor = ProductSearchFocusPresenter.Background(true);
 	}
 
 	private void Text_FIND_LostFocus(object sender, EventArgs e)
 	{
-		((TextBoxBase)Text_FIND).BackColor = Color.White;
+		((TextBoxBase)Text_FIND).BackColor = ProductSearchFocusPresenter.Background(false);
 	}
 
 	private void Text_FIND_TextChanged(object sender, EventArgs e)
@@ -15707,9 +15748,11 @@ public class Form_3_VENTE : Form
 	// Preserve its force-refresh behavior when search is already empty.
 	private static void ClearProductSearch(TextBox search, Action refreshWhenEmpty)
 	{
-		if (search.Text.Length != 0)
+		// One UI event per reset: changing text raises TextChanged, an already
+		// empty search needs one explicit refresh. Keep DB access in the form.
+		if (ProductSearchResetPresenter.ShouldClearText(search.Text))
 		{
-			search.Clear(); // TextChanged performs one refresh.
+			search.Clear();
 		}
 		else
 		{
@@ -17532,5 +17575,147 @@ public class Form_3_VENTE : Form
 		string command = "\u001bp\0<" + Conversions.ToString(Strings.Chr(255));
 		string text = Text_PRINTER_SOLDER.Text;
 		RawPrinterHelperr.SendStringToPrinter(text, command);
+	}
+}
+
+// Pure keyboard policy: no DB, UI control, or checkout side effects.
+internal static class BarcodeEnterPresenter
+{
+	internal static bool ShouldSubmit(Keys key, Keys modifiers)
+	{
+		return key == Keys.Enter && modifiers == Keys.None;
+	}
+
+	// Same production event adapter is executable from a real WinForms TextBox
+	// in Windows tests; keep the database and basket callback in the form.
+	internal static bool Dispatch(KeyEventArgs e, Action submit)
+	{
+		if (e == null || !ShouldSubmit(e.KeyCode, e.Modifiers)) return false;
+		e.SuppressKeyPress = true;
+		if (submit != null) submit();
+		return true;
+	}
+}
+
+// Pure reset policy: no database access and no WinForms control dependency.
+internal static class ProductSearchResetPresenter
+{
+	internal static bool ShouldClearText(string currentText)
+	{
+		return !string.IsNullOrEmpty(currentText);
+	}
+}
+
+// Transitional Infrastructure-facing adapter. The WinForms event captures intent only;
+// this adapter owns the existing parameterized local catalogue read and its result table.
+// No schema or checkout identity policy changes are introduced here.
+internal static class DesktopArticleLookupAdapter
+{
+	internal static void Fill(string articleId, string barcode)
+	{
+		Module1.dt_find.Clear();
+		if (articleId != null)
+		{
+			Module1.da_find = new MySqlDataAdapter("select * from TABLE_ARTICLES WHERE ID_ARTICLE = @id", Module1.cn_SQL);
+			Module1.da_find.SelectCommand.Parameters.AddWithValue("@id", articleId);
+		}
+		else
+		{
+			Module1.da_find = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.ExactBarcode(), Module1.cn_SQL);
+			Module1.da_find.SelectCommand.Parameters.AddWithValue("@code", barcode);
+		}
+		((DbDataAdapter)(object)Module1.da_find).Fill(Module1.dt_find);
+	}
+}
+
+// Presentation-only selection gate: preserve exact scanner barcode lookup and
+// image-tile ID lookup without allowing empty identifiers to reach SQL.
+internal static class ProductSelectionPresenter
+{
+	internal static bool CanLookup(bool barcodeSelection, string barcode, string articleId)
+	{
+		return barcodeSelection ? !string.IsNullOrWhiteSpace(barcode) : !string.IsNullOrWhiteSpace(articleId);
+	}
+}
+
+// Pure viewport policy: bounded values for compact layouts and DPI changes.
+internal static class ArticleImageScrollPresenter
+{
+	internal struct ScrollState
+	{
+		internal int Maximum;
+		internal int LargeChange;
+		internal int Value;
+	}
+
+	internal static ScrollState Calculate(int contentHeight, int viewportHeight, int scrollY)
+	{
+		int content = Math.Max(0, contentHeight);
+		int viewport = Math.Max(0, viewportHeight);
+		int largeChange = Math.Max(1, (int)Math.Min((long)content + 1L, (long)viewport));
+		int maxValue = Math.Max(0, content - largeChange + 1);
+		long position = Math.Abs((long)scrollY);
+		return new ScrollState
+		{
+			Maximum = content,
+			LargeChange = largeChange,
+			Value = (int)Math.Min((long)maxValue, position)
+		};
+	}
+}
+
+// UI-only focus policy shared by search focus events; independent of DB and RTL.
+internal static class ProductSearchFocusPresenter
+{
+	internal static Color Background(bool focused)
+	{
+		return focused ? Color.Yellow : Color.White;
+	}
+}
+
+// WinForms-only adapter: keep barcode input ready for the next scan.
+// No catalogue, pricing, or checkout side effects.
+internal static class BarcodeInputFocusPresenter
+{
+	internal static void SelectAll(TextBoxBase input)
+	{
+		if (input == null) return;
+		input.HideSelection = false;
+		input.SelectAll();
+	}
+}
+
+// Presentation-only cart navigation: keep the barcode scanner ready after
+// click/double-click without modifying the basket, prices or stock.
+internal static class CartBarcodeFocusPresenter
+{
+	internal static void Restore(Control barcodeInput)
+	{
+		if (barcodeInput != null && !barcodeInput.IsDisposed)
+		{
+			barcodeInput.Focus();
+		}
+	}
+}
+
+// Transitional presentation boundary: no WinForms, SQL, or database writes.
+// Keep the original catalogue field order for the legacy checkout controls.
+internal static class DesktopArticleFieldPresenter
+{
+	internal static string[] Read(DataRow row, string priceColumn)
+	{
+		if (row == null) throw new ArgumentNullException(nameof(row));
+		string[] names = { "ID_ARTICLE", "Code", "Article", "Famille", "PRIX_A", "PRIX_MP",
+			priceColumn, "TAUX_TVA", "PROMOTION", "PRINTER", "PRINTER_DUPLICATA",
+			"GROUPE", "PRIX_QTE", "PRIX_QTE_MIN" };
+		string[] result = new string[names.Length];
+		for (int i = 0; i < names.Length; i++)
+		{
+			if (i >= 11 && !row.Table.Columns.Contains(names[i]))
+				result[i] = i == 11 ? "" : "0";
+			else
+				result[i] = row[names[i]].ToString();
+		}
+		return result;
 	}
 }

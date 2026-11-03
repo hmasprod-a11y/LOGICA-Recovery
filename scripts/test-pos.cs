@@ -1848,6 +1848,44 @@ class PosSmoke {
     if(modified.Handled||modified.SuppressKeyPress)
      throw new Exception("Modified Enter must not initiate barcode lookup: "+modifiedKey);
    }
+   // Real scanner event with a nonempty code must not reach SQL when checkout
+   // is disabled (e.g. during payment). The form has no database connection.
+   var find=(Control)Get(form,"Button_FIND");
+   if(find==null)throw new Exception("Checkout find button missing");
+   bool wasEnabled=find.Enabled;
+   try {
+    find.Enabled=false;
+    code.Text="SCANNER-DISABLED-001";
+    var resolver=form.GetType().GetMethod("ResolveDesktopArticleChoice",Flags);
+    if(resolver==null||resolver.ReturnType!=typeof(DataRow))
+     throw new Exception("Production desktop article identity presenter is missing");
+    // A scanner can emit duplicate Enter terminators while checkout is locked.
+    // Both real events must be consumed without opening a chooser or querying SQL.
+    for(int attempt=0;attempt<2;attempt++) {
+     var repeated=new KeyEventArgs(Keys.Enter);
+     barcodeHandler.Invoke(form,new object[]{code,repeated});
+     if(!repeated.Handled||!repeated.SuppressKeyPress)
+      throw new Exception("Locked checkout scanner Enter not consumed on attempt "+attempt);
+    }
+    var blockedScan=new KeyEventArgs(Keys.Enter);
+    barcodeHandler.Invoke(form,new object[]{code,blockedScan});
+    if(!blockedScan.Handled||!blockedScan.SuppressKeyPress)
+     throw new Exception("Disabled checkout did not consume scanner terminator");
+    if(code.Text!="SCANNER-DISABLED-001")
+     throw new Exception("Disabled checkout mutated scanner barcode");
+    var findHandler=form.GetType().GetMethod("Button_FIND_Click",Flags);
+    if(findHandler==null)throw new Exception("Real product lookup event missing");
+    findHandler.Invoke(form,new object[]{find,EventArgs.Empty});
+    // The actual image-tile event also must fail closed before the SQL adapter.
+    // Tag type is intentionally not fabricated: a disabled event must never
+    // inspect the tile or require any database connection.
+    var imageTile=new Button();
+    imageTile.Tag="stale-image-reference";
+    try {findHandler.Invoke(form,new object[]{imageTile,EventArgs.Empty});}
+    finally {imageTile.Dispose();}
+    if(code.Text!="SCANNER-DISABLED-001")
+     throw new Exception("Disabled image lookup mutated barcode state");
+   } finally {find.Enabled=wasEnabled;code.Text="";}
    var enter=new KeyEventArgs(Keys.Enter);
    barcodeHandler.Invoke(form,new object[]{code,enter});
    if(!enter.Handled||!enter.SuppressKeyPress)
@@ -1895,7 +1933,57 @@ class PosSmoke {
   Console.WriteLine("PASS sales search clear executes one refresh per click");
  }
 
- static void SalesQuantityKeypadAndCompactKeyboard(Assembly assembly) {
+ static void SalesSelectedArticleUiMapping(Assembly assembly) {
+  // Real production presenter adapter exercised with a DataRow; no live shop SQL.
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
+   var method=form.GetType().GetMethod("PopulateSelectedArticleFields",Flags);
+   if(method==null)throw new Exception("Selected article presentation adapter missing");
+   var fields=new string[]{"ID_ARTICLE","Code","Article","Famille","PRIX_A","PRIX_MP",
+    "Prix_V_1","TAUX_TVA","PROMOTION","PRINTER","PRINTER_DUPLICATA",
+    "GROUPE","PRIX_QTE","PRIX_QTE_MIN"};
+   var controls=new string[]{"Text_ID_ARTICLE","Text_CODE","Text_ARTICLE","Text_FAMILLE",
+    "Text_PRIX_A","Text_PRIX_MP","Text_PRIXV","Text_TAUX_TVA",
+    "Text_PROMOTION","Text_PRINTER","Text_PRINTER_DUPLICATA",
+    "Text_GROUPE","Text_PRIX_QTE","Text_PRIX_QTE_MIN"};
+   var price=(Control)Get(form,"Button_PRIX");
+   if(price==null)throw new Exception("Price tier control missing");
+   var original=price.Text;
+   try {
+    price.Text="PRIX 1";
+    var table=new DataTable();
+    foreach(string field in fields)table.Columns.Add(field,typeof(string));
+    var row=table.NewRow();
+    for(int i=0;i<fields.Length;i++)row[i]="value"+i;
+    table.Rows.Add(row);
+    method.Invoke(form,new object[]{row});
+    for(int i=0;i<controls.Length;i++) {
+     var control=(Control)Get(form,controls[i]);
+     if(control==null||control.Text!="value"+i)
+      throw new Exception("Article presentation mismatch: "+controls[i]);
+    }
+    // Production presenter is callable without a form or SQL and respects the
+    // selected price tier; the real WinForms mapping above is still exercised.
+    var presenter=assembly.GetType("LOGICA.DesktopArticleFieldPresenter",true);
+    var read=presenter.GetMethod("Read",BindingFlags.Static|BindingFlags.NonPublic);
+    if(read==null)throw new Exception("Production article presenter unavailable");
+    table.Columns.Add("Prix_V_2",typeof(string));
+    row["Prix_V_2"]="tier-two";
+    var tierValues=(string[])read.Invoke(null,new object[]{row,"Prix_V_2"});
+    if(tierValues.Length!=14||tierValues[6]!="tier-two"||tierValues[0]!="value0")
+     throw new Exception("Article presenter changed selected price tier or identity");
+    table.Columns.Remove("GROUPE");
+    table.Columns.Remove("PRIX_QTE");
+    table.Columns.Remove("PRIX_QTE_MIN");
+    method.Invoke(form,new object[]{row});
+    if(((Control)Get(form,"Text_GROUPE")).Text!="" ||
+       ((Control)Get(form,"Text_PRIX_QTE")).Text!="0" ||
+       ((Control)Get(form,"Text_PRIX_QTE_MIN")).Text!="0")
+      throw new Exception("Optional legacy article columns not defaulted safely");
+   } finally {price.Text=original;}
+  }
+ }
+
+static void SalesQuantityKeypadAndCompactKeyboard(Assembly assembly) {
   // Exercise the production numeric keypad without opening the form or touching SQL.
   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_3_VENTE",true))) {
    var quantity=(Control)Get(form,"Label_QTE");
@@ -2435,6 +2523,56 @@ class PosSmoke {
   }
   Console.WriteLine("PASS settings incomplete row event guards preserve valid updates");
  }
+ static void DesktopPaymentInputFailClosed(Assembly assembly) {
+  using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.FormDialog_calc",true))) {
+   var type=form.GetType();
+   var grid=(DataGridView)Get(form,"DataGridView_CALC");
+   var calc=type.GetMethod("Button_calc_Click",Flags);
+   var fill=type.GetMethod("Button_RESTE_Click",Flags);
+   var inCalculation=type.GetField("_calculatingPayments",Flags);
+   var remainder=(Control)Get(form,"Button_RESTE");
+   var solder=(Control)Get(form,"Button_SOLDER");
+   if(calc==null||fill==null||inCalculation==null)throw new Exception("Missing payment edit guards");
+   grid.AllowUserToAddRows=false;grid.Rows.Clear();
+   SetText(form,"Text_TOTAL_NET","20");
+   grid.Rows.Add(new object[]{20m,25m,0m,"ESPECES",null});
+   grid.CurrentCell=grid.Rows[0].Cells[1];
+   calc.Invoke(form,new object[]{form,EventArgs.Empty});
+   if(!solder.Enabled)throw new Exception("Valid cash settlement rejected");
+   string previous=remainder.Text;
+   inCalculation.SetValue(form,true);
+   try {
+    grid.Rows[0].Cells[1].Value=30m;
+    calc.Invoke(form,new object[]{form,EventArgs.Empty});
+    if(remainder.Text!=previous)throw new Exception("Nested calculation overwrote outer result");
+   } finally {inCalculation.SetValue(form,false);}
+   calc.Invoke(form,new object[]{form,EventArgs.Empty});
+   if(!solder.Enabled||remainder.Text==previous)
+    throw new Exception("Outer calculation failed to refresh edited payment");
+   SetText(form,"Text_TOTAL_NET","");
+   calc.Invoke(form,new object[]{form,EventArgs.Empty});
+   if(solder.Enabled||remainder.Text!="")
+    throw new Exception("Empty total allowed a stale cash settlement");
+   SetText(form,"Text_TOTAL_NET","20");
+   calc.Invoke(form,new object[]{form,EventArgs.Empty});
+   decimal paid=Convert.ToDecimal(grid.Rows[0].Cells[1].Value);
+   remainder.Text="";
+   fill.Invoke(form,new object[]{form,EventArgs.Empty});
+   if(Convert.ToDecimal(grid.Rows[0].Cells[1].Value)!=paid)
+    throw new Exception("Blank remainder silently replaced cash amount");
+   remainder.Text="invalid";
+   fill.Invoke(form,new object[]{form,EventArgs.Empty});
+   if(Convert.ToDecimal(grid.Rows[0].Cells[1].Value)!=paid)
+    throw new Exception("Malformed remainder replaced cash amount");
+   grid.Rows[0].Cells[1].Value=0m;
+   calc.Invoke(form,new object[]{form,EventArgs.Empty});
+   if(remainder.Text=="")throw new Exception("Valid remainder not calculated");
+   fill.Invoke(form,new object[]{form,EventArgs.Empty});
+   if(Convert.ToDecimal(grid.Rows[0].Cells[1].Value)!=20m||!solder.Enabled)
+    throw new Exception("Valid fill-remainder cash action regressed");
+  }
+  Console.WriteLine("PASS payment recalculation non-reentrancy, blank total, invalid remainder and valid cash fill");
+ }
  static void DesktopSettlementAndImageScrollRegression(Assembly assembly) {
   // SOLDER must fail closed after an incomplete grid edit, even if the
   // previous calculation had a valid remainder and the sale total is zero.
@@ -2544,6 +2682,15 @@ class PosSmoke {
      var loaded=panel.Controls["Button_ESPECES"] as Button;
      if(loaded==null||loaded.Image==null)
       throw new Exception("Whitespace-padded payment icon was not loaded");
+     // Invalid legacy filenames and corrupt images must not hide cash buttons.
+     foreach(string invalid in new[]{"bad\\0.png".Replace("\\0","\0"),"..\\escape.png","corrupt.png"}) {
+      if(invalid=="corrupt.png")File.WriteAllText(Path.Combine(images,invalid),"not an image");
+      methods.Rows[cash].Cells[1].Value=invalid;
+      load.Invoke(form,new object[]{form,EventArgs.Empty});
+      var fallback=panel.Controls["Button_ESPECES"] as Button;
+      if(fallback==null||fallback.Image!=null)
+       throw new Exception("Invalid payment icon blocked cash method: "+invalid.Replace("\0","[NUL]"));
+     }
      clear.Invoke(form,null);
     } finally {
      root.SetValue(null,null);
@@ -2875,7 +3022,8 @@ static void StockRecoveredSchema(Assembly assembly) {
   try {
    Application.EnableVisualStyles();
    var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
-   if(args[0]=="desktop-settlement-scroll") { DesktopSettlementAndImageScrollRegression(assembly); } else if(args[0]=="desktop-startup-settings-flags") { DesktopSettingsStartupAndMalformedFlags(assembly); } else if(args[0]=="desktop-payment-placeholder") { DesktopPaymentPlaceholderRowRegression(assembly); } else if(args[0]=="desktop-settings-save-dpi") { SettingsSaveProjectionAndCompactDpi(assembly); } else if(args[0]=="desktop-payment-input") { CashierKeyboardAndCashMethod(assembly); } else if(args[0]=="desktop-image-preview") { ArticlePreviewReplacement(assembly); } else if(args[0]=="desktop-image-grid-dpi") { SalesImageTileDisposalAndCompactDpi(assembly); } else if(args[0]=="settings-optional-events") { SettingsOptionalRowEventGuards(assembly); } else if(args[0]=="article-image-editor-safety") { ArticleImageEditorSafety(assembly); } else if(args[0]=="cashier-payment-reload-selection") { CashierPaymentReloadAndSelection(assembly); } else if(args[0]=="cashier-partial-amount-keypad") { CashierPartialAmountAndKeypad(assembly); } else if(args[0]=="cashier-incomplete-payment-rows") { CashierIncompletePaymentRows(assembly); } else if(args[0]=="settings-portable-options") { SettingsPortablePreferencesAndTicketSelection(assembly); } else if(args[0]=="stock-recovered-schema") { StockRecoveredSchema(assembly); } else if(args[0]=="legacy-zero-date") { LegacyZeroDates(assembly); } else if(args[0]=="article-missing-settings") { ArticleFamilyMissingSettings(assembly); } else if(args[0]=="cashier-missing-payment-image") { CashierMissingPaymentImage(assembly); } else if(args[0]=="checkout-missing-stock-setting") { CheckoutMissingStockSetting(assembly); } else if(args[0]=="payment-missing-icon") { PaymentMissingIcon(assembly); } else if(args[0]=="settings-missing-rows") { SettingsMissingRows(assembly); } else if(args[0]=="settings-ticket-null") { SettingsTicketGridNullGuard(assembly); } else if(args[0]=="login-category-sql") { LoginCategorySql(assembly); } else if(args[0]=="checkout-blank-barcode-live-sql") { SalesBlankBarcodeLiveLookup(assembly); } else if(args[0]=="checkout-blank-barcode-stock") { SalesBlankBarcodeStockPreflight(assembly); } else if(args[0]=="checkout-blank-barcode-posting") { SalesBlankBarcodePostingGuard(assembly); } else if(args[0]=="checkout-list-selection") { SalesListSelectionFallback(assembly); } else if(args[0]=="checkout-quantity-keypad-dpi") { SalesQuantityKeypadAndCompactKeyboard(assembly); SalesSearchClearRefresh(assembly); } else if(args[0]=="checkout-scanner-enter") { SalesScannerEnterRouting(assembly); } else if(args[0]=="checkout-search-shortcut") { SalesSearchShortcut(assembly); } else if(args[0]=="checkout-family-caption-contrast") { SalesFamilyCaptionContrast(assembly); } else if(args[0]=="checkout-product-list-selection-contrast") { SalesProductListSelectionContrast(assembly); } else if(args[0]=="checkout-product-name-row-dpi") { SalesProductNameRowDpi(assembly); } else if(args[0]=="checkout-product-list-header-dpi") { SalesProductListHeaderDpi(assembly); } else if(args[0]=="checkout-basket-header-dpi") { SalesBasketHeaderDpi(assembly); } else if(args[0]=="checkout-basket-selection-contrast") { SalesBasketSelectionContrast(assembly); } else if(args[0]=="checkout-white-buttons-contrast") { SalesWhiteUtilityButtonContrast(assembly); } else if(args[0]=="checkout-keyboard-contrast") { SalesKeyboardContrast(assembly); } else if(args[0]=="checkout-contrast") { SalesActionContrast(assembly); } else if(args[0]=="checkout-barcode-chooser") { CheckoutBarcodeChooser(assembly); } else if(args[0]=="checkout-image-grid") { CheckoutImageGrid(assembly); } else if(args[0]=="checkout-article-search-sql") { CheckoutArticleSearchSql(assembly); } else if(args[0]=="shared-export-projection") { SharedExportProjection(assembly); } else if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
+   if(args[0]=="desktop-payment-fail-closed") { DesktopPaymentInputFailClosed(assembly); } else if(args[0]=="desktop-settlement-scroll") { DesktopSettlementAndImageScrollRegression(assembly); } else if(args[0]=="desktop-startup-settings-flags") { DesktopSettingsStartupAndMalformedFlags(assembly); } else if(args[0]=="desktop-payment-placeholder") { DesktopPaymentPlaceholderRowRegression(assembly); } else if(args[0]=="desktop-settings-save-dpi") { SettingsSaveProjectionAndCompactDpi(assembly); } else if(args[0]=="desktop-payment-input") { CashierKeyboardAndCashMethod(assembly); } else if(args[0]=="desktop-image-preview") { ArticlePreviewReplacement(assembly); } else if(args[0]=="desktop-image-grid-dpi") { SalesImageTileDisposalAndCompactDpi(assembly); } else if(args[0]=="settings-optional-events") { SettingsOptionalRowEventGuards(assembly); } else if(args[0]=="article-image-editor-safety") { ArticleImageEditorSafety(assembly); } else if(args[0]=="cashier-payment-reload-selection") { CashierPaymentReloadAndSelection(assembly); } else if(args[0]=="cashier-partial-amount-keypad") { CashierPartialAmountAndKeypad(assembly); } else if(args[0]=="cashier-incomplete-payment-rows") { CashierIncompletePaymentRows(assembly); } else if(args[0]=="settings-portable-options") { SettingsPortablePreferencesAndTicketSelection(assembly); } else if(args[0]=="stock-recovered-schema") { StockRecoveredSchema(assembly); } else if(args[0]=="legacy-zero-date") { LegacyZeroDates(assembly); } else if(args[0]=="article-missing-settings") { ArticleFamilyMissingSettings(assembly); } else if(args[0]=="cashier-missing-payment-image") { CashierMissingPaymentImage(assembly); } else if(args[0]=="checkout-missing-stock-setting") { CheckoutMissingStockSetting(assembly); } else if(args[0]=="payment-missing-icon") { PaymentMissingIcon(assembly); } else if(args[0]=="settings-missing-rows") { SettingsMissingRows(assembly); } else if(args[0]=="settings-ticket-null") { SettingsTicketGridNullGuard(assembly); } else if(args[0]=="login-category-sql") { LoginCategorySql(assembly); } else if(args[0]=="checkout-blank-barcode-live-sql") { SalesBlankBarcodeLiveLookup(assembly); } else if(args[0]=="checkout-blank-barcode-stock") { SalesBlankBarcodeStockPreflight(assembly); } else if(args[0]=="checkout-blank-barcode-posting") { SalesBlankBarcodePostingGuard(assembly); } else if(args[0]=="checkout-list-selection") { SalesListSelectionFallback(assembly); } else if(args[0]=="checkout-quantity-keypad-dpi") { SalesQuantityKeypadAndCompactKeyboard(assembly);
+   SalesSelectedArticleUiMapping(assembly); SalesSearchClearRefresh(assembly); } else if(args[0]=="checkout-scanner-enter") { SalesScannerEnterRouting(assembly); } else if(args[0]=="checkout-search-shortcut") { SalesSearchShortcut(assembly); } else if(args[0]=="checkout-family-caption-contrast") { SalesFamilyCaptionContrast(assembly); } else if(args[0]=="checkout-product-list-selection-contrast") { SalesProductListSelectionContrast(assembly); } else if(args[0]=="checkout-product-name-row-dpi") { SalesProductNameRowDpi(assembly); } else if(args[0]=="checkout-product-list-header-dpi") { SalesProductListHeaderDpi(assembly); } else if(args[0]=="checkout-basket-header-dpi") { SalesBasketHeaderDpi(assembly); } else if(args[0]=="checkout-basket-selection-contrast") { SalesBasketSelectionContrast(assembly); } else if(args[0]=="checkout-white-buttons-contrast") { SalesWhiteUtilityButtonContrast(assembly); } else if(args[0]=="checkout-keyboard-contrast") { SalesKeyboardContrast(assembly); } else if(args[0]=="checkout-contrast") { SalesActionContrast(assembly); } else if(args[0]=="checkout-barcode-chooser") { CheckoutBarcodeChooser(assembly); } else if(args[0]=="checkout-image-grid") { CheckoutImageGrid(assembly); } else if(args[0]=="checkout-article-search-sql") { CheckoutArticleSearchSql(assembly); } else if(args[0]=="shared-export-projection") { SharedExportProjection(assembly); } else if(args[0]=="catalogue-aggregate-failure") { CatalogueAggregateRefresh(assembly,true); } else if(args[0]=="catalogue-aggregate-refresh") { CatalogueAggregateRefresh(assembly); } else if(args[0]=="collection-quantity-totals") { CollectionQuantityTotals(assembly); } else if(args[0]=="collection-variant-insert") { CollectionVariantInsertion(assembly); } else if(args[0]=="collection-duplicate-later") { CatalogueSaveGuards(assembly,true,true,true); } else if(args[0]=="collection-duplicate-code") { CatalogueSaveGuards(assembly,true,true); } else if(args[0]=="collection-save-guards") { CatalogueSaveGuards(assembly,true); } else if(args[0]=="catalogue-balance-reject") { CatalogueCreateProduct(assembly,balanceScenario:"reject"); } else if(args[0]=="catalogue-balance-format") { CatalogueCreateProduct(assembly,balanceScenario:"format"); } else if(args[0]=="catalogue-create-empty") { CatalogueCreateProduct(assembly,emptyArticles:true); } else if(args[0]=="catalogue-create-null-sequence") { CatalogueCreateProduct(assembly,nullSequence:true); } else if(args[0]=="catalogue-create-empty-null") { CatalogueCreateProduct(assembly,emptyArticles:true,nullSequence:true); } else if(args[0]=="catalogue-update-failure") { CatalogueCreateProduct(assembly,true,failUpdate:true); } else if(args[0]=="catalogue-insert-failure") { CatalogueCreateProduct(assembly,false,false,false,false,true); } else if(args[0]=="catalogue-sequence-failure") { CatalogueCreateProduct(assembly,false,false,false,true); } else if(args[0]=="catalogue-movement-failure") { CatalogueCreateProduct(assembly,false,false,true); } else if(args[0]=="catalogue-duplicates") { CatalogueCreateProduct(assembly,true,true); } else if(args[0]=="catalogue-edit") { CatalogueCreateProduct(assembly,true); } else if(args[0]=="catalogue-create") { CatalogueCreateProduct(assembly); } else if(args[0]=="catalogue-barcodes") { CatalogueGeneratedBarcodes(assembly); } else if(args[0]=="catalogue-save-guards") { CatalogueSaveGuards(assembly); } else if(args[0]=="catalogue-keys") { CatalogueKeys(assembly); } else if(args[0]=="cash-counting") { CountedCash(assembly); } else if(args[0]=="stock-movement-search-failure") { StockMovementSearch(assembly,true); } else if(args[0]=="stock-movement-search") { StockMovementSearch(assembly); } else if(args[0]=="checkout-missing-stock-lookup") { Checkout(assembly,false,"stock-missing-lookup"); } else if(args[0]=="checkout-reject-stock") { Checkout(assembly,false,"reject-stock"); } else if(args[0]=="checkout-reject-stock-off") { Checkout(assembly,false,"reject-stock-off"); } else if(args[0]=="checkout-stock-exact") { Checkout(assembly,false,"stock-exact"); } else if(args[0]=="checkout-reject-total") { Checkout(assembly,false,"reject-total"); } else if(args[0]=="checkout-rounding-window") { Checkout(assembly,false,"rounding-window"); } else if(args[0]=="checkout-select-seller") { Checkout(assembly,false,"select-seller"); } else if(args[0]=="checkout-select-client") { Checkout(assembly,false,"select-client"); } else if(args[0]=="checkout-credit-client") { Checkout(assembly,false,"select-credit-client"); } else if(args[0]=="checkout-reject-sale") { Checkout(assembly,false,"reject-sale"); } else if(args[0]=="checkout-reject-return") { Checkout(assembly,false,"reject-return"); } else if(args[0]=="checkout-reject-empty") { Checkout(assembly,false,"reject-empty"); } else if(args[0]=="checkout-stock-off") { Checkout(assembly,false,"stock-off"); } else if(args[0]=="checkout-fractional") { Checkout(assembly,false,"fractional"); } else if(args[0]=="checkout-late-rollback") { Checkout(assembly,true,"cash",true); } else if(args[0]=="checkout-mixed") { Checkout(assembly,false,"mixed"); } else if(args[0]=="checkout-change") { Checkout(assembly,false,"change"); } else if(args[0]=="checkout-credit") { Checkout(assembly,false,"credit"); } else if(args[0]=="checkout-rollback") { Checkout(assembly,true); } else if(args[0]=="checkout") { Checkout(assembly); } else if(args[0]=="inventory-decline-validation") { DeclinedValidationGuard(assembly); } else if(args[0]=="inventory-empty-validation") { EmptyValidationGuard(assembly); } else if(args[0]=="inventory-transaction-preflight") { InventoryTransactionPreflight(assembly); } else if(args[0]=="basket") { Basket(assembly); } else if(args[0]=="rounding") {
     var method=assembly.GetType("LOGICA.Module1",true).GetMethod("FLOUSS");
     foreach(var culture in new[]{"fr-MA","fr-FR","en-US"}) {
      CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo(culture);
