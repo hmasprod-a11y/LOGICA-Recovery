@@ -77,3 +77,10 @@ assert source.index(readback) < source.index('INSERT INTO TABLE_MOUVEMENTS_STOCK
 assert 'Convert.ToDecimal(reader.GetValue(0), CultureInfo.InvariantCulture) != plan.AfterStock' in source
 assert source.count('WHERE ID_ARTICLE = @id FOR UPDATE') >= 2
 print('PASS: exact persisted stock checked before audit insert; rollback on rounding')
+
+# MariaDB ROLLBACK TO SAVEPOINT keeps the savepoint allocated. A recoverable
+# failure must release its own savepoint before the caller continues.
+catch_block = source[source.index('            catch\\n            {', source.index('string savepointName')):]
+assert catch_block.index('"ROLLBACK TO SAVEPOINT " + savepointName') < catch_block.index('"RELEASE SAVEPOINT " + savepointName')
+assert source.count('"RELEASE SAVEPOINT " + savepointName') == 2, 'release on success and failure'
+print('PASS: failed adjustment releases local savepoint after rollback')
