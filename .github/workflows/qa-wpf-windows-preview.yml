@@ -31,6 +31,19 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Reject legacy desktop dependencies and SQL in WPF presentation
+        shell: pwsh
+        run: |
+          $project = Get-Content modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj -Raw
+          if ($project -notmatch '<TargetFramework>net10\.0-windows</TargetFramework>' -or $project -notmatch '<UseWPF>true</UseWPF>') { throw 'WPF host must target net10.0-windows with WPF enabled' }
+          $source = Get-ChildItem modernization/Hanouty.Desktop.Wpf -Recurse -File | Where-Object { $_.Extension -in @('.cs','.xaml') }
+          foreach ($file in $source) {
+            $text = Get-Content -LiteralPath $file.FullName -Raw
+            if ($text -match '(?i)System\.Windows\.Forms|Microsoft\.VisualBasic|MySqlConnection|MySqlCommand|DbConnection|SELECT\s+.+\s+FROM|INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM') {
+              throw "Legacy desktop or inline SQL dependency in WPF presentation: $($file.FullName)"
+            }
+          }
+          Write-Host 'PASS: preview WPF host uses .NET10; no detected WinForms/VB/MySQL SQL presentation dependencies'
       - name: Restore and build WPF executable
         shell: pwsh
         run: |
