@@ -306,6 +306,16 @@ namespace LOGICA.ApplicationLayer.Checkout
             // arithmetic runs. Returning a total from mixed versions would
             // make the preview unsafe even when ID_ARTICLE remains unchanged.
             object[] pricingSnapshot = selected.ItemArray;
+            // Column names and types are part of the pricing contract too.
+            // A synchronous UI callback can rename or reorder columns without
+            // changing ItemArray values, silently changing their meaning.
+            string[] columnNames = new string[selected.Table.Columns.Count];
+            Type[] columnTypes = new Type[columnNames.Length];
+            for (int column = 0; column < columnNames.Length; column++)
+            {
+                columnNames[column] = selected.Table.Columns[column].ColumnName;
+                columnTypes[column] = selected.Table.Columns[column].DataType;
+            }
             decimal lineNet = calculateLegacyLineNet(selected);
             if (selected.RowState == DataRowState.Deleted ||
                 selected.RowState == DataRowState.Detached ||
@@ -319,8 +329,14 @@ namespace LOGICA.ApplicationLayer.Checkout
                     selectedCode, StringComparison.Ordinal))
                 throw new InvalidOperationException("The selected article changed during checkout pricing.");
             object[] pricedValues = selected.ItemArray;
-            if (pricedValues.Length != pricingSnapshot.Length)
+            if (pricedValues.Length != pricingSnapshot.Length ||
+                selected.Table.Columns.Count != columnNames.Length)
                 throw new InvalidOperationException("The selected article schema changed during checkout pricing.");
+            for (int column = 0; column < columnNames.Length; column++)
+                if (!String.Equals(selected.Table.Columns[column].ColumnName,
+                        columnNames[column], StringComparison.Ordinal) ||
+                    selected.Table.Columns[column].DataType != columnTypes[column])
+                    throw new InvalidOperationException("The selected article schema changed during checkout pricing.");
             for (int column = 0; column < pricingSnapshot.Length; column++)
                 if (!Object.Equals(pricingSnapshot[column], pricedValues[column]))
                     throw new InvalidOperationException("The selected article values changed during checkout pricing.");
