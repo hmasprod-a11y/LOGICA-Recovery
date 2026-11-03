@@ -587,9 +587,9 @@ internal static class PortableCheckoutSmoke
                 "Resolve must reject malformed unrelated live candidates");
             Require(CheckoutVariantSnapshotService.ResolveChosenVariant(mixedInvalid, snapshots, 1) == null,
                 "Explicit selection must reject malformed unrelated live candidates");
-            DataTable changedCode = outcomeRows.Clone();
-            changedCode.Rows.Add("OTHER-CODE", "B");
-            Require(CheckoutVariantSnapshotService.Resolve(changedCode, snapshots[1]) == null,
+            DataTable changedBarcodeRows = outcomeRows.Clone();
+            changedBarcodeRows.Rows.Add("OTHER-CODE", "B");
+            Require(CheckoutVariantSnapshotService.Resolve(changedBarcodeRows, snapshots[1]) == null,
                 "Reused article ID with changed barcode must fail closed");
             DataTable missingCodeColumn = new DataTable();
             missingCodeColumn.Columns.Add("ID_ARTICLE", typeof(string));
