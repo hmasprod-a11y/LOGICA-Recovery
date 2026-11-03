@@ -1625,6 +1625,18 @@ public class Form_2_Familles : Form
 		((Control)Panel_INFO).Visible = false;
 	}
 
+	private static bool RequiresFamilyGroup()
+	{
+		// Old shop installations can omit the optional GROUPES setting.
+		// Never dereference a missing ListViewItem while adding a family.
+		ListView settings = MyProject.Forms.Form_0_TEMPLATE.ListView1;
+		if (settings == null) return false;
+		ListViewItem setting = settings.FindItemWithText("GROUPES", false, 0);
+		if (setting == null || setting.SubItems.Count < 2) return false;
+		bool enabled;
+		return bool.TryParse(setting.SubItems[1].Text, out enabled) && enabled;
+	}
+
 	private void Button_SAVE_Click(object sender, EventArgs e)
 	{
 		//IL_074d: Unknown result type (might be due to invalid IL or missing references)
@@ -1668,7 +1680,7 @@ public class Form_2_Familles : Form
 					MessageBox.Show("Veuillez remplir le champ -TYPE- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Conversions.ToBoolean(MyProject.Forms.Form_0_TEMPLATE.ListView1.Items[MyProject.Forms.Form_0_TEMPLATE.ListView1.FindItemWithText("GROUPES", false, 0).Index].SubItems[1].Text) && Operators.CompareString(Combo_GROUPES.Text, "", TextCompare: false) == 0)
+				if (RequiresFamilyGroup() && Operators.CompareString(Combo_GROUPES.Text, "", TextCompare: false) == 0)
 				{
 					MessageBox.Show("Veuillez remplir le champ -GROUPE- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
