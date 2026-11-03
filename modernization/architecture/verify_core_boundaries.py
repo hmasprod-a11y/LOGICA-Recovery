@@ -44,6 +44,8 @@ def validate(root):
                     errors.append(name + ": executable/conditional MSBuild element requires review: " + kind)
                 if kind == "Import" and node.attrib.get("Project") != "CoreSources.props":
                     errors.append(name + ": unreviewed project import: " + str(node.attrib.get("Project")))
+                if node.attrib.get("Condition"):
+                    errors.append(name + ": conditional MSBuild element requires review: " + kind)
                 if kind in ("Import", "ItemGroup", "PropertyGroup") and node.attrib.get("Condition"):
                     errors.append(name + ": conditional project structure requires review: " + kind)
                 if kind in ("ProjectReference", "Reference", "PackageReference"):
@@ -70,6 +72,8 @@ def validate(root):
                 errors.append("manifest executable/conditional MSBuild element requires review: " + kind)
             if kind == "Import":
                 errors.append("manifest unreviewed import: " + str(entry.attrib.get("Project", "")))
+            if entry.attrib.get("Condition"):
+                errors.append("manifest conditional MSBuild element requires review: " + kind)
             if kind in ("ItemGroup", "PropertyGroup") and entry.attrib.get("Condition"):
                 errors.append("manifest conditional structure requires review: " + kind)
             if kind in ("ProjectReference", "Reference", "PackageReference"):
@@ -80,6 +84,8 @@ def validate(root):
                 errors.append("manifest cannot re-enable default compile items")
             if kind != "Compile":
                 continue
+            if any(key not in ("Include", "Link") for key in entry.attrib):
+                errors.append("manifest Compile has unreviewed metadata: " + str(entry.attrib))
             raw = entry.attrib.get("Include", "")
             if entry.attrib.get("Condition") or any(k in entry.attrib for k in ("Update", "Remove", "Exclude")):
                 errors.append("manifest conditional/indirect Compile is forbidden: " + raw)
