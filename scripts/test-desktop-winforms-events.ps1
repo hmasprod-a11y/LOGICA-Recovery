@@ -7,7 +7,7 @@ if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
 }
 $sourcePath = Join-Path $PSScriptRoot '..\recovered-source\LOGICA\Form_3_VENTE.cs'
 $source = [IO.File]::ReadAllText((Resolve-Path $sourcePath))
-$classes = @('BarcodeEnterPresenter', 'ProductSearchResetPresenter', 'ProductSelectionPresenter', 'ArticleImageScrollPresenter')
+$classes = @('BarcodeEnterPresenter', 'ProductSearchResetPresenter', 'ProductSelectionPresenter', 'ArticleImageScrollPresenter', 'ProductSearchFocusPresenter')
 $production = foreach ($name in $classes) {
     $pattern = '(?s)internal static class ' + [regex]::Escape($name) + '\s*\{.*?\n\}'
     $match = [regex]::Match($source, $pattern)
@@ -17,6 +17,7 @@ $production = foreach ($name in $classes) {
 $code = 'using System; using System.Windows.Forms; using System.Drawing; ' + ($production -join [Environment]::NewLine)
 $code += @'
 public static class PresenterHarness {
+    public static System.Drawing.Color Focus(bool focused) { return ProductSearchFocusPresenter.Background(focused); }
     public static bool Clear(string value) { return ProductSearchResetPresenter.ShouldClearText(value); }
     public static bool Submit(Keys key, Keys modifiers) { return BarcodeEnterPresenter.ShouldSubmit(key, modifiers); }
     public static bool Lookup(bool scanner, string barcode, string id) { return ProductSelectionPresenter.CanLookup(scanner, barcode, id); }
@@ -58,6 +59,19 @@ try {
     $shiftEnter = [System.Windows.Forms.KeyEventArgs]::new([System.Windows.Forms.Keys]([int][System.Windows.Forms.Keys]::Enter -bor [int][System.Windows.Forms.Keys]::Shift))
     $raise.Invoke($text, @($shiftEnter)) | Out-Null
     Assert ($script:scanCount -eq 1) 'Shift+Enter must not submit'
+    # Focus transitions are real WinForms Enter/Leave events on a textbox.
+    # They remain presentation-only and do not change search text or query SQL.
+    $text.add_Enter({ $text.BackColor = [PresenterHarness]::Focus($true) })
+    $text.add_Leave({ $text.BackColor = [PresenterHarness]::Focus($false) })
+    $raiseEnter = [System.Windows.Forms.Control].GetMethod('OnEnter', [Reflection.BindingFlags]'Instance,NonPublic')
+    $raiseLeave = [System.Windows.Forms.Control].GetMethod('OnLeave', [Reflection.BindingFlags]'Instance,NonPublic')
+    Assert ($null -ne $raiseEnter -and $null -ne $raiseLeave) 'WinForms focus event methods'
+    $text.RightToLeft = [System.Windows.Forms.RightToLeft]::Yes
+    $raiseEnter.Invoke($text, @([EventArgs]::Empty)) | Out-Null
+    Assert ($text.BackColor -eq [System.Drawing.Color]::Yellow) 'RTL search focus highlight'
+    $raiseLeave.Invoke($text, @([EventArgs]::Empty)) | Out-Null
+    Assert ($text.BackColor -eq [System.Drawing.Color]::White) 'RTL search focus reset'
+    Assert ($text.RightToLeft -eq [System.Windows.Forms.RightToLeft]::Yes) 'RTL preserved after focus'
     Assert ([PresenterHarness]::Lookup($true, '12345', $null)) 'barcode selection'
     Assert (-not [PresenterHarness]::Lookup($true, ' ', $null)) 'empty barcode'
     Assert ([PresenterHarness]::Lookup($false, $null, '42')) 'image tile selection'
