@@ -40,6 +40,8 @@ def validate(root):
                 errors.append(name + ": direct Compile bypasses shared manifest")
             for node in project.iter():
                 kind = local_name(node.tag)
+                if kind in ("Target", "UsingTask", "Task", "Exec", "Choose", "When", "Otherwise", "Sdk"):
+                    errors.append(name + ": executable/conditional MSBuild element requires review: " + kind)
                 if kind == "Import" and node.attrib.get("Project") != "CoreSources.props":
                     errors.append(name + ": unreviewed project import: " + str(node.attrib.get("Project")))
                 if kind in ("Import", "ItemGroup", "PropertyGroup") and node.attrib.get("Condition"):
@@ -64,6 +66,8 @@ def validate(root):
         manifest = ET.parse(directory / "CoreSources.props").getroot()
         for entry in manifest.iter():
             kind = local_name(entry.tag)
+            if kind in ("Target", "UsingTask", "Task", "Exec", "Choose", "When", "Otherwise", "Sdk"):
+                errors.append("manifest executable/conditional MSBuild element requires review: " + kind)
             if kind == "Import":
                 errors.append("manifest unreviewed import: " + str(entry.attrib.get("Project", "")))
             if kind in ("ItemGroup", "PropertyGroup") and entry.attrib.get("Condition"):

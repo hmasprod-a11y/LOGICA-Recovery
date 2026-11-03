@@ -133,6 +133,24 @@ class BoundaryTests(unittest.TestCase):
             '</PropertyGroup></Project>'))
         self.assertTrue(any("manifest cannot re-enable" in e for e in validate(self.root)["errors"]))
 
+    def test_manifest_usingtask_rejected(self):
+        p = self.root / "modernization/CoreSources.props"
+        p.write_text(p.read_text().replace("</Project>",
+            '<UsingTask TaskName="Inject" AssemblyFile="unreviewed.dll" /></Project>'))
+        self.assertTrue(any("manifest executable/conditional" in e for e in validate(self.root)["errors"]))
+
+    def test_project_target_rejected(self):
+        p = self.root / "modernization/LOGICA.CorePortability.csproj"
+        p.write_text(p.read_text().replace("</Project>",
+            '<Target Name="BeforeBuild"><Exec Command="echo injected" /></Target></Project>'))
+        self.assertTrue(any("executable/conditional MSBuild" in e for e in validate(self.root)["errors"]))
+
+    def test_manifest_choose_rejected(self):
+        p = self.root / "modernization/CoreSources.props"
+        p.write_text(p.read_text().replace("</Project>",
+            '<Choose><When Condition="true"><ItemGroup /></When></Choose></Project>'))
+        self.assertTrue(any("manifest executable/conditional" in e for e in validate(self.root)["errors"]))
+
     def test_unreviewed_import_rejected(self):
         p = self.root / "modernization/LOGICA.CorePortability.csproj"
         p.write_text(p.read_text().replace("</Project>",
