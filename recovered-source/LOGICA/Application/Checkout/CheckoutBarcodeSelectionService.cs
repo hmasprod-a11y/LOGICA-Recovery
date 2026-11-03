@@ -50,6 +50,8 @@ namespace LOGICA.ApplicationLayer.Checkout
             // A changed basket line must never be incremented.
             DataTable originalTable = basketLine.Table;
             int originalIndex = originalTable.Rows.IndexOf(basketLine);
+            int originalRowCount = originalTable.Rows.Count;
+            int originalColumnCount = originalTable.Columns.Count;
             DataColumn originalCodeColumn = originalTable.Columns["Code"];
             DataColumn originalIdColumn = originalTable.Columns["ID_ARTICLE"];
             if (originalIndex < 0) return false;
@@ -57,19 +59,21 @@ namespace LOGICA.ApplicationLayer.Checkout
             object originalId = basketLine["ID_ARTICLE"];
             if (!legacyEquals(originalCode, scannedCode))
                 return false;
-            if (!IsUnchangedBasketIdentity(basketLine, originalCode, originalId, originalTable, originalIndex, originalCodeColumn, originalIdColumn))
+            if (!IsUnchangedBasketIdentity(basketLine, originalCode, originalId, originalTable, originalIndex, originalRowCount, originalColumnCount, originalCodeColumn, originalIdColumn))
                 return false;
             bool idMatches = legacyEquals(originalId, selectedArticleId);
-            return idMatches && IsUnchangedBasketIdentity(basketLine, originalCode, originalId, originalTable, originalIndex, originalCodeColumn, originalIdColumn);
+            return idMatches && IsUnchangedBasketIdentity(basketLine, originalCode, originalId, originalTable, originalIndex, originalRowCount, originalColumnCount, originalCodeColumn, originalIdColumn);
         }
 
         private static bool IsUnchangedBasketIdentity(DataRow row, object code, object articleId,
-            DataTable originalTable, int originalIndex, DataColumn originalCodeColumn, DataColumn originalIdColumn)
+            DataTable originalTable, int originalIndex, int originalRowCount, int originalColumnCount, DataColumn originalCodeColumn, DataColumn originalIdColumn)
         {
             return row.RowState != DataRowState.Deleted &&
                 row.RowState != DataRowState.Detached &&
                 Object.ReferenceEquals(row.Table, originalTable) &&
                 originalTable.Rows.IndexOf(row) == originalIndex &&
+                originalTable.Rows.Count == originalRowCount &&
+                originalTable.Columns.Count == originalColumnCount &&
                 Object.ReferenceEquals(row.Table.Columns["Code"], originalCodeColumn) &&
                 Object.ReferenceEquals(row.Table.Columns["ID_ARTICLE"], originalIdColumn) &&
                 row.Table.Columns.Contains("Code") &&
