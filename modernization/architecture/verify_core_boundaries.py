@@ -35,11 +35,15 @@ def validate(root):
                        if local_name(n.tag) == "Import"]
             if imports.count("CoreSources.props") != 1:
                 errors.append(name + ": shared manifest must be imported once")
-            if any(n.attrib.get("Include") or n.attrib.get("Update")
-                   for n in project.iter() if local_name(n.tag) == "Compile"):
+            if any(local_name(n.tag) == "Compile"
+                   for n in project.iter()):
                 errors.append(name + ": direct Compile bypasses shared manifest")
             for node in project.iter():
                 kind = local_name(node.tag)
+                if kind == "Import" and node.attrib.get("Project") != "CoreSources.props":
+                    errors.append(name + ": unreviewed project import: " + str(node.attrib.get("Project")))
+                if kind in ("Import", "ItemGroup", "PropertyGroup") and node.attrib.get("Condition"):
+                    errors.append(name + ": conditional project structure requires review: " + kind)
                 if kind in ("ProjectReference", "Reference", "PackageReference"):
                     reference = node.attrib.get("Include", "")
                     if kind == "ProjectReference" or is_forbidden_reference(reference):
@@ -62,6 +66,9 @@ def validate(root):
             if local_name(entry.tag) != "Compile":
                 continue
             raw = entry.attrib.get("Include", "")
+            if entry.attrib.get("Condition") or any(k in entry.attrib for k in ("Update", "Remove", "Exclude")):
+                errors.append("manifest conditional/indirect Compile is forbidden: " + raw)
+                continue
             if not raw or any(c in raw for c in ("$(", "*", "?")):
                 errors.append("non-explicit source path: " + raw)
                 continue
