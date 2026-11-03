@@ -47,7 +47,14 @@ assert 'adapter.TableMappings.Add("Table", "Table")' in sales
 for physical in ("QtÃ©", "Qte", "Quantite"):
     assert 'mapping.ColumnMappings.Add("' + physical + '", "Qté")' in sales
 assert sales.count('Module1.da1 = CreateCheckoutCartAdapter();') == 4
-assert 'new MySqlCommandBuilder(Module1.da1)' in sales
+assert 'using (MySqlCommandBuilder builder = new MySqlCommandBuilder(Module1.da1))' in sales
+assert 'parameter.SourceColumn = "Qté";' in sales
+assert 'RemapCheckoutCommandSourceColumns(Module1.da1.InsertCommand);' in sales
+assert 'RemapCheckoutCommandSourceColumns(Module1.da1.UpdateCommand);' in sales
+assert 'RemapCheckoutCommandSourceColumns(Module1.da1.DeleteCommand);' in sales
+assert sales.count('UpdateCheckoutCart();') == 8
+assert 'row.Cells["Qté"].Value != DBNull.Value' in sales
+assert '!row.IsNewRow' in sales
 
 assert sales.index("NormalizeLoadedCheckoutQuantityColumn();") < sales.index('foreach (string required in new[]')
 startup = sales.split("private static void EnsureCheckoutQuantityColumn()", 1)[1].split("private static string ExactImageArticleSql()", 1)[0]
