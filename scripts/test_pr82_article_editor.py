@@ -71,8 +71,13 @@ assert 'legacy.ColumnName = "Qté";' in sales
 assert 'private static MySqlDataAdapter CreateCheckoutCartAdapter()' in sales
 assert 'adapter.TableMappings.Add("Table", "Table")' not in sales
 assert 'mapping.ColumnMappings.Add(' not in sales
-for physical in ("QtÃ©", "QtÃƒÂ©", "Qte", "Quantite"):
-    assert 'string.Equals(name, "' + physical + '"' in sales
+# Central alias registry is shared by checkout, Journal, and SQL probes.
+module = Path("recovered-source/LOGICA/Module1.cs").read_text(encoding="utf-8")
+for physical in ("Qté", "QtÃ©", "QtÃƒÂ©", "Qte", "Quantite"):
+    assert '"' + physical + '"' in module
+assert 'LegacyColumnCompatibility.IsQuantityAlias(name)' in sales
+assert 'foreach (string candidate in LegacyColumnCompatibility.QuantityAliases)' in sales
+assert 'LegacyColumnCompatibility.QuantityValue(row)' in Path("recovered-source/LOGICA/Form_3_VENTE_JOURNAL.cs").read_text(encoding="utf-8")
 assert 'IsLegacyCheckoutQuantityColumn(parameter.SourceColumn)' in sales
 assert 'IsLegacyCheckoutQuantityColumn(column.ColumnName)' in sales
 assert sales.count('AssertCheckoutCartColumns();') >= 4
