@@ -24,7 +24,6 @@ namespace LOGICA.ApplicationLayer.Checkout
                 basketLine.Table == null ||
                 !basketLine.Table.Columns.Contains("Code") ||
                 !basketLine.Table.Columns.Contains("ID_ARTICLE") ||
-                basketLine.IsNull("Code") ||
                 basketLine.IsNull("ID_ARTICLE") ||
                 String.IsNullOrWhiteSpace(Convert.ToString(basketLine["ID_ARTICLE"])))
                 return false;
