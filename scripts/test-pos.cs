@@ -1856,6 +1856,17 @@ class PosSmoke {
    try {
     find.Enabled=false;
     code.Text="SCANNER-DISABLED-001";
+    var resolver=form.GetType().GetMethod("ResolveDesktopArticleChoice",Flags);
+    if(resolver==null||resolver.ReturnType!=typeof(DataRow))
+     throw new Exception("Production desktop article identity presenter is missing");
+    // A scanner can emit duplicate Enter terminators while checkout is locked.
+    // Both real events must be consumed without opening a chooser or querying SQL.
+    for(int attempt=0;attempt<2;attempt++) {
+     var repeated=new KeyEventArgs(Keys.Enter);
+     barcodeHandler.Invoke(form,new object[]{code,repeated});
+     if(!repeated.Handled||!repeated.SuppressKeyPress)
+      throw new Exception("Locked checkout scanner Enter not consumed on attempt "+attempt);
+    }
     var blockedScan=new KeyEventArgs(Keys.Enter);
     barcodeHandler.Invoke(form,new object[]{code,blockedScan});
     if(!blockedScan.Handled||!blockedScan.SuppressKeyPress)
