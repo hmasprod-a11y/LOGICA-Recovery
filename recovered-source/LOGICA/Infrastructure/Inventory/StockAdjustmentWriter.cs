@@ -1,6 +1,7 @@
 using System;
 using System.Data;
 using System.Globalization;
+using System.Text;
 using MySql.Data.MySqlClient;
 using LOGICA.Application.Inventory;
 
@@ -25,7 +26,7 @@ namespace LOGICA.Infrastructure.Inventory
             string audit = "Ajustement [" + plan.UserId + "] " +
                 plan.BeforeStock.ToString(CultureInfo.InvariantCulture) + " -> " +
                 plan.AfterStock.ToString(CultureInfo.InvariantCulture) + " : " + plan.Reason;
-            if (audit.Length > 255)
+            if (Encoding.UTF8.GetByteCount(audit) > 255)
                 throw new InvalidOperationException("Stock adjustment audit exceeds legacy column size.");
             if (plan.ArticleId.Length > 128)
                 throw new InvalidOperationException("Article identity exceeds supported length.");
@@ -116,7 +117,7 @@ namespace LOGICA.Infrastructure.Inventory
                     movement.Parameters.AddWithValue("@id", plan.ArticleId);
                     movement.Parameters.AddWithValue("@code", code);
                     movement.Parameters.AddWithValue("@name", name);
-                    movement.Parameters.AddWithValue("@delta", plan.Delta.ToString(CultureInfo.InvariantCulture));
+                    movement.Parameters.AddWithValue("@delta", plan.Delta);
                     if (movement.ExecuteNonQuery() != 1)
                         throw new InvalidOperationException("Stock movement audit failed; rollback required.");
                 }
