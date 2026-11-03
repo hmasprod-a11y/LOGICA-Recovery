@@ -14872,8 +14872,7 @@ public class Form_3_VENTE : Form
 				? null : clickedControl.Tag as LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference;
 			// An image tile is identified by ID_ARTICLE, even when it has no barcode.
 			// Keep the scanner's original exact-barcode path and chooser unchanged.
-			if ((clickedImage == null && Operators.CompareString(Text_CODE.Text.Trim(), "", TextCompare: false) == 0)
-				|| (clickedImage != null && string.IsNullOrWhiteSpace(clickedImage.ArticleId)))
+			if (!ProductSelectionPresenter.CanLookup(clickedImage == null, Text_CODE.Text, clickedImage == null ? null : clickedImage.ArticleId))
 			{
 				((Control)Text_CODE).Focus();
 				return;
@@ -17589,5 +17588,15 @@ internal static class ProductSearchResetPresenter
 	internal static bool ShouldClearText(string currentText)
 	{
 		return !string.IsNullOrEmpty(currentText);
+	}
+}
+
+// Presentation-only selection gate: preserve exact scanner barcode lookup and
+// image-tile ID lookup without allowing empty identifiers to reach SQL.
+internal static class ProductSelectionPresenter
+{
+	internal static bool CanLookup(bool barcodeSelection, string barcode, string articleId)
+	{
+		return barcodeSelection ? !string.IsNullOrWhiteSpace(barcode) : !string.IsNullOrWhiteSpace(articleId);
 	}
 }
