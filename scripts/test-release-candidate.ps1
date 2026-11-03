@@ -14,6 +14,13 @@ $forbidden = @('mysql-credential.xml', 'mysql-import-complete.txt', 'mysql-clien
 # Match case-insensitively on Windows; inspect the entire portable tree.
 $privateNames = @('.env', '.env.local', 'id_rsa', 'id_ed25519', 'credentials.json', 'secrets.json')
 $privateExtensions = @('.pem', '.pfx', '.p12', '.key', '.kdbx')
+$excludedFolders = @('.git', '.ssh', '.aws', '.azure', '.gnupg')
+foreach ($folder in @(Get-ChildItem -LiteralPath $dist -Recurse -Directory -Force)) {
+  if ($excludedFolders -contains $folder.Name.ToLowerInvariant()) {
+    throw "Excluded folder in release candidate: $($folder.FullName)"
+  }
+}
+
 foreach ($candidate in @(Get-ChildItem -LiteralPath $dist -Recurse -File -ErrorAction Stop)) {
   if ($privateNames -contains $candidate.Name.ToLowerInvariant() -or
       $privateExtensions -contains $candidate.Extension.ToLowerInvariant()) {
