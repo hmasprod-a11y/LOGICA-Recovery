@@ -14885,6 +14885,8 @@ public class Form_3_VENTE : Form
 		//IL_0409: Unknown result type (might be due to invalid IL or missing references)
 		try
 		{
+			// Disabled checkout must never reach catalogue SQL from a scanner or image tile.
+			if (!Button_FIND.Enabled) return;
 			Control clickedControl = sender as Control;
 			LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference clickedImage = clickedControl == null
 				? null : clickedControl.Tag as LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference;
