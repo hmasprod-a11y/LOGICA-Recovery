@@ -44,6 +44,10 @@ def validate(root):
                         errors.append(name + ": nonportable reference: " + reference)
                 if kind == "EnableDefaultCompileItems" and (node.text or "").strip().lower() != "false":
                     errors.append(name + ": default compile items must be disabled")
+            if not any(local_name(node.tag) == "EnableDefaultCompileItems" and
+                       (node.text or "").strip().lower() == "false"
+                       for node in project.iter()):
+                errors.append(name + ": default compile items must be disabled")
         except (OSError, ET.ParseError) as exc:
             errors.append(name + ": " + str(exc))
     if targets.get(PROJECTS[0]) != "netstandard2.0;net10.0":
