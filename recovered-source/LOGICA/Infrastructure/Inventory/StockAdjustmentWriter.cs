@@ -83,7 +83,7 @@ namespace LOGICA.Infrastructure.Inventory
             // A caller might catch an audit failure and accidentally commit its
             // outer transaction. A local savepoint makes the stock + audit pair
             // indivisible even under that misuse; caller still owns final commit.
-            using (var savepoint = new MySqlCommand("SAVEPOINT hanouty_stock_adjustment", connection, transaction))
+            // A fixed savepoint name can overwrite a caller savepoint or an earlier\n            // nested adjustment. Generate an SQL-safe identifier per invocation.\n            string savepointName = "hanouty_sa_" + Guid.NewGuid().ToString("N");\n            using (var savepoint = new MySqlCommand("SAVEPOINT " + savepointName, connection, transaction))
                 savepoint.ExecuteNonQuery();
             try
             {
@@ -117,12 +117,12 @@ namespace LOGICA.Infrastructure.Inventory
                     if (movement.ExecuteNonQuery() != 1)
                         throw new InvalidOperationException("Stock movement audit failed; rollback required.");
                 }
-                using (var release = new MySqlCommand("RELEASE SAVEPOINT hanouty_stock_adjustment", connection, transaction))
+                using (var release = new MySqlCommand("RELEASE SAVEPOINT " + savepointName, connection, transaction))
                     release.ExecuteNonQuery();
             }
             catch
             {
-                using (var rollback = new MySqlCommand("ROLLBACK TO SAVEPOINT hanouty_stock_adjustment", connection, transaction))
+                using (var rollback = new MySqlCommand("ROLLBACK TO SAVEPOINT " + savepointName, connection, transaction))
                     rollback.ExecuteNonQuery();
                 throw;
             }
