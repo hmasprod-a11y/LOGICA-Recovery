@@ -278,6 +278,19 @@ namespace LOGICA.ApplicationLayer.Checkout
                 return new CheckoutBasketPreview(choice.Status, null, null, null, null);
             if (choice.SelectedRow == null)
                 throw new InvalidOperationException("A selected article must have a live row.");
+            // A catalogue row can be removed after selection and before the
+            // legacy pricing callback runs. Never price a deleted/detached
+            // article or a row whose required identity columns disappeared.
+            // This preserves the caller's VB pricing/rounding implementation.
+            DataRow selected = choice.SelectedRow;
+            if (selected.RowState == DataRowState.Deleted ||
+                selected.RowState == DataRowState.Detached ||
+                selected.Table == null ||
+                !selected.Table.Columns.Contains("ID_ARTICLE") ||
+                !selected.Table.Columns.Contains("Code") ||
+                selected.IsNull("ID_ARTICLE") ||
+                String.IsNullOrWhiteSpace(Convert.ToString(selected["ID_ARTICLE"])))
+                throw new InvalidOperationException("The selected article is no longer valid for checkout.");
             if (calculateLegacyLineNet == null)
                 throw new ArgumentNullException("calculateLegacyLineNet");
             if (legacy == null) throw new ArgumentNullException("legacy");
