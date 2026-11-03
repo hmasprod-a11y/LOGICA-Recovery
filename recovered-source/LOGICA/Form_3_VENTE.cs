@@ -14621,7 +14621,9 @@ public class Form_3_VENTE : Form
 				Module1.cn_SQL.Close();
 				Text_TOTAL_NET.Text = Strings.FormatNumber(num);
 				decimal num2 = (from DataGridViewRow row in (IEnumerable)DataGridView1.Rows
-					where decimal.Compare(Conversions.ToDecimal(row.Cells["Qté"].Value), 0m) != 0
+					where !row.IsNewRow && row.Cells["Qté"].Value != null &&
+                        row.Cells["Qté"].Value != DBNull.Value &&
+                        decimal.Compare(Conversions.ToDecimal(row.Cells["Qté"].Value), 0m) != 0
 					select row).Sum([SpecialName] (DataGridViewRow row) => Conversions.ToDecimal(row.Cells["Qté"].Value));
 				Label_NBR_ARTICLES.Text = Conversions.ToString(num2);
 				if (Operators.CompareString(Combo_PORT.Text, "", TextCompare: false) == 0)
@@ -14806,6 +14808,44 @@ public class Form_3_VENTE : Form
         mapping.ColumnMappings.Add("Qte", "Qté");
         mapping.ColumnMappings.Add("Quantite", "Qté");
         return adapter;
+    }
+
+    private static void RemapCheckoutCommandSourceColumns(MySqlCommand command)
+    {
+        if (command == null)
+            return;
+        foreach (MySqlParameter parameter in command.Parameters)
+        {
+            if (string.Equals(parameter.SourceColumn, "QtÃ©", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(parameter.SourceColumn, "Qte", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(parameter.SourceColumn, "Quantite", StringComparison.OrdinalIgnoreCase))
+                parameter.SourceColumn = "Qté";
+        }
+    }
+
+    // Bind generated SQL parameters to the cashier's in-memory column name,
+    // while leaving the physical SQL column identifier unchanged.
+    private static void UpdateCheckoutCart()
+    {
+        using (MySqlCommandBuilder builder = new MySqlCommandBuilder(Module1.da1))
+        {
+            if (Module1.dt1.Rows.Cast<DataRow>().Any(row => row.RowState == DataRowState.Added))
+            {
+                Module1.da1.InsertCommand = builder.GetInsertCommand();
+                RemapCheckoutCommandSourceColumns(Module1.da1.InsertCommand);
+            }
+            if (Module1.dt1.Rows.Cast<DataRow>().Any(row => row.RowState == DataRowState.Modified))
+            {
+                Module1.da1.UpdateCommand = builder.GetUpdateCommand();
+                RemapCheckoutCommandSourceColumns(Module1.da1.UpdateCommand);
+            }
+            if (Module1.dt1.Rows.Cast<DataRow>().Any(row => row.RowState == DataRowState.Deleted))
+            {
+                Module1.da1.DeleteCommand = builder.GetDeleteCommand();
+                RemapCheckoutCommandSourceColumns(Module1.da1.DeleteCommand);
+            }
+            ((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+        }
     }
 
     private static void NormalizeLoadedCheckoutQuantityColumn()
@@ -15127,8 +15167,7 @@ public class Form_3_VENTE : Form
 						{
 							Module1.dt1.Rows[num2]["TOTAL_NET"] = Strings.FormatNumber(Operators.SubtractObject(Operators.MultiplyObject(Module1.dt1.Rows[num2]["PRIX_V"], Module1.dt1.Rows[num2]["Qté"]), Operators.DivideObject(Operators.MultiplyObject(Operators.MultiplyObject(Module1.dt1.Rows[num2]["PRIX_V"], Module1.dt1.Rows[num2]["Qté"]), Module1.dt1.Rows[num2]["REMISE"]), 100)));
 						}
-						MySqlCommandBuilder val = new MySqlCommandBuilder(Module1.da1);
-						((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+						UpdateCheckoutCart();
 						Module1.dt1.AcceptChanges();
 						int index = num2;
 						if (Conversion.Val(Text_PRIX_QTE.Text) > 0.0)
@@ -15160,8 +15199,7 @@ public class Form_3_VENTE : Form
 								{
 									Module1.dt1.Rows[index]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(Convert.ToDouble(decimal.Multiply(Conversions.ToDecimal(Text_PRIX_QTE.Text), num5)) - Conversions.ToDouble(Text_PRIX_QTE.Text) * Convert.ToDouble(num5) * Conversions.ToDouble(Text_PROMOTION.Text) / 100.0)) * -1.0;
 								}
-								MySqlCommandBuilder val2 = new MySqlCommandBuilder(Module1.da1);
-								((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+								UpdateCheckoutCart();
 								Module1.dt1.AcceptChanges();
 							}
 							else
@@ -15175,8 +15213,7 @@ public class Form_3_VENTE : Form
 								{
 									Module1.dt1.Rows[index]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(Convert.ToDouble(decimal.Multiply(Conversions.ToDecimal(Text_PRIXV.Text), num5)) - Conversions.ToDouble(Text_PRIXV.Text) * Convert.ToDouble(num5) * Conversions.ToDouble(Text_PROMOTION.Text) / 100.0)) * -1.0;
 								}
-								MySqlCommandBuilder val3 = new MySqlCommandBuilder(Module1.da1);
-								((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+								UpdateCheckoutCart();
 								Module1.dt1.AcceptChanges();
 							}
 						}
@@ -15231,8 +15268,7 @@ public class Form_3_VENTE : Form
 				Module1.dt1.Rows[index2]["PRINTER"] = Text_PRINTER.Text;
 				Module1.dt1.Rows[index2]["PRINTER_DUPLICATA"] = Text_PRINTER_DUPLICATA.Text;
 				if (Module1.dt1.Columns.Contains("GROUPE")) Module1.dt1.Rows[index2]["GROUPE"] = Text_GROUPE.Text;
-				MySqlCommandBuilder val4 = new MySqlCommandBuilder(Module1.da1);
-				((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+				UpdateCheckoutCart();
 				Module1.dt1.AcceptChanges();
 				if (Conversion.Val(Text_PRIX_QTE.Text) > 0.0)
 				{
@@ -15263,8 +15299,7 @@ public class Form_3_VENTE : Form
 						{
 							Module1.dt1.Rows[index2]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(Convert.ToDouble(decimal.Multiply(Conversions.ToDecimal(Text_PRIX_QTE.Text), num7)) - Conversions.ToDouble(Text_PRIX_QTE.Text) * Convert.ToDouble(num7) * Conversions.ToDouble(Text_PROMOTION.Text) / 100.0)) * -1.0;
 						}
-						MySqlCommandBuilder val5 = new MySqlCommandBuilder(Module1.da1);
-						((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+						UpdateCheckoutCart();
 						Module1.dt1.AcceptChanges();
 					}
 					else
@@ -15278,8 +15313,7 @@ public class Form_3_VENTE : Form
 						{
 							Module1.dt1.Rows[index2]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(Convert.ToDouble(decimal.Multiply(Conversions.ToDecimal(Text_PRIXV.Text), num7)) - Conversions.ToDouble(Text_PRIXV.Text) * Convert.ToDouble(num7) * Conversions.ToDouble(Text_PROMOTION.Text) / 100.0)) * -1.0;
 						}
-						MySqlCommandBuilder val6 = new MySqlCommandBuilder(Module1.da1);
-						((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+						UpdateCheckoutCart();
 						Module1.dt1.AcceptChanges();
 					}
 				}
@@ -16075,8 +16109,7 @@ public class Form_3_VENTE : Form
 			}
 			int position = ((ContainerControl)this).BindingContext[(object)Module1.dt1].Position;
 			Module1.dt1.Rows[position].Delete();
-			MySqlCommandBuilder val = new MySqlCommandBuilder(Module1.da1);
-			((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+			UpdateCheckoutCart();
 			Module1.dt1.AcceptChanges();
 			((ContainerControl)this).BindingContext[(object)Module1.dt1].Position = position;
 			Text_TOTAL_NET_Click(RuntimeHelpers.GetObjectValue(sender), e);
@@ -16470,8 +16503,7 @@ public class Form_3_VENTE : Form
 				{
 					Module1.dt1.Rows[position]["TOTAL_NET"] = Conversions.ToDouble(Strings.FormatNumber(LOGICA.Domain.SalesLinePricing.CalculateNetAmount(selectedUnitPrice, num, d))) * -1.0;
 				}
-				MySqlCommandBuilder val3 = new MySqlCommandBuilder(Module1.da1);
-				((DbDataAdapter)(object)Module1.da1).Update(Module1.dt1);
+				UpdateCheckoutCart();
 				Module1.dt1.AcceptChanges();
 			}
 			Text_TOTAL_NET_Click(RuntimeHelpers.GetObjectValue(sender), e);
