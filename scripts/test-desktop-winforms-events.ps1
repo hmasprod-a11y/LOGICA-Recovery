@@ -7,7 +7,7 @@ if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
 }
 $sourcePath = Join-Path $PSScriptRoot '..\recovered-source\LOGICA\Form_3_VENTE.cs'
 $source = [IO.File]::ReadAllText((Resolve-Path $sourcePath))
-$classes = @('BarcodeEnterPresenter', 'ProductSearchResetPresenter', 'ProductSelectionPresenter', 'ArticleImageScrollPresenter', 'ProductSearchFocusPresenter')
+$classes = @('BarcodeEnterPresenter', 'ProductSearchResetPresenter', 'ProductSelectionPresenter', 'ArticleImageScrollPresenter', 'ProductSearchFocusPresenter', 'BarcodeInputFocusPresenter')
 $production = foreach ($name in $classes) {
     $pattern = '(?s)internal static class ' + [regex]::Escape($name) + '\s*\{.*?\n\}'
     $match = [regex]::Match($source, $pattern)
@@ -17,6 +17,7 @@ $production = foreach ($name in $classes) {
 $code = 'using System; using System.Windows.Forms; using System.Drawing; ' + ($production -join [Environment]::NewLine)
 $code += @'
 public static class PresenterHarness {
+    public static void SelectBarcode(System.Windows.Forms.TextBoxBase input) { BarcodeInputFocusPresenter.SelectAll(input); }
     public static System.Drawing.Color Focus(bool focused) { return ProductSearchFocusPresenter.Background(focused); }
     public static bool Clear(string value) { return ProductSearchResetPresenter.ShouldClearText(value); }
     public static bool Submit(Keys key, Keys modifiers) { return BarcodeEnterPresenter.ShouldSubmit(key, modifiers); }
@@ -72,6 +73,18 @@ try {
     $raiseLeave.Invoke($text, @([EventArgs]::Empty)) | Out-Null
     Assert ($text.BackColor -eq [System.Drawing.Color]::White) 'RTL search focus reset'
     Assert ($text.RightToLeft -eq [System.Windows.Forms.RightToLeft]::Yes) 'RTL preserved after focus'
+    # Actual click event on a WinForms TextBox, routed to the production adapter.
+    $text.Text = '0123456789'
+    $text.SelectionStart = 3
+    $text.SelectionLength = 0
+    $text.add_Click({ [PresenterHarness]::SelectBarcode($text) })
+    $raiseClick = [System.Windows.Forms.Control].GetMethod('OnClick', [Reflection.BindingFlags]'Instance,NonPublic')
+    Assert ($null -ne $raiseClick) 'WinForms click event method'
+    $raiseClick.Invoke($text, @([EventArgs]::Empty)) | Out-Null
+    Assert ($text.SelectionStart -eq 0 -and $text.SelectionLength -eq 10) 'barcode click selects full scan input'
+    Assert (-not $text.HideSelection) 'barcode selection visible on focus change'
+    Assert ($text.Text -eq '0123456789') 'barcode click must not alter text'
+    [PresenterHarness]::SelectBarcode($null)
     Assert ([PresenterHarness]::Lookup($true, '12345', $null)) 'barcode selection'
     Assert (-not [PresenterHarness]::Lookup($true, ' ', $null)) 'empty barcode'
     Assert ([PresenterHarness]::Lookup($false, $null, '42')) 'image tile selection'
