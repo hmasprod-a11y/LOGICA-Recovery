@@ -40,6 +40,15 @@ assert "EnsureCheckoutQuantityColumn();" in sales
 assert 'NormalizeLoadedCheckoutQuantityColumn();' in sales
 assert 'string.Equals(column.ColumnName, "QtÃ©", StringComparison.OrdinalIgnoreCase)' in sales
 assert 'legacy.ColumnName = "Qté";' in sales
+# The actual INSERT/UPDATE path uses MySqlCommandBuilder: map physical DB
+# quantity names before Fill, rather than only renaming a DataColumn afterward.
+assert 'private static MySqlDataAdapter CreateCheckoutCartAdapter()' in sales
+assert 'adapter.TableMappings.Add("Table", "Table")' in sales
+for physical in ("QtÃ©", "Qte", "Quantite"):
+    assert 'mapping.ColumnMappings.Add("' + physical + '", "Qté")' in sales
+assert sales.count('Module1.da1 = CreateCheckoutCartAdapter();') == 4
+assert 'new MySqlCommandBuilder(Module1.da1)' in sales
+
 assert sales.index("NormalizeLoadedCheckoutQuantityColumn();") < sales.index('foreach (string required in new[]')
 startup = sales.split("private static void EnsureCheckoutQuantityColumn()", 1)[1].split("private static string ExactImageArticleSql()", 1)[0]
 assert "ALTER TABLE" not in startup and "CREATE TABLE" not in startup and "UPDATE `" not in startup
