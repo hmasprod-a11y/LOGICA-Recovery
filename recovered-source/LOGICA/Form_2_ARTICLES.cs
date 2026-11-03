@@ -17496,11 +17496,29 @@ public class Form_2_ARTICLES : Form
 				((Control)Text_QTE_COLLECTION).Enabled = allowInitialQuantity;
 				((Control)Button_PLUS).Enabled = allowInitialQuantity;
 				((Control)Button_MOINS).Enabled = allowInitialQuantity;
-				if (!allowInitialQuantity && (!decimal.TryParse(Text_QTE_COLLECTION.Text, out decimal collectionQuantity) || collectionQuantity != 0m))
+				if (!allowInitialQuantity)
 				{
-					MessageBox.Show("Ajout manuel de stock interdit par les paramètres.", "Stock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-					Text_QTE_COLLECTION.Text = "0";
-					return;
+					decimal draftQuantity;
+					bool violates = !decimal.TryParse(Text_QTE_COLLECTION.Text, out draftQuantity) || draftQuantity != 0m;
+					// The collection grid can retain quantity values even after
+					// the optional input has been disabled. Check persisted rows.
+					foreach (DataGridViewRow collectionRow in DataGrid_COLLECTION.Rows)
+					{
+						if (collectionRow.IsNewRow) continue;
+						object value = collectionRow.Cells["Qté_LISTE"].Value;
+						decimal quantity;
+						if (!decimal.TryParse(Convert.ToString(value), out quantity) || quantity != 0m)
+						{
+							violates = true;
+							break;
+						}
+					}
+					if (violates)
+					{
+						MessageBox.Show("Ajout manuel de stock interdit par les paramètres.", "Stock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+						Text_QTE_COLLECTION.Text = "0";
+						return;
+					}
 				}
 				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_CODE_COLLECTION.Text, LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance))
 				{
