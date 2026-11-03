@@ -14780,63 +14780,38 @@ public class Form_3_VENTE : Form
     // Fix the required quantity column at POS startup, before binding the cart.
     // A complete table snapshot is created FIRST; never alter a live shop table
     // if the backup cannot be completed. No existing column or value is removed.
+    // Preserve legacy cashier tables. Never migrate or rewrite live store data at POS startup.
     private static void EnsureCheckoutQuantityColumn()
     {
-        string poste = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text;
-        if (string.IsNullOrWhiteSpace(poste) ||
-            !System.Text.RegularExpressions.Regex.IsMatch(poste, @"^[A-Za-z0-9_]{1,32}$"))
-            throw new InvalidOperationException("Invalid POS workstation table identifier.");
-
-        string table = "TABLE_" + poste;
-        MySqlConnection connection = Module1.cn_SQL;
-        bool openedHere = connection.State != ConnectionState.Open;
-        if (openedHere) connection.Open();
-        try
-        {
-            bool hasQuantity = false;
-            string alternate = null;
-            using (MySqlCommand inspect = new MySqlCommand("SHOW COLUMNS FROM `" + table + "`", connection))
-            using (MySqlDataReader reader = inspect.ExecuteReader())
-            {
-                while (reader.Read())
-                {
-                    string col = reader.GetString(0);
-                    if (string.Equals(col, "Qté", StringComparison.OrdinalIgnoreCase))
-                        hasQuantity = true;
-                    if (string.Equals(col, "Qte", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(col, "Quantite", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(col, "QtÃ©", StringComparison.OrdinalIgnoreCase))
-                        alternate = col;
-                }
-            }
-            if (hasQuantity) return;
-
-            string backup = table + "_BACKUP_" + DateTime.Now.ToString("yyyyMMddHHmmss");
-            using (MySqlCommand create = new MySqlCommand("CREATE TABLE `" + backup + "` LIKE `" + table + "`", connection))
-                create.ExecuteNonQuery();
-            using (MySqlCommand copy = new MySqlCommand("INSERT INTO `" + backup + "` SELECT * FROM `" + table + "`", connection))
-                copy.ExecuteNonQuery();
-            using (MySqlCommand add = new MySqlCommand("ALTER TABLE `" + table + "` ADD COLUMN `Qté` DOUBLE NOT NULL DEFAULT 0", connection))
-                add.ExecuteNonQuery();
-            if (alternate != null)
-            {
-                using (MySqlCommand preserve = new MySqlCommand(
-                    "UPDATE `" + table + "` SET `Qté` = COALESCE(`" + alternate + "`, 0)", connection))
-                    preserve.ExecuteNonQuery();
-            }
-        }
-        finally
-        {
-            if (openedHere) connection.Close();
-        }
+        // Quantity aliases are normalized only after the cart DataTable is loaded.
+        // The database remains untouched; any actual DB write must use its existing schema.
     }
 
-    // Diagnose the ACTUAL bound cashier data table, not just information_schema.
-    // Never let a missing required sales column become a misleading random line error.
+    private static void NormalizeLoadedCheckoutQuantityColumn()
+    {
+        if (Module1.dt1 == null)
+            throw new InvalidOperationException("POS cart table has not been loaded.");
+
+        if (Module1.dt1.Columns.Contains("Qté"))
+            return;
+
+        DataColumn legacy = Module1.dt1.Columns.Cast<DataColumn>()
+            .FirstOrDefault(column =>
+                string.Equals(column.ColumnName, "QtÃ©", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(column.ColumnName, "Qte", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(column.ColumnName, "Quantite", StringComparison.OrdinalIgnoreCase));
+        if (legacy == null)
+            return; // Preserve the strict missing-column diagnostic for unknown schemas.
+
+        // In-memory compatibility for the legacy cart UI and calculations only.
+        legacy.ColumnName = "Qté";
+    }
+
     private static void AssertCheckoutCartColumns()
     {
         if (Module1.dt1 == null)
             throw new InvalidOperationException("POS cart table has not been loaded.");
+        NormalizeLoadedCheckoutQuantityColumn();
         foreach (string required in new[] { "ID", "ID_ARTICLE", "Code", "Article", "Famille",
             "PRIX_A", "PRIX_MP", "Prix_V", "Qté", "Remise", "TOTAL_NET",
             "TAUX_TVA", "PRINTER", "PRINTER_DUPLICATA" })
