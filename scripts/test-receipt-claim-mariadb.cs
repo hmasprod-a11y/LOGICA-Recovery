@@ -62,6 +62,11 @@ internal static class ReceiptClaimMariaDbSmoke
             "INSERT INTO TABLE_MOUVEMENTS_STOCK (ID_BR, ID_ARTICLE, QUANTITE) " +
             "VALUES (@receiptId, @articleId, @quantity)",
             "@receiptId", receiptId, "@articleId", articleId, "@quantity", quantity);
+        // Model the real legacy finalization: details must be committed with
+        // header, stock and movement, never in a separate transaction.
+        Execute(connection, transaction,
+            "UPDATE TABLE_RECEPTIONS_DETAILS SET ETAT = 'VALIDER' WHERE ID_BR = @receiptId",
+            "@receiptId", receiptId);
     }
 
     private static void Check(MySqlConnectionStringBuilder settings, string receiptId,
@@ -90,6 +95,31 @@ internal static class ReceiptClaimMariaDbSmoke
                 command.Parameters.AddWithValue("@receiptId", receiptId);
                 Require(Convert.ToString(command.ExecuteScalar()) == state,
                     "Unexpected receipt state for " + receiptId);
+            }
+        }
+    }
+
+    private static void CheckDetailState(MySqlConnectionStringBuilder settings,
+        string receiptId, string expectedState)
+    {
+        using (var connection = new MySqlConnection(settings.ConnectionString))
+        {
+            connection.Open();
+            using (var command = new MySqlCommand(
+                "SELECT COUNT(*), SUM(CASE WHEN ETAT = @state THEN 1 ELSE 0 END) " +
+                "FROM TABLE_RECEPTIONS_DETAILS WHERE ID_BR = @receiptId", connection))
+            {
+                command.Parameters.AddWithValue("@receiptId", receiptId);
+                command.Parameters.AddWithValue("@state", expectedState);
+                using (MySqlDataReader reader = command.ExecuteReader())
+                {
+                    Require(reader.Read(), "Missing receipt detail state aggregate");
+                    int total = Convert.ToInt32(reader.GetValue(0), CultureInfo.InvariantCulture);
+                    int correct = reader.IsDBNull(1) ? 0 :
+                        Convert.ToInt32(reader.GetValue(1), CultureInfo.InvariantCulture);
+                    Require(total > 0 && total == correct,
+                        "Receipt details were not finalized/rolled back atomically: " + receiptId);
+                }
             }
         }
     }
@@ -168,6 +198,7 @@ internal static class ReceiptClaimMariaDbSmoke
                 transaction.Rollback();
             }
             Check(scratch, "BR'1", "ART-1", 2.500m, 1, "VALIDER");
+            CheckDetailState(scratch, "BR'1", "VALIDER");
 
             // Two distinct database connections: the second must wait for the
             // first transaction's header lock, then refuse the already posted ID.
@@ -201,6 +232,7 @@ internal static class ReceiptClaimMariaDbSmoke
                 }
             }
             Check(scratch, "BR-2", "ART-2", 7m, 1, "VALIDER");
+            CheckDetailState(scratch, "BR-2", "VALIDER");
 
             // The claim must lock persisted receipt details, not merely read
             // their existence. A second client cannot delete a detail while
@@ -293,6 +325,7 @@ internal static class ReceiptClaimMariaDbSmoke
                 transaction.Rollback();
             }
             Check(scratch, "BR-3", "ART-3", 0m, 0, "ENREGISTRER");
+            CheckDetailState(scratch, "BR-3", "ENREGISTRER");
             using (var transaction = connection.BeginTransaction())
             {
                 Require(Claim(method, connection, transaction, "BR-3"), "Retry after rollback failed");
@@ -300,6 +333,7 @@ internal static class ReceiptClaimMariaDbSmoke
                 transaction.Commit();
             }
             Check(scratch, "BR-3", "ART-3", 4m, 1, "VALIDER");
+            CheckDetailState(scratch, "BR-3", "VALIDER");
 
             using (var transaction = connection.BeginTransaction())
             {
@@ -335,6 +369,7 @@ internal static class ReceiptClaimMariaDbSmoke
                 transaction.Commit();
             }
             Check(scratch, "BR-EMPTY", "ART-EMPTY", 1.250m, 1, "VALIDER");
+            CheckDetailState(scratch, "BR-EMPTY", "VALIDER");
 
             // Only the actual legacy pending state ENREGISTRER may post stock.
             // Cancelled/draft/unknown receipts must remain unchanged even if
@@ -393,6 +428,7 @@ internal static class ReceiptClaimMariaDbSmoke
             }
             Check(scratch, "BR-DETAIL-MIX", "ART-DETAIL-MIX",
                 3.125m, 1, "VALIDER");
+            CheckDetailState(scratch, "BR-DETAIL-MIX", "VALIDER");
 
             // Nontransactional legacy tables cannot guarantee rollback.
             // Reject them before any receipt header or stock write.
