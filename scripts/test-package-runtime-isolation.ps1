@@ -131,6 +131,23 @@ try {
         }
         if (-not $hiddenRejected) { throw 'Release candidate accepted hidden credential fixture' }
         Write-Host 'PASS: release candidate rejects hidden credential files'
+        # Database state must be rejected regardless of its depth in dist.
+        foreach ($relative in @('bd/mysql-data', 'nested/bd/mysql-data')) {
+            $databasePath = Join-Path (Join-Path $work 'dist') $relative
+            New-Item -ItemType Directory -Force -Path $databasePath | Out-Null
+            [IO.File]::WriteAllText((Join-Path $databasePath 'synthetic.ibd'), 'FAKE-DATABASE-STATE')
+            $rejected = $false
+            try { & $candidateGate | Out-Null }
+            catch {
+                if ($_.Exception.Message -notlike '*Test database state leaked into release package*') { throw }
+                $rejected = $true
+            } finally {
+                Remove-Item -LiteralPath $databasePath -Recurse -Force
+            }
+            if (-not $rejected) { throw "Release candidate accepted database state fixture: $relative" }
+        }
+        Write-Host 'PASS: release candidate rejects nested MariaDB data directories'
+
 
         Write-Host 'PASS: release candidate rejects synthetic environment files and private keys'
         Write-Host 'PASS: portable package preserves approved visual preferences only; private shop, device, login and license defaults are isolated'
