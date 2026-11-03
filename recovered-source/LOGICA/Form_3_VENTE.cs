@@ -14706,6 +14706,26 @@ public class Form_3_VENTE : Form
 		return "select * from TABLE_ARTICLES WHERE ID_ARTICLE = @id";
 	}
 
+	// UI adapter only: keep the existing legacy DataRow-to-control mapping in one place.
+	// Checkout Core owns selection identity; this method never posts sales or stock.
+	private void PopulateSelectedArticleFields(DataRow selectedArticle)
+	{
+		Text_ID_ARTICLE.Text = selectedArticle["ID_ARTICLE"].ToString();
+		Text_CODE.Text = selectedArticle["Code"].ToString();
+		Text_ARTICLE.Text = selectedArticle["Article"].ToString();
+		Text_FAMILLE.Text = selectedArticle["Famille"].ToString();
+		Text_PRIX_A.Text = selectedArticle["PRIX_A"].ToString();
+		Text_PRIX_MP.Text = selectedArticle["PRIX_MP"].ToString();
+		Text_PRIXV.Text = selectedArticle["Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5)].ToString();
+		Text_TAUX_TVA.Text = selectedArticle["TAUX_TVA"].ToString();
+		Text_PROMOTION.Text = selectedArticle["PROMOTION"].ToString();
+		Text_PRINTER.Text = selectedArticle["PRINTER"].ToString();
+		Text_PRINTER_DUPLICATA.Text = selectedArticle["PRINTER_DUPLICATA"].ToString();
+		Text_GROUPE.Text = selectedArticle["GROUPE"].ToString();
+		Text_PRIX_QTE.Text = selectedArticle["PRIX_QTE"].ToString();
+		Text_PRIX_QTE_MIN.Text = selectedArticle["PRIX_QTE_MIN"].ToString();
+	}
+
 	private void Button_FIND_Click(object sender, EventArgs e)
 	{
 		// A scanner or image/list handler can call this method directly even while
@@ -14760,20 +14780,7 @@ public class Form_3_VENTE : Form
 					((Control)Text_CODE).Focus();
 					return;
 				}
-				Text_ID_ARTICLE.Text = selectedArticle["ID_ARTICLE"].ToString();
-				Text_CODE.Text = selectedArticle["Code"].ToString();
-				Text_ARTICLE.Text = selectedArticle["Article"].ToString();
-				Text_FAMILLE.Text = selectedArticle["Famille"].ToString();
-				Text_PRIX_A.Text = selectedArticle["PRIX_A"].ToString();
-				Text_PRIX_MP.Text = selectedArticle["PRIX_MP"].ToString();
-				Text_PRIXV.Text = selectedArticle["Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5)].ToString();
-				Text_TAUX_TVA.Text = selectedArticle["TAUX_TVA"].ToString();
-				Text_PROMOTION.Text = selectedArticle["PROMOTION"].ToString();
-				Text_PRINTER.Text = selectedArticle["PRINTER"].ToString();
-				Text_PRINTER_DUPLICATA.Text = selectedArticle["PRINTER_DUPLICATA"].ToString();
-				Text_GROUPE.Text = selectedArticle["GROUPE"].ToString();
-				Text_PRIX_QTE.Text = selectedArticle["PRIX_QTE"].ToString();
-				Text_PRIX_QTE_MIN.Text = selectedArticle["PRIX_QTE_MIN"].ToString();
+				PopulateSelectedArticleFields(selectedArticle);
 				if (Operators.CompareString(selectedArticle["FENETRE_PESAGE"].ToString(), "OUI", TextCompare: false) == 0)
 				{
 					MyProject.Forms.FormDialog_PESEE_BALANCE.Text_PRIX_V.Text = selectedArticle["Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5)].ToString();
