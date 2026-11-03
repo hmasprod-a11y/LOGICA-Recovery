@@ -106,7 +106,7 @@ namespace LOGICA.Infrastructure.Purchasing
             // Caller still owns quantity validation, stock/movement writes,
             // details state and the final Commit/Rollback.
             using (var details = new MySqlCommand(
-                "SELECT ID_BR FROM TABLE_RECEPTIONS_DETAILS " +
+                "SELECT ETAT FROM TABLE_RECEPTIONS_DETAILS " +
                 "WHERE ID_BR = @receiptId FOR UPDATE",
                 connection, transaction))
             {
@@ -115,7 +115,15 @@ namespace LOGICA.Infrastructure.Purchasing
                 {
                     if (!reader.Read())
                         throw new InvalidOperationException("Receipt has no persisted detail rows; refusing stock posting.");
-                    while (reader.Read()) { } // Lock/consume all matching rows.
+                    do
+                    {
+                        // Persisted lines, not the editable UI grid, determine whether
+                        // a receipt may post. Mixed/cancelled/already-validated lines
+                        // must fail closed before the first stock or movement write.
+                        string detailState = reader.IsDBNull(0) ? null : Convert.ToString(reader.GetValue(0));
+                        if (!String.Equals(detailState, "ENREGISTRER", StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidOperationException("Receipt contains a detail not in ENREGISTRER state.");
+                    } while (reader.Read()); // Consume and lock every matching row.
                 }
             }
 
