@@ -1630,7 +1630,7 @@ public class Form_2_Familles : Form
 		// Old shop installations can omit the optional GROUPES setting.
 		// Never dereference a missing ListViewItem while adding a family.
 		ListView settings = MyProject.Forms.Form_0_TEMPLATE.ListView1;
-		if (settings == null) return false;
+		if (settings == null || settings.Items.Count == 0) return false;
 		ListViewItem setting = settings.FindItemWithText("GROUPES", false, 0);
 		if (setting == null || setting.SubItems.Count < 2) return false;
 		bool enabled;
