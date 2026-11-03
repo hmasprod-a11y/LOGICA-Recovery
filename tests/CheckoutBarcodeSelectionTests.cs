@@ -137,9 +137,19 @@ internal static class CheckoutBarcodeSelectionTests
                 checks++;
                 incompleteBasket.Rows[0]["ID_ARTICLE"] = "1";
                 incompleteBasket.Rows[0]["Code"] = DBNull.Value;
+                comparisons = 0;
+                if (CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                        incompleteBasket.Rows[0], DBNull.Value, "1", equal) ||
+                    comparisons != 0)
+                    throw new Exception("SQL NULL barcode is not an explicit image-only empty code");
+                checks++;
+                // An image-only product is represented by an explicit empty code,
+                // never SQL NULL; preserve its original article identity.
+                incompleteBasket.Rows[0]["Code"] = "";
                 if (!CheckoutBarcodeSelectionService.IsSameBasketArticle(
-                        incompleteBasket.Rows[0], DBNull.Value, "1", equal))
-                    throw new Exception("Image-only SQL-null barcode must remain compatible");
+                        incompleteBasket.Rows[0], "", "1", equal) ||
+                    comparisons != 2)
+                    throw new Exception("Image-only empty barcode must match the exact article ID");
                 checks++;
                 // Real Form_3_VENTE passes the original DataTable into a modal
                 // chooser. A timer/refresh can reorder its rows before the
