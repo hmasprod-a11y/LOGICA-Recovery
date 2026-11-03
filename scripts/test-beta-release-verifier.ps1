@@ -1,6 +1,20 @@
 # Isolated contract and adversarial tests for the independent offline release verifier.
 $ErrorActionPreference = 'Stop'
 $verifier = Join-Path $PSScriptRoot 'verify-beta-rc.ps1'
+# Parse before any fixture setup. An accidental duplicated/truncated tail must
+# fail with a targeted diagnostic, not after costly CI build and packaging.
+$tokens = $null
+$parseErrors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile(
+    $verifier, [ref]$tokens, [ref]$parseErrors)
+if ($parseErrors.Count -gt 0) {
+    throw "Release verifier PowerShell syntax invalid: $($parseErrors[0])"
+}
+$sourceText = [IO.File]::ReadAllText($verifier)
+if (($sourceText.Split(@('Add-Type -AssemblyName System.IO.Compression.FileSystem'), [StringSplitOptions]::None).Count -ne 2) -or
+    ($sourceText.Split(@('Write-Host "PASS: offline beta RC1 verification:'), [StringSplitOptions]::None).Count -ne 2)) {
+    throw 'Release verifier contains duplicated execution blocks'
+}
 $work = Join-Path ([IO.Path]::GetTempPath()) ('logica-beta-verifier-' + [Guid]::NewGuid().ToString('N'))
 $src = Join-Path $work 'src'
 $release = Join-Path $work 'release'
