@@ -46,8 +46,10 @@ assert 'legacy.ColumnName = "Qté";' in sales
 assert 'private static MySqlDataAdapter CreateCheckoutCartAdapter()' in sales
 assert 'adapter.TableMappings.Add("Table", "Table")' not in sales
 assert 'mapping.ColumnMappings.Add(' not in sales
-for physical in ("QtÃ©", "Qte", "Quantite"):
-    assert 'string.Equals(parameter.SourceColumn, "' + physical + '"' in sales
+for physical in ("QtÃ©", "QtÃƒÂ©", "Qte", "Quantite"):
+    assert 'string.Equals(name, "' + physical + '"' in sales
+assert 'IsLegacyCheckoutQuantityColumn(parameter.SourceColumn)' in sales
+assert 'IsLegacyCheckoutQuantityColumn(column.ColumnName)' in sales
 assert sales.count('AssertCheckoutCartColumns();') >= 4
 assert sales.count('Module1.da1 = CreateCheckoutCartAdapter();') == 4
 assert 'using (MySqlCommandBuilder builder = new MySqlCommandBuilder(Module1.da1))' in sales
