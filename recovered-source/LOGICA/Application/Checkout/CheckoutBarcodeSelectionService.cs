@@ -16,6 +16,12 @@ namespace LOGICA.ApplicationLayer.Checkout
         {
             if (basketLine == null) throw new ArgumentNullException("basketLine");
             if (legacyEquals == null) throw new ArgumentNullException("legacyEquals");
+            // Never match a stale or unselected article identity. In particular,
+            // a null/blank selected ID must not match a corrupt basket row via
+            // legacy VB equality and increment an unrelated article.
+            if (selectedArticleId == null || selectedArticleId == DBNull.Value ||
+                String.IsNullOrWhiteSpace(Convert.ToString(selectedArticleId)))
+                return false;
             // A basket line removed while the duplicate-variant dialog was open
             // must never be reused for a second sale. Fail closed without
             // invoking the caller's legacy equality callback.
