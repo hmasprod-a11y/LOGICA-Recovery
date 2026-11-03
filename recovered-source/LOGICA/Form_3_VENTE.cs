@@ -14915,6 +14915,29 @@ public class Form_3_VENTE : Form
 
     // Bind generated SQL parameters to the cashier's in-memory column name,
     // while leaving the physical SQL column identifier unchanged.
+    private static void MatchCheckoutUpdateByPrimaryKey(MySqlCommand command)
+    {
+        if (command == null) return;
+        MySqlParameter key = null;
+        foreach (MySqlParameter parameter in command.Parameters)
+        {
+            if (string.Equals(parameter.SourceColumn, "ID", StringComparison.OrdinalIgnoreCase) &&
+                parameter.SourceVersion == DataRowVersion.Original)
+            {
+                if (key != null)
+                    throw new InvalidOperationException("Ambiguous original cart identity parameters.");
+                key = parameter;
+            }
+        }
+        if (key == null)
+            throw new InvalidOperationException("Cart update cannot locate original ID.");
+        int where = command.CommandText.LastIndexOf(" WHERE ", StringComparison.OrdinalIgnoreCase);
+        if (where < 0)
+            throw new InvalidOperationException("Generated cart update has no WHERE clause.");
+        command.CommandText = command.CommandText.Substring(0, where) +
+            " WHERE `ID` = " + key.ParameterName;
+    }
+
     private static void UpdateCheckoutCart()
     {
         // MySqlCommandBuilder owns its generated commands and RowUpdating hook.
@@ -14945,6 +14968,12 @@ public class Form_3_VENTE : Form
             {
                 RemapCheckoutCommandSourceColumns(update);
                 MatchCheckoutCommandSqlColumn(update, physicalQuantity);
+                // This is a per-workstation cart row. Connector/NET generates a
+                // full-row optimistic WHERE which compares transformed floats,
+                // strings and accented metadata, producing false zero-row
+                // concurrency errors on the second click. Match the stable
+                // primary key only; never swallow a real missing-row error.
+                MatchCheckoutUpdateByPrimaryKey(update);
                 Module1.da1.UpdateCommand = update;
             }
             if (delete != null)
