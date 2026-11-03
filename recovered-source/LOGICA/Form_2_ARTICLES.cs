@@ -14407,7 +14407,6 @@ public class Form_2_ARTICLES : Form
 		{
 			try
 			{
-				if (!ValidateManualStockPermission()) return;
 				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_CODE.Text, LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance))
 				{
 					MessageBox.Show("Veuillez remplir le champ -Code- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
@@ -14508,6 +14507,9 @@ public class Form_2_ARTICLES : Form
 					MessageBox.Show("Article modifié ou identité ambiguë. Actualisez la liste avant d'enregistrer.");
 					return;
 				}
+				// Validate stock permissions after the ordinary required-field
+				// diagnostics, but before any database/image mutation.
+				if (!ValidateManualStockPermission()) return;
 				// Never persist an article pointing to an image which failed to save.
 				// The legacy "0" sentinel intentionally means no image.
 				if (!TryPersistArticleImage())
@@ -17491,35 +17493,6 @@ public class Form_2_ARTICLES : Form
 		{
 			try
 			{
-				bool allowInitialQuantity;
-				bool.TryParse(ReadArticleSetting("AJOUT_STOCK_MANUEL", "False"), out allowInitialQuantity);
-				((Control)Text_QTE_COLLECTION).Enabled = allowInitialQuantity;
-				((Control)Button_PLUS).Enabled = allowInitialQuantity;
-				((Control)Button_MOINS).Enabled = allowInitialQuantity;
-				if (!allowInitialQuantity)
-				{
-					decimal draftQuantity;
-					bool violates = !decimal.TryParse(Text_QTE_COLLECTION.Text, out draftQuantity) || draftQuantity != 0m;
-					// The collection grid can retain quantity values even after
-					// the optional input has been disabled. Check persisted rows.
-					foreach (DataGridViewRow collectionRow in DataGrid_COLLECTION.Rows)
-					{
-						if (collectionRow.IsNewRow) continue;
-						object value = collectionRow.Cells["Qté_LISTE"].Value;
-						decimal quantity;
-						if (!decimal.TryParse(Convert.ToString(value), out quantity) || quantity != 0m)
-						{
-							violates = true;
-							break;
-						}
-					}
-					if (violates)
-					{
-						MessageBox.Show("Ajout manuel de stock interdit par les paramètres.", "Stock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-						Text_QTE_COLLECTION.Text = "0";
-						return;
-					}
-				}
 				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_CODE_COLLECTION.Text, LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance))
 				{
 					MessageBox.Show("Veuillez remplir le champ -Code- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
@@ -17578,6 +17551,35 @@ public class Form_2_ARTICLES : Form
                         MessageBox.Show(Conversions.ToString(Operators.ConcatenateObject("Ce Code est déja utilisé pour ==> ", duplicate["Article"])), "Attetion", (MessageBoxButtons)0, (MessageBoxIcon)48, (MessageBoxDefaultButton)0);
                         return;
                     }
+				bool allowInitialQuantity;
+				bool.TryParse(ReadArticleSetting("AJOUT_STOCK_MANUEL", "False"), out allowInitialQuantity);
+				((Control)Text_QTE_COLLECTION).Enabled = allowInitialQuantity;
+				((Control)Button_PLUS).Enabled = allowInitialQuantity;
+				((Control)Button_MOINS).Enabled = allowInitialQuantity;
+				if (!allowInitialQuantity)
+				{
+					decimal draftQuantity;
+					bool violates = !decimal.TryParse(Text_QTE_COLLECTION.Text, out draftQuantity) || draftQuantity != 0m;
+					// The collection grid can retain quantity values even after
+					// the optional input has been disabled. Check persisted rows.
+					foreach (DataGridViewRow collectionRow in DataGrid_COLLECTION.Rows)
+					{
+						if (collectionRow.IsNewRow) continue;
+						object value = collectionRow.Cells["Qté_LISTE"].Value;
+						decimal quantity;
+						if (!decimal.TryParse(Convert.ToString(value), out quantity) || quantity != 0m)
+						{
+							violates = true;
+							break;
+						}
+					}
+					if (violates)
+					{
+						MessageBox.Show("Ajout manuel de stock interdit par les paramètres.", "Stock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+						Text_QTE_COLLECTION.Text = "0";
+						return;
+					}
+				}
 					MySqlCommand val2 = new MySqlCommand();
 					if (Module1.cn_SQL.State != ConnectionState.Open)
 					{
