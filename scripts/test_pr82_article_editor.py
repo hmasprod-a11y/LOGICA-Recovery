@@ -1,5 +1,6 @@
 from pathlib import Path
 
+f=Path("recovered-source/LOGICA/Form_2_ARTICLES.cs").read_text(encoding="utf-8")
 # PR82 compatibility must survive later checkout/UI modernization.
 # Both sale tiles and the article editor must use the same real-file fallback
 # loader. Never switch back to direct Image.FromFile or a single-path preview.
@@ -14,7 +15,7 @@ assert 'ReplaceArticlePreview(selectedImage);' in f
 assert 'string articleImagePath = Path.Combine(Module1._CHEMIN_FOLDER' not in f
 assert 'using (Image articleImage = Image.FromFile(articleImagePath))' not in f
 
-f=Path("recovered-source/LOGICA/Form_2_ARTICLES.cs").read_text(encoding="utf-8")
+
 m=Path("recovered-source/LOGICA/Application/Catalogue/CatalogueRowMapper.cs").read_text(encoding="utf-8")
 sql=Path("input/migrations/20261102-article-add-compatibility.sql").read_text(encoding="utf-8")
 assert 'Text_LIEN_PICTURE.Text != "0" && File.Exists(articleImagePath)' in f
