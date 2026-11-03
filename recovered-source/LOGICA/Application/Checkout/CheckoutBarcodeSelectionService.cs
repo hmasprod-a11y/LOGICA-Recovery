@@ -30,6 +30,10 @@ namespace LOGICA.ApplicationLayer.Checkout
                 basketLine.Table == null ||
                 !basketLine.Table.Columns.Contains("Code") ||
                 !basketLine.Table.Columns.Contains("ID_ARTICLE") ||
+                // A SQL NULL barcode is corrupt, unlike the supported empty
+                // string used by image-only articles. Never let VB coercion
+                // treat DBNull as a scanner match.
+                basketLine.IsNull("Code") ||
                 basketLine.IsNull("ID_ARTICLE") ||
                 String.IsNullOrWhiteSpace(Convert.ToString(basketLine["ID_ARTICLE"])))
                 return false;
