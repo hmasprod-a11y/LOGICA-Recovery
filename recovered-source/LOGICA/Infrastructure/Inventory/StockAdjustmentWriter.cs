@@ -82,6 +82,31 @@ namespace LOGICA.Infrastructure.Inventory
             // Application layer provides a verified actor/role contract, the
             // transaction-owning entry point must not be exposed to untrusted
             // WPF commands as a general stock-edit API.
+            // Without a unique article identity, a concurrent INSERT can create a
+            // second row after our SELECT FOR UPDATE. The guarded UPDATE could then
+            // mutate two products while a movement records only one. Refuse unsafe
+            // legacy schemas rather than silently altering a customer's indexes.
+            bool uniqueArticleId = false;
+            using (var indexes = new MySqlCommand(
+                "SELECT INDEX_NAME, COUNT(*) AS column_count, " +
+                "SUM(CASE WHEN COLUMN_NAME = 'ID_ARTICLE' THEN 1 ELSE 0 END) AS matches " +
+                "FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() " +
+                "AND TABLE_NAME = 'TABLE_ARTICLES' AND NON_UNIQUE = 0 " +
+                "GROUP BY INDEX_NAME",
+                connection, transaction))
+            using (var reader = indexes.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    if (Convert.ToInt32(reader.GetValue(1)) == 1 &&
+                        Convert.ToInt32(reader.GetValue(2)) == 1)
+                        uniqueArticleId = true;
+                }
+            }
+            if (!uniqueArticleId)
+                throw new InvalidOperationException(
+                    "Manual stock adjustment requires a UNIQUE ID_ARTICLE index.");
+
             // Read the persisted permission inside the same transaction, not a stale UI flag.
             using (var permission = new MySqlCommand(
                 "SELECT VALEUR FROM TABLE_PARAMETRES WHERE OBJET = 'MODIF_STOCK_MANUEL' FOR UPDATE",
