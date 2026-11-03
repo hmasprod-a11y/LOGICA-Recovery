@@ -68,6 +68,11 @@ def validate(root):
         manifest = ET.parse(directory / "CoreSources.props").getroot()
         for entry in manifest.iter():
             kind = local_name(entry.tag)
+            # The shared source manifest is data, not a general MSBuild extension point.
+            # Reject property/item definitions and unknown nodes that can silently
+            # change compilation even when all Compile Include paths look safe.
+            if kind not in ("Project", "ItemGroup", "Compile"):
+                errors.append("manifest unexpected MSBuild element requires review: " + kind)
             if kind in ("Target", "UsingTask", "Task", "Exec", "Choose", "When", "Otherwise", "Sdk"):
                 errors.append("manifest executable/conditional MSBuild element requires review: " + kind)
             if kind == "Import":
