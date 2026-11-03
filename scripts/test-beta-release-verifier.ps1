@@ -24,7 +24,7 @@ $manifest = Join-Path $release 'LOGICA-2.0-Beta-RC1-file-manifest.json'
 $sums = Join-Path $release 'SHA256SUMS.txt'
 $commit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 function Write-FixtureManifest {
-    $entries = @(Get-ChildItem -LiteralPath $src -Recurse -File | ForEach-Object {
+    $entries = @(Get-ChildItem -LiteralPath $src -Recurse -File -Force | ForEach-Object {
         [pscustomobject]@{
             path = $_.FullName.Substring($src.Length + 1).Replace([char]92, '/')
             size = $_.Length
