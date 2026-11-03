@@ -47,6 +47,42 @@ catch (ArgumentOutOfRangeException) { Assert(port.Calls.Count == before, "invali
 var failingPort = new ThrowingCheckoutPort();
 try { new CheckoutSelectionWorkflow(failingPort).AddImage(A("21", ""), () => new[] { A("21", "") }); throw new Exception("port failure swallowed"); }
 catch (ApplicationException) { Assert(failingPort.Attempts == 1, "checkout port failure propagates without retry"); }
+
+// Host-facing integration: lookup, explicit duplicate choice, live refresh, cart write.
+var catalogue = new RecordingCatalogue();
+var variantPrompt = new RecordingPrompt { Choice = 1 };
+var hostCart = new RecordingCheckoutPort();
+var controller = new CheckoutSelectionController(catalogue, variantPrompt, hostCart);
+var hostSelected = controller.ScanBarcode("123", 4);
+Assert(hostSelected.Outcome == SelectionOutcome.Selected &&
+       hostCart.Calls[^1] == ("12", 4) &&
+       catalogue.BarcodeReads.SequenceEqual(new[] { "find:123", "refresh:123" }) &&
+       variantPrompt.Attempts == 1, "host scan resolves duplicate, refreshes captured barcode and posts quantity");
+var priorHostCount = hostCart.Calls.Count;
+catalogue.ChangeRefresh = true;
+var hostStale = controller.ScanBarcode("123");
+Assert(hostStale.Outcome != SelectionOutcome.Selected && hostCart.Calls.Count == priorHostCount,
+       "host stale variant never posts to cart");
+catalogue.ChangeRefresh = false;
+var hostImage = controller.SelectImage(A("21", ""), 2);
+Assert(hostImage.Outcome == SelectionOutcome.Selected && hostCart.Calls[^1] == ("21", 2) &&
+       catalogue.ArticleReads[^1] == "21", "host barcode-free image uses stable article identity");
+priorHostCount = hostCart.Calls.Count;
+catalogue.ReplaceImage = true;
+var staleImage = controller.SelectImage(A("21", ""));
+Assert(staleImage.Outcome != SelectionOutcome.Selected && hostCart.Calls.Count == priorHostCount,
+       "host replaced image identity fails closed");
+var emptyBarcode = controller.ScanBarcode(" ");
+Assert(emptyBarcode.Outcome == SelectionOutcome.Missing && hostCart.Calls.Count == priorHostCount,
+       "empty scan does not access catalogue or post");
+var emptyIdentity = controller.SelectImage(A("", ""));
+Assert(emptyIdentity.Outcome == SelectionOutcome.InvalidCandidates && hostCart.Calls.Count == priorHostCount,
+       "empty tile identity cannot post");
+try { controller.ScanBarcode("123", 0); throw new Exception("invalid scan quantity accepted"); }
+catch (ArgumentOutOfRangeException) { Assert(hostCart.Calls.Count == priorHostCount, "invalid scan quantity rejected before catalogue read"); }
+try { controller.SelectImage(A("21", ""), 0); throw new Exception("invalid tile quantity accepted"); }
+catch (ArgumentOutOfRangeException) { Assert(hostCart.Calls.Count == priorHostCount, "invalid tile quantity rejected before catalogue read"); }
+
 Console.WriteLine("Production selection-to-checkout workflow regression suite passed.");
 
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
@@ -61,5 +97,40 @@ sealed class ThrowingCheckoutPort : ICheckoutArticlePort
     {
         Attempts++;
         throw new ApplicationException("checkout unavailable");
+    }
+}
+
+sealed class RecordingCatalogue : ICheckoutSelectionCatalogue
+{
+    public List<string> BarcodeReads { get; } = new();
+    public List<string> ArticleReads { get; } = new();
+    public bool ChangeRefresh { get; set; }
+    public bool ReplaceImage { get; set; }
+    public IReadOnlyList<ArticleCandidate> FindBarcode(string barcode)
+    {
+        BarcodeReads.Add("find:" + barcode);
+        return new[] { new ArticleCandidate("11", barcode), new ArticleCandidate("12", barcode) };
+    }
+    public IReadOnlyList<ArticleCandidate> RefreshBarcode(string barcode)
+    {
+        BarcodeReads.Add("refresh:" + barcode);
+        return ChangeRefresh
+            ? new[] { new ArticleCandidate("11", barcode) }
+            : new[] { new ArticleCandidate("11", barcode), new ArticleCandidate("12", barcode) };
+    }
+    public IReadOnlyList<ArticleCandidate> RefreshArticle(string articleId)
+    {
+        ArticleReads.Add(articleId);
+        return new[] { new ArticleCandidate(ReplaceImage ? "22" : articleId, "") };
+    }
+}
+sealed class RecordingPrompt : ICheckoutVariantPrompt
+{
+    public int Choice { get; set; }
+    public int Attempts { get; private set; }
+    public int Choose(IReadOnlyList<ArticleCandidate> candidates)
+    {
+        Attempts++;
+        return Choice;
     }
 }
