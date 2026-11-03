@@ -14874,6 +14874,19 @@ public class Form_3_VENTE : Form
 		Text_PRIX_QTE_MIN.Text = (selectedArticle.Table.Columns.Contains("PRIX_QTE_MIN") ? selectedArticle["PRIX_QTE_MIN"].ToString() : "0");
 	}
 
+	// Presenter boundary: use the production checkout identity services; no SQL or
+	// basket mutation here. The existing modal chooser remains unchanged.
+	private DataRow ResolveDesktopArticleChoice(LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileReference clickedImage)
+	{
+		return clickedImage != null
+			? LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.FindExact(Module1.dt_find, clickedImage)
+			: LOGICA.ApplicationLayer.Checkout.CheckoutBarcodeSelectionService.Select(
+				Module1.dt_find, delegate(DataTable matches) {
+					return LOGICA.Presentation.Checkout.CheckoutBarcodeChoiceDialog.Choose(
+						matches, "Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5));
+				});
+	}
+
 	private void Button_FIND_Click(object sender, EventArgs e)
 	{
 		//IL_052d: Unknown result type (might be due to invalid IL or missing references)
@@ -14900,13 +14913,7 @@ public class Form_3_VENTE : Form
 			DesktopArticleLookupAdapter.Fill(clickedImage == null ? null : clickedImage.ArticleId, Text_CODE.Text);
 			if (Module1.dt_find.Rows.Count != 0)
 			{
-				DataRow selectedArticle = clickedImage != null
-					? LOGICA.ApplicationLayer.Checkout.CheckoutArticleTileSelectionService.FindExact(Module1.dt_find, clickedImage)
-					: LOGICA.ApplicationLayer.Checkout.CheckoutBarcodeSelectionService.Select(
-						Module1.dt_find, delegate(DataTable matches) {
-							return LOGICA.Presentation.Checkout.CheckoutBarcodeChoiceDialog.Choose(
-								matches, "Prix_V_" + ((ButtonBase)Button_PRIX).Text.Remove(0, 5));
-						});
+				DataRow selectedArticle = ResolveDesktopArticleChoice(clickedImage);
 				if (selectedArticle == null)
 				{
 					((Control)Text_CODE).Focus();
