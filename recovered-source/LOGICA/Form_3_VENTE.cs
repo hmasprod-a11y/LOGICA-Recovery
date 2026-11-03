@@ -12274,7 +12274,7 @@ public class Form_3_VENTE : Form
 					ProjectData.ClearProjectError();
 				}
 				EnsureCheckoutQuantityColumn();
-				Module1.da1 = new MySqlDataAdapter("select * from TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + " order by ID asc", Module1.cn_SQL);
+				Module1.da1 = CreateCheckoutCartAdapter();
 				Module1.dt1 = new DataTable();
 				Module1.dt1.Clear();
 				((DbDataAdapter)(object)Module1.da1).Fill(Module1.dt1);
@@ -13126,7 +13126,7 @@ public class Form_3_VENTE : Form
 					return;
 				}
 				Module1.dt1.Clear();
-				Module1.da1 = new MySqlDataAdapter("select * from TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + " order by ID asc", Module1.cn_SQL);
+				Module1.da1 = CreateCheckoutCartAdapter();
 				((DbDataAdapter)(object)Module1.da1).Fill(Module1.dt1);
 				DataGridView1.DataSource = Module1.dt1;
 				((ButtonBase)Button_VENDEUR).Text = "";
@@ -14787,6 +14787,27 @@ public class Form_3_VENTE : Form
         // The database remains untouched; any actual DB write must use its existing schema.
     }
 
+    // Map physical legacy DB column names to the cashier's stable in-memory name.
+    // DbDataAdapter uses these mappings in both Fill and Update, so generated
+    // INSERT/UPDATE statements target the actual source column, not the UI alias.
+    private static MySqlDataAdapter CreateCheckoutCartAdapter()
+    {
+        string poste = MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text;
+        if (string.IsNullOrWhiteSpace(poste) ||
+            !System.Text.RegularExpressions.Regex.IsMatch(poste, @"^[A-Za-z0-9_]{1,32}$"))
+            throw new InvalidOperationException("Invalid POS workstation table identifier.");
+
+        MySqlDataAdapter adapter = new MySqlDataAdapter(
+            "select * from TABLE_" + poste + " order by ID asc", Module1.cn_SQL);
+        DataTableMapping mapping = adapter.TableMappings.Add("Table", "Table");
+        // SourceColumn remains the physical SQL identifier; DataSetColumn
+        // becomes Qté for all existing POS UI calculations and updates.
+        mapping.ColumnMappings.Add("QtÃ©", "Qté");
+        mapping.ColumnMappings.Add("Qte", "Qté");
+        mapping.ColumnMappings.Add("Quantite", "Qté");
+        return adapter;
+    }
+
     private static void NormalizeLoadedCheckoutQuantityColumn()
     {
         if (Module1.dt1 == null)
@@ -15309,7 +15330,7 @@ public class Form_3_VENTE : Form
 					ProjectData.ClearProjectError();
 				}
 				Module1.dt1.Clear();
-				Module1.da1 = new MySqlDataAdapter("select * from TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + " order by ID asc", Module1.cn_SQL);
+				Module1.da1 = CreateCheckoutCartAdapter();
 				((DbDataAdapter)(object)Module1.da1).Fill(Module1.dt1);
 				DataGridView1.DataSource = Module1.dt1;
 				Text_TOTAL_NET_Click(RuntimeHelpers.GetObjectValue(sender), e);
@@ -16138,7 +16159,7 @@ public class Form_3_VENTE : Form
 			val = new MySqlDataAdapter("Delete  from TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "   ", Module1.cn_SQL);
 			((DbDataAdapter)(object)val).Fill(dataTable);
 			Module1.dt1.Clear();
-			Module1.da1 = new MySqlDataAdapter("select * from TABLE_" + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text + "   order by ID asc ", Module1.cn_SQL);
+			Module1.da1 = CreateCheckoutCartAdapter();
 			((DbDataAdapter)(object)Module1.da1).Fill(Module1.dt1);
 			DataGridView1.DataSource = Module1.dt1;
 			Text_TOTAL_NET_Click(RuntimeHelpers.GetObjectValue(sender), e);
