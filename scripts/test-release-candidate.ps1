@@ -21,14 +21,14 @@ foreach ($folder in @(Get-ChildItem -LiteralPath $dist -Recurse -Directory -Forc
   }
 }
 
-foreach ($candidate in @(Get-ChildItem -LiteralPath $dist -Recurse -File -ErrorAction Stop)) {
+foreach ($candidate in @(Get-ChildItem -LiteralPath $dist -Recurse -File -Force -ErrorAction Stop)) {
   if ($privateNames -contains $candidate.Name.ToLowerInvariant() -or
       $privateExtensions -contains $candidate.Extension.ToLowerInvariant()) {
     throw "Credential or private-key material forbidden in customer package: $($candidate.Name)"
   }
 }
 foreach ($name in $forbidden) {
-  $matches = @(Get-ChildItem -LiteralPath $dist -Recurse -File -ErrorAction Stop | Where-Object { $_.Name -eq $name })
+  $matches = @(Get-ChildItem -LiteralPath $dist -Recurse -File -Force -ErrorAction Stop | Where-Object { $_.Name -eq $name })
   if ($matches.Count -gt 0) { throw "Private test/runtime state included: $name" }
 }
 $mysqlData = Join-Path $dist 'bd/mysql-data'
@@ -52,10 +52,10 @@ foreach ($name in $expectedSettings.Keys) {
   $actual = [IO.File]::ReadAllText($path).Trim()
   if ($actual -cne $expectedSettings[$name]) { throw "Unsafe beta startup setting: $name" }
 }
-if (@(Get-ChildItem -LiteralPath $dist -Recurse -File | Where-Object { $_.Name -like 'PosSmoke*' }).Count -gt 0) {
+if (@(Get-ChildItem -LiteralPath $dist -Recurse -File -Force | Where-Object { $_.Name -like 'PosSmoke*' }).Count -gt 0) {
   throw 'POS test harness leaked into release candidate'
 }
-$files = @(Get-ChildItem -LiteralPath $dist -Recurse -File)
+$files = @(Get-ChildItem -LiteralPath $dist -Recurse -File -Force)
 if ($files.Count -eq 0) { throw 'Empty release candidate' }
 # Windows file names are case-insensitive. Reject ambiguous release paths before ZIP creation.
 $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -70,7 +70,7 @@ foreach ($file in $files) {
   }
   if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Reparse-point file forbidden: $relative" }
 }
-foreach ($directory in @(Get-ChildItem -LiteralPath $dist -Directory -Recurse)) {
+foreach ($directory in @(Get-ChildItem -LiteralPath $dist -Directory -Recurse -Force)) {
   if (($directory.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Reparse-point directory forbidden: $($directory.FullName)" }
 }
 $manifest = foreach ($file in $files) {
