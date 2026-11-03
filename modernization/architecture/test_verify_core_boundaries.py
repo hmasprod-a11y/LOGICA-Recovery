@@ -94,5 +94,30 @@ class BoundaryTests(unittest.TestCase):
             '<ItemGroup><Compile Include="other.cs" /></ItemGroup></Project>'))
         self.assertTrue(any("direct Compile" in e for e in validate(self.root)["errors"]))
 
+
+    def test_compile_remove_rejected(self):
+        p = self.root / "modernization/LOGICA.CorePortability.csproj"
+        p.write_text(p.read_text().replace("</Project>",
+            '<ItemGroup><Compile Remove="Domain/Rules.cs" /></ItemGroup></Project>'))
+        self.assertTrue(any("direct Compile" in e for e in validate(self.root)["errors"]))
+
+    def test_conditional_manifest_rejected(self):
+        p = self.root / "modernization/CoreSources.props"
+        p.write_text(p.read_text().replace('<Compile Include=',
+            '<Compile Condition="\'$(Configuration)\' == \'Debug\'" Include='))
+        self.assertTrue(any("conditional/indirect" in e for e in validate(self.root)["errors"]))
+
+    def test_unreviewed_import_rejected(self):
+        p = self.root / "modernization/LOGICA.CorePortability.csproj"
+        p.write_text(p.read_text().replace("</Project>",
+            '<Import Project="Injected.props" /></Project>'))
+        self.assertTrue(any("unreviewed project import" in e for e in validate(self.root)["errors"]))
+
+    def test_conditional_project_structure_rejected(self):
+        p = self.root / "modernization/LOGICA.CorePortability.csproj"
+        p.write_text(p.read_text().replace("</Project>",
+            '<ItemGroup Condition="\'$(Configuration)\' == \'Debug\'" /></Project>'))
+        self.assertTrue(any("conditional project structure" in e for e in validate(self.root)["errors"]))
+
 if __name__ == "__main__":
     unittest.main()
