@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Hanouty POS V2.0 — Desktop Preview" Height="650" Width="1080"
-        MinHeight="480" MinWidth="760" WindowStartupLocation="CenterScreen">
+        MinHeight="480" MinWidth="760" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" SnapsToDevicePixels="True">
     <DockPanel Margin="20">
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,16">
             <TextBlock Text="Hanouty POS" FontSize="28" FontWeight="SemiBold"/>
@@ -15,6 +15,15 @@
                 <TextBlock Text="Catalogue" FontWeight="SemiBold" FontSize="18"/>
                 <TextBox Margin="0,10,0,10" Padding="8" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.Name="Search catalogue"/>
+                <TextBlock Text="Scanner / barcode" Margin="0,0,0,5"/>
+                <TextBox Text="{Binding ScannerText, UpdateSourceTrigger=PropertyChanged}" Padding="8"
+                         AutomationProperties.Name="Barcode scanner input">
+                    <TextBox.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding ScanCommand}"/>
+                    </TextBox.InputBindings>
+                </TextBox>
+                <TextBlock Text="{Binding ScanFeedback}" Margin="0,6,0,10"
+                           AutomationProperties.Name="Barcode result"/>
                 <DataGrid ItemsSource="{Binding VisibleProducts}" AutoGenerateColumns="False"
                           IsReadOnly="True" SelectionMode="Single" SelectionUnit="FullRow"
                           SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
@@ -24,12 +33,19 @@
                         <DataGridTextColumn Header="Barcode" Binding="{Binding Barcode}" Width="*"/>
                     </DataGrid.Columns>
                 </DataGrid>
+                <TextBlock Text="Image-backed products" Margin="0,12,0,6" FontWeight="SemiBold"/>
+                <ListBox ItemsSource="{Binding PhotoProducts}" Height="96" DisplayMemberPath="Name"
+                         SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
+                         AutomationProperties.Name="Products with photos"/>
             </StackPanel>
             <StackPanel Grid.Column="1">
                 <TextBlock Text="Selected product" FontSize="18" FontWeight="SemiBold"/>
                 <TextBlock Text="{Binding SelectedProduct.Name, TargetNullValue=No product selected}"
                            Margin="0,12,0,6" TextWrapping="Wrap"/>
                 <TextBlock Text="{Binding SelectedProduct.Barcode, TargetNullValue=—}"/>
+                <Button Content="Select product (preview)" Command="{Binding SelectCommand}"
+                        Padding="12,8" Margin="0,18,0,0"
+                        AutomationProperties.Name="Select product"/>
                 <TextBlock Text="Checkout, stock posting, printing and licensing are disabled until their application contracts are integrated and verified."
                            Margin="0,22,0,0" TextWrapping="Wrap" Foreground="DimGray"/>
             </StackPanel>
