@@ -30,8 +30,8 @@ def audit(root):
     sources = sorted(p for p in source_root.rglob("*.cs")
                      if not set(p.relative_to(source_root).parts) & {"obj", "bin"})
     patterns = {
-        "vb": re.compile(r"\\b(?:Microsoft\\.VisualBasic|Conversions\\.|Operators\\.|Interaction\\.)"),
-        "sql": re.compile(r"\\b(?:MySqlCommand|MySqlConnection|MySqlDataAdapter|MySqlTransaction)\\b"),
+        "vb": re.compile(r"\b(?:Microsoft\.VisualBasic|Conversions\.|Operators\.|Interaction\.)"),
+        "sql": re.compile(r"\b(?:MySqlCommand|MySqlConnection|MySqlDataAdapter|MySqlTransaction)\b"),
     }
     coupling = {key: [] for key in patterns}
     for source in sources:
