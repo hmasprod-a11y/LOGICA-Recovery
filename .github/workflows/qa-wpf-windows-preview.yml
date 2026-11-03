@@ -16,17 +16,26 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
+      - name: Checkout QA integration source at triggering SHA
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: integration-source
       - name: Checkout reviewed WPF preview exact SHA
         uses: actions/checkout@v4
         with:
-          # WPF is owned by Track 04. Do not merge its unaccepted preview into QA.
-          ref: 4cf4e431d53f2e33da4e69b60d2bb55ade6ab247
+          # WPF belongs to Track 04; validate without merging preview into QA.
+          ref: 9b8e7289648a86c8a89bfc1d2f28bd8bf7ee55ad
           persist-credentials: false
-      - name: Assert pinned source revision
+          path: wpf-preview
+      - name: Assert QA and WPF source provenance
         shell: pwsh
         run: |
-          $actual = (git rev-parse HEAD).Trim()
-          if ($actual -ne '4cf4e431d53f2e33da4e69b60d2bb55ade6ab247') { throw "WPF checkout SHA mismatch: $actual" }
+          $qa = (git -C integration-source rev-parse HEAD).Trim()
+          if ($qa -ne '${{ github.sha }}') { throw "QA integration SHA mismatch: $qa" }
+          $preview = (git -C wpf-preview rev-parse HEAD).Trim()
+          if ($preview -ne '9b8e7289648a86c8a89bfc1d2f28bd8bf7ee55ad') { throw "WPF preview SHA mismatch: $preview" }
+          "qa=$qa`nwpf=$preview" | Set-Content -LiteralPath source-provenance.txt
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
@@ -34,9 +43,9 @@ jobs:
       - name: Reject legacy desktop dependencies and SQL in WPF presentation
         shell: pwsh
         run: |
-          $project = Get-Content modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj -Raw
+          $project = Get-Content wpf-preview/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj -Raw
           if ($project -notmatch '<TargetFramework>net10\.0-windows</TargetFramework>' -or $project -notmatch '<UseWPF>true</UseWPF>') { throw 'WPF host must target net10.0-windows with WPF enabled' }
-          $source = Get-ChildItem modernization/Hanouty.Desktop.Wpf -Recurse -File | Where-Object { $_.Extension -in @('.cs','.xaml') }
+          $source = Get-ChildItem wpf-preview/modernization/Hanouty.Desktop.Wpf -Recurse -File | Where-Object { $_.Extension -in @('.cs','.xaml') }
           foreach ($file in $source) {
             $text = Get-Content -LiteralPath $file.FullName -Raw
             if ($text -match '(?i)System\.Windows\.Forms|Microsoft\.VisualBasic|MySqlConnection|MySqlCommand|DbConnection|SELECT\s+.+\s+FROM|INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM') {
@@ -47,14 +56,25 @@ jobs:
       - name: Restore and build WPF executable
         shell: pwsh
         run: |
-          dotnet restore modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj
-          dotnet build modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj --no-restore -c Release -warnaserror
+          dotnet restore wpf-preview/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj
+          dotnet build wpf-preview/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj --no-restore -c Release -warnaserror
       - name: Run WPF MVVM regression on Windows
         shell: pwsh
-        run: dotnet run --project modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj -c Release
+        run: dotnet run --project wpf-preview/modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj -c Release
       - name: Assert real WPF executable was produced
         shell: pwsh
         run: |
-          $exe = 'modernization/Hanouty.Desktop.Wpf/bin/Release/net10.0-windows/Hanouty.Desktop.Wpf.exe'
+          $exe = 'wpf-preview/modernization/Hanouty.Desktop.Wpf/bin/Release/net10.0-windows/Hanouty.Desktop.Wpf.exe'
           if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "WPF host EXE missing: $exe" }
           Write-Host "PASS WPF executable built from pinned source SHA; not a licensed sale or peripheral acceptance"
+
+      - name: Publish WPF executable preview with source provenance
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hanouty-wpf-net10-preview-${{ github.run_id }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            source-provenance.txt
+            wpf-preview/modernization/Hanouty.Desktop.Wpf/bin/Release/net10.0-windows/**
