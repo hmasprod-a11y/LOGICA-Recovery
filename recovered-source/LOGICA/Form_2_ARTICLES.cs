@@ -14353,22 +14353,29 @@ public class Form_2_ARTICLES : Form
 		ApplyManualStockEditorPermission(isNew);
 		if (allowed) return true;
 		string original = "0";
+		string originalInitial = "0";
 		if (isEdit)
 		{
 			DataRow row = LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.ResolveUniqueByDatabaseId(DT, Text_ID.Text);
-			if (row == null || !DT.Columns.Contains("STOCK"))
+			if (row == null || !DT.Columns.Contains("STOCK") || !DT.Columns.Contains("STOCK_INITIAL"))
 				throw new InvalidOperationException("Cannot verify original stock for this article.");
 			original = Convert.ToString(row["STOCK"]);
+			originalInitial = Convert.ToString(row["STOCK_INITIAL"]);
 		}
-		decimal entered, saved;
-		if (!decimal.TryParse(Text_STOCK.Text, out entered) ||
-			!decimal.TryParse(original, out saved) || entered != saved)
+		decimal entered, saved, enteredInitial, savedInitial;
+		bool unauthorized = !decimal.TryParse(Text_STOCK.Text, out entered) ||
+			!decimal.TryParse(original, out saved) || entered != saved ||
+			!decimal.TryParse(Text_STOCK_INITIAL.Text, out enteredInitial) ||
+			!decimal.TryParse(originalInitial, out savedInitial) || enteredInitial != savedInitial;
+		if (unauthorized)
 		{
-			MessageBox.Show("Modification manuelle du stock interdite par les paramètres.", "Stock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 			Text_STOCK.Text = original;
+			Text_STOCK_INITIAL.Text = originalInitial;
+			MessageBox.Show("Modification manuelle du stock interdite par les paramètres.", "Stock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 			return false;
 		}
 		Text_STOCK.Text = original;
+		Text_STOCK_INITIAL.Text = originalInitial;
 		return true;
 	}
 
