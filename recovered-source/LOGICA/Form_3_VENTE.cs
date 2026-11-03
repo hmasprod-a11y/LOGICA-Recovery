@@ -14897,18 +14897,7 @@ public class Form_3_VENTE : Form
 				((Control)Text_CODE).Focus();
 				return;
 			}
-			Module1.dt_find.Clear();
-			if (clickedImage != null)
-			{
-				Module1.da_find = new MySqlDataAdapter(ExactImageArticleSql(), Module1.cn_SQL);
-				Module1.da_find.SelectCommand.Parameters.AddWithValue("@id", clickedImage.ArticleId);
-			}
-			else
-			{
-				Module1.da_find = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.ExactBarcode(), Module1.cn_SQL);
-				Module1.da_find.SelectCommand.Parameters.AddWithValue("@code", Text_CODE.Text);
-			}
-			((DbDataAdapter)(object)Module1.da_find).Fill(Module1.dt_find);
+			DesktopArticleLookupAdapter.Fill(clickedImage == null ? null : clickedImage.ArticleId, Text_CODE.Text);
 			if (Module1.dt_find.Rows.Count != 0)
 			{
 				DataRow selectedArticle = clickedImage != null
@@ -17605,6 +17594,28 @@ internal static class ProductSearchResetPresenter
 	internal static bool ShouldClearText(string currentText)
 	{
 		return !string.IsNullOrEmpty(currentText);
+	}
+}
+
+// Transitional Infrastructure-facing adapter. The WinForms event captures intent only;
+// this adapter owns the existing parameterized local catalogue read and its result table.
+// No schema or checkout identity policy changes are introduced here.
+internal static class DesktopArticleLookupAdapter
+{
+	internal static void Fill(string articleId, string barcode)
+	{
+		Module1.dt_find.Clear();
+		if (articleId != null)
+		{
+			Module1.da_find = new MySqlDataAdapter("select * from TABLE_ARTICLES WHERE ID_ARTICLE = @id", Module1.cn_SQL);
+			Module1.da_find.SelectCommand.Parameters.AddWithValue("@id", articleId);
+		}
+		else
+		{
+			Module1.da_find = new MySqlDataAdapter(LOGICA.Infrastructure.Checkout.CheckoutArticleSearchQueryText.ExactBarcode(), Module1.cn_SQL);
+			Module1.da_find.SelectCommand.Parameters.AddWithValue("@code", barcode);
+		}
+		((DbDataAdapter)(object)Module1.da_find).Fill(Module1.dt_find);
 	}
 }
 
