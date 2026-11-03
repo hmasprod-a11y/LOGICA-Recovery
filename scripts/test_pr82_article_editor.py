@@ -14,6 +14,15 @@ assert 'Image val = Image.FromFile(Module1._CHEMIN_FOLDER' not in f
 for field in ("GROUPE","PRIX_QTE","PRIX_QTE_MIN","Taille","Couleur","Emplacement"):
     assert 'row.Table.Columns.Contains("'+field+'")' in m,field
     assert 'ADD COLUMN IF NOT EXISTS `'+field+'`' in sql,field
+# Quantity-tier pricing is optional on article create and edit. An empty field
+# must not open a blocking dialog; zero disables the tier without altering
+# normal sale price, barcode, stock, or product identity.
+for field in ("Text_PRIX_QTE", "Text_PRIX_QTE_MIN"):
+    assert 'if (string.IsNullOrWhiteSpace(' + field + '.Text))' in f, field
+    assert field + '.Text = "0";' in f, field
+assert 'MessageBox.Show("Veuillez remplir le champ -PRIX_QTE- "' not in f
+assert 'MessageBox.Show("Veuillez remplir le champ -PRIX_QTE_MIN- "' not in f
+
 print("PR82 article editor static regression checks passed")
 
 # Editing an existing row must tolerate every missing column from the recovered schema.
@@ -38,7 +47,7 @@ assert "inner join TABLE_ARTICLES a on a.Famille = f.Famille" in sales
 # writing or migrating real store database tables at cashier startup.
 assert "EnsureCheckoutQuantityColumn();" in sales
 assert 'NormalizeLoadedCheckoutQuantityColumn();' in sales
-assert 'string.Equals(column.ColumnName, "QtÃ©", StringComparison.OrdinalIgnoreCase)' in sales
+assert 'IsLegacyCheckoutQuantityColumn(column.ColumnName)' in sales
 assert 'legacy.ColumnName = "Qté";' in sales
 # The cart DataTable is loaded with physical SQL column names and then
 # normalized in memory. Adapter TableMappings previously caused a missing
