@@ -83,7 +83,10 @@ namespace LOGICA.Infrastructure.Inventory
             // A caller might catch an audit failure and accidentally commit its
             // outer transaction. A local savepoint makes the stock + audit pair
             // indivisible even under that misuse; caller still owns final commit.
-            // A fixed savepoint name can overwrite a caller savepoint or an earlier\n            // nested adjustment. Generate an SQL-safe identifier per invocation.\n            string savepointName = "hanouty_sa_" + Guid.NewGuid().ToString("N");\n            using (var savepoint = new MySqlCommand("SAVEPOINT " + savepointName, connection, transaction))
+            // A fixed savepoint name can overwrite a caller savepoint or an earlier
+            // nested adjustment. Generate an SQL-safe identifier per invocation.
+            string savepointName = "hanouty_sa_" + Guid.NewGuid().ToString("N");
+            using (var savepoint = new MySqlCommand("SAVEPOINT " + savepointName, connection, transaction))
                 savepoint.ExecuteNonQuery();
             try
             {
