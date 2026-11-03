@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 PROJECTS = ("LOGICA.CoreCompatibility.csproj", "LOGICA.CorePortability.csproj")
 FORBIDDEN_DIRS = {"forms", "winforms", "bunifu", "obj", "bin"}
 FORBIDDEN_IMPORTS = ("System.Windows.Forms", "Bunifu", "MySql.", "Microsoft.VisualBasic")
-FORBIDDEN_QUALIFIED_TYPES = re.compile(r"(?<![A-Za-z0-9_])(?:global::)?(?:System\\.Windows\\.Forms|Bunifu(?:\\.[A-Za-z_][A-Za-z0-9_]*)?|MySql(?:\\.[A-Za-z_][A-Za-z0-9_]*)?|Microsoft\\.VisualBasic)(?:\\.|::)")
+FORBIDDEN_QUALIFIED_TYPES = re.compile(r"(?<![A-Za-z0-9_])(?:global::)?(?:System\.Windows\.Forms|Bunifu(?:\.[A-Za-z_][A-Za-z0-9_]*)?|MySql(?:\.[A-Za-z_][A-Za-z0-9_]*)?|Microsoft\.VisualBasic)(?:\.|::)")
 FORBIDDEN_REFERENCES = ("System.Windows.Forms", "Bunifu", "MySql", "Microsoft.VisualBasic")
 
 def local_name(tag):
