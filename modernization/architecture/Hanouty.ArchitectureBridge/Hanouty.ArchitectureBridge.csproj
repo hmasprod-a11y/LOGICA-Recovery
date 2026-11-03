@@ -6,6 +6,6 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <AssemblyName>Hanouty.ArchitectureBridge</AssemblyName>
   </PropertyGroup>
-  <Import Project="../../CoreSources.props" />
+  <Import Project="CoreSources.ArchitectureBridge.props" />
   <ItemGroup><Compile Include="CheckoutSelectionGateway.cs" /></ItemGroup>
 </Project>
