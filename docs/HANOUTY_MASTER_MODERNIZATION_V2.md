@@ -26,17 +26,17 @@ Do not treat these as full-dependency audit results; independently inventory eve
 | Domain | Pure money/discount/tax/rounding/identity/permissions/stock rules | Behavior-preserving facades |
 | Application | Production-used checkout, catalogue, stock, receiving, payments and returns use cases; transaction orchestration | Incrementally wired WinForms actions |
 | Infrastructure | Parameterized MariaDB/MySQL, storage, peripheral devices, reports, offline licensing | Schema adapters and narrowly scoped old provider compatibility |
-| Desktop | UI-only input, navigation and presentation | WinForms until printer/device/report compatibility is proven |
+| Desktop | **WPF on .NET 10 with MVVM**, UI-only input, navigation and presentation | Existing WinForms retained strictly as a tested temporary compatibility bridge; no new features or cosmetic investment |
 | Tests | Unit + Windows event + isolated MariaDB + full workflow + ZIP/executable acceptance | Characterization of unchanged LOGICA behavior |
 
-Do **not** rewrite the product, switch programming language, rewrite DB schema, or choose Flutter/Electron/React by fashion. Alternative UI technologies (WPF/WinUI 3, etc.) require an experiment covering **printer, report, barcode, memory, startup latency, touch/DPI/RTL** before selection. No new business SQL or financial computations in WinForms event handlers.
+**Final owner decision (2026-11-03): WPF + MVVM on .NET 10 LTS is selected for the Windows host.** Do not reopen WinForms/WinUI 3/Electron/Flutter selection without a new explicit owner decision. Compatibility experiments for **printer, RDLC/report, barcode, native/x86 DLLs, offline licensing, memory, startup latency, touch/DPI/RTL** are acceptance gates for safe rollout, **not a reason to delay starting WPF production development**. Do **not** rewrite the product, switch programming language, rewrite the live DB schema, invest in WinForms cosmetics or add new business SQL/financial computations in old event handlers.
 
 ## 4. Architecture contract
 
 - **Domain:** decimal money, rounding, discounts, taxes, stock eligibility, product identity and transaction invariants. No WinForms, MySQL or file IO references.
 - **Application:** authorization, idempotency, checkout/return/catalogue/receipt/stock use cases and clear interfaces for persistence; actual call sites must consume these services.
 - **Infrastructure:** legacy schema mapping, parameterized SQL, strict transaction boundaries, printing, images, licensing and locally stored configuration.
-- **Desktop:** event capture and observable state only. Its SQL/cash/stock business branches must progressively shrink.
+- **Desktop:** the new **WPF/MVVM .NET 10** host captures events and exposes observable state, calling Application use cases; no SQL or commercial rules in Views/ViewModels. Existing WinForms SQL/cash/stock business branches must progressively shrink until removed.
 - **Test & release:** characterization, fault injection, real Windows events, recovery, rollback, offline startup and reproducible customer ZIP verification.
 
 **A migrated feature requires a real production call site, functional equivalence tests, and an identified legacy call path removed or bypassed.** Merely adding portable code or a new helper is insufficient.
@@ -75,8 +75,8 @@ Any function previously working in LOGICA that regresses during modernization is
 - **A — Freeze characterization:** inventory production call sites, legacy data and device dependencies; immutable reference build and regression fixtures.
 - **B — Portable production core:** transfer real business use cases to .NET 10 and prove the old Windows screen invokes them; preserve numerical equivalence.
 - **C — Reliable infrastructure:** schema mapping, authorization and transaction policies, atomic sale/return/stock, restore/migration tests.
-- **D — Windows runtime transition:** dependency inventory, compatible modern host, printer/report/device acceptance, removal of net48/x86 dependency when proven safe.
-- **E — UI modernization:** independent presenter/adapters first, then measured modern interface adoption, without business logic duplication.
+- **D — WPF runtime transition:** start a production-oriented .NET 10 WPF/MVVM host immediately, with actual Application-connected checkout/catalogue paths and dependency inventory; printer/report/device/offline-license acceptance gates safe rollout, then remove net48/x86 dependency when proven safe.
+- **E — WPF functional migration:** migrate screens by complete user workflows and measurable V1 parity, without duplicating business logic or investing in WinForms visual redesign.
 - **F — Commercial acceptance:** offline license, installer, rollback, all original functions and peripherals, reproducible builds, zero P0/P1 bugs.
 
 Phases may overlap but are **not complete** until their acceptance outcomes are demonstrated.
@@ -86,10 +86,10 @@ Phases may overlap but are **not complete** until their acceptance outcomes are 
 - **01 Supervision + architecture (PR #95):** own architecture measurement and portability boundary; audit team output and assign nonoverlapping work. Must also contribute reviewed production architecture improvements/tests.
 - **02 Checkout Core (PR #75):** real production pricing/selection/payment/return call-site migrations and financial regression parity; coordinate Form edits with Desktop owner.
 - **03 Inventory (PR #88):** product identity, transaction-backed stock/receiving, permission-denied manual stock adjustment, rollback and MariaDB concurrency evidence.
-- **04 Desktop (PR #90):** actual WinForms event/call-site decoupling, search/barcode/list/image/DPI/RTL; event-level tests, not only source guards.
+- **04 WPF Desktop (PR #90):** own new .NET 10 WPF/MVVM Windows host and actual Application-connected checkout/catalogue UI, search/barcode/list/image/DPI/RTL; retain only minimal temporary WinForms bridges needed for safe functional/device parity. No WinForms cosmetics.
 - **05 QA (PR #93):** only integration branch owner, exact-SHA six gates, isolated MariaDB and extracted Windows EXE tests, field-acceptance matrix, trusted ZIP.
 
-**Each development cycle**: select a fresh unclaimed batch, implement meaningful production work + an associated failing-before/passing-after regression, run relevant CI, publish SHA and link plus removed legacy coupling and exact next batch. If blocked, document a precise reproducible blocker and deliver a separate unblocked batch; no report-only cycles.
+**Each development cycle is a LARGE, COHESIVE PRODUCTION BATCH**: claim several connected changes forming an actual end-to-end workflow, migrate business logic and wire the real call site, remove or isolate a measured legacy dependency, add focused grouped characterization/regression/integration tests, run relevant exact-SHA CI, publish SHA and link plus next substantial batch. Do not turn each tiny test, guard, report, or audit into its own cycle. If blocked, document a precise reproducible blocker and deliver a separate unblocked production batch; no report-only cycles. Team boundaries and contracts are coordinated through Issue #94.
 
 **Release is BLOCKED** on unresolved critical stock permission bypass, real checkout/idempotency failure, unverified data safety, unproven offline licensing/cashier flow or broken printing. Preserve original functionality rather than masking failures with changed tests.
 
@@ -104,3 +104,7 @@ Phases may overlap but are **not complete** until their acceptance outcomes are 
 - [ ] No alteration of real shops' databases or unsupported activation policy changes.
 
 **Guiding principle:** Keep what worked in LOGICA. Modernize the runtime, architecture, tests and user experience — not the bugs.
+
+## 11. Binding executive synchronization — 2026-11-03
+
+This section supersedes earlier conditional UI-selection language. The owner's final choice is **C# / .NET 10 LTS / WPF / MVVM / Clean Architecture / Modular Monolith / Domain-Application-Infrastructure / local MariaDB / fully offline / local licensing without mandatory server**. Preserve V1 functionality. Track ownership: #95 Architecture; #75 Checkout; #88 Inventory; #90 WPF Desktop; #93 sole QA Integration. No new WinForms/net48/VB.NET features, no cosmetic modernization of legacy UI, no alternative UI stack without owner approval, no automatic main/release merge, and no tests against real shop databases. All tracks must deliver large real-production batches with focused grouped tests, actual call-site proof, removed legacy coupling, exact-SHA CI, and reproducible blockers. A passing CI or audit-only commit does not establish architecture migration or release readiness.
