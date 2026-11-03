@@ -41,7 +41,8 @@ internal static class StockAdjustmentMariaDbSmoke
         var writerType = assembly.GetType("LOGICA.Infrastructure.Inventory.StockAdjustmentWriter", true);
         var create = planType.GetMethod("Create", BindingFlags.Static | BindingFlags.NonPublic);
         var apply = writerType.GetMethod("Apply", BindingFlags.Static | BindingFlags.NonPublic);
-        Require(create != null && apply != null, "Production stock adjustment methods missing");
+        var execute = writerType.GetMethod("Execute", BindingFlags.Static | BindingFlags.NonPublic);
+        Require(create != null && apply != null && execute != null, "Production stock adjustment methods missing");
         Func<decimal, decimal, object> plan = (before, after) =>
             create.Invoke(null, new object[] { "CI-ARTICLE", before, after, "CI isolated adjustment", "CI-USER" });
 
@@ -66,6 +67,11 @@ internal static class StockAdjustmentMariaDbSmoke
                     ExpectFailure(() => Apply(apply, plan(10, 12), c, tx), "permission disabled");
                     tx.Rollback();
                 }
+                ExpectFailure(() => execute.Invoke(null, new object[] { cs, plan(10, 11) }),
+                    "owned transaction permission denied");
+                Require(Scalar(c, null, "SELECT STOCK FROM TABLE_ARTICLES") == 10m &&
+                    Scalar(c, null, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == 0m,
+                    "Denied owned transaction mutated stock");
                 Sql(c, null, "UPDATE TABLE_PARAMETRES SET VALEUR='True'");
                 using (var tx = c.BeginTransaction())
                 {
@@ -111,6 +117,15 @@ internal static class StockAdjustmentMariaDbSmoke
                     Scalar(c, null, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == 1m,
                     "Savepoint must undo stock after failed audit even if caller commits");
                 Sql(c, null, "ALTER TABLE TABLE_MOUVEMENTS_STOCK DROP CONSTRAINT ci_audit_reject");
+                execute.Invoke(null, new object[] { cs, plan(12, 13) });
+                Require(Scalar(c, null, "SELECT STOCK FROM TABLE_ARTICLES") == 13m &&
+                    Scalar(c, null, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == 2m,
+                    "Owned transaction must commit stock and audit");
+                ExpectFailure(() => execute.Invoke(null, new object[] { cs, plan(12, 14) }),
+                    "owned transaction stale snapshot");
+                Require(Scalar(c, null, "SELECT STOCK FROM TABLE_ARTICLES") == 13m &&
+                    Scalar(c, null, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == 2m,
+                    "Failed owned transaction mutated stock");
                 Console.WriteLine("PASS production MariaDB permission, rollback, commit, stale and duplicate-ID checks");
             }
             finally
