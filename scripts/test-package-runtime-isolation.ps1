@@ -159,6 +159,21 @@ try {
             if (-not $rejected) { throw "Release candidate accepted database table fixture: $extension" }
         }
         Write-Host 'PASS: release candidate rejects loose MariaDB table files'
+        # SQL migration shipped by packaging must remain allowed; backups must not.
+        foreach ($backupName in @('backup.sql', 'dump.sql', 'mysqldump.sql', 'shop.dump', 'shop.sql.gz', 'shop.sql.zip', 'shop.sql.bak')) {
+            $backupPath = Join-Path $work ('dist/' + $backupName)
+            [IO.File]::WriteAllText($backupPath, 'SYNTHETIC-BACKUP-NO-REAL-DATA')
+            $rejected = $false
+            try { & $candidateGate | Out-Null }
+            catch {
+                if ($_.Exception.Message -notlike '*Database backup forbidden in release package*') { throw }
+                $rejected = $true
+            } finally { Remove-Item -LiteralPath $backupPath -Force }
+            if (-not $rejected) { throw "Release candidate accepted database backup fixture: $backupName" }
+        }
+        & $candidateGate | Out-Null
+        Write-Host 'PASS: release candidate rejects synthetic SQL backups while allowing the reviewed migration'
+
 
 
 
