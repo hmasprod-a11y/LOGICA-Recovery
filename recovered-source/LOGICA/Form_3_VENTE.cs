@@ -14710,7 +14710,7 @@ public class Form_3_VENTE : Form
 		//IL_00d1: Expected Obj, but got Unknown
 		try
 		{
-			if (e.KeyCode == Keys.Enter && e.Modifiers == Keys.None)
+			if (LOGICA.Presentation.Checkout.BarcodeEnterPresenter.ShouldSubmit(e.KeyCode, e.Modifiers))
 			{
 				// Barcode scanners commonly terminate scans with Enter. Consume that
 				// terminator once; do not forward it to a focused button or dialog.
@@ -17569,5 +17569,17 @@ public class Form_3_VENTE : Form
 		string command = "\u001bp\0<" + Conversions.ToString(Strings.Chr(255));
 		string text = Text_PRINTER_SOLDER.Text;
 		RawPrinterHelperr.SendStringToPrinter(text, command);
+	}
+}
+
+// Pure keyboard policy: no DB, UI control, or checkout side effects.
+namespace LOGICA.Presentation.Checkout
+{
+	internal static class BarcodeEnterPresenter
+	{
+		internal static bool ShouldSubmit(System.Windows.Forms.Keys key, System.Windows.Forms.Keys modifiers)
+		{
+			return key == System.Windows.Forms.Keys.Enter && modifiers == System.Windows.Forms.Keys.None;
+		}
 	}
 }
