@@ -224,7 +224,7 @@ jobs:
             Remove-Item dist/bd/mysql-data,dist/bd/mysql-credential.xml,dist/bd/mysql-import-complete.txt -Recurse -Force -ErrorAction SilentlyContinue
           }
       - name: Finalize portable runtime package
-        if: success()
+        if: always()
         shell: pwsh
         run: ./scripts/package-runtime.ps1
       - name: Gate unified beta candidate and generate file hashes
