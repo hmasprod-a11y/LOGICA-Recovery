@@ -23,7 +23,7 @@ foreach($case in $cases) {
 # This runs on the isolated logica_ci database and fails before packaging on any
 # generated INSERT/UPDATE/Delete SourceColumn mismatch.
 $legacyExe=Join-Path $dist 'PosSmokeLegacyQuantity.exe'
-& $csc /nologo /platform:x86 /target:exe /r:System.Data.dll /r:System.Windows.Forms.dll "/out:$legacyExe" (Join-Path $PSScriptRoot 'test-checkout-legacy-quantity-mariadb.cs')
+& $csc /nologo /codepage:65001 /platform:x86 /target:exe /r:System.Data.dll /r:System.Windows.Forms.dll "/out:$legacyExe" (Join-Path $PSScriptRoot 'test-checkout-legacy-quantity-mariadb.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Legacy quantity MariaDB regression harness compilation failed' }
 Copy-Item dist/LOGICA.exe.config (Join-Path $dist 'PosSmokeLegacyQuantity.exe.config') -Force
 & $legacyExe
