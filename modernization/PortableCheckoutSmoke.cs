@@ -49,6 +49,39 @@ internal static class PortableCheckoutSmoke
             variants.Columns.Add("ID_ARTICLE", typeof(string));
             variants.Rows.Add("123", "A");
             variants.Rows.Add("123", "B");
+            // A removed basket row cannot be matched again while the barcode
+            // chooser is open; do not even invoke legacy equality in that case.
+            DataTable basket = variants.Clone();
+            DataRow basketLine = basket.Rows.Add("123", "A");
+            int equalityCalls = 0;
+            Func<object, object, bool> compare = delegate(object left, object right) {
+                equalityCalls++;
+                return String.Equals(Convert.ToString(left), Convert.ToString(right), StringComparison.Ordinal);
+            };
+            Require(CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                basketLine, "123", "A", compare), "Live basket row must match exact barcode and ID");
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                basketLine, "123", "B", compare), "Different variant must not increment basket quantity");
+            int callsBeforeRemoval = equalityCalls;
+            basket.Rows.Remove(basketLine);
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                basketLine, "123", "A", compare), "Detached basket row must not be reused");
+            Require(equalityCalls == callsBeforeRemoval,
+                "Detached basket row must not call legacy equality");
+            DataRow deletedLine = basket.Rows.Add("123", "A");
+            basket.AcceptChanges();
+            deletedLine.Delete();
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                deletedLine, "123", "A", compare), "Deleted basket row must not be reused");
+            Require(equalityCalls == callsBeforeRemoval,
+                "Deleted basket row must not call legacy equality");
+            DataTable incompleteBasket = new DataTable();
+            incompleteBasket.Columns.Add("Code", typeof(string));
+            DataRow incompleteLine = incompleteBasket.Rows.Add("123");
+            Require(!CheckoutBarcodeSelectionService.IsSameBasketArticle(
+                incompleteLine, "123", "A", compare), "Missing article identity must fail closed");
+            Require(equalityCalls == callsBeforeRemoval,
+                "Incomplete basket row must not call legacy equality");
             var snapshots = CheckoutVariantSnapshotService.Read(variants);
             bool nullReadRejected = false;
             try { CheckoutVariantSnapshotService.Read(null); }
