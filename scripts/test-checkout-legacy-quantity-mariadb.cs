@@ -72,7 +72,15 @@ internal static class CheckoutQuantityMariaDbSmoke
 
             table.Rows[0]["Qté"] = 3.75m;
             update.Invoke(null, null);
-            CheckPhysical(connection, 1, 3.75m, "UPDATE");
+            CheckPhysical(connection, 1, 3.75m, "UPDATE FIRST CLICK");
+            table.AcceptChanges();
+
+            // Real cashier case: the same image tile is clicked a second time,
+            // so the same workstation row must update twice without a false
+            // DBConcurrencyException from legacy schema/value comparison.
+            table.Rows[0]["Qté"] = 4.75m;
+            update.Invoke(null, null);
+            CheckPhysical(connection, 1, 4.75m, "UPDATE SECOND CLICK");
             table.AcceptChanges();
 
             table.Rows[0].Delete();
