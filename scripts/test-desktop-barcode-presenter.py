@@ -4,10 +4,10 @@ import re
 
 source = (Path(__file__).resolve().parents[1] / "recovered-source/LOGICA/Form_3_VENTE.cs").read_text(encoding="utf-8")
 handler = source.split("private void Text_CODE_KeyDown(object sender, KeyEventArgs e)", 1)[1].split("\n\tprivate void ", 1)[0]
-assert "BarcodeEnterPresenter.ShouldSubmit(e.KeyCode, e.Modifiers)" in handler
-assert "e.SuppressKeyPress = true;" in handler
-assert handler.index("e.SuppressKeyPress = true;") < handler.index("Button_FIND_Click(")
-assert "BarcodeEnterPresenter.ShouldSubmit" in handler
+assert "BarcodeEnterPresenter.Dispatch(e, delegate" in handler
+assert handler.index("BarcodeEnterPresenter.Dispatch") < handler.index("Button_FIND_Click(")
+assert "e.SuppressKeyPress = true;" in source.split("internal static class BarcodeEnterPresenter", 1)[1]
+assert "ShouldSubmit(e.KeyCode, e.Modifiers)" in source.split("internal static class BarcodeEnterPresenter", 1)[1]
 presenter = source.split("internal static class BarcodeEnterPresenter", 1)[1]
 assert re.search(r"return key == Keys\.Enter && modifiers == Keys\.None;", presenter)
 assert "namespace LOGICA.Presentation.Checkout" not in presenter
@@ -51,3 +51,7 @@ assert "Math.Abs((long)scrollY)" in scroll_policy
 assert "Math.Min((long)maxValue, position)" in scroll_policy
 assert "(long)content + 1L" in scroll_policy
 print("PASS: image grid scroll viewport policy is clamped and overflow-safe")
+
+assert "internal static bool Dispatch(KeyEventArgs e, Action submit)" in presenter
+assert "if (submit != null) submit();" in presenter
+assert presenter.index("e.SuppressKeyPress = true;") < presenter.index("submit();")
