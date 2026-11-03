@@ -37,3 +37,17 @@ assert "ExactImageArticleSql()" in find_handler
 assert "CheckoutArticleSearchQueryText.ExactBarcode" in find_handler
 assert find_handler.index("ProductSelectionPresenter.CanLookup") < find_handler.index("Module1.dt_find.Clear();")
 print("PASS: scanner and image tile selection guard, empty identifiers blocked before SQL")
+
+# Image grid scrollbar is a presentation policy, independent of catalogue SQL.
+scroll_handler = source.split("private void UpdateArticleImageScrollBar()", 1)[1].split("\n\tpublic void ", 1)[0]
+assert "ArticleImageScrollPresenter.Calculate(" in scroll_handler
+assert "bar.Maximum = scroll.Maximum;" in scroll_handler
+assert "bar.LargeChange = scroll.LargeChange;" in scroll_handler
+assert "bar.Value = scroll.Value;" in scroll_handler
+scroll_policy = source.split("internal static class ArticleImageScrollPresenter", 1)[1]
+assert "Math.Max(0, contentHeight)" in scroll_policy
+assert "Math.Max(0, viewportHeight)" in scroll_policy
+assert "Math.Abs((long)scrollY)" in scroll_policy
+assert "Math.Min((long)maxValue, position)" in scroll_policy
+assert "(long)content + 1L" in scroll_policy
+print("PASS: image grid scroll viewport policy is clamped and overflow-safe")
