@@ -92,6 +92,15 @@ try {
             [IO.File]::WriteAllText((Join-Path $work ('dist/' + $name)), 'synthetic runtime')
         }
         $candidateGate = Join-Path $root 'scripts/test-release-candidate.ps1'
+        # Parse the exact production gate before exercising fixtures. This catches
+        # accidental duplicate/truncated script tails before the Windows build stage.
+        $gateTokens = $null
+        $gateParseErrors = $null
+        [void][System.Management.Automation.Language.Parser]::ParseFile($candidateGate, [ref]$gateTokens, [ref]$gateParseErrors)
+        if ($gateParseErrors.Count -gt 0) {
+            throw ('Release candidate gate parse failure: ' + ($gateParseErrors | Out-String))
+        }
+
         & $candidateGate | Out-Null
         foreach ($secretName in @('.env','shop-backup.pfx','private.key','id_rsa')) {
             $secretPath = Join-Path $work ('dist/' + $secretName)
