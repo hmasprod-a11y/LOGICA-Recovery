@@ -13846,10 +13846,7 @@ public class Form_2_ARTICLES : Form
 				Text_PROMOTION.Text = editRow["PROMOTION"].ToString();
 				Combo_BALANCE.Text = editRow["BALANCE"].ToString();
 				Combo_FENETRE_PESEE.Text = editRow["FENETRE_PESAGE"].ToString();
-				if (!Conversions.ToBoolean(TextBox_MODIF_STOCK_MANUEL.Text))
-				{
-					((Control)Text_STOCK).Enabled = false;
-				}
+				((Control)Text_STOCK).Enabled = string.Equals(TextBox_MODIF_STOCK_MANUEL.Text, "True", StringComparison.OrdinalIgnoreCase);
 				DataGrid_RECEPTIONS.DataSource = null;
 				DataGrid_VENTES.DataSource = null;
 				DataGrid_SORTIES.DataSource = null;
@@ -14292,11 +14289,7 @@ public class Form_2_ARTICLES : Form
 			Text_PROMOTION.Text = "0";
 			Combo_FENETRE_PESEE.Text = "";
 			Combo_BALANCE.Text = "";
-			((Control)Text_STOCK).Enabled = true;
-			if (!Conversions.ToBoolean(TextBox_AJOUT_STOCK_MANUEL.Text))
-			{
-				((Control)Text_STOCK).Enabled = false;
-			}
+			((Control)Text_STOCK).Enabled = string.Equals(TextBox_AJOUT_STOCK_MANUEL.Text, "True", StringComparison.OrdinalIgnoreCase);
 			((Control)Text_CODE).Focus();
 		}
 		catch (Exception ex)
@@ -14330,6 +14323,38 @@ public class Form_2_ARTICLES : Form
 
 	private void Button23_Click(object sender, EventArgs e)
 	{
+	}
+
+	// UI disabling is not authorization. A disabled manual-stock option
+	// must also be enforced at persistence, including programmatic input.
+	private bool ValidateManualStockPermission()
+	{
+		bool isNew = string.Equals(Label_TOP.Text, "NOUVEAU", StringComparison.Ordinal);
+		bool isEdit = string.Equals(Label_TOP.Text, "MODIFICATION", StringComparison.Ordinal);
+		if (!isNew && !isEdit) return true;
+		string option = isNew ? "AJOUT_STOCK_MANUEL" : "MODIF_STOCK_MANUEL";
+		bool allowed;
+		allowed = bool.TryParse(ReadArticleSetting(option, "False"), out allowed) && allowed;
+		((Control)Text_STOCK).Enabled = allowed;
+		if (allowed) return true;
+		string original = "0";
+		if (isEdit)
+		{
+			DataRow row = LOGICA.ApplicationLayer.Catalogue.CatalogueRowMapper.ResolveUniqueByDatabaseId(DT, Text_ID.Text);
+			if (row == null || !DT.Columns.Contains("STOCK"))
+				throw new InvalidOperationException("Cannot verify original stock for this article.");
+			original = Convert.ToString(row["STOCK"]);
+		}
+		decimal entered, saved;
+		if (!decimal.TryParse(Text_STOCK.Text, out entered) ||
+			!decimal.TryParse(original, out saved) || entered != saved)
+		{
+			MessageBox.Show("Modification manuelle du stock interdite par les paramètres.", "Stock", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+			Text_STOCK.Text = original;
+			return false;
+		}
+		Text_STOCK.Text = original;
+		return true;
 	}
 
 	private void Button_SAVE_Click(object sender, EventArgs e)
@@ -14382,6 +14407,7 @@ public class Form_2_ARTICLES : Form
 		{
 			try
 			{
+				if (!ValidateManualStockPermission()) return;
 				if (LOGICA.Domain.CatalogueRequiredFields.IsMissingIdentifier(Text_CODE.Text, LOGICA.Infrastructure.Compatibility.VisualBasicCatalogueSemantics.Instance))
 				{
 					MessageBox.Show("Veuillez remplir le champ -Code- ", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
