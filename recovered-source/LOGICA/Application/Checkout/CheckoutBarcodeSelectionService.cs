@@ -23,7 +23,10 @@ namespace LOGICA.ApplicationLayer.Checkout
                 basketLine.RowState == DataRowState.Detached ||
                 basketLine.Table == null ||
                 !basketLine.Table.Columns.Contains("Code") ||
-                !basketLine.Table.Columns.Contains("ID_ARTICLE"))
+                !basketLine.Table.Columns.Contains("ID_ARTICLE") ||
+                basketLine.IsNull("Code") ||
+                basketLine.IsNull("ID_ARTICLE") ||
+                String.IsNullOrWhiteSpace(Convert.ToString(basketLine["ID_ARTICLE"])))
                 return false;
             return legacyEquals(basketLine["Code"], scannedCode) &&
                    legacyEquals(basketLine["ID_ARTICLE"], selectedArticleId);
