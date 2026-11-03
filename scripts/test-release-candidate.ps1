@@ -45,6 +45,17 @@ foreach ($candidate in @(Get-ChildItem -LiteralPath $dist -Recurse -File -Force 
     throw "Database table state forbidden in release package: $($candidate.FullName)"
   }
 }
+# SQL backups and database dumps are never part of the runtime. The one
+# reviewed additive migration (.sql) remains allowed.
+$databaseBackupNames = @('backup.sql', 'dump.sql', 'mysqldump.sql')
+$databaseBackupExtensions = @('.dump', '.sql.gz', '.sql.zip', '.sql.bak')
+foreach ($candidate in @(Get-ChildItem -LiteralPath $dist -Recurse -File -Force -ErrorAction Stop)) {
+  $lowerName = $candidate.Name.ToLowerInvariant()
+  if ($databaseBackupNames -contains $lowerName -or
+      @($databaseBackupExtensions | Where-Object { $lowerName.EndsWith($_, [StringComparison]::Ordinal) }).Count -gt 0) {
+    throw "Database backup forbidden in release package: $($candidate.FullName)"
+  }
+}
 # Check that the distributed runtime is self-contained and does not inherit shop state.
 if (-not (Test-Path -LiteralPath (Join-Path $dist 'LOGICA.exe.config') -PathType Leaf)) {
   throw 'LOGICA.exe.config missing from release candidate'
