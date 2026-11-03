@@ -78,6 +78,10 @@ namespace LOGICA.Infrastructure.Inventory
                 if (count != 3) throw new InvalidOperationException("Incomplete stock adjustment schema.");
             }
 
+            // A global feature flag is NOT user authorization. Until the
+            // Application layer provides a verified actor/role contract, the
+            // transaction-owning entry point must not be exposed to untrusted
+            // WPF commands as a general stock-edit API.
             // Read the persisted permission inside the same transaction, not a stale UI flag.
             using (var permission = new MySqlCommand(
                 "SELECT VALEUR FROM TABLE_PARAMETRES WHERE OBJET = 'MODIF_STOCK_MANUEL' FOR UPDATE",
