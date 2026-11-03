@@ -12,6 +12,8 @@
     <Compile Include="../recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptCatalogueValidationService.cs" Link="Purchasing/PurchaseReceiptCatalogueValidationService.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptStockProjectionService.cs" Link="Purchasing/PurchaseReceiptStockProjectionService.cs" />
     <Compile Include="../tests/PurchaseReceiptStockProjectionSmoke.cs" Link="Tests/PurchaseReceiptStockProjectionSmoke.cs" />
+    <Compile Include="../recovered-source/LOGICA/Application/Purchasing/ReceiptArticleSelectionService.cs" Link="Purchasing/ReceiptArticleSelectionService.cs" />
+    <Compile Include="../tests/ReceiptArticleSelectionSmoke.cs" Link="Tests/ReceiptArticleSelectionSmoke.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockCountVarianceService.cs" Link="Inventory/StockCountVarianceService.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockCountCoverageService.cs" Link="Inventory/StockCountCoverageService.cs" />
     <Compile Include="../recovered-source/LOGICA/Application/Inventory/StockCountAdjustmentProposalService.cs" Link="Inventory/StockCountAdjustmentProposalService.cs" />

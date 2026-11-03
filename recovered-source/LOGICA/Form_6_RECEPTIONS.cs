@@ -679,6 +679,9 @@ public class Form_6_RECEPTIONS : Form
 
 	private object _sql;
 
+	// Only set during an explicit purchase article-grid choice.
+	private string _receiptSelectedArticleId;
+
 	internal virtual Button Button_ADD
 	{
 		[DebuggerNonUserCode]
@@ -9694,15 +9697,33 @@ public class Form_6_RECEPTIONS : Form
 				dataTable.Clear();
 				val = new MySqlDataAdapter("select       ID_ARTICLE,Code,Article,STOCK,Prix_A,Prix_V_1,UNITE         from TABLE_ARTICLES WHERE Code =  '" + Text_CODE_FIND.Text + "'    ", Module1.cn_SQL);
 				((DbDataAdapter)(object)val).Fill(dataTable);
-				if (dataTable.Rows.Count != 0)
+				DataRow receiptArticle = LOGICA.ApplicationLayer.Purchasing.ReceiptArticleSelectionService.Resolve(
+					dataTable, _receiptSelectedArticleId);
+				if (dataTable.Rows.Count != 0 && receiptArticle == null)
 				{
-					Text_ID_ARTICLE.Text = dataTable.Rows[0]["ID_ARTICLE"].ToString();
-					Text_CODE.Text = dataTable.Rows[0]["Code"].ToString();
-					Text_ARTICLE.Text = dataTable.Rows[0]["Article"].ToString();
-					Text_STOCK_ACTUEL.Text = dataTable.Rows[0]["STOCK"].ToString();
-					Text_PRIX_A.Text = dataTable.Rows[0]["Prix_A"].ToString();
-					Text_PRIX_V.Text = dataTable.Rows[0]["Prix_V_1"].ToString();
-					Text_UNITE.Text = dataTable.Rows[0]["UNITE"].ToString();
+					// Never silently receive stock against the first duplicate barcode variant.
+					// Clear any prior choice so a stale article cannot be added.
+					Text_ID_ARTICLE.Text = "";
+					Text_CODE.Text = "";
+					Text_ARTICLE.Text = "";
+					Text_STOCK_ACTUEL.Text = "";
+					Text_PRIX_A.Text = "";
+					Text_PRIX_V.Text = "";
+					Text_UNITE.Text = "";
+					Text_QTE.Text = "";
+					MessageBox.Show("Plusieurs articles partagent ce code ou l'article choisi a changé. Sélectionnez l'article exact dans la liste.", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
+					((Control)Text_ARTICLE_FIND).Focus();
+					return;
+				}
+				if (receiptArticle != null)
+				{
+					Text_ID_ARTICLE.Text = receiptArticle["ID_ARTICLE"].ToString();
+					Text_CODE.Text = receiptArticle["Code"].ToString();
+					Text_ARTICLE.Text = receiptArticle["Article"].ToString();
+					Text_STOCK_ACTUEL.Text = receiptArticle["STOCK"].ToString();
+					Text_PRIX_A.Text = receiptArticle["Prix_A"].ToString();
+					Text_PRIX_V.Text = receiptArticle["Prix_V_1"].ToString();
+					Text_UNITE.Text = receiptArticle["UNITE"].ToString();
 					Text_QTE.Text = "";
 					((Control)Text_QTE).Focus();
 					return;
@@ -9954,8 +9975,14 @@ public class Form_6_RECEPTIONS : Form
 		//IL_0209: Expected Obj, but got Unknown
 		try
 		{
-			DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["TOTAL_NET_ACHATS"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["Qté"].Value, DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["Prix_A"].Value)));
-			DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["TOTAL_NET_VENTES"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["Qté"].Value, DataGrid_BODY.Rows[((DataGridViewBand)DataGrid_BODY.CurrentRow).Index].Cells["Prix_V"].Value)));
+			// CellValidated reports the edited row, which may differ from CurrentRow
+			// after keyboard navigation. Never overwrite another receipt line's totals.
+			if (e == null || !LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(
+				e.RowIndex, DataGrid_BODY.Rows.Count) || DataGrid_BODY.Rows[e.RowIndex].IsNewRow)
+				return;
+			DataGridViewRow editedLine = DataGrid_BODY.Rows[e.RowIndex];
+			editedLine.Cells["TOTAL_NET_ACHATS"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(editedLine.Cells["Qté"].Value, editedLine.Cells["Prix_A"].Value)));
+			editedLine.Cells["TOTAL_NET_VENTES"].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.MultiplyObject(editedLine.Cells["Qté"].Value, editedLine.Cells["Prix_V"].Value)));
 			Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
 		}
 		catch (Exception ex)
@@ -9992,10 +10019,17 @@ public class Form_6_RECEPTIONS : Form
 		//IL_0046: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0053: Unknown result type (might be due to invalid IL or missing references)
 		//IL_005d: Expected Obj, but got Unknown
-		if ((DataGrid_BODY.CurrentCell.ColumnIndex == 3) | (DataGrid_BODY.CurrentCell.ColumnIndex == 4) | (DataGrid_BODY.CurrentCell.ColumnIndex == 5))
-		{
-			((Control)(TextBox)e.Control).KeyPress += TextBox_keyPress;
-		}
+		// WinForms reuses the editing TextBox across cells. Reattaching on every
+		// edit previously stacked duplicate KeyPress handlers.
+		TextBox editingBox = e == null ? null : e.Control as TextBox;
+		if (editingBox == null)
+			return;
+		editingBox.KeyPress -= TextBox_keyPress;
+		if (DataGrid_BODY.CurrentCell != null &&
+			(DataGrid_BODY.CurrentCell.ColumnIndex == 3 ||
+			 DataGrid_BODY.CurrentCell.ColumnIndex == 4 ||
+			 DataGrid_BODY.CurrentCell.ColumnIndex == 5))
+			editingBox.KeyPress += TextBox_keyPress;
 	}
 
 	private void TextBox_keyPress(object sender, KeyPressEventArgs e)
@@ -10019,9 +10053,24 @@ public class Form_6_RECEPTIONS : Form
 		//IL_005c: Invalid comparison between Unknown and I4
 		try
 		{
-			if (((Operators.ConditionalCompareObjectEqual(e.ColumnIndex, Operators.SubtractObject(NewLateBinding.LateGet(sender, null, "ColumnCount", new object[0], null, null, null), 1), TextCompare: false) && e.RowIndex >= 0) ? true : false) && (int)MessageBox.Show("Voulez-vous vraiment supprimer ??", "Suppression", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
+			if (e == null || !LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.HasExistingRow(
+				e.RowIndex, DataGrid_BODY.Rows.Count) || e.ColumnIndex != DataGrid_BODY.ColumnCount - 1 ||
+				DataGrid_BODY.Rows[e.RowIndex].IsNewRow)
+				return;
+			// CurrentCell can point at a different line from the clicked delete
+			// button, and a modal can reorder/remove rows before confirmation.
+			DataGridViewRow clickedLine = DataGrid_BODY.Rows[e.RowIndex];
+			string confirmedArticleId = Convert.ToString(clickedLine.Cells["ID_ARTICLE"].Value);
+			string confirmedCode = Convert.ToString(clickedLine.Cells["Code"].Value);
+			if ((int)MessageBox.Show("Voulez-vous vraiment supprimer ??", "Suppression", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
 			{
-				DataGrid_BODY.Rows.RemoveAt(DataGrid_BODY.CurrentCell.RowIndex);
+				if (clickedLine.DataGridView != DataGrid_BODY || clickedLine.IsNewRow ||
+					!LOGICA.ApplicationLayer.Purchasing.ReceiptLineGridGuard.MatchesLine(
+						confirmedArticleId, confirmedCode,
+						Convert.ToString(clickedLine.Cells["ID_ARTICLE"].Value),
+						Convert.ToString(clickedLine.Cells["Code"].Value)))
+					return;
+				DataGrid_BODY.Rows.Remove(clickedLine);
 				Button_CALC_DOC_Click(RuntimeHelpers.GetObjectValue(sender), (EventArgs)(object)e);
 			}
 		}
@@ -10447,8 +10496,17 @@ public class Form_6_RECEPTIONS : Form
 		{
 			if (DataGridView_ARTICLES.Rows.Count != 0)
 			{
-				Text_CODE_FIND.Text = Conversions.ToString(DataGridView_ARTICLES.Rows[((DataGridViewBand)DataGridView_ARTICLES.CurrentRow).Index].Cells[1].Value);
-				Button_FIND.PerformClick();
+				DataGridViewRow chosenReceiptRow = DataGridView_ARTICLES.Rows[((DataGridViewBand)DataGridView_ARTICLES.CurrentRow).Index];
+				_receiptSelectedArticleId = Conversions.ToString(chosenReceiptRow.Cells[0].Value);
+				try
+				{
+					Text_CODE_FIND.Text = Conversions.ToString(chosenReceiptRow.Cells[1].Value);
+					Button_FIND.PerformClick();
+				}
+				finally
+				{
+					_receiptSelectedArticleId = null;
+				}
 			}
 		}
 		catch (Exception ex)

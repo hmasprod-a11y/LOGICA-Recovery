@@ -17,6 +17,8 @@ try {
         'recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptCatalogueValidationService.cs',
         'recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptStockProjectionService.cs',
         'tests/PurchaseReceiptStockProjectionSmoke.cs',
+        'recovered-source/LOGICA/Application/Purchasing/ReceiptArticleSelectionService.cs',
+        'tests/ReceiptArticleSelectionSmoke.cs',
         'recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptSupplierValidationService.cs',
         'recovered-source/LOGICA/Application/Inventory/StockCountFreshnessService.cs',
         'tests/BusinessSnapshotFreshnessSmoke.cs',

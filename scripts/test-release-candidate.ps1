@@ -8,7 +8,8 @@ if ($dlls.Count -eq 0) { throw 'No runtime DLLs in release candidate' }
 foreach ($name in @('Launch-LOGICA.ps1', 'Start-LOGICA.cmd')) {
   if (-not (Test-Path -LiteralPath (Join-Path $dist $name) -PathType Leaf)) { throw "Missing launcher: $name" }
 }
-$forbidden = @('mysql-credential.xml', 'mysql-import-complete.txt')
+# The launcher writes a plaintext client INI during database startup. Never ship it.
+$forbidden = @('mysql-credential.xml', 'mysql-import-complete.txt', 'mysql-client-temporary.ini')
 foreach ($name in $forbidden) {
   $matches = @(Get-ChildItem -LiteralPath $dist -Recurse -File -ErrorAction Stop | Where-Object { $_.Name -eq $name })
   if ($matches.Count -gt 0) { throw "Private test/runtime state included: $name" }

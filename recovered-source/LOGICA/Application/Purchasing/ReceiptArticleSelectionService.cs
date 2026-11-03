@@ -1,0 +1,255 @@
+using System;
+using System.Collections.Generic;
+using System.Data;
+
+namespace LOGICA.ApplicationLayer.Purchasing
+{
+    // Used by the real purchase-receipt barcode and article-grid handlers.
+    // A barcode is not a unique article identity; a grid choice must retain ID_ARTICLE.
+    internal static class ReceiptArticleSelectionService
+    {
+        // An explicit grid selection that disappeared after a fresh barcode read
+        // must never be treated as a request to create a different article.
+        // This decision is read-only and does not change legacy creation flow.
+        internal static bool CanOfferCreation(DataTable barcodeMatches, string selectedArticleId)
+        {
+            if (barcodeMatches == null) throw new ArgumentNullException("barcodeMatches");
+            return selectedArticleId == null && barcodeMatches.Rows.Count == 0;
+        }
+
+        // The scanner must not query the blank barcode shared by unrelated
+        // products. An explicit article-grid click is different: its ID_ARTICLE
+        // disambiguates even a genuinely barcode-free product. The real receipt
+        // Find button calls this before its existing local catalogue query.
+        internal static bool ShouldLookupBarcode(string code, string selectedArticleId)
+        {
+            return selectedArticleId != null || !String.IsNullOrWhiteSpace(code);
+        }
+
+        // The real receipt Add button is reached after a successful catalogue
+        // resolution. A barcode-free product is valid only when its exact ID
+        // came from an explicit article-grid selection, never from an empty scan.
+        // The caller clears the grid provenance before every new lookup.
+        internal static bool CanAddResolvedArticle(string articleId, string code,
+            bool resolvedFromArticleGrid)
+        {
+            return !String.IsNullOrWhiteSpace(articleId) && code != null &&
+                (code.Length != 0 || resolvedFromArticleGrid);
+        }
+
+        // Returns null on missing, ambiguous, deleted or malformed rows.
+        // No SQL, price, quantity or stock mutations.
+        internal static DataRow Resolve(DataTable barcodeMatches, string selectedArticleId)
+        {
+            if (barcodeMatches == null) throw new ArgumentNullException("barcodeMatches");
+            if (!barcodeMatches.Columns.Contains("ID_ARTICLE") ||
+                !barcodeMatches.Columns.Contains("Code"))
+                return null;
+
+            var seenIds = new HashSet<string>(StringComparer.Ordinal);
+            DataRow selected = null;
+            int validCount = 0;
+            string exactBarcode = null;
+            foreach (DataRow row in barcodeMatches.Rows)
+            {
+                if (row == null || row.RowState == DataRowState.Deleted ||
+                    row.RowState == DataRowState.Detached ||
+                    row.IsNull("ID_ARTICLE") || row.IsNull("Code"))
+                    return null;
+                string id = Convert.ToString(row["ID_ARTICLE"]);
+                string code = Convert.ToString(row["Code"]);
+                // The receipt barcode lookup must return candidates for one
+                // exact Code. A mixed result cannot be trusted even when a
+                // grid-selected ID happens to match; fail before copying prices.
+                if (String.IsNullOrWhiteSpace(id) || !seenIds.Add(id) ||
+                    (exactBarcode != null && !String.Equals(exactBarcode, code, StringComparison.Ordinal)))
+                    return null;
+                exactBarcode = code;
+                validCount++;
+                if (selectedArticleId == null ||
+                    String.Equals(selectedArticleId, id, StringComparison.Ordinal))
+                    selected = row;
+            }
+
+            // Barcode-only entry must have exactly one candidate.
+            if (selectedArticleId == null && validCount != 1)
+                return null;
+            return selected;
+        }
+    }
+
+
+    // Shared with the actual purchase receipt DataGrid_BODY event handlers.
+    // Index validation prevents a header/new-row click from being interpreted
+    // as an article line; identity recheck protects a pending delete dialog.
+    internal static class ReceiptLineGridGuard
+    {
+        // The receipt save button must finish the active edit and recompute
+        // line/document totals BEFORE checking the displayed total labels.
+        // An invalid edit aborts without recalculation or persistence.
+        // Keep the existing VB arithmetic in the WinForms callbacks.
+        internal static bool PrepareForSave(Func<bool> endEdit,
+            Action recalculateLines, Action recalculateDocument)
+        {
+            if (endEdit == null) throw new ArgumentNullException("endEdit");
+            if (recalculateLines == null) throw new ArgumentNullException("recalculateLines");
+            if (recalculateDocument == null) throw new ArgumentNullException("recalculateDocument");
+            if (!endEdit()) return false;
+            recalculateLines();
+            recalculateDocument();
+            return true;
+        }
+
+        // Keep VB's existing numeric recognition/conversion at the WinForms edge,
+        // but reject malformed, blank and negative receipt quantities BEFORE
+        // legacy rounding or grid insertion. Prices keep their original signed
+        // semantics; no SQL or stock movement occurs here.
+        internal static bool TryReadReceiptNumber(string input, bool rejectNegative,
+            Func<string, bool> isNumeric, Func<string, decimal> convert,
+            out decimal value)
+        {
+            if (isNumeric == null) throw new ArgumentNullException("isNumeric");
+            if (convert == null) throw new ArgumentNullException("convert");
+            value = 0m;
+            if (String.IsNullOrWhiteSpace(input) || !isNumeric(input)) return false;
+            decimal parsed = convert(input);
+            if (rejectNegative && parsed < 0m) return false;
+            value = parsed;
+            return true;
+        }
+
+        internal static bool HasExistingRow(int rowIndex, int rowCount)
+        {
+            return rowIndex >= 0 && rowCount > 0 && rowIndex < rowCount;
+        }
+
+        internal static bool MatchesLine(string confirmedArticleId, string confirmedCode,
+            string currentArticleId, string currentCode)
+        {
+            return !String.IsNullOrWhiteSpace(confirmedArticleId) &&
+                String.Equals(confirmedArticleId, currentArticleId, StringComparison.Ordinal) &&
+                String.Equals(confirmedCode, currentCode, StringComparison.Ordinal);
+        }
+    }
+
+    // The receipt currently displayed for consultation must be the one that the
+    // operator confirmed. This guards the real WinForms validation handler
+    // against a stale binding position without changing transaction SQL.
+    internal static class ReceiptDocumentSelectionGuard
+    {
+        // A sorted/filtered WinForms DataGridView row does not necessarily have
+        // the same index as the underlying DataTable or BindingContext cursor.
+        // Resolve the actual bound record and verify the visible receipt ID;
+        // never consult, edit or delete a different receipt via DT.Rows[position].
+        internal static DataRow ResolveBoundRow(DataRowView clickedView, string displayedReceiptId)
+        {
+            if (clickedView == null || clickedView.Row == null ||
+                clickedView.Row.RowState == DataRowState.Deleted ||
+                clickedView.Row.RowState == DataRowState.Detached ||
+                !clickedView.Row.Table.Columns.Contains("ID_BR") ||
+                clickedView.Row.IsNull("ID_BR"))
+                return null;
+            DataRow selectedRow = clickedView.Row;
+            string actualId = Convert.ToString(selectedRow["ID_BR"]);
+            if (!Matches(displayedReceiptId, actualId))
+                return null;
+
+            // The legacy detail DELETE/UPDATE and consultation SQL use ID_BR,
+            // not the DataGridView row index. If two active headers share that
+            // number, selecting either could mutate BOTH sets of detail rows.
+            // Check the entire bound table, including rows hidden by a filter.
+            bool hasRecordId = selectedRow.Table.Columns.Contains("ID");
+            string recordId = hasRecordId && !selectedRow.IsNull("ID")
+                ? Convert.ToString(selectedRow["ID"]) : null;
+            if (hasRecordId && String.IsNullOrWhiteSpace(recordId))
+                return null;
+            foreach (DataRow other in selectedRow.Table.Rows)
+            {
+                if (Object.ReferenceEquals(other, selectedRow) ||
+                    other.RowState == DataRowState.Deleted ||
+                    other.RowState == DataRowState.Detached)
+                    continue;
+                if (!other.IsNull("ID_BR") &&
+                    String.Equals(actualId, Convert.ToString(other["ID_BR"]),
+                        StringComparison.Ordinal))
+                    return null;
+                // An inconsistent header snapshot must not allow a second
+                // database record with the same primary ID to be edited.
+                if (hasRecordId && !other.IsNull("ID") &&
+                    String.Equals(recordId, Convert.ToString(other["ID"]),
+                        StringComparison.Ordinal))
+                    return null;
+            }
+            return selectedRow;
+        }
+
+        internal static bool Matches(string confirmedReceiptId, string loadedReceiptId)
+        {
+            return !String.IsNullOrWhiteSpace(confirmedReceiptId) &&
+                !String.IsNullOrWhiteSpace(loadedReceiptId) &&
+                String.Equals(confirmedReceiptId, loadedReceiptId, StringComparison.Ordinal);
+        }
+
+        // Saving a previously opened receipt must never trust Label_INDEX or
+        // BindingContext.Position: sorting/filtering can point at another row.
+        // Resolve by the stable database record ID and the original receipt
+        // number. A changed number or an already validated record fails closed;
+        // changing receipt numbers would also orphan legacy detail rows.
+        internal static DataRow ResolveEditableRow(DataTable receipts,
+            string recordId, string receiptId)
+        {
+            if (receipts == null || String.IsNullOrWhiteSpace(recordId) ||
+                String.IsNullOrWhiteSpace(receiptId) ||
+                !receipts.Columns.Contains("ID") ||
+                !receipts.Columns.Contains("ID_BR") ||
+                !receipts.Columns.Contains("ETAT"))
+                return null;
+            DataRow found = null;
+            int matchingReceiptNumbers = 0;
+            int matchingRecordIds = 0;
+            foreach (DataRow row in receipts.Rows)
+            {
+                if (row.RowState == DataRowState.Deleted ||
+                    row.RowState == DataRowState.Detached)
+                    continue;
+                // Count duplicate identities even when another field is NULL:
+                // a malformed duplicate must never make a corrupt snapshot
+                // appear uniquely editable.
+                if (!row.IsNull("ID_BR") &&
+                    String.Equals(Convert.ToString(row["ID_BR"]), receiptId,
+                        StringComparison.Ordinal))
+                    matchingReceiptNumbers++;
+                if (!row.IsNull("ID") &&
+                    String.Equals(Convert.ToString(row["ID"]), recordId,
+                        StringComparison.Ordinal))
+                {
+                    matchingRecordIds++;
+                    found = row;
+                }
+            }
+            if (found == null || matchingRecordIds != 1 ||
+                matchingReceiptNumbers != 1 || found.IsNull("ID_BR") ||
+                found.IsNull("ETAT") ||
+                !Matches(receiptId, Convert.ToString(found["ID_BR"])) ||
+                String.IsNullOrWhiteSpace(Convert.ToString(found["ETAT"])) ||
+                String.Equals(Convert.ToString(found["ETAT"]), "VALIDER",
+                    StringComparison.Ordinal))
+                return null;
+            return found;
+        }
+
+        // Preserve the original confirmation behavior for unvalidated legacy
+        // states (including EN_COURS). Only a now-validated or missing state
+        // must stop posting after the consultation refresh. This UI guard is
+        // NOT a substitute for an atomic database claim across clients.
+        internal static bool MayValidate(string confirmedReceiptId, string loadedReceiptId,
+            string displayedState, string loadedState)
+        {
+            return Matches(confirmedReceiptId, loadedReceiptId) &&
+                !String.IsNullOrWhiteSpace(displayedState) &&
+                !String.IsNullOrWhiteSpace(loadedState) &&
+                !String.Equals(displayedState, "VALIDER", StringComparison.Ordinal) &&
+                !String.Equals(loadedState, "VALIDER", StringComparison.Ordinal);
+        }
+    }
+}

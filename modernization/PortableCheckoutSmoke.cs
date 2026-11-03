@@ -500,6 +500,34 @@ internal static class PortableCheckoutSmoke
             Require(Object.ReferenceEquals(
                 CheckoutBarcodeSelectionService.Select(flowMatches, delegate(DataTable ignored) { return 1; }),
                 flowChoice.SelectedRow), "Modern selection must agree with legacy chosen variant");
+            // This is the Select API called by the real Form_3_VENTE handler,
+            // not just the opt-in modern flow. The dialog's index belongs to
+            // the originally displayed rows, even if a refresh shifts them.
+            DataTable activeReordered = flowMatches.Copy();
+            DataRow activeSelected = activeReordered.Rows[1];
+            DataRow activeResolved = CheckoutBarcodeSelectionService.Select(
+                activeReordered, delegate(DataTable live) {
+                    live.Rows.RemoveAt(0);
+                    return 1;
+                });
+            Require(Object.ReferenceEquals(activeResolved, activeSelected) &&
+                activeResolved["ID_ARTICLE"].ToString() == "B" &&
+                SalesLinePricing.CalculateNetAmount(
+                    (decimal)activeResolved["UnitPrice"], 2m,
+                    (decimal)activeResolved["Discount"]) == 15m,
+                "Real scanner chooser retains original variant and production line net after row shift");
+            DataTable activeChanged = flowMatches.Copy();
+            Require(CheckoutBarcodeSelectionService.Select(
+                activeChanged, delegate(DataTable live) {
+                    live.Rows[1]["Code"] = "OTHER";
+                    return 1;
+                }) == null,
+                "Real scanner chooser refuses changed barcode before basket posting");
+            DataTable activeDeleted = flowMatches.Copy();
+            activeDeleted.Rows[1].Delete();
+            Require(CheckoutBarcodeSelectionService.Select(activeDeleted,
+                delegate(DataTable live) { throw new Exception("Unsafe modal opened"); }) == null,
+                "Real scanner chooser refuses pre-deleted variants without opening modal");
             int flowPriceCalls = 0;
             CheckoutBasketPreview flowPreview = CheckoutSelectionFlowService.Preview(
                 flowChoice, 5m, delegate(DataRow article) {
