@@ -287,6 +287,27 @@ try { overflow.Submit("overflow-001"); throw new Exception("quantity overflow ac
 catch (OverflowException) { Assert(overflowCart.Calls.Count == 0,
     "quantity overflow cannot write partial checkout"); }
 
+// Real WPF tile selection must re-read live Inventory identity/photo/variant.
+var photoReader = new MutablePhotoCatalogue();
+var photoPort = new RecordingAtomicBatchPort();
+var photoSession = new CheckoutComposition(photoReader, new RecordingPrompt(),
+    photoPort, new CompositionJournal()).CreateSession();
+var originalTile = photoSession.ImageProducts[0];
+photoReader.VariantId = "replacement";
+Assert(photoSession.SelectImage(originalTile).Outcome == SelectionOutcome.InvalidCandidates &&
+       photoSession.PendingCount == 0, "changed variant cannot stage stale WPF tile");
+photoReader.VariantId = "v1";
+photoReader.ImagePath = null;
+Assert(photoSession.SelectImage(originalTile).Outcome == SelectionOutcome.InvalidCandidates &&
+       photoSession.PendingCount == 0, "removed photo cannot stage stale WPF tile");
+photoReader.ImagePath = "images/replaced.png";
+Assert(photoSession.SelectImage(originalTile).Outcome == SelectionOutcome.InvalidCandidates &&
+       photoSession.PendingCount == 0, "replaced photo cannot stage stale WPF tile");
+photoReader.ImagePath = "images/original.png";
+Assert(photoSession.SelectImage(originalTile).Outcome == SelectionOutcome.Selected &&
+       photoSession.Submit("photo-current-001") == CheckoutBatchStatus.Committed &&
+       photoPort.Calls.Count == 1, "current WPF photo stages and posts exactly once");
+
 Console.WriteLine("Production selection-to-checkout workflow regression suite passed.");
 
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
@@ -382,6 +403,17 @@ sealed class MutableCompositionCatalogue : ICatalogueReader
     public IReadOnlyList<ProductSummary> ListAll() => new[] { Current };
     public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => new[] { Current };
     public IReadOnlyList<ProductSummary> RefreshBarcode(string barcode) => new[] { Current };
+    public IReadOnlyList<ProductSummary> RefreshArticle(string articleId) => new[] { Current };
+}
+
+sealed class MutablePhotoCatalogue : ICatalogueReader
+{
+    public string? ImagePath { get; set; } = "images/original.png";
+    public string? VariantId { get; set; } = "v1";
+    private ProductSummary Current => new("photo-1", "", "Image article", ImagePath, VariantId);
+    public IReadOnlyList<ProductSummary> ListAll() => new[] { Current };
+    public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => Array.Empty<ProductSummary>();
+    public IReadOnlyList<ProductSummary> RefreshBarcode(string barcode) => Array.Empty<ProductSummary>();
     public IReadOnlyList<ProductSummary> RefreshArticle(string articleId) => new[] { Current };
 }
 
