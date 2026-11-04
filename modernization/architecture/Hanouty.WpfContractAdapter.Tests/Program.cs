@@ -37,6 +37,25 @@ Check(changing.Session.Submit("changed-variant-001") == CheckoutBatchStatus.Inva
     changingPort.Writes == 0, "changed duplicate variant invalidates entire batch before write");
 changing.Session.DiscardInvalidated();
 Check(changing.Session.PendingCount == 0, "explicit discard clears invalidated variant");
+var barcodeReader = new TestCatalogue();
+var barcodePort = new TestPort();
+var barcodeBinding = ProductionWpfServices.Create(new CheckoutComposition(
+    barcodeReader, new TestPrompt(), barcodePort, new TestJournal()));
+var barcodeProducts = barcodeBinding.Catalogue.ReadProducts();
+Check(barcodeBinding.Checkout.Select(barcodeProducts[1]), "explicit variant accepted before barcode change");
+barcodeReader.ChangeBarcodeB = true;
+Check(barcodeBinding.Session.Submit("barcode-change-001") == CheckoutBatchStatus.Invalidated &&
+    barcodePort.Writes == 0, "changed barcode blocks explicit variant atomic write");
+barcodeBinding.Session.DiscardInvalidated();
+Check(!barcodeBinding.Checkout.Select(barcodeProducts[1]), "stale variant barcode refused at selection");
+var directReader = new TestCatalogue();
+var directBinding = ProductionWpfServices.Create(new CheckoutComposition(
+    directReader, new TestPrompt(), new TestPort(), new TestJournal()));
+var directProducts = directBinding.Catalogue.ReadProducts();
+Check(directBinding.Session.SelectVariant(new ProductSummary("c", "", "Photo", "photo.png", "v1")).Outcome == SelectionOutcome.InvalidCandidates,
+    "explicit variant API refuses barcode-free photo bypass");
+Check(directBinding.Session.SelectVariant(new ProductSummary("b", "111", "Apple variant", null, "forged")).Outcome == SelectionOutcome.InvalidCandidates,
+    "explicit variant API refuses forged variant identity");
 reader.CaseCollision = true;
 try { binding.Catalogue.ReadProducts(); throw new Exception("case collision accepted"); }
 catch (InvalidOperationException ex) when (ex.Message.Contains("duplicate WPF article")) { }
@@ -47,10 +66,11 @@ sealed class TestCatalogue : ICatalogueReader
 {
     public bool ChangeVariant { get; set; }
     public bool ChangeVariantB { get; set; }
+    public bool ChangeBarcodeB { get; set; }
     public bool CaseCollision { get; set; }
     public IReadOnlyList<ProductSummary> ListAll() => new[] {
         new ProductSummary("a", "111", "Apple", null, "v1"),
-        new ProductSummary(CaseCollision ? "A" : "b", "111", "Apple variant", null, ChangeVariantB ? "v3" : "v2"),
+        new ProductSummary(CaseCollision ? "A" : "b", ChangeBarcodeB ? "222" : "111", "Apple variant", null, ChangeVariantB ? "v3" : "v2"),
         new ProductSummary("c", "", "Photo", "photo.png", ChangeVariant ? "v2" : "v1")
     };
     public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => ListAll().Where(x => x.Barcode == barcode).ToArray();
