@@ -16,14 +16,14 @@ jobs:
       - name: Checkout reviewed Inventory source
         uses: actions/checkout@v4
         with:
-          ref: c2cda374408192791d83363449507d6e4204fb10
+          ref: 6b4c771b1d47d7d326d92c83308b92cec35e79d3
           path: inventory
           persist-credentials: false
       - name: Assert exact reviewed Inventory commit
         shell: pwsh
         run: |
           $actual = (git -C inventory rev-parse HEAD).Trim()
-          if ($actual -cne 'c2cda374408192791d83363449507d6e4204fb10') { throw "Inventory provenance mismatch: $actual" }
+          if ($actual -cne '6b4c771b1d47d7d326d92c83308b92cec35e79d3') { throw "Inventory provenance mismatch: $actual" }
           "qa=${{ github.sha }}`ninventory=$actual" | Set-Content source-provenance.txt
       - uses: actions/setup-dotnet@v4
         with:
