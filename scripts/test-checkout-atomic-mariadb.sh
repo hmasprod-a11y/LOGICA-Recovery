@@ -87,4 +87,23 @@ assert_count "SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_i
 assert_count "SELECT COUNT(*) FROM test_checkout_ticket WHERE operation_id='failed-payment'" 0
 assert_count "SELECT COUNT(*) FROM test_checkout_movement WHERE operation_id='failed-payment'" 0
 assert_count "SELECT quantity FROM test_checkout_stock WHERE article_id='A'" 9
-echo "PASS disposable MariaDB sale, signed return, payment failure rollback, durable claim and duplicate rejection"
+# Two independent connections racing for one operation ID: the second
+# claimant must wait for the first transaction and then receive 1062.
+# The test is bounded and verifies the DB's unique constraint, not an
+# in-memory mutex or mocked repository.
+"${client[@]}" <<'SQL' >/dev/null &
+START TRANSACTION;
+INSERT INTO hanouty_checkout_operations (operation_id) VALUES ('race-1');
+SELECT SLEEP(3);
+COMMIT;
+SQL
+first_pid=$!
+sleep 1
+if "${client[@]}" -e "INSERT INTO hanouty_checkout_operations (operation_id) VALUES ('race-1')" >/dev/null 2>&1; then
+  echo "FAIL: concurrent duplicate claim succeeded" >&2
+  wait "$first_pid" || true
+  exit 1
+fi
+wait "$first_pid"
+assert_count "SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id='race-1'" 1
+echo "PASS disposable MariaDB sale, signed return, payment failure rollback, durable claim, duplicate and concurrent claim rejection"
