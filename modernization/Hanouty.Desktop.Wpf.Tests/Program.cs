@@ -434,6 +434,25 @@ Check(boundAdapter.Submit("wrong-tender", boundContext with { TenderCode = "Card
     "noncash tender must never reach financial session");
 Check(boundReconciliation.Reconcile("missing") == CheckoutResolution.Absent,
     "absent durable operation must remain distinct from unknown");
+// Exercise the actual UI commands against the very same session-bound submission.
+// This is a callsite test; QA still owns the real MariaDB W2 acceptance graph.
+var boundSelection = new RecordingSelection();
+var boundUiSession = new SessionFinancialSubmission();
+var boundUiServices = AuthorizedWpfServiceRegistration.CreateSessionBound(
+    new Reader(items), boundSelection, boundUiSession, () => boundContext);
+var boundUi = new CatalogueViewModel(boundUiServices.Catalogue, boundUiServices.Checkout,
+    submission: boundUiServices.Submission,
+    reconciliation: (ICheckoutOutcomeReconciliation)boundUiServices.Submission)
+{ PaymentContext = boundContext };
+boundUi.ScannerText = "123";
+boundUi.ScanCommand.Execute(null);
+Check(boundSelection.Selected.Count == 1 && boundUi.ScannerText == "",
+    "session-bound UI barcode command must select exactly once and reset scanner");
+Check(boundUi.CanCommit, "registered authorized cash context must enable UI commit");
+boundUi.CommitCommand.Execute(null);
+Check(boundUiSession.Ids.Count == 1 && boundUi.CommitFeedback == "Checkout committed",
+    "same ViewModel commit command must submit once to registered session");
+
 // W2 UI contracts do not authorize a sale: cashier context must be explicit,
 // and a durable Unknown outcome remains distinct from Absent or Persisted.
 var paymentContext = new CashierPaymentContext("cashier-1", "register-1", "MAD", "cash", 100m);
