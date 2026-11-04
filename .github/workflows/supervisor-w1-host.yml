@@ -28,6 +28,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Combined host failed to build' }
           dotnet run --project modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Adapter regression failed' }
+          dotnet run --project modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'WPF MVVM regression failed' }
       - name: Start checksum-verified disposable MariaDB without installing a service
         shell: pwsh
         run: |

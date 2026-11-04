@@ -167,7 +167,10 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
                 BarcodeCandidates = Array.Empty<ProductSummary>();
                 OnPropertyChanged(nameof(BarcodeCandidates));
                 OnPropertyChanged(nameof(HasBarcodeAmbiguity));
-                ScannerText = "";
+                // The public setter intentionally rejects edits while selection
+                // is in flight. Clear our acknowledged scan internally instead.
+                _scannerText = "";
+                OnPropertyChanged(nameof(ScannerText));
             }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)

@@ -81,7 +81,8 @@ public static class Program
         Require(vm.HasBarcodeAmbiguity && host.Session.PendingCount == 1, "Duplicate barcode was selected implicitly.");
         vm.SelectedProduct = vm.BarcodeCandidates.Single(p => p.Id == "A-3");
         vm.SelectCommand.Execute(vm.SelectedProduct);
-        Require(host.Session.PendingCount == 2, "Explicit duplicate selection did not stage the actual article.");
+        Require(host.Session.PendingCount == 2 && vm.ScannerText == "" && !vm.HasBarcodeAmbiguity,
+            "Acknowledged duplicate selection did not stage the article and reset the scanner.");
         vm.SelectCommand.Execute(vm.PhotoProducts.Single());
         Require(host.Session.PendingCount == 3, "Barcode-free image selection failed.");
         vm.CommitCommand.Execute(null);

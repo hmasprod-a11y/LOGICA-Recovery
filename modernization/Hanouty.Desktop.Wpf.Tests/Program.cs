@@ -43,7 +43,8 @@ var offline = new CatalogueViewModel(new EmptyCatalogueReader(), new RecordingSe
 Check(offline.VisibleProducts.Count == 0, "offline startup does not invent products");
 offline.ScannerText = "123";
 offline.ScanBarcode();
-Check(offline.ScanFeedback == "Local catalogue unavailable", "offline scan fails closed with actionable unavailable status");
+Check(offline.CatalogueAvailable && offline.ScanFeedback == "Product not found",
+    "a valid empty catalogue must not invent products or masquerade as a connection failure");
 vm.SearchText = "Milk";
 Check(vm.SelectedProduct is null, "filter clears stale selection");
 var preview = new CatalogueViewModel(new Reader(items), new PreviewProductSelection());
@@ -365,7 +366,7 @@ sealed class ReentrantSelection : IProductSelection
         ViewModel.SearchText = "nothing";
         ViewModel.ReloadCatalogue();
         NestedStatePreserved = ViewModel.VisibleProducts.Count == beforeRows &&
-            ViewModel.SearchText == beforeText && ViewModel.ScannerText == "777";
+            ViewModel.SearchText == beforeText && ViewModel.ScannerText == beforeScanner;
         ViewModel.SelectCurrent();
         return true;
     }
