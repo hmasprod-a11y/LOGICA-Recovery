@@ -308,6 +308,23 @@ Assert(photoSession.SelectImage(originalTile).Outcome == SelectionOutcome.Select
        photoSession.Submit("photo-current-001") == CheckoutBatchStatus.Committed &&
        photoPort.Calls.Count == 1, "current WPF photo stages and posts exactly once");
 
+var preCommitReader = new MutablePhotoCatalogue();
+var preCommitPort = new RecordingAtomicBatchPort();
+var preCommit = new CheckoutComposition(preCommitReader, new RecordingPrompt(),
+    preCommitPort, new CompositionJournal()).CreateSession();
+Assert(preCommit.SelectImage(preCommit.ImageProducts[0]).Outcome == SelectionOutcome.Selected,
+       "live photo stages before catalogue update");
+preCommitReader.VariantId = "new-variant";
+Assert(preCommit.Submit("photo-stale-001") == CheckoutBatchStatus.Invalidated &&
+       preCommitPort.Calls.Count == 0 && preCommit.PendingCount == 1,
+       "photo variant changed after staging aborts entire atomic submission");
+preCommit.DiscardInvalidated();
+preCommit.RefreshCatalogue();
+Assert(preCommit.SelectImage(preCommit.ImageProducts[0]).Outcome == SelectionOutcome.Selected &&
+       preCommit.Submit("photo-fresh-002") == CheckoutBatchStatus.Committed &&
+       preCommitPort.Calls.Count == 1,
+       "operator refresh and explicit restage safely completes current variant");
+
 Console.WriteLine("Production selection-to-checkout workflow regression suite passed.");
 
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
