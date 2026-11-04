@@ -52,6 +52,13 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         ScanCommand = new DelegateCommand(_ => ScanBarcode());
         SelectCommand = new DelegateCommand(product =>
         {
+            // A non-null command parameter must be a catalogue article.
+            // Never fall back to a previously selected row on malformed input.
+            if (product is not null && product is not ProductSummary)
+            {
+                ScanFeedback = "Invalid product selection";
+                return;
+            }
             if (product is ProductSummary article) SelectedProduct = article;
             SelectCurrent();
         });
