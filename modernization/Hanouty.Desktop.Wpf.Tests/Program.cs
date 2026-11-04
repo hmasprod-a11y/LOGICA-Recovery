@@ -425,6 +425,14 @@ Check(financialAdapter.Submit("operation-2", financialContext) == CheckoutSubmis
 financialPrep.Mismatch = false;
 Check(financialAdapter.Submit("operation-3", financialContext with { TenderCode = "UnknownTender" }) == CheckoutSubmissionResult.Invalidated &&
     financialPort.Writes == 1, "unsupported payment kind must never post");
+financialPrep.Return = true;
+Check(financialAdapter.Submit("return-blocked", financialContext) == CheckoutSubmissionResult.Invalidated &&
+    financialPort.Writes == 1, "returns are outside approved cash-sale slice");
+financialPrep.Return = false;
+financialPrep.Credit = true;
+Check(financialAdapter.Submit("credit-blocked", financialContext with { TenderCode = "Credit" }) == CheckoutSubmissionResult.Invalidated &&
+    financialPort.Writes == 1, "credit settlement is outside approved cash-sale slice");
+financialPrep.Credit = false;
 Check(financialAdapter.Reconcile("missing") == CheckoutResolution.Absent,
     "absent journal operation must be distinguishable from persisted");
 // The same production adapter must reach the ViewModel command and its journal
@@ -604,11 +612,13 @@ sealed class FinancialPreparation : ITrustedWpfCheckoutPreparation
 {
     public int Calls { get; private set; }
     public bool Mismatch { get; set; }
+    public bool Return { get; set; }
+    public bool Credit { get; set; }
     public AuthorizedCheckoutRequest Prepare(string operationId, CashierPaymentContext context)
     {
         Calls++;
         return new AuthorizedCheckoutRequest(operationId, Mismatch ? "wrong-cashier" : context.CashierId,
-            context.CurrencyCode, false, new[] { new CheckoutBatchLine("article-1", 1) },
-            new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, context.TenderedAmount) }, 100m);
+            context.CurrencyCode, Return, new[] { new CheckoutBatchLine("article-1", 1) },
+            new[] { new CheckoutPayment(Credit ? CheckoutPaymentKind.Credit : CheckoutPaymentKind.Cash, context.TenderedAmount) }, 100m);
     }
 }
