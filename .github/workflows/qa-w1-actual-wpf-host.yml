@@ -31,11 +31,11 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force evidence/w1 | Out-Null
           $qa = (git -C qa rev-parse HEAD).Trim()
-          $host = (git -C combined rev-parse HEAD).Trim()
+          $hostSourceSha = (git -C combined rev-parse HEAD).Trim()
           if ($qa -ne '${{ github.sha }}') { throw "QA source mismatch $qa" }
-          if ($host -ne '6d34e06139f9f10c992a926f5cce090ead72a97e') { throw "Host source mismatch $host" }
-          "qa=$qa`nhost=$host" | Set-Content evidence/w1/sources.txt
-          if (-not (Test-Path combined/combined/modernization/Hanouty.Desktop.Bootstrap/CatalogueHost.cs)) { throw 'Real catalogue host absent' }
+          if ($hostSourceSha -ne '6d34e06139f9f10c992a926f5cce090ead72a97e') { throw "Host source mismatch $hostSourceSha" }
+          "qa=$qa`nhost=$hostSourceSha" | Set-Content evidence/w1/sources.txt
+          if (-not (Test-Path combined/modernization/Hanouty.Desktop.Bootstrap/CatalogueHost.cs)) { throw 'Real catalogue host absent' }
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
