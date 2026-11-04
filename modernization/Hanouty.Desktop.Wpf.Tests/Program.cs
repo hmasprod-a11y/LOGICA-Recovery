@@ -39,17 +39,17 @@ int rtlNotifications = 0;
 vm.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(vm.IsRightToLeft)) rtlNotifications++; };
 vm.IsRightToLeft = true;
 Check(rtlNotifications == 1, "RTL changes notify WPF binding");
-var offline = new CatalogueViewModel(new EmptyCatalogueReader());
+var offline = new CatalogueViewModel(new EmptyCatalogueReader(), new RecordingSelection());
 Check(offline.VisibleProducts.Count == 0, "offline startup does not invent products");
 offline.ScannerText = "123";
 offline.ScanBarcode();
 Check(offline.ScanFeedback == "Product not found", "offline scan fails closed");
 vm.SearchText = "Milk";
 Check(vm.SelectedProduct is null, "filter clears stale selection");
-var preview = new CatalogueViewModel(new Reader(items));
+var preview = new CatalogueViewModel(new Reader(items), new PreviewProductSelection());
 preview.ScannerText = "456";
 preview.ScanBarcode();
-Check(preview.ScanFeedback == "Checkout unavailable in preview", "default host must fail closed");
+Check(preview.ScanFeedback == "Checkout unavailable in preview", "explicit preview fixture must fail closed");
 Check(vm.LayoutDirection == System.Windows.FlowDirection.RightToLeft, "RTL must change actual WPF layout direction");
 vm.IsRightToLeft = false;
 Check(vm.LayoutDirection == System.Windows.FlowDirection.LeftToRight, "LTR must restore actual WPF layout direction");
@@ -100,6 +100,12 @@ nullVm.SearchText = "anything";
 Check(nullVm.VisibleProducts.Count == 0, "legacy null name/barcode must not crash catalogue search");
 nullVm.SearchText = "";
 Check(nullVm.VisibleProducts.Count == 1, "legacy nullable article stays visible in full catalogue");
+Check(typeof(CatalogueViewModel).GetConstructors().All(ctor =>
+    ctor.GetParameters().Any(p => p.ParameterType == typeof(IProductSelection) && !p.IsOptional)),
+    "checkout selection dependency must be explicit for every viewmodel constructor");
+Check(typeof(Hanouty.Desktop.Wpf.MainWindow).GetConstructors().All(ctor =>
+    ctor.GetParameters().Any(p => p.ParameterType == typeof(IProductSelection))),
+    "production WPF window must require checkout dependency");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
