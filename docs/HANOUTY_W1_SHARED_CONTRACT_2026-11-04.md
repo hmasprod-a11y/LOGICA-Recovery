@@ -20,3 +20,6 @@ This API is ready for integration, but WPF's actual call-site removal and isolat
 
 ## V1 quantity parity checkpoint
 Repeated scans or image selections of the same stable ArticleId are aggregated into a single atomic checkout line with summed quantity, preserving first-selection order. Checked integer overflow aborts before calling the checkout port. This does not imply WPF production wiring or durable MariaDB acceptance.
+
+## Architecture photo/variant consistency checkpoint (2026-11-04)
+The existing `CheckoutComposition.CreateSession()` now checks an image tile against the current `ICatalogueReader.RefreshArticle(articleId)` row at selection and again immediately before atomic submission. It requires identical stable ArticleId, Barcode, VariantId and ImagePath, and an image still present. A changed photo/variant yields `InvalidCandidates` at selection or `Invalidated` before write; cashier explicitly calls `DiscardInvalidated()`, refreshes catalogue and reselects. The approved interface signatures remain unchanged. This protects UI staleness, **not** a substitute for the Checkout owner's transactional price/stock/authorization validation inside MariaDB. The reader must return a consistent current row, and WPF must call this session rather than a preview selection path.
