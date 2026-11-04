@@ -11,14 +11,18 @@ Check(products.Count == 3 && products[0].Id == "a" && products[1].Id == "b",
     "all products mapped to existing WPF ReadProducts");
 Check(products[0].Name == "Apple" && products[0].ImagePath is null,
     "display name and missing image mapped");
-Check(!binding.Checkout.Select(products[0]), "ambiguous barcode cannot silently choose first variant");
+Check(binding.Checkout.Select(products[1]), "explicit WPF variant choice stages exact article identity");
+Check(!binding.Checkout.Select(new Wpf.ProductSummary("b", "Forged", "111")),
+    "forged duplicate barcode candidate rejected");
 Check(binding.Checkout.Select(products[2]), "barcode-free photo product stages");
-Check(binding.Session.PendingCount == 1, "WPF selection stages without posting");
+Check(binding.Session.PendingCount == 2, "explicit variant and photo stage without posting");
 Check(port.Writes == 0, "WPF selection must not write a sale");
 Check(!binding.Checkout.Select(new Wpf.ProductSummary("c", "Photo", "", "forged.png")),
     "forged photo is rejected");
 Check(binding.Session.Submit("wpf-adapter-001") == CheckoutBatchStatus.Committed &&
-    port.Writes == 1 && port.Lines!.Single() == new CheckoutBatchLine("c", 1),
+    port.Writes == 1 && port.Lines!.Count == 2 &&
+    port.Lines[0] == new CheckoutBatchLine("b", 1) &&
+    port.Lines[1] == new CheckoutBatchLine("c", 1),
     "explicit stable-ID submission posts one validated atomic batch");
 reader.ChangeVariant = true;
 Check(!binding.Checkout.Select(products[2]), "changed variant cannot be staged from stale WPF DTO");
