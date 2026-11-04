@@ -57,6 +57,16 @@ namespace LOGICA.Infrastructure.Inventory
                 !Object.ReferenceEquals(transaction.Connection, connection))
                 throw new InvalidOperationException("An open caller-owned transaction is required.");
 
+            // Caller-owned transactions must obey the same offline-only boundary as Execute.
+            // Check the actual open connection, not a caller-supplied connection string.
+            if (!String.Equals(connection.DataSource, "127.0.0.1", StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(connection.DataSource, "localhost", StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(connection.DataSource, "::1", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Manual stock adjustment requires local MariaDB.");
+
+            // A user ID in an audit string is not authenticated authorization.
+            // Until the verified actor-scoped permission contract is connected,
+            // this writer must remain internal and unavailable to untrusted UI callers.
             // Validate the audit payload before any database mutation. A too-long
             // reason/user must never leave an uncommittable stock update behind.
             string audit = "Ajustement [" + plan.UserId + "] " +
