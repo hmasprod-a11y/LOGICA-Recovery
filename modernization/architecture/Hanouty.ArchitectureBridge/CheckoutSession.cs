@@ -18,8 +18,18 @@ public sealed class CheckoutSession
         _batch = batch ?? throw new ArgumentNullException(nameof(batch));
     }
 
-    public IReadOnlyList<ProductSummary> Products => _composition.AllProducts();
-    public IReadOnlyList<ProductSummary> ImageProducts => _composition.ImageProducts();
+    // A single catalogue snapshot backs both the list and image grid. Refresh
+    // explicitly after Inventory updates; never mix two independently read lists.
+    private IReadOnlyList<ProductSummary>? _snapshot;
+    public IReadOnlyList<ProductSummary> Products => _snapshot ??= _composition.AllProducts();
+    public IReadOnlyList<ProductSummary> ImageProducts =>
+        System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Where(Products, p => p.HasImage));
+
+    public void RefreshCatalogue()
+    {
+        EnsureNoSubmission();
+        _snapshot = _composition.AllProducts();
+    }
     public int PendingCount => _batch.PendingCount;
     public CheckoutCommitState State => _batch.State;
     public string? OperationId => _operationId ?? _batch.UncertainOperationId;
@@ -34,7 +44,11 @@ public sealed class CheckoutSession
     {
         EnsureNoSubmission();
         ArgumentNullException.ThrowIfNull(product);
-        if (!product.HasImage)
+        // Reject forged/stale tiles that were never in the visible image grid.
+        var visible = System.Linq.Enumerable.FirstOrDefault(ImageProducts,
+            p => string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal));
+        if (visible is null || !string.Equals(visible.Barcode, product.Barcode, StringComparison.Ordinal) ||
+            !string.Equals(visible.ImagePath, product.ImagePath, StringComparison.Ordinal))
             return new SelectionResponse(SelectionOutcome.InvalidCandidates, null);
         return _batch.StageImage(new ArticleCandidate(product.ArticleId, product.Barcode ?? ""), quantity);
     }
