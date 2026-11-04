@@ -24,7 +24,7 @@
                          AutomationProperties.Name="Search catalogue"/>
                 <TextBlock Text="Scanner / barcode" Margin="0,0,0,5"/>
                 <TextBox Text="{Binding ScannerText, UpdateSourceTrigger=PropertyChanged}" Padding="8"
-                         AutomationProperties.Name="Barcode scanner input">
+                         AutomationProperties.Name="Barcode scanner input" IsEnabled="{Binding CanSelectProduct}">
                     <TextBox.InputBindings>
                         <KeyBinding Key="Enter" Command="{Binding ScanCommand}"/>
                     </TextBox.InputBindings>
@@ -44,7 +44,7 @@
                 <Button Content="Choose selected barcode variant" Command="{Binding SelectCommand}"
                         Visibility="{Binding HasBarcodeAmbiguity, Converter={StaticResource BoolVisibility}}"
                         MinHeight="44" Margin="0,4,0,8" Padding="12,8"
-                        AutomationProperties.Name="Choose barcode variant"/>
+                        AutomationProperties.Name="Choose barcode variant" IsEnabled="{Binding CanSelectProduct}"/>
                 <DataGrid ItemsSource="{Binding VisibleProducts}" AutoGenerateColumns="False"
                           IsReadOnly="True" SelectionMode="Single" SelectionUnit="FullRow"
                           SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
@@ -66,7 +66,8 @@
                                 <Button MinWidth="108" MinHeight="112" Padding="6" Margin="3"
                                         Command="{Binding DataContext.SelectCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                         CommandParameter="{Binding}"
-                                        AutomationProperties.Name="{Binding Name}">
+                                        AutomationProperties.Name="{Binding Name}"
+                                        IsEnabled="{Binding DataContext.CanSelectProduct, RelativeSource={RelativeSource AncestorType=Window}}">
                                     <StackPanel Width="96">
                                         <Image Source="{Binding ImagePath}" Width="80" Height="72" Stretch="Uniform"
                                                RenderOptions.BitmapScalingMode="HighQuality"/>
@@ -86,7 +87,7 @@
                 <TextBlock Text="{Binding SelectedProduct.Barcode, TargetNullValue=—}"/>
                 <Button Content="Select product" Command="{Binding SelectCommand}" MinHeight="44"
                         Padding="12,8" Margin="0,18,0,0"
-                        AutomationProperties.Name="Select product"/>
+                        AutomationProperties.Name="Select product" IsEnabled="{Binding CanSelectProduct}"/>
                 <TextBlock Text="Checkout, stock posting, printing and licensing are disabled until their application contracts are integrated and verified."
                            Margin="0,22,0,0" TextWrapping="Wrap" Foreground="DimGray"/>
             </StackPanel>
