@@ -1,0 +1,76 @@
+name: W1 actual Windows catalogue host with disposable MariaDB
+on:
+  push:
+    branches: [supervisor/w1-w2-direct-20261104]
+  pull_request:
+    paths:
+      - 'modernization/Hanouty.Desktop.Bootstrap/**'
+      - 'scripts/test-w1-bootstrap.ps1'
+      - '.github/workflows/supervisor-w1-host.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-real-host:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      HANOUTY_W1_DISPOSABLE_MARKER: I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build actual combined host and Adapter regression
+        shell: pwsh
+        run: |
+          dotnet build modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Combined host failed to build' }
+          dotnet run --project modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Adapter regression failed' }
+      - name: Start checksum-verified disposable MariaDB without installing a service
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dbRoot = Join-Path $env:RUNNER_TEMP 'hanouty-w1-host-mariadb'
+          New-Item -ItemType Directory -Force $dbRoot | Out-Null
+          $url = 'https://archive.mariadb.org/mariadb-10.11.14/winx64-packages'
+          Invoke-WebRequest "$url/mariadb-10.11.14-winx64.zip" -OutFile "$dbRoot/server.zip"
+          $checks = (Invoke-WebRequest "$url/sha256sums.txt").Content
+          $expected = (($checks -split "`n" | Where-Object { $_ -match 'mariadb-10.11.14-winx64.zip\s*$' }) -split '\s+')[0]
+          if ((Get-FileHash "$dbRoot/server.zip" -Algorithm SHA256).Hash -ne $expected) { throw 'MariaDB checksum mismatch' }
+          Expand-Archive "$dbRoot/server.zip" "$dbRoot/server"
+          $bin = (Get-ChildItem "$dbRoot/server" -Recurse -Filter mariadb-install-db.exe | Select-Object -First 1).Directory.FullName
+          & "$bin/mariadb-install-db.exe" "--datadir=$dbRoot/data" --password=logica-ci-only --port=3307
+          if ($LASTEXITCODE -ne 0) { throw 'Disposable MariaDB initialization failed' }
+          $server = Start-Process "$bin/mariadbd.exe" -ArgumentList @("--defaults-file=`"$dbRoot/data/my.ini`"", '--bind-address=127.0.0.1', '--port=3307') -WindowStyle Hidden -PassThru
+          "HANOUTY_W1_SERVER_PID=$($server.Id)" | Out-File $env:GITHUB_ENV -Append
+          "HANOUTY_W1_MARIADB_BIN=$bin" | Out-File $env:GITHUB_ENV -Append
+          $ready = $false
+          for ($i=0; $i -lt 30; $i++) {
+            & "$bin/mariadb-admin.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only ping 2>$null
+            if ($LASTEXITCODE -eq 0) { $ready=$true; break }
+            Start-Sleep -Seconds 1
+          }
+          if (-not $ready) { throw 'Disposable MariaDB did not become ready' }
+      - name: Open actual WPF window against SELECT-only MariaDB and verify W1
+        shell: pwsh
+        run: |
+          & ./scripts/test-w1-bootstrap.ps1 -MariaDbBin $env:HANOUTY_W1_MARIADB_BIN -HostExe ./modernization/Hanouty.Desktop.Bootstrap/bin/Release/net10.0-windows/Hanouty.Desktop.Bootstrap.exe -EvidenceDirectory ./evidence/w1
+          if (-not $?) { throw 'Actual Windows WPF catalogue acceptance failed' }
+          git rev-parse HEAD | Set-Content evidence/w1/tested-sha.txt
+      - name: Preserve rendered window and acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hanouty-w1-actual-windows-host
+          path: evidence/w1/
+          if-no-files-found: warn
+      - name: Stop only this workflow's disposable server
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:HANOUTY_W1_SERVER_PID) {
+            $server = Get-Process -Id ([int]$env:HANOUTY_W1_SERVER_PID) -ErrorAction SilentlyContinue
+            if ($server -and $server.ProcessName -eq 'mariadbd') { Stop-Process -Id $server.Id }
+          }
