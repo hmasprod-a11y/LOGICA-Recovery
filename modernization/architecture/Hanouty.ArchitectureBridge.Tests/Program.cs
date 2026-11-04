@@ -159,6 +159,16 @@ Assert(composedBatch.StageImage(A("21", ""), 1).Outcome == SelectionOutcome.Sele
 Assert(composedBatch.Commit("composed-001") == CheckoutBatchStatus.Committed &&
        sharedCart.Calls.Count == 1 && sharedCart.Calls[0].Lines.Count == 2,
        "composition dispatches validated mixed batch once");
+// A changed catalogue identity between staging and commit invalidates the whole batch.
+var mutableReader = new MutableCompositionCatalogue();
+var staleCart = new RecordingAtomicBatchPort();
+var staleComposition = new CheckoutComposition(mutableReader, new RecordingPrompt(), staleCart, journal);
+var staleBatch = staleComposition.CreateCheckoutBatch();
+Assert(staleBatch.StageBarcode("999").Outcome == SelectionOutcome.Selected,
+       "mutable catalogue stages a real article");
+mutableReader.ChangeIdentity = true;
+Assert(staleBatch.Commit("composed-stale") == CheckoutBatchStatus.Invalidated &&
+       staleCart.Calls.Count == 0, "identity changed before commit blocks whole batch");
 try { new CheckoutComposition(null!, new RecordingPrompt(), sharedCart, journal); throw new Exception("missing reader accepted"); }
 catch (ArgumentNullException) { Assert(true, "production composition refuses missing reader"); }
 var uncertainCart = new ThrowingAtomicBatchPort();
@@ -269,4 +279,14 @@ sealed class CompositionJournal : ICheckoutOperationJournal
 {
     public CheckoutOperationOutcome Outcome { get; set; } = CheckoutOperationOutcome.Unknown;
     public CheckoutOperationOutcome Lookup(string operationId) => Outcome;
+}
+
+sealed class MutableCompositionCatalogue : ICatalogueReader
+{
+    public bool ChangeIdentity { get; set; }
+    private ProductSummary Current => new(ChangeIdentity ? "new-id" : "old-id", "999", "Mutable", null);
+    public IReadOnlyList<ProductSummary> ListAll() => new[] { Current };
+    public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => new[] { Current };
+    public IReadOnlyList<ProductSummary> RefreshBarcode(string barcode) => new[] { Current };
+    public IReadOnlyList<ProductSummary> RefreshArticle(string articleId) => new[] { Current };
 }
