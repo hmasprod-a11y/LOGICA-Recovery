@@ -55,3 +55,11 @@ Move only recount ordering into ApplicationLayer.Cash using a narrow context. A 
 Windows run [40967860308](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40967860308) passed for 91961b7fdab4dc100968e7248dbc2ecaba30fab2, including the original LostFocus fixture and existing checkout/build/launcher checks. Independent runs 40967860274/40967865045 passed: 759 arithmetic, 117 input-rule and 214 recount-order/failure assertions. No costly rerun is needed for this documentation update.
 
 Resume check: PR #8 has advanced to 0f95f970509726c73ae012cbce207e2ae24b1899 with receipt/inventory consultation fixture changes in scripts/test-recovered-db.cs. This parallel test work is not overwritten or imported into the cash branch. PR #12 remains draft; no merge or release.
+
+## Remaining dialog method audit (2026-11-04)
+
+Reviewed all non-designer handlers at 26030f85438ed2b1c8755f3dc12d60f3dacdc937. Load has two financial-read branches: GESTION_CLOTURE selects unclosed cashier rows; otherwise it selects today's rows. Each reads distinct payment modes, performs per-mode sum queries, formats grid amounts, then reads the sale/refund journal total. Preserve repeated DateTime.Now calls, raw cashier/mode trimming, query order, clearing and partial failures if this is extracted later. No baseline fixture currently invokes Load, so extraction is deferred until isolated read fixtures cover both branches and failure points.
+
+Text_200_KeyPress repeats the numeric character predicate already separated on catalogue PR #10; avoid a competing duplicate helper on this independent branch. Text_200_Click/GotFocus, Butt_DRAFT_Click and Close are presentation operations. Butt_Click, Back and three tab buttons use SendKeys (Back also preserves decompiled VB error handling); do not exercise them unattended. Text_200_TextChanged is empty. Constructor/designer/weak-reference lifetime code has no business-rule extraction candidate.
+
+Decision: the useful pure recount slice is complete. Next cash work requires characterization of Load's financial-read orchestration before movement; no additional trivial UI wrappers are warranted. Actual cash closing/persistence is not implemented by these dialog handlers and is not claimed as verified.
