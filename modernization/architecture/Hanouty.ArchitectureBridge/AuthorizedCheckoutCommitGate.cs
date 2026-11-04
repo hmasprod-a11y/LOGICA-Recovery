@@ -27,7 +27,14 @@ public sealed class AuthorizedCheckoutCommitGate
         if (_uncertainId is not null)
             throw new InvalidOperationException("Financial outcome unknown; reconcile before another commit.");
         request.Validate();
-        var prior = _journal.Lookup(request.OperationId);
+        CheckoutOperationOutcome prior;
+        try { prior = _journal.Lookup(request.OperationId); }
+        catch
+        {
+            // A failed durable lookup cannot establish absence. Fail closed.
+            _uncertainId = request.OperationId;
+            throw;
+        }
         if (prior == CheckoutOperationOutcome.Persisted)
             return FinancialCommitOutcome.AlreadyCommitted;
         if (prior == CheckoutOperationOutcome.Unknown)
