@@ -5,6 +5,25 @@
 **Status:** development contract on Architecture PR #95; not a commercial release approval.
 
 
+## 2026-11-04 — Real cashier/price preparation delivered (current checkpoint)
+
+QA #93 `58c7d80ef8c010302b2e8208bc03d3516be248bc` now has **ten distinct successful gates**, including Windows41876268261, actual W1 Host41876268549 and WPF41876268381. Do not reopen previous W1 source/provenance failures. WPF current21439705 adds ViewModel-to-authorized-gate regressions; legacy branch checks alone do not execute that new WPF test source until QA updates its pin.
+
+Supervisor delivered Checkout #75 `3126509d26927a8609d2f94d1b0136260887f052` as one cohesive production batch:
+- Concrete `MariaDbCashCheckoutPreparation` authenticates the existing TABLE_PASS PIN, exact cashier and original sales category using parameters within the actual posting transaction.
+- Locks the original sequence, existing workstation basket and authoritative article rows; verifies requested identity/quantity, price/cost/tax, line total and exact cash tender. No UI price or caller-supplied user label is accepted as authority.
+- Real `Hanouty.Checkout.MariaDb` net10 production library exports the **existing** Architecture posting and journal interfaces through `MariaDbCashCheckoutServices.CreatePostingPort` / `CreateOperationJournal`. It has explicit local connections and transient PIN provider; no automatic registration or default credential. The financial acceptance executable references this production library, not duplicated replacement source.
+- Parameterized actual header/payment/journal writer values, preserving record mapping and VB conversion; original SQL characterization builders remain unchanged. Existing Windows project is preserved.
+- Actual DB tests (not preparation fixtures) cover invalid/injection-shaped PIN, wrong cashier/category, stale price, underpayment, unsupported policy, remote endpoint, nontransactional table, failure after real payment insertion with full rollback, quoted names and exact fr-FR/en-US persistence/replay. MariaDB41881911922 and same-SHA Windows41881912322 **SUCCESS**.
+
+Follow-up `43d2c363f5fef635609488060e0d84e22d3b5851` verifies the operation ledger is InnoDB **before** claim insertion and before reporting Persisted; a misconfigured nontransactional ledger must produce rejection/Unknown, never a durable false success. Actual MariaDB41882640469 **SUCCESS**; current Windows41882641284 still running at this checkpoint. Inspect its completed result before accepting this latest source.
+
+**Scope is deliberately explicit:** anonymous MAD exact-cash standard-price sale over an existing validated basket. Promotion/tier/manual-discount, returns, change, named customer, additional sequence layouts and physical printing remain unaccepted for this new slice; their characterized legacy paths are preserved. No live schema migration.
+
+**Remaining W2 critical path has changed:** trusted preparation code now EXISTS and is exercised with real credential/price tables. The next implementation is safe authoritative staging of WPF's in-memory cart into the workstation transaction, actual PIN/session UI and production composition registration with the real library, then combined WPF -> authorization -> persisted sale/payment/stock/journal, rollback/restart/unknown acceptance. Do not keep ordering another abstract preparation contract or claim a preexisting basket makes WPF end-to-end complete. Payment stays disabled until that combined acceptance.
+
+Inventory actor-scoped manual-stock permission remains separate and unimplemented; a sale-role grant is not manual-stock authorization. W3/V1 parity and W4 installation/device/license/backup/offline gates remain unaccepted. No main/release, customer DB or licensing changes.
+
 ## 2026-11-04 — Verified financial execution and current integration checkpoint
 
 - **Checkout #75 `2bcdc8c17b81b6391bd4afce3c0aa76a9370337b`: five distinct gates SUCCESS**, Windows 41872754790 and real MariaDB 41872754878 included. Actual `AuthorizedCheckoutMariaDbPort` is compiled and invoked in direct transaction tests: preparation receives active transaction; uncommitted operation invisible to another connection; real financial writers persist; duplicate skips preparation; denied preparation rolls back operation claim and business state. The preparation used by these tests is explicitly controlled fixture code, **not production cashier authentication**.
