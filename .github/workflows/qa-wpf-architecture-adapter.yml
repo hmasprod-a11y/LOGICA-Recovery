@@ -1,0 +1,75 @@
+name: QA WPF Architecture real adapter source gate
+on:
+  push:
+    branches: [integration/hanouty-qa-desktop-inventory-20261102]
+    paths: ['.github/workflows/qa-wpf-architecture-adapter.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  adapter:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: qa
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 116c95a2e0e180b050afa20cc733aea01fa023f9
+          path: combined
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 865efe43c2a10fd9a0dda10e9ee2b04037f77d33
+          path: architecture
+          persist-credentials: false
+      - name: Verify exact provenance and compose real production source graph
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force evidence | Out-Null
+          $sources = @{
+            qa = '${{ github.sha }}'
+            combined = '116c95a2e0e180b050afa20cc733aea01fa023f9'
+            architecture = '865efe43c2a10fd9a0dda10e9ee2b04037f77d33'
+          }
+          foreach ($key in $sources.Keys) {
+            $actual = (git -C $key rev-parse HEAD).Trim()
+            if ($actual -cne $sources[$key]) { throw "SHA mismatch $key : $actual" }
+            "$key=$actual" | Add-Content evidence/source-manifest.txt
+          }
+          foreach ($name in @('Hanouty.WpfContractAdapter','Hanouty.WpfContractAdapter.Tests','Hanouty.ArchitectureBridge')) {
+            $relative = "modernization/architecture/$name"
+            if (!(Test-Path "architecture/$relative")) { throw "Missing real source $relative" }
+            if (Test-Path "combined/$relative") { Remove-Item "combined/$relative" -Recurse -Force }
+            Copy-Item "architecture/$relative" "combined/$relative" -Recurse -Force
+          }
+          if (!(Test-Path combined/modernization/Hanouty.Desktop.Wpf/App.xaml.cs)) { throw 'Missing WPF host' }
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compile real WPF Architecture production adapter and contract test graph
+        shell: pwsh
+        run: |
+          dotnet build combined/modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj -c Release --nologo -warnaserror
+          if ($LASTEXITCODE -ne 0) { throw 'Actual adapter graph compilation failed' }
+      - name: Execute adapter regression against compiled real WPF source
+        shell: pwsh
+        run: |
+          dotnet run --no-build -c Release --project combined/modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj
+          if ($LASTEXITCODE -ne 0) { throw 'Actual adapter regression failed' }
+      - name: Enforce W1 fail closed pending real MariaDB host registration
+        shell: pwsh
+        run: |
+          $app = Get-Content combined/modernization/Hanouty.Desktop.Wpf/App.xaml.cs -Raw
+          if ($app -notmatch 'ResolveServices\s+is\s+null' -or $app -notmatch 'Shutdown\(2\)') { throw 'WPF must reject missing production services' }
+          Write-Host 'Source graph compiled; W1 actual MariaDB/EXE acceptance remains unproven.'
+      - name: Preserve exact source manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wpf-architecture-exact-source
+          path: evidence/
+          if-no-files-found: error
