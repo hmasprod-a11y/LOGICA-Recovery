@@ -67,6 +67,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     }
     public System.Windows.FlowDirection LayoutDirection => IsRightToLeft ? System.Windows.FlowDirection.RightToLeft : System.Windows.FlowDirection.LeftToRight;
     public IReadOnlyList<ProductSummary> BarcodeCandidates { get; private set; } = Array.Empty<ProductSummary>();
+    public bool HasBarcodeAmbiguity => BarcodeCandidates.Count > 1;
 
     public void ReloadCatalogue()
     {
@@ -111,6 +112,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         var matches = _all.Where(p => string.Equals(p.Barcode, code, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(p.Barcode)).ToArray();
         BarcodeCandidates = matches;
         OnPropertyChanged(nameof(BarcodeCandidates));
+        OnPropertyChanged(nameof(HasBarcodeAmbiguity));
         if (matches.Length != 1)
         {
             SelectedProduct = null;
@@ -140,6 +142,13 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         try
         {
             ScanFeedback = _selection.Select(SelectedProduct) ? "Selection accepted" : "Selection rejected";
+            if (ScanFeedback == "Selection accepted" && HasBarcodeAmbiguity)
+            {
+                BarcodeCandidates = Array.Empty<ProductSummary>();
+                OnPropertyChanged(nameof(BarcodeCandidates));
+                OnPropertyChanged(nameof(HasBarcodeAmbiguity));
+                ScannerText = "";
+            }
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or UnauthorizedAccessException)
         {
