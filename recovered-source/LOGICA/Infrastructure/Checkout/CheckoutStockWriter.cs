@@ -1,3 +1,4 @@
+using System;
 using Microsoft.VisualBasic.CompilerServices;
 using MySql.Data.MySqlClient;
 
@@ -5,14 +6,34 @@ namespace LOGICA.Infrastructure.Checkout
 {
     internal static class CheckoutStockWriter
     {
-        // Apply the existing stock update and movement on the caller's transaction.
+        // Keep the V1 signed-quantity rule: positive sale subtracts stock,
+        // negative return restores it. Never interpolate article IDs into SQL.
+        // Both stock and movement MUST use the caller-owned transaction.
         public static void Apply(MySqlCommand command, MySqlConnection connection, string ticket,
             object articleId, object articleCode, object articleName, object basketQuantity)
         {
-            command.CommandText = Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject("UPDATE     TABLE_ARTICLES    SET STOCK = STOCK - ", basketQuantity), "    WHERE    ID_ARTICLE = '"), articleId), "'                           "));
-            command.Connection = connection;
-            command.ExecuteNonQuery();
-            StockMovementWriter.Write(command, connection, ticket, articleId, articleCode, articleName, basketQuantity);
+            if (command == null) throw new ArgumentNullException("command");
+            if (connection == null) throw new ArgumentNullException("connection");
+            if (command.Transaction == null)
+                throw new InvalidOperationException("Stock posting requires the checkout transaction.");
+            decimal quantity = Conversions.ToDecimal(basketQuantity);
+            if (quantity == 0m) throw new InvalidOperationException("Zero-quantity stock posting is invalid.");
+            if (articleId == null || articleId == DBNull.Value ||
+                String.IsNullOrWhiteSpace(Conversions.ToString(articleId)))
+                throw new InvalidOperationException("Stock posting requires a stable article identity.");
+            command.Parameters.Clear();
+            try
+            {
+                command.CommandText =
+                    "UPDATE TABLE_ARTICLES SET STOCK = STOCK - @checkoutQuantity WHERE ID_ARTICLE = @checkoutArticleId";
+                command.Connection = connection;
+                command.Parameters.AddWithValue("@checkoutQuantity", quantity);
+                command.Parameters.AddWithValue("@checkoutArticleId", articleId);
+                if (command.ExecuteNonQuery() != 1)
+                    throw new InvalidOperationException("Stock posting requires exactly one existing article.");
+            }
+            finally { command.Parameters.Clear(); }
+            StockMovementWriter.Write(command, connection, ticket, articleId, articleCode, articleName, quantity);
         }
     }
 }
