@@ -422,10 +422,19 @@ Check(financialAdapter.Reconcile("missing") == CheckoutResolution.Absent,
 var wiredJournal = new FinancialJournal();
 var wiredPort = new FinancialPort(wiredJournal);
 var wiredPreparation = new FinancialPreparation();
-var wiredAdapter = new AuthorizedWpfCheckoutAdapter(wiredPreparation,
-    new AuthorizedCheckoutCommitGate(wiredPort, wiredJournal), wiredJournal);
-var wiredVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(),
-    submission: wiredAdapter, reconciliation: wiredAdapter) { PaymentContext = financialContext };
+var wiredReader = new Reader(items);
+var wiredSelection = new RecordingSelection();
+var wiredBinding = AuthorizedWpfServiceRegistration.Create(wiredReader, wiredSelection,
+    wiredPreparation, new AuthorizedCheckoutCommitGate(wiredPort, wiredJournal), wiredJournal);
+Check(ReferenceEquals(wiredBinding.Catalogue, wiredReader) &&
+    ReferenceEquals(wiredBinding.Checkout, wiredSelection) &&
+    wiredBinding.Submission is AuthorizedWpfCheckoutAdapter,
+    "production registration must retain real catalogue/selection and install authorized submission");
+var wiredAdapter = (AuthorizedWpfCheckoutAdapter)wiredBinding.Submission;
+var wiredVm = new CatalogueViewModel(wiredBinding.Catalogue, wiredBinding.Checkout,
+    submission: wiredBinding.Submission,
+    reconciliation: wiredBinding.Submission as ICheckoutOutcomeReconciliation)
+    { PaymentContext = financialContext };
 Check(wiredVm.CanCommit, "registered trusted adapter and context enable the command boundary");
 wiredVm.CommitCommand.Execute(null);
 Check(wiredPort.Writes == 1 && wiredPreparation.Calls == 1 &&
