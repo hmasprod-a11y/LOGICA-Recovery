@@ -13,7 +13,7 @@ var items = new[]
     new ProductSummary("5", "Duplicate B", "777", null)
 };
 var selection = new RecordingSelection();
-var vm = new CatalogueViewModel(new Reader(items), selection);
+var vm = new CatalogueViewModel(new Reader(items), selection, new ImageFixture());
 Check(vm.VisibleProducts.Count == 5, "all catalogue products must appear, including barcode-free");
 Check(vm.PhotoProducts.Count == 2, "only image-backed products in photo list");
 vm.SearchText = "milk";
@@ -103,4 +103,9 @@ sealed class ChangingReader(ProductSummary[] products) : ICatalogueReader
     public ProductSummary[] Products { get; set; } = products;
     public bool Fail { get; set; }
     public IReadOnlyList<ProductSummary> ReadProducts() => Fail ? throw new InvalidOperationException("offline") : Products;
+}
+
+sealed class ImageFixture : IProductImageAvailability
+{
+    public bool Exists(string path) => path is "milk.png" or "a.png";
 }
