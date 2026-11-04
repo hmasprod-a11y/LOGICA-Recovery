@@ -14,8 +14,15 @@ forms = (
     "Form_3_VENTE_MARGE.cs",
     "Form_3_VENTE_RETOURS.cs",
     "Form_3_VENTE.cs",
+    "Form_5_CLIENTS_ETAT_CREDITS.cs",
+    "Form_5_CLIENTS_HISTORIQUE_CREDIT_INITIAL.cs",
+    "Form_5_CLIENTS_LISTE.cs",
+    "Form_5_CLIENTS_MODIFICATION_CREDIT_INITIAL.cs",
+    "Form_5_CLIENTS_RDV.cs",
+    "Form_5_CLIENTS_REGLE.cs",
+    "Form_5_CLIENTS.cs",
 )
-members = ("StartupPath", "DoEvents", "Run")
+members = ("StartupPath", "DoEvents", "Run", "OpenForms")
 total = 0
 for filename in forms:
     source = (root / "recovered-source/LOGICA" / filename).read_text(encoding="utf-8")
@@ -25,5 +32,5 @@ for filename in forms:
     count = source.count("System.Windows.Forms.Application.")
     assert count > 0, f"{filename}: missing qualified WinForms Application reference"
     total += count
-assert total >= 166, f"Unexpected WinForms qualification count: {total}"
+assert total >= 245, f"Unexpected WinForms qualification count: {total}"
 print(f"PASS: {total} WinForms Application references qualified across {len(forms)} forms")
