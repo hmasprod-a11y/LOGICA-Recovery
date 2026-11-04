@@ -32,7 +32,8 @@ public sealed class AuthorizedWpfCheckoutAdapter : IContextualCheckoutSubmission
 
     public CheckoutSubmissionResult Submit(string stableOperationId, CashierPaymentContext context)
     {
-        if (string.IsNullOrWhiteSpace(stableOperationId) || context?.IsWellFormed != true)
+        if (string.IsNullOrWhiteSpace(stableOperationId) || context?.IsWellFormed != true ||
+            !string.Equals(context.TenderCode, nameof(CheckoutPaymentKind.Cash), StringComparison.OrdinalIgnoreCase))
             return CheckoutSubmissionResult.Invalidated;
 
         // No posting until the application's trusted preparation exists.
@@ -46,7 +47,7 @@ public sealed class AuthorizedWpfCheckoutAdapter : IContextualCheckoutSubmission
         // these through a cash-only trusted preparation.
         if (request.IsReturn || request.Payments is null ||
             request.Payments.Count != 1 ||
-            request.Payments[0].Kind == CheckoutPaymentKind.Credit)
+            request.Payments[0].Kind != CheckoutPaymentKind.Cash)
             return CheckoutSubmissionResult.Invalidated;
         if (!Enum.TryParse<CheckoutPaymentKind>(context.TenderCode, true, out var tender) ||
             !Enum.IsDefined(tender) || request.Payments is null || request.Payments.Count != 1 ||
