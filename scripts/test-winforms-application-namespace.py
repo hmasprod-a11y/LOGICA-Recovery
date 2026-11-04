@@ -21,6 +21,8 @@ forms = (
     "Form_5_CLIENTS_RDV.cs",
     "Form_5_CLIENTS_REGLE.cs",
     "Form_5_CLIENTS.cs",
+    "Form_6_COMMANDES.cs",
+    "Form_6_DEPENSES.cs",
 )
 members = ("StartupPath", "DoEvents", "Run", "OpenForms")
 total = 0
@@ -32,5 +34,5 @@ for filename in forms:
     count = source.count("System.Windows.Forms.Application.")
     assert count > 0, f"{filename}: missing qualified WinForms Application reference"
     total += count
-assert total >= 245, f"Unexpected WinForms qualification count: {total}"
+assert total >= 313, f"Unexpected WinForms qualification count: {total}"
 print(f"PASS: {total} WinForms Application references qualified across {len(forms)} forms")
