@@ -17,6 +17,7 @@ for file in sorted(root.rglob("*.cs")):
         line = source.count("\n", 0, match.start()) + 1
         offenders.append(f"{file.relative_to(root)}:{line}: Application.{match.group(1)}")
 if offenders:
+    print("UNQUALIFIED_WINFORMS_APPLICATION: " + str(len(offenders)))
     raise AssertionError(
         f"{len(offenders)} unqualified WinForms Application references in {scanned} C# files:\n"
         + "\n".join(offenders)
