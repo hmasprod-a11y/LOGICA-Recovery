@@ -85,9 +85,7 @@ public sealed class CheckoutBatchController
                 SelectionResponse live = pending.IsImage
                     ? CheckoutSelectionGateway.ResolveImage(pending.Candidate,
                         () => _catalogue.RefreshArticle(pending.Candidate.ArticleId))
-                    : CheckoutSelectionGateway.ResolveBarcode(
-                        new[] { pending.Candidate }, null,
-                        () => _catalogue.RefreshBarcode(pending.Barcode!));
+                    : RevalidateBarcode(pending);
                 if (live.Outcome != SelectionOutcome.Selected ||
                     live.Article?.ArticleId != pending.Candidate.ArticleId ||
                     live.Article.Barcode != pending.Candidate.Barcode)
@@ -99,6 +97,25 @@ public sealed class CheckoutBatchController
             return CheckoutBatchStatus.Committed;
         }
         finally { _committing = false; }
+    }
+
+    private SelectionResponse RevalidateBarcode(PendingLine pending)
+    {
+        // Use the complete live variant set. The original recovered selection
+        // service still validates the chosen index and a second fresh snapshot.
+        var live = _catalogue.RefreshBarcode(pending.Barcode!);
+        var index = -1;
+        for (var i = 0; i < live.Count; i++)
+        {
+            if (live[i].ArticleId != pending.Candidate.ArticleId ||
+                live[i].Barcode != pending.Candidate.Barcode) continue;
+            if (index >= 0)
+                return new SelectionResponse(SelectionOutcome.Ambiguous, null);
+            index = i;
+        }
+        if (index < 0) return new SelectionResponse(SelectionOutcome.Missing, null);
+        return CheckoutSelectionGateway.ResolveBarcode(live, _ => index,
+            () => _catalogue.RefreshBarcode(pending.Barcode!));
     }
 
     private void EnsureMutable()
