@@ -143,6 +143,46 @@ confirmedAbsent.ReconcileUnknownOutcome("sale-007", false);
 Assert(confirmedAbsent.State == CheckoutCommitState.Ready && confirmedAbsent.PendingCount == 1,
        "durably confirmed absent operation retains stage for explicit retry");
 
+// Shared production composition: one catalogue contract drives list, photo grid,
+// duplicate-barcode selection and the atomic batch without WPF/SQL dependencies.
+var sharedReader = new CompositionCatalogue();
+var sharedCart = new RecordingAtomicBatchPort();
+var journal = new CompositionJournal();
+var composition = new CheckoutComposition(sharedReader, new RecordingPrompt { Choice = 1 }, sharedCart, journal);
+Assert(composition.AllProducts().Count == 3, "composition lists all catalogue articles");
+Assert(composition.ImageProducts().Count == 1 &&
+       composition.ImageProducts()[0].ArticleId == "21", "photo grid excludes products without actual image path");
+var composedBatch = composition.CreateCheckoutBatch();
+Assert(composedBatch.StageBarcode("123", 2).Article?.ArticleId == "12", "composition selects explicit duplicate barcode");
+Assert(composedBatch.StageImage(A("21", ""), 1).Outcome == SelectionOutcome.Selected,
+       "composition selects barcode-free photo article");
+Assert(composedBatch.Commit("composed-001") == CheckoutBatchStatus.Committed &&
+       sharedCart.Calls.Count == 1 && sharedCart.Calls[0].Lines.Count == 2,
+       "composition dispatches validated mixed batch once");
+try { new CheckoutComposition(null!, new RecordingPrompt(), sharedCart, journal); throw new Exception("missing reader accepted"); }
+catch (ArgumentNullException) { Assert(true, "production composition refuses missing reader"); }
+var uncertainCart = new ThrowingAtomicBatchPort();
+var uncertainComposition = new CheckoutComposition(sharedReader, new RecordingPrompt(), uncertainCart, journal);
+var uncertainBatch = uncertainComposition.CreateCheckoutBatch();
+uncertainBatch.StageImage(A("21", ""));
+try { uncertainBatch.Commit("composed-002"); throw new Exception("failure swallowed"); }
+catch (ApplicationException) { }
+Assert(uncertainComposition.Reconcile(uncertainBatch) == CheckoutOperationOutcome.Unknown &&
+       uncertainBatch.State == CheckoutCommitState.OutcomeUnknown,
+       "unknown durable journal outcome leaves cart blocked");
+journal.Outcome = CheckoutOperationOutcome.Persisted;
+Assert(uncertainComposition.Reconcile(uncertainBatch) == CheckoutOperationOutcome.Persisted &&
+       uncertainBatch.PendingCount == 0 && uncertainBatch.State == CheckoutCommitState.Ready,
+       "persisted journal outcome clears pending without duplicate post");
+var absentBatch = uncertainComposition.CreateCheckoutBatch();
+absentBatch.StageImage(A("21", ""));
+try { absentBatch.Commit("composed-003"); throw new Exception("failure swallowed"); }
+catch (ApplicationException) { }
+journal.Outcome = CheckoutOperationOutcome.Absent;
+Assert(uncertainComposition.Reconcile(absentBatch) == CheckoutOperationOutcome.Absent &&
+       absentBatch.PendingCount == 1 && absentBatch.State == CheckoutCommitState.Ready,
+       "absent durable outcome unlocks retained staged selection");
+
 Console.WriteLine("Production selection-to-checkout workflow regression suite passed.");
 
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
@@ -209,4 +249,24 @@ sealed class ThrowingAtomicBatchPort : IAtomicCheckoutBatchPort
         Attempts++;
         throw new ApplicationException("transaction result unknown");
     }
+}
+
+sealed class CompositionCatalogue : ICatalogueReader
+{
+    private static readonly ProductSummary[] Products = {
+        new("11", "123", "First", null),
+        new("12", "123", "Variant", null, "v2"),
+        new("21", "", "Photo only", "images/21.png")
+    };
+    public IReadOnlyList<ProductSummary> ListAll() => Products;
+    public IReadOnlyList<ProductSummary> FindBarcode(string barcode) =>
+        Products.Where(p => p.Barcode == barcode).ToArray();
+    public IReadOnlyList<ProductSummary> RefreshBarcode(string barcode) => FindBarcode(barcode);
+    public IReadOnlyList<ProductSummary> RefreshArticle(string articleId) =>
+        Products.Where(p => p.ArticleId == articleId).ToArray();
+}
+sealed class CompositionJournal : ICheckoutOperationJournal
+{
+    public CheckoutOperationOutcome Outcome { get; set; } = CheckoutOperationOutcome.Unknown;
+    public CheckoutOperationOutcome Lookup(string operationId) => Outcome;
 }
