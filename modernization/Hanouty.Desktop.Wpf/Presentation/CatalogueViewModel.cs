@@ -74,6 +74,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     {
         // Re-reading products never reconciles an uncertain checkout operation.
         // A failed local read must never leave a stale product available for sale.
+        var pendingScannerText = CheckoutUncertain ? ScannerText : "";
         IReadOnlyList<ProductSummary> loaded;
         try { loaded = _reader.ReadProducts() ?? Array.Empty<ProductSummary>(); }
         catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or InvalidOperationException)
@@ -81,9 +82,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             _all = Array.Empty<ProductSummary>();
             CatalogueAvailable = false;
             SelectedProduct = null;
-            ScannerText = "";
+            ScannerText = pendingScannerText;
             Refresh();
-            ScanFeedback = "Local catalogue unavailable";
+            ScanFeedback = CheckoutUncertain ? "Checkout status unknown — reconcile before retry" : "Local catalogue unavailable";
             return;
         }
         var valid = loaded.Where(p => p is not null && !string.IsNullOrWhiteSpace(p.Id)).ToArray();
@@ -92,22 +93,24 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             _all = Array.Empty<ProductSummary>();
             CatalogueAvailable = false;
             SelectedProduct = null;
-            ScannerText = "";
+            ScannerText = pendingScannerText;
             Refresh();
-            ScanFeedback = "Invalid catalogue identities — reload required";
+            ScanFeedback = CheckoutUncertain ? "Checkout status unknown — reconcile before retry" : "Invalid catalogue identities — reload required";
             return;
         }
         _all = valid;
         CatalogueAvailable = true;
         SelectedProduct = null;
-        ScannerText = "";
+        ScannerText = pendingScannerText;
         Refresh();
-        ScanFeedback = _all.Count == 0 ? "No products loaded" : "Catalogue ready";
+        ScanFeedback = CheckoutUncertain ? "Checkout status unknown — reconcile before retry" :
+            _all.Count == 0 ? "No products loaded" : "Catalogue ready";
     }
 
     public void ScanBarcode()
     {
         if (CheckoutUncertain) { ScanFeedback = "Checkout status unknown — reconcile before retry"; return; }
+        if (!CatalogueAvailable) { ScanFeedback = "Local catalogue unavailable"; return; }
         var code = ScannerText.Trim();
         if (code.Length == 0) { BarcodeCandidates = Array.Empty<ProductSummary>(); SelectedProduct = null; OnPropertyChanged(nameof(BarcodeCandidates)); OnPropertyChanged(nameof(HasBarcodeAmbiguity)); ScanFeedback = "Empty barcode"; return; }
         var matches = _all.Where(p => string.Equals(p.Barcode, code, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(p.Barcode)).ToArray();
