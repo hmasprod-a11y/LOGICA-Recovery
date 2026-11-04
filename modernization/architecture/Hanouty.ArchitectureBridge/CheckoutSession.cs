@@ -69,7 +69,7 @@ public sealed class CheckoutSession
             !System.Linq.Enumerable.Any(Products, p =>
                 string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal) &&
                 p == product) ||
-            !_composition.IsCurrentArticle(product) ||
+            !_composition.IsCurrentDuplicateVariant(product) ||
             System.Linq.Enumerable.Count(Products, p =>
                 string.Equals(p.Barcode, product.Barcode, StringComparison.Ordinal)) < 2)
             return new SelectionResponse(SelectionOutcome.InvalidCandidates, null);
@@ -99,7 +99,7 @@ public sealed class CheckoutSession
         foreach (var image in _stagedImages)
             if (!_composition.IsCurrentImage(image)) return CheckoutBatchStatus.Invalidated;
         foreach (var variant in _stagedExplicitVariants)
-            if (!_composition.IsCurrentArticle(variant)) return CheckoutBatchStatus.Invalidated;
+            if (!_composition.IsCurrentDuplicateVariant(variant)) return CheckoutBatchStatus.Invalidated;
         var result = _batch.Commit(operationId);
         if (result == CheckoutBatchStatus.Committed || result == CheckoutBatchStatus.Empty)
         {
