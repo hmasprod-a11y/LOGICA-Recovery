@@ -22,12 +22,12 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: 116c95a2e0e180b050afa20cc733aea01fa023f9
+          ref: cd7c4df6d20653dc97fe4fe0685a18de7cef0fe6
           path: combined
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: d8b8c1b55fb592668da6528242dc8d5962b4356f
+          ref: 381a18edc3af1034c4252bc5329ef3397a655e65
           path: architecture
           persist-credentials: false
       - name: Verify exact provenance and compose real production source graph
@@ -37,8 +37,8 @@ jobs:
           New-Item -ItemType Directory -Force evidence | Out-Null
           $sources = @{
             qa = '${{ github.sha }}'
-            combined = '116c95a2e0e180b050afa20cc733aea01fa023f9'
-            architecture = 'd8b8c1b55fb592668da6528242dc8d5962b4356f'
+            combined = 'cd7c4df6d20653dc97fe4fe0685a18de7cef0fe6'
+            architecture = '381a18edc3af1034c4252bc5329ef3397a655e65'
           }
           foreach ($key in $sources.Keys) {
             $actual = (git -C $key rev-parse HEAD).Trim()
