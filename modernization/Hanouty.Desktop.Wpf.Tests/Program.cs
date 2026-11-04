@@ -34,7 +34,7 @@ vm.SelectCommand.Execute(null);
 Check(selection.Selected.Last().Id == "2", "barcode-free product selectable by UI");
 vm.SelectedProduct = new ProductSummary("", "Bad identity", "x");
 vm.SelectCommand.Execute(null);
-Check(vm.ScanFeedback == "Invalid product identity" && selection.Selected.Count == 2, "missing article ID must never post");
+Check(vm.ScanFeedback == "Product no longer in catalogue" && selection.Selected.Count == 2, "missing article ID must never post");
 int rtlNotifications = 0;
 vm.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(vm.IsRightToLeft)) rtlNotifications++; };
 vm.IsRightToLeft = true;
@@ -62,6 +62,30 @@ vm.ScanBarcode();
 vm.SelectedProduct = vm.BarcodeCandidates[1];
 vm.SelectCommand.Execute(null);
 Check(selection.Selected.Last().Id == "5", "explicit ambiguous barcode candidate must dispatch selected article");
+var changing = new ChangingReader(items);
+var reloaded = new CatalogueViewModel(changing, new RecordingSelection());
+reloaded.SelectedProduct = items[0];
+reloaded.ScannerText = "123";
+changing.Products = new[] { items[1] };
+reloaded.ReloadCommand.Execute(null);
+Check(reloaded.VisibleProducts.Count == 1 && reloaded.SelectedProduct is null && reloaded.ScannerText == "", "reload must replace catalogue and discard stale selection/scanner");
+reloaded.SelectedProduct = items[0];
+reloaded.SelectCurrent();
+Check(reloaded.ScanFeedback == "Product no longer in catalogue", "stale product cannot dispatch");
+changing.Fail = true;
+reloaded.ReloadCatalogue();
+Check(!reloaded.CatalogueAvailable && reloaded.VisibleProducts.Count == 0 && reloaded.PhotoProducts.Count == 0 && reloaded.SelectedProduct is null, "failed local read clears all sale-facing state");
+reloaded.ScannerText = "123";
+reloaded.ScanBarcode();
+Check(reloaded.ScanFeedback == "Product not found", "unavailable catalogue must not select");
+changing.Fail = false;
+changing.Products = items;
+reloaded.ReloadCatalogue();
+Check(reloaded.CatalogueAvailable && reloaded.VisibleProducts.Count == items.Length, "recovered local read restores all products");
+reloaded.SelectedProduct = items[0];
+reloaded.ScannerText = "";
+reloaded.ScanBarcode();
+Check(reloaded.SelectedProduct is null && reloaded.BarcodeCandidates.Count == 0, "empty scan clears previous selection");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
@@ -72,4 +96,11 @@ sealed class RecordingSelection : IProductSelection
 {
     public List<ProductSummary> Selected { get; } = new();
     public bool Select(ProductSummary product) { Selected.Add(product); return true; }
+}
+
+sealed class ChangingReader(ProductSummary[] products) : ICatalogueReader
+{
+    public ProductSummary[] Products { get; set; } = products;
+    public bool Fail { get; set; }
+    public IReadOnlyList<ProductSummary> ReadProducts() => Fail ? throw new InvalidOperationException("offline") : Products;
 }
