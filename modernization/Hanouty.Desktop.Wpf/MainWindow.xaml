@@ -9,7 +9,7 @@
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,16">
             <TextBlock Text="Hanouty POS" FontSize="28" FontWeight="SemiBold"/>
             <CheckBox Content="Right-to-left layout" IsChecked="{Binding IsRightToLeft, Mode=TwoWay}" Margin="0,8,0,0" AutomationProperties.Name="Right-to-left layout"/>
-            <TextBlock Text="Offline desktop preview — no sales or inventory writes"
+            <TextBlock Text="Offline desktop — checkout requires registered authorized local services"
                        Foreground="DimGray" Margin="0,4,0,0"/>
         </StackPanel>
         <Grid>
@@ -88,7 +88,9 @@
                 <Button Content="Select product" Command="{Binding SelectCommand}" MinHeight="44"
                         Padding="12,8" Margin="0,18,0,0"
                         AutomationProperties.Name="Select product" IsEnabled="{Binding CanSelectProduct}"/>
-                <TextBlock Text="Checkout, stock posting, printing and licensing are disabled until their application contracts are integrated and verified."
+                <Button Content="Complete checkout" Command="{Binding CommitCommand}" IsEnabled="{Binding CanCommit}" MinHeight="44" Padding="12,8" Margin="0,18,0,0" AutomationProperties.Name="Complete checkout"/>
+                <TextBlock Text="{Binding CommitFeedback}" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.Name="Checkout result"/>
+                <TextBlock Text="Stock posting, printing and licensing require separately verified application contracts."
                            Margin="0,22,0,0" TextWrapping="Wrap" Foreground="DimGray"/>
             </StackPanel>
         </Grid>
