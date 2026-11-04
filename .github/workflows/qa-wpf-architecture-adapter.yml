@@ -3,6 +3,11 @@ on:
   push:
     branches: [integration/hanouty-qa-desktop-inventory-20261102]
     paths: ['.github/workflows/qa-wpf-architecture-adapter.yml']
+  pull_request:
+    paths:
+      - '.github/workflows/qa-w1-disposable-mariadb.yml'
+      - '.github/workflows/qa-wpf-architecture-adapter.yml'
+      - 'qa/tests/Hanouty.W1.RealMariaDb/**'
   workflow_dispatch:
 permissions:
   contents: read
