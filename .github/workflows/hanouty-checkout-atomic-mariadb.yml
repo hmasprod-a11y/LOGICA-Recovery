@@ -2,7 +2,9 @@ name: Hanouty checkout atomic MariaDB contract
 on:
   pull_request:
     paths:
-      - 'recovered-source/LOGICA/Infrastructure/Checkout/MySqlCheckoutAtomicPostingBoundary.cs'
+      - 'recovered-source/LOGICA/Infrastructure/Checkout/**'
+      - 'recovered-source/LOGICA/Application/Checkout/**'
+      - 'recovered-source/LOGICA/Infrastructure/Compatibility/VisualBasic*Semantics.cs'
       - 'recovered-source/LOGICA/Infrastructure/Checkout/hanouty_checkout_operations.disposable.sql'
       - 'scripts/test-checkout-atomic-mariadb.sh'
       - 'modernization/checkout-mariadb-boundary/**'
@@ -26,6 +28,16 @@ jobs:
           --health-interval=5s --health-timeout=5s --health-retries=20
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout approved Architecture source for real financial port
+        uses: actions/checkout@v4
+        with:
+          ref: f934763edbb0ae15c5e2a449bf6440b0d1bcca39
+          path: architecture-source
+          persist-credentials: false
+      - name: Verify exact Architecture source
+        run: test "$(git -C architecture-source rev-parse HEAD)" = "f934763edbb0ae15c5e2a449bf6440b0d1bcca39"
       - name: Install MariaDB client
         run: sudo apt-get update && sudo apt-get install -y mariadb-client
       - name: Exercise isolated transaction and durable claim

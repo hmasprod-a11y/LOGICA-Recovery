@@ -1,51 +1,10 @@
 using System;
+using LOGICA.ApplicationLayer.Checkout;
 using LOGICA.Infrastructure.Checkout;
 using MySql.Data.MySqlClient;
 
-namespace LOGICA.ApplicationLayer.Checkout
-{
-    // Only the posting writer is substituted: this executable links the
-    // ACTUAL production MySqlCheckoutAtomicPostingBoundary and runs it against
-    // the disposable MariaDB schema created by the SQL integration gate.
-    internal interface ICheckoutTransactionBoundary
-    {
-        bool IsOpen { get; }
-        void Open();
-        void BeginAndBind();
-        void Commit();
-        void Rollback();
-        void Close();
-    }
-    internal interface ICheckoutPostingStore
-    {
-        void ApplyStock(CheckoutStockLine line);
-        void WriteHeader(TicketHeaderRecord header);
-        void WriteJournal(TicketJournalRecord journal);
-        void WritePayment(TicketPaymentWrite payment);
-        void Complete(CheckoutCompletionRecord completion);
-    }
-    internal interface ICheckoutAtomicPostingBoundary : ICheckoutTransactionBoundary, ICheckoutPostingStore
-    {
-        bool TryClaimOperation(string operationId);
-    }
-    internal sealed class CheckoutStockLine { }
-    internal sealed class TicketHeaderRecord { }
-    internal sealed class TicketJournalRecord { }
-    internal sealed class TicketPaymentWrite { }
-    internal sealed class CheckoutCompletionRecord { }
-}
 namespace LOGICA.Infrastructure.Checkout
 {
-    internal sealed class MySqlCheckoutPostingStore : LOGICA.ApplicationLayer.Checkout.ICheckoutPostingStore
-    {
-        internal MySqlCheckoutPostingStore(MySqlCommand command, MySqlConnection connection) { }
-        public void ApplyStock(LOGICA.ApplicationLayer.Checkout.CheckoutStockLine line) { }
-        public void WriteHeader(LOGICA.ApplicationLayer.Checkout.TicketHeaderRecord header) { }
-        public void WriteJournal(LOGICA.ApplicationLayer.Checkout.TicketJournalRecord journal) { }
-        public void WritePayment(LOGICA.ApplicationLayer.Checkout.TicketPaymentWrite payment) { }
-        public void Complete(LOGICA.ApplicationLayer.Checkout.CheckoutCompletionRecord completion) { }
-    }
-
     internal static class Program
     {
         private static void Require(bool condition, string message)
@@ -62,6 +21,12 @@ namespace LOGICA.Infrastructure.Checkout
         {
             Require(!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CHECKOUT_TEST_CONNECTION")),
                 "Disposable CHECKOUT_TEST_CONNECTION is required.");
+            var settings = new MySqlConnectionStringBuilder(Environment.GetEnvironmentVariable("CHECKOUT_TEST_CONNECTION"));
+            Require(settings.Database == "checkout_disposable" &&
+                (settings.Server == "127.0.0.1" || settings.Server == "localhost"),
+                "Acceptance is restricted to the disposable loopback schema.");
+            Require(typeof(AuthorizedCheckoutMariaDbPort).GetInterface("IAuthorizedCheckoutPort") != null,
+                "Actual authorized financial port must compile against Architecture.");
             string key = "csharp-boundary-" + Guid.NewGuid().ToString("N");
             using (MySqlConnection connection = NewConnection())
             {
@@ -282,8 +247,103 @@ namespace LOGICA.Infrastructure.Checkout
                     Require(noTxRejected, "Writer accepted no transaction.");
                 }
             }
+            VerifyProductionPosting();
             Console.WriteLine("PASS production C# stock sale/return, movement, missing article and rollback.");
             Console.WriteLine("PASS production C# MariaDB boundary: commit, replay, rollback, invalid ID and unknown reconciliation.");
         }
+        private static void Sql(string sql)
+        {
+            using (var db = NewConnection())
+            {
+                db.Open();
+                using (var cmd = db.CreateCommand()) { cmd.CommandText = sql; cmd.ExecuteNonQuery(); }
+            }
+        }
+
+        private static decimal Scalar(string sql)
+        {
+            using (var db = NewConnection())
+            {
+                db.Open();
+                using (var cmd = db.CreateCommand()) { cmd.CommandText = sql; return Convert.ToDecimal(cmd.ExecuteScalar()); }
+            }
+        }
+
+        private static CheckoutPostingInput Input(string id, bool injectFailure)
+        {
+            var date = new DateTime(2026, 1, 1, 12, 0, 0);
+            return new CheckoutPostingInput
+            {
+                ReadStock = () => new[] { new CheckoutStockLine { TicketNumber = "1", ArticleId = "CSharp-Stock", ArticleCode = "CODE", ArticleName = "Article", BasketQuantity = 2m } },
+                ReadHeader = () => new TicketHeaderRecord { TicketId = id, TicketNumber = "1", SaleDate = date, Cashier = "fixture-cashier", ClientId = "0", ClientCode = "0", ClientName = "Fixture", Workstation = "01", TotalText = "10", Operation = "VENTE" },
+                ReadJournal = () => new TicketJournalRecord { TicketId = id, TicketNumber = "1", SaleDate = date, Workstation = "01", Cashier = "fixture-cashier", Seller = "fixture", ClientId = "0", ClientCode = "0", ClientName = "Fixture", Operation = "VENTE", PriceType = "DETAIL", PaymentModes = "ESPECES" },
+                ReadPayments = () => new[] { new TicketPaymentWrite { Kind = TicketPaymentKind.Cash, AmountText = "10", Context = new TicketPaymentContext { TicketId = id, TicketNumber = "1", SaleDate = date, Cashier = "fixture-cashier", ClientId = "0", ClientCode = "0", ClientName = "Fixture", Workstation = "01", Operation = "VENTE", Remark = "" } } },
+                // Fault after stock, header, journal AND payment have executed.
+                // No physical printer side effect is allowed before Commit.
+                Print = () => { if (injectFailure) throw new InvalidOperationException("injected-after-payment"); },
+                ReadCompletion = () => new CheckoutCompletionRecord { Workstation = "01", TicketNumber = "1" }
+            };
+        }
+
+        private static void Post(string operation, string ticket, bool fail)
+        {
+            using (var db = NewConnection())
+            {
+                CheckoutAtomicPostingService.Execute(new MySqlCheckoutAtomicPostingBoundary(db),
+                    Input(ticket, fail), operation, new CheckoutCommitProgress());
+            }
+        }
+
+        private static void SeedBasket()
+        {
+            Sql("INSERT INTO TABLE_01 VALUES ('CSharp-Stock','CODE','Article','Food',1,1,5,2,0,10,0,'G')");
+        }
+
+        private static void VerifyProductionPosting()
+        {
+            // These disposable tables reproduce the columns consumed by the
+            // actual legacy writers; no replacement posting store is compiled.
+            Sql("CREATE TABLE TABLE_VENTES_ENTETE (ID_TICKET VARCHAR(64) PRIMARY KEY,TICKET TEXT,DATES TEXT,CAISSIER TEXT,ID_CLIENT TEXT,CODE_CLIENT TEXT,CLIENT TEXT,POSTE TEXT,Total_NET DECIMAL(16,3),OPERATION TEXT) ENGINE=InnoDB");
+            Sql("CREATE TABLE TABLE_01 (ID_ARTICLE VARCHAR(64),Code TEXT,Article TEXT,Famille TEXT,PRIX_A DECIMAL(16,3),PRIX_MP DECIMAL(16,3),PRIX_V DECIMAL(16,3),Qté DECIMAL(16,3),Remise DECIMAL(16,3),TOTAL_NET DECIMAL(16,3),TAUX_TVA DECIMAL(16,3),GROUPE TEXT) ENGINE=InnoDB");
+            Sql("CREATE TABLE TABLE_VENTES_JOURNAL (ID_TICKET VARCHAR(64),Ticket TEXT,Dates TEXT,Heure TEXT,ID_ARTICLE VARCHAR(64),Code TEXT,Article TEXT,Famille TEXT,PRIX_A DECIMAL(16,3),PRIX_MP DECIMAL(16,3),PRIX_V DECIMAL(16,3),Qté DECIMAL(16,3),Remise DECIMAL(16,3),Total_NET DECIMAL(16,3),TAUX_TVA DECIMAL(16,3),GROUPE TEXT,Caissier TEXT,Vendeur TEXT,ID_CLIENT TEXT,CODE_CLIENT TEXT,CLIENT TEXT,POSTE TEXT,OPERATION TEXT,NOTES TEXT,NOTES_TYPE_PRIX TEXT,NOTES_MODE_P TEXT) ENGINE=InnoDB");
+            Sql("CREATE TABLE TABLE_VENTES_REGLEMENTS (ID_TICKET VARCHAR(64),TICKET TEXT,DATES TEXT,CAISSIER TEXT,ID_CLIENT TEXT,CODE_CLIENT TEXT,CLIENT TEXT,POSTE TEXT,MONTANT DECIMAL(16,3),MODE_P TEXT,OPERATION TEXT,NOTES_REMARQUE TEXT) ENGINE=InnoDB");
+            Sql("CREATE TABLE TABLE_NUM (CL INT NOT NULL) ENGINE=InnoDB");
+            Sql("INSERT INTO TABLE_NUM VALUES (1)");
+            SeedBasket();
+            Post("production-sale", "production-ticket", false);
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='production-ticket' AND Total_NET=10") == 1, "Actual ticket header not persisted.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='production-ticket' AND Qté=2 AND Total_NET=10") == 1, "Actual sale journal not persisted.");
+            Require(Scalar("SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='production-ticket'") == 10, "Actual cash payment not persisted.");
+            Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 7, "Sale stock must decrement exactly once.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_01") == 0 && Scalar("SELECT CL FROM TABLE_NUM") == 2, "Completion did not clear basket/advance sequence.");
+            Require(new MySqlCheckoutOperationJournal(NewConnection).IsPersisted("production-sale"), "Financial operation claim missing.");
+
+            SeedBasket();
+            Post("production-sale", "must-not-post", false);
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == 1 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 7 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_01") == 1, "Duplicate replay changed sale, stock or basket.");
+
+            var movements = Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK");
+            bool failed = false;
+            try { Post("production-rollback", "rolledback-ticket", true); }
+            catch (InvalidOperationException ex) when (ex.Message == "injected-after-payment") { failed = true; }
+            Require(failed, "Fault injection did not execute after actual payment writer.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == 1, "Rollback retained financial rows.");
+            Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 7 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movements &&
+                Scalar("SELECT COUNT(*) FROM TABLE_01") == 1 && Scalar("SELECT CL FROM TABLE_NUM") == 2,
+                "Rollback changed stock, movement, basket or sequence.");
+            Require(!new MySqlCheckoutOperationJournal(NewConnection).IsPersisted("production-rollback"), "Rolled back financial claim survived.");
+            Post("production-rollback", "retried-ticket", false);
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == 2 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == 2 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 5,
+                "Retry after verified rollback failed financial persistence.");
+            Console.WriteLine("PASS actual production posting: ticket/payment/journal/stock/completion, durable duplicate and rollback after payment. Trusted authorization and WPF W2 acceptance remain pending.");
+        }
+
     }
 }
