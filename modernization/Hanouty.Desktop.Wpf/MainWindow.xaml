@@ -2,7 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Hanouty POS V2.0 — Desktop" Height="650" Width="1080"
-        MinHeight="480" MinWidth="760" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" SnapsToDevicePixels="True">
+        MinHeight="480" MinWidth="760" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
     <DockPanel Margin="20" FlowDirection="{Binding LayoutDirection}">
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,16">
             <TextBlock Text="Hanouty POS" FontSize="28" FontWeight="SemiBold"/>
@@ -30,9 +31,16 @@
                 <TextBlock Text="{Binding ScanFeedback}" Margin="0,6,0,10"
                            AutomationProperties.Name="Barcode result"/>
                 <TextBlock Text="Barcode matches — select explicitly when barcode is shared" Margin="0,4,0,4"/>
-                <ListBox ItemsSource="{Binding BarcodeCandidates}" Height="65" DisplayMemberPath="Name"
+                <ListBox ItemsSource="{Binding BarcodeCandidates}" Height="90" DisplayMemberPath="Name"
                          SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
-                         AutomationProperties.Name="Barcode candidates"/>
+                         AutomationProperties.Name="Barcode candidates">
+                    <ListBox.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding SelectCommand}"/>
+                    </ListBox.InputBindings>
+                </ListBox>
+                <Button Content="Choose selected barcode variant" Command="{Binding SelectCommand}"
+                        MinHeight="44" Margin="0,4,0,8" Padding="12,8"
+                        AutomationProperties.Name="Choose barcode variant"/>
                 <DataGrid ItemsSource="{Binding VisibleProducts}" AutoGenerateColumns="False"
                           IsReadOnly="True" SelectionMode="Single" SelectionUnit="FullRow"
                           SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
