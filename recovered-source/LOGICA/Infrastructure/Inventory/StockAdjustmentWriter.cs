@@ -74,6 +74,9 @@ namespace LOGICA.Infrastructure.Inventory
                 plan.AfterStock.ToString(CultureInfo.InvariantCulture) + " : " + plan.Reason;
             if (Encoding.UTF8.GetByteCount(audit) > 255)
                 throw new InvalidOperationException("Stock adjustment audit exceeds legacy column size.");
+            if (plan.ArticleId != plan.ArticleId.Trim() || plan.UserId != plan.UserId.Trim() ||
+                plan.Reason != plan.Reason.Trim())
+                throw new InvalidOperationException("Stock adjustment audit values must be normalized.");
             if (plan.ArticleId.Length > 128)
                 throw new InvalidOperationException("Article identity exceeds supported length.");
 
