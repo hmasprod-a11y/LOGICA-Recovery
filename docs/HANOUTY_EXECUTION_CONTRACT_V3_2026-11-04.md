@@ -5,6 +5,18 @@
 **Status:** development contract on Architecture PR #95; not a commercial release approval.
 
 
+## 2026-11-04 — One contextual WPF adapter in the existing financial Host
+
+Architecture integrated WPF44ad5d84bd99308de9947269399dbf0a4bb647d3 into QA9448e50936a12fc768c0a05cdfe7abdfa14aa0bd. Existing CatalogueHost.CreateFinancial now calls AuthorizedWpfServiceRegistration.CreateSessionBound with the SAME catalogue, selection, financial submission and captured cash expectation. Removed the Host's private FinancialSessionSubmission duplicate (22 fewer lines); no new gate/session/DTO/Host.
+
+The actual rendered acceptance now edits cashier, workstation, currency, amount and Card tender through CatalogueViewModel.PaymentContext/CommitCommand. It requires Invalidated with ZERO SQL changes, preserves the SAME pending selection and operation ID, restores the captured context after deterministic local rejection and commits once. This is runtime UI-to-production composition testing, not a mock port. Existing real SQL/payment rollback/process restart/Unknown/lost-ack assertions are retained; the workflow independently checks EditedContextRejected and SingleSessionBinding evidence.
+
+Exact source set: QA9448e50936a12fc768c0a05cdfe7abdfa14aa0bd, WPF44ad5d84bd99308de9947269399dbf0a4bb647d3, Checkout e9d630d8adb9fb11f22cf08a96d05dcfbdcb9725, Architecture production5c73e78002f07121fdc85eb6272dcbd1bae5b31f. [Run41928626489](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/41928626489) is SUCCESS on both Windows126919538177 and Ubuntu126919538656. Artifact13370487843 was downloaded and independently inspected: exact source manifest matches this set; EditedContextRejected=true and SingleSessionBinding=true alongside all real SQL/rollback/restart/Unknown/lost-ack assertions, W2Accepted=false.
+
+The prior accepted QA56730439 now has all twelve distinct workflows successful, including legacy Windows41921580565 and real cash-slice41921571910. Checkoute9d630d8 has all FIVE distinct gates successful incl Windows41921575283/MariaDB41921574744. These older successes do not accept a new WPF pin automatically.
+
+**Next remains WPF actual PIN/session/tender UI and an explicit reviewed reset after verified Persisted/Absent.** The new wrapper is NOT that UI and does not authenticate a user label. SQL preparation remains the sole authorization/pricing authority. Unknown stays locked; no automatic retry or default commercial financial entry. Inventory4e8f03ef still has no actor-scoped manual stock permission delivery. Actual Form_1_LOGIN.cs on that branch lines2102–2110 proves parameterized TABLE_PASS credential lookup and Module1 username/category; this does not establish a manual-stock grant. W2Accepted=false, W3/V1 parity and W4 gates remain open; no invented percentages.
+
 ## 2026-11-04 — Real rendered WPF cash-sale executable and Windows mapping correction
 
 This supersedes the prior "combined executable absent" blocker. QA owns the one integration candidate; no end-user payment rollout is authorized.
