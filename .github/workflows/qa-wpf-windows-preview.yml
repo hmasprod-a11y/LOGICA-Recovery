@@ -73,12 +73,12 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $root = 'wpf-preview/modernization/Hanouty.Desktop.Wpf'
-          $files = @(Get-ChildItem $root -Recurse -File | Where-Object { $_.Extension -in @('.cs','.xaml') -and $_.FullName -notmatch '[\\/]obj[\\/]|[\\/]bin[\\/]' })
+          $files = @(Get-ChildItem $root -Recurse -File | Where-Object { $_.Extension -in @('.cs','.xaml') -and $_.FullName -notmatch '[\/]obj[\/]|[\/]bin[\/]' })
           if ($files.Count -eq 0) { throw 'No WPF presentation sources available for dependency inspection' }
           $violations = @()
           foreach ($file in $files) {
             $body = Get-Content -LiteralPath $file.FullName -Raw
-            if ($body -match '(?i)System\\.Windows\\.Forms|Microsoft\\.VisualBasic|MySqlConnection|MySqlCommand|DbConnection|\\bSELECT\\s+.+\\bFROM\\b|\\bINSERT\\s+INTO\\b|\\bUPDATE\\s+\\w+\\s+SET\\b|\\bDELETE\\s+FROM\\b') { $violations += $file.FullName }
+            if ($body -match '(?i)System\.Windows\.Forms|Microsoft\.VisualBasic|MySqlConnection|MySqlCommand|DbConnection|\bSELECT\s+.+\bFROM\b|\bINSERT\s+INTO\b|\bUPDATE\s+\w+\s+SET\b|\bDELETE\s+FROM\b') { $violations += $file.FullName }
           }
           if ($violations.Count -gt 0) { throw "WPF dependency boundary violated: $($violations -join ', ')" }
           Write-Host "PASS: $($files.Count) WPF presentation files checked for legacy UI/SQL coupling"
