@@ -80,6 +80,52 @@ namespace LOGICA.Infrastructure.Checkout
             if (next < 0 || next != decimal.Truncate(next) || next >= 999999)
                 throw new InvalidOperationException("Invalid ticket sequence.");
             string ticket = next.ToString("000000", CultureInfo.InvariantCulture);
+            // W2 bridge: a request from the in-memory checkout session must not
+            // depend on an independently preseeded V1 workstation basket.
+            // The TABLE_NUM row above serializes participating checkouts; refuse
+            // any existing workstation rows rather than deleting another cashier's
+            // work. Completion may clear only rows created in this transaction.
+            var occupied = Read(connection, transaction,
+                "SELECT ID_ARTICLE FROM TABLE_" + workstation + " FOR UPDATE");
+            if (occupied.Rows.Count != 0)
+                throw new InvalidOperationException(
+                    "Workstation basket is occupied; refusing to replace another cashier's sale.");
+            foreach (var line in request.Lines)
+            {
+                var authoritative = Read(connection, transaction,
+                    "SELECT * FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE",
+                    ("@id", line.ArticleId));
+                if (authoritative.Rows.Count != 1)
+                    throw new InvalidOperationException("Requested article is unavailable.");
+                var article = authoritative.Rows[0];
+                if (OptionalNumber(article, "PROMOTION") != 0m ||
+                    OptionalNumber(article, "PRIX_QTE") != 0m)
+                    throw new NotSupportedException("Promotions and tier pricing require V1 parity.");
+                decimal unit = Number(article, "PRIX_V_1");
+                decimal net = Math.Round(
+                    SalesLinePricing.CalculateNetAmount(unit, line.Quantity, 0m),
+                    2, MidpointRounding.ToEven);
+                using (var write = connection.CreateCommand())
+                {
+                    write.Transaction = transaction;
+                    write.CommandText = "INSERT INTO TABLE_" + workstation +
+                        " (ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté,Remise,TOTAL_NET,TAUX_TVA,GROUPE)" +
+                        " VALUES (@id,@code,@article,@family,@cost,@mean,@price,@quantity,0,@net,@tax,@group)";
+                    write.Parameters.AddWithValue("@id", line.ArticleId);
+                    write.Parameters.AddWithValue("@code", article["Code"]);
+                    write.Parameters.AddWithValue("@article", article["Article"]);
+                    write.Parameters.AddWithValue("@family", article["Famille"]);
+                    write.Parameters.AddWithValue("@cost", article["PRIX_A"]);
+                    write.Parameters.AddWithValue("@mean", article["PRIX_MP"]);
+                    write.Parameters.AddWithValue("@price", unit);
+                    write.Parameters.AddWithValue("@quantity", line.Quantity);
+                    write.Parameters.AddWithValue("@net", net);
+                    write.Parameters.AddWithValue("@tax", article["TAUX_TVA"]);
+                    write.Parameters.AddWithValue("@group", article["GROUPE"]);
+                    if (write.ExecuteNonQuery() != 1)
+                        throw new InvalidOperationException("Unable to stage authoritative basket line.");
+                }
+            }
             var basket = Read(connection, transaction,
                 "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté,Remise,TOTAL_NET,TAUX_TVA,GROUPE FROM TABLE_" +
                 workstation + " ORDER BY ID_ARTICLE FOR UPDATE");
