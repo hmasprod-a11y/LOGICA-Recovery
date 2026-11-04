@@ -12,6 +12,7 @@ namespace Hanouty.Desktop.Bootstrap;
 // Executable acceptance only: the cashier entry point and shop schemas are untouched.
 internal static class DisposableCashSaleAcceptance
 {
+    private static string EvidenceDirectory = "";
     private static MySqlConnection Open(CatalogueSettings settings)
     {
         var db = new MySqlConnection(settings.ConnectionString);
@@ -55,7 +56,8 @@ internal static class DisposableCashSaleAcceptance
     private static CatalogueHost Host(CatalogueSettings settings, string pin, decimal amount = 5.25m) =>
         CatalogueHost.CreateFinancial(settings, "01", () => pin,
             new AuthorizedCheckoutPaymentContext("O'Neil", "MAD", false,
-                new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, amount) }, amount));
+                new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, amount) }, amount), null,
+            ex => File.AppendAllText(Path.Combine(EvidenceDirectory, "posting-failures.txt"), ex + Environment.NewLine));
 
     private static void Select(CatalogueHost host)
     {
@@ -119,7 +121,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         host.ViewModel.CommitCommand.Execute(null);
         Require(host.ViewModel.CommitFeedback == "Checkout committed" && !host.ViewModel.CheckoutUncertain &&
             host.ViewModel.PendingOperationId is null && host.Session.PendingCount == 0,
-            "Actual WPF cash command failed or retained a completed operation.");
+            "Actual WPF cash command failed: " + host.ViewModel.CommitFeedback +
+            "; session=" + host.Session.State + "; pending=" + host.ViewModel.PendingOperationId);
         // Successful UI intentionally clears PendingOperationId. Recover the
         // committed ID from durable SQL, rather than treating that reset as failure.
         Require(Number(settings, "SELECT COUNT(*) FROM hanouty_checkout_operations") == 1,
@@ -231,6 +234,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
 
     public static int Run(string evidenceDirectory)
     {
+        EvidenceDirectory = evidenceDirectory;
         Directory.CreateDirectory(evidenceDirectory);
         try
         {

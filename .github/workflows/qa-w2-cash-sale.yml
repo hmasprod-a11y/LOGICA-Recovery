@@ -165,9 +165,10 @@ jobs:
           $hostExe = Join-Path (Resolve-Path qa).Path 'modernization/Hanouty.Desktop.Bootstrap/bin/Release/net10.0-windows/Hanouty.Desktop.Bootstrap.exe'
           if (-not (Test-Path $hostExe)) { throw 'QA_OWNER: financial Host executable missing' }
           $env:HANOUTY_W2_DISPOSABLE_MARKER = 'I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY'
-          & $hostExe --verify-disposable-cash-sale (Join-Path (Resolve-Path evidence).Path 'w2')
-          if ($LASTEXITCODE -ne 0) {
-            Get-Content evidence/w2/w2-failure.txt -ErrorAction SilentlyContinue | Write-Host
+          $acceptance = Join-Path (Resolve-Path evidence).Path 'w2'
+          $process = Start-Process -FilePath $hostExe -ArgumentList @('--verify-disposable-cash-sale', ('"' + $acceptance + '"')) -PassThru -Wait
+          if ($process.ExitCode -ne 0) {
+            Get-Content evidence/w2/*failure*.txt -ErrorAction SilentlyContinue | Write-Host
             throw 'QA_OWNER W2_NOT_ACCEPTED: real WPF cash-sale runner failed; see w2-failure.txt'
           }
       - name: Verify executed cash-slice evidence without promoting full W2

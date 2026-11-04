@@ -20,7 +20,8 @@ public sealed partial record CatalogueHost
     // port returns from Commit; it cannot substitute posting or financial writers.
     internal static CatalogueHost CreateFinancial(CatalogueSettings settings,
         string twoDigitWorkstation, Func<string> transientPinProvider,
-        AuthorizedCheckoutPaymentContext paymentContext, Action? afterCommitAcknowledgementFault)
+        AuthorizedCheckoutPaymentContext paymentContext, Action? afterCommitAcknowledgementFault,
+        Action<Exception>? postingFailureDiagnostic = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(transientPinProvider);
@@ -39,8 +40,8 @@ public sealed partial record CatalogueHost
         Func<MySqlConnection> connections = () => new MySqlConnection(settings.ConnectionString);
         var posting = MariaDbCashCheckoutServices.CreatePostingPort(
             connections, twoDigitWorkstation, transientPinProvider);
-        if (afterCommitAcknowledgementFault is not null)
-            posting = new AcknowledgementFaultPort(posting, afterCommitAcknowledgementFault);
+        if (afterCommitAcknowledgementFault is not null || postingFailureDiagnostic is not null)
+            posting = new AcknowledgementFaultPort(posting, afterCommitAcknowledgementFault, postingFailureDiagnostic);
         var journal = MariaDbCashCheckoutServices.CreateOperationJournal(connections);
         var binding = ProductionWpfServices.CreateFinancial(
             new MariaDbCatalogueReader(settings.ConnectionString, settings.DataDirectory),
@@ -56,12 +57,13 @@ public sealed partial record CatalogueHost
     }
 
     private sealed class AcknowledgementFaultPort(
-        IAuthorizedCheckoutPort actualPosting, Action afterCommit) : IAuthorizedCheckoutPort
+        IAuthorizedCheckoutPort actualPosting, Action? afterCommit, Action<Exception>? diagnostic) : IAuthorizedCheckoutPort
     {
         public void Commit(AuthorizedCheckoutRequest request)
         {
-            actualPosting.Commit(request);
-            afterCommit();
+            try { actualPosting.Commit(request); }
+            catch (Exception ex) { diagnostic?.Invoke(ex); throw; }
+            afterCommit?.Invoke();
         }
     }
 
