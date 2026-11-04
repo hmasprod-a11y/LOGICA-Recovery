@@ -106,4 +106,24 @@ if "${client[@]}" -e "INSERT INTO hanouty_checkout_operations (operation_id) VAL
 fi
 wait "$first_pid"
 assert_count "SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id='race-1'" 1
-echo "PASS disposable MariaDB sale, signed return, payment failure rollback, durable claim, duplicate and concurrent claim rejection"
+# A competing checkout may reuse an operation ID ONLY if the first
+# transaction rolls back. This is the other half of the idempotency
+# contract: failed claims must not strand a valid retry forever.
+"${client[@]}" <<'SQL' >/dev/null &
+START TRANSACTION;
+INSERT INTO hanouty_checkout_operations (operation_id) VALUES ('race-rollback');
+SELECT SLEEP(3);
+ROLLBACK;
+SQL
+rollback_pid=$!
+sleep 1
+"${client[@]}" -e "INSERT INTO hanouty_checkout_operations (operation_id) VALUES ('race-rollback')"
+wait "$rollback_pid"
+assert_count "SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id='race-rollback'" 1
+# A return must not duplicate when its durable operation ID is reused.
+if "${client[@]}" -e "INSERT INTO hanouty_checkout_operations (operation_id) VALUES ('return-1')" >/dev/null 2>&1; then
+  echo "FAIL: duplicate return claim succeeded" >&2
+  exit 1
+fi
+assert_count "SELECT quantity FROM test_checkout_stock WHERE article_id='A'" 9
+echo "PASS disposable MariaDB sale, return, rollback, payment failure and concurrent commit/rollback claim resolution"
