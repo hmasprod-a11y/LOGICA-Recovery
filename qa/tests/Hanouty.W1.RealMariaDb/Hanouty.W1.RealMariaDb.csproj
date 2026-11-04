@@ -6,6 +6,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../modernization/inventory/Hanouty.Inventory.MariaDb/Hanouty.Inventory.MariaDb.csproj" />
+    <ProjectReference Include="../../../modernization/inventory/Hanouty.Inventory.MariaDb/Hanouty.Inventory.MariaDb.csproj" />
   </ItemGroup>
 </Project>
