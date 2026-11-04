@@ -248,6 +248,7 @@ namespace LOGICA.Infrastructure.Checkout
                 }
             }
             VerifyProductionPosting();
+            VerifyAuthorizedPortTransaction();
             Console.WriteLine("PASS production C# stock sale/return, movement, missing article and rollback.");
             Console.WriteLine("PASS production C# MariaDB boundary: commit, replay, rollback, invalid ID and unknown reconciliation.");
         }
@@ -343,6 +344,75 @@ namespace LOGICA.Infrastructure.Checkout
                 Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 5,
                 "Retry after verified rollback failed financial persistence.");
             Console.WriteLine("PASS actual production posting: ticket/payment/journal/stock/completion, durable duplicate and rollback after payment. Trusted authorization and WPF W2 acceptance remain pending.");
+        }
+
+        private sealed class PreparationFixture : ITrustedCheckoutPostingPreparation
+        {
+            internal Func<Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest, MySqlConnection, MySqlTransaction, CheckoutPostingInput> Callback;
+            public CheckoutPostingInput Prepare(Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest request,
+                MySqlConnection connection, MySqlTransaction transaction) => Callback(request, connection, transaction);
+        }
+
+        private static Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest Request(string operation)
+        {
+            return new Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest(operation,
+                "fixture-cashier", "MAD", false,
+                new[] { new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2) },
+                new[] { new Hanouty.ArchitectureBridge.CheckoutPayment(Hanouty.ArchitectureBridge.CheckoutPaymentKind.Cash, 10m) },
+                10m);
+        }
+
+        private static void VerifyAuthorizedPortTransaction()
+        {
+            var calls = 0;
+            var preparation = new PreparationFixture
+            {
+                Callback = (request, connection, transaction) =>
+                {
+                    calls++;
+                    Require(connection.State == System.Data.ConnectionState.Open &&
+                        transaction != null && ReferenceEquals(transaction.Connection, connection),
+                        "Trusted preparation must receive the active posting connection/transaction.");
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.Transaction = transaction;
+                        command.CommandText = "SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id=@id";
+                        command.Parameters.AddWithValue("@id", request.OperationId);
+                        Require(Convert.ToInt32(command.ExecuteScalar()) == 1,
+                            "Preparation must see the operation claim in its transaction.");
+                    }
+                    Require(Scalar("SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id='port-sale'") == 0,
+                        "Operation must not be committed before trusted preparation.");
+                    return Input("port-ticket", false);
+                }
+            };
+            var port = new AuthorizedCheckoutMariaDbPort(NewConnection, preparation);
+            SeedBasket();
+            port.Commit(Request("port-sale"));
+            Require(calls == 1 && Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == 3 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == 3 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 3,
+                "Actual authorized port failed production financial persistence.");
+            port.Commit(Request("port-sale"));
+            Require(calls == 1 && Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == 3 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 3,
+                "Duplicate authorized operation must skip preparation and writers.");
+
+            var denied = new AuthorizedCheckoutMariaDbPort(NewConnection, new PreparationFixture
+            {
+                Callback = (request, connection, transaction) => throw new UnauthorizedAccessException("fixture-denied")
+            });
+            SeedBasket();
+            bool rejected = false;
+            try { denied.Commit(Request("port-denied")); }
+            catch (UnauthorizedAccessException ex) when (ex.Message == "fixture-denied") { rejected = true; }
+            Require(rejected && !new MySqlCheckoutOperationJournal(NewConnection).IsPersisted("port-denied") &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == 3 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == 3 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_01") == 1 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 3,
+                "Denied preparation must roll back the claim and preserve all business state.");
+            Console.WriteLine("PASS actual authorized port transaction, uncommitted claim isolation, duplicate preparation suppression and denied-preparation rollback; preparation is a TEST fixture, not production authentication.");
         }
 
     }
