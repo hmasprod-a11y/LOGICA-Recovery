@@ -68,6 +68,17 @@ public sealed class CheckoutComposition
         return live.Count == 1 && live[0] == selected;
     }
 
+    // Explicit variant choice must still refer to a live duplicate barcode set.
+    // A stale UI snapshot cannot authorize a different, now-unique article.
+    internal bool IsCurrentDuplicateVariant(ProductSummary selected)
+    {
+        if (string.IsNullOrWhiteSpace(selected.Barcode) || !IsCurrentArticle(selected))
+            return false;
+        var candidates = Validate(_reader.RefreshBarcode(selected.Barcode));
+        return candidates.Count >= 2 && candidates.Any(p => p == selected) &&
+            candidates.All(p => string.Equals(p.Barcode, selected.Barcode, StringComparison.Ordinal));
+    }
+
     // One WPF session owns one batch and one stable operation ID. No demo fallback.
     public CheckoutSession CreateSession() => new(this, CreateCheckoutBatch());
 
