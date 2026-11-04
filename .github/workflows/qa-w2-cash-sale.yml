@@ -2,7 +2,7 @@ name: QA W2 cash-sale production graph and acceptance
 on:
   push:
     branches: [integration/hanouty-qa-desktop-inventory-20261102]
-    paths: ['.github/workflows/qa-w2-cash-sale.yml']
+    paths: ['.github/workflows/qa-w2-cash-sale.yml', 'modernization/Hanouty.Desktop.Bootstrap/**']
   workflow_dispatch:
 permissions:
   contents: read
@@ -170,6 +170,15 @@ jobs:
             Get-Content evidence/w2/w2-failure.txt -ErrorAction SilentlyContinue | Write-Host
             throw 'QA_OWNER W2_NOT_ACCEPTED: real WPF cash-sale runner failed; see w2-failure.txt'
           }
+      - name: Verify executed cash-slice evidence without promoting full W2
+        shell: pwsh
+        run: |
+          $report = Get-Content evidence/w2/w2-cash-sale.json -Raw | ConvertFrom-Json
+          foreach ($field in @('WindowLoaded','EmptyBasket','TicketPaymentStockSql','Duplicate','ProcessRestart','WrongPinRejected','WrongTotalRejected','StalePriceRejected','AfterPaymentRollback','UnknownJournalLocked','LostAcknowledgementPersisted','Reconciliation')) {
+            if ($report.$field -ne $true) { throw "Missing executed acceptance assertion: $field" }
+          }
+          if ($report.W2Accepted -ne $false) { throw 'Cash-slice evidence must not promote full W2 or commercial payment readiness' }
+          Write-Host 'PASS real WPF/SQL cash slice; full W2 and cashier rollout remain unaccepted'
       - name: Upload source manifest
         if: always()
         uses: actions/upload-artifact@v4
