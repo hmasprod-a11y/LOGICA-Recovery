@@ -44,6 +44,7 @@ jobs:
             $relative = "modernization/architecture/$name"
             if (!(Test-Path "architecture/$relative")) { throw "Missing real source $relative" }
             if (Test-Path "combined/$relative") { Remove-Item "combined/$relative" -Recurse -Force }
+            New-Item -ItemType Directory -Force "combined/modernization/architecture" | Out-Null
             Copy-Item "architecture/$relative" "combined/$relative" -Recurse -Force
           }
           if (!(Test-Path combined/modernization/Hanouty.Desktop.Wpf/App.xaml.cs)) { throw 'Missing WPF host' }
