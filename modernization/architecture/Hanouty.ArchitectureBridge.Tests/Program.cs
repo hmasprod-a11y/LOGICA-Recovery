@@ -608,6 +608,7 @@ sealed class RecordingFinancialPort : IAuthorizedCheckoutPort
     public int Calls { get; private set; }
     public bool ThrowOnCommit { get; set; }
     public AuthorizedCheckoutRequest? LastRequest { get; private set; }
+    public Action? OnCommit { get; set; }
     public void Commit(AuthorizedCheckoutRequest request)
     {
         Calls++;
