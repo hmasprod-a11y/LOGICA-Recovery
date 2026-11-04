@@ -38,8 +38,7 @@ namespace LOGICA.Infrastructure.Checkout
         {
             if (transaction == null)
                 throw new InvalidOperationException("Checkout transaction has not begun.");
-            if (String.IsNullOrWhiteSpace(operationId))
-                throw new ArgumentException("Operation ID is required.", "operationId");
+            ValidateOperationId(operationId);
             // The UNIQUE primary key serializes duplicate submissions even
             // across independent Windows processes and cashier connections.
             command.Parameters.Clear();
@@ -53,6 +52,13 @@ namespace LOGICA.Infrastructure.Checkout
                 throw;
             }
             finally { command.Parameters.Clear(); }
+        }
+
+        private static void ValidateOperationId(string operationId)
+        {
+            if (String.IsNullOrWhiteSpace(operationId) || operationId.Length > 128 ||
+                operationId.Trim() != operationId)
+                throw new ArgumentException("Operation ID must be 1-128 non-whitespace characters without surrounding spaces.", "operationId");
         }
 
         public void Commit() { transaction.Commit(); }
@@ -87,8 +93,8 @@ namespace LOGICA.Infrastructure.Checkout
 
         internal bool IsPersisted(string operationId)
         {
-            if (String.IsNullOrWhiteSpace(operationId))
-                throw new ArgumentException("Operation ID is required.", "operationId");
+            if (String.IsNullOrWhiteSpace(operationId) || operationId.Length > 128 || operationId.Trim() != operationId)
+                throw new ArgumentException("Invalid operation ID.", "operationId");
             using (MySqlConnection connection = createConnection())
             {
                 connection.Open();
