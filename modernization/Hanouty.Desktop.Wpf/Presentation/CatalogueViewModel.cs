@@ -100,7 +100,8 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         }
         SelectedProduct = matches[0];
         SelectCurrent();
-        ScannerText = "";
+        // Clear only after an acknowledged selection; retain the code on uncertainty.
+        if (ScanFeedback == "Selection accepted") ScannerText = "";
     }
 
     public void SelectCurrent()
