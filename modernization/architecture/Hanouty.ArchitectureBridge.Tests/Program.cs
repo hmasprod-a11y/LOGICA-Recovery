@@ -211,6 +211,49 @@ try { wrongArticleBatch.StageImage(A("21", "")); throw new Exception("wrong arti
 catch (InvalidOperationException) { Assert(wrongArticleBatch.PendingCount == 0 && mismatchedCart.Calls.Count == 0,
     "wrong-article refresh cannot reach checkout"); }
 
+// WPF-facing session exercises the approved composition through a single executable
+// catalogue -> variant choice -> staged cart -> atomic checkout path.
+var sessionCart = new RecordingAtomicBatchPort();
+var sessionJournal = new CompositionJournal();
+var sessionComposition = new CheckoutComposition(new CompositionCatalogue(),
+    new RecordingPrompt { Choice = 1 }, sessionCart, sessionJournal);
+var session = sessionComposition.CreateSession();
+Assert(session.Products.Count == 3 && session.ImageProducts.Count == 1,
+       "session exposes all products and only image products");
+Assert(session.Scan("123", 2).Article?.ArticleId == "12" &&
+       session.SelectImage(session.ImageProducts[0], 1).Outcome == SelectionOutcome.Selected &&
+       session.PendingCount == 2, "session stages real barcode variant and image-only product");
+Assert(session.Submit("session-001") == CheckoutBatchStatus.Committed &&
+       sessionCart.Calls.Count == 1 &&
+       sessionCart.Calls[0].Lines.SequenceEqual(new[] {
+           new CheckoutBatchLine("12", 2), new CheckoutBatchLine("21", 1) }),
+       "session sends one atomic mixed batch with original quantities");
+Assert(session.PendingCount == 0 && session.OperationId is null,
+       "acknowledged operation releases session ID");
+var failedSession = new CheckoutComposition(new CompositionCatalogue(),
+    new RecordingPrompt(), new ThrowingAtomicBatchPort(), sessionJournal).CreateSession();
+failedSession.SelectImage(failedSession.ImageProducts[0]);
+try { failedSession.Submit("session-002"); throw new Exception("failed write swallowed"); }
+catch (ApplicationException) { }
+Assert(failedSession.State == CheckoutCommitState.OutcomeUnknown &&
+       failedSession.OperationId == "session-002", "session preserves ID after lost acknowledgement");
+try { failedSession.Submit("session-003"); throw new Exception("different ID accepted"); }
+catch (InvalidOperationException) { Assert(true, "session refuses changed ID"); }
+try { failedSession.Scan("123"); throw new Exception("edit accepted during uncertainty"); }
+catch (InvalidOperationException) { Assert(true, "session blocks edits while unknown"); }
+Assert(failedSession.Reconcile() == CheckoutOperationOutcome.Unknown,
+       "unknown journal keeps WPF session blocked");
+sessionJournal.Outcome = CheckoutOperationOutcome.Persisted;
+Assert(failedSession.Reconcile() == CheckoutOperationOutcome.Persisted &&
+       failedSession.PendingCount == 0 && failedSession.OperationId is null,
+       "durably persisted session clears without duplicate posting");
+var invalidSession = new CheckoutComposition(new MutableCompositionCatalogue(),
+    new RecordingPrompt(), new RecordingAtomicBatchPort(), new CompositionJournal()).CreateSession();
+Assert(invalidSession.Scan("999").Outcome == SelectionOutcome.Selected,
+       "session stages mutable catalogue product");
+invalidSession.DiscardInvalidated();
+Assert(invalidSession.PendingCount == 0, "explicit discard resets pending session");
+
 Console.WriteLine("Production selection-to-checkout workflow regression suite passed.");
 
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
