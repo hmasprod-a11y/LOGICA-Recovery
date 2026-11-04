@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 root = Path(__file__).resolve().parents[1] / "recovered-source"
-pattern = re.compile(r"(?<![\w.])Application\.(StartupPath|DoEvents|OpenForms|Run)\b")
+pattern = re.compile(r"(?<![\w.])Application\.(StartupPath|DoEvents|OpenForms|Run|ProductName)\b")
 offenders = []
 scanned = 0
 for file in sorted(root.rglob("*.cs")):
