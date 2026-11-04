@@ -59,6 +59,15 @@ jobs:
         run: dotnet build combined/qa/tests/Hanouty.W1.RealMariaDb/Hanouty.W1.RealMariaDb.csproj -c Release --nologo -warnaserror
       - name: Exercise disposable MariaDB production reader and regressions
         run: dotnet run --no-build -c Release --project combined/qa/tests/Hanouty.W1.RealMariaDb/Hanouty.W1.RealMariaDb.csproj
+      - name: Assert production WPF/Architecture/Inventory source contract exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f combined/modernization/inventory/Hanouty.Inventory.MariaDb/MariaDbCatalogueReader.cs
+          test -f combined/modernization/architecture/Hanouty.ArchitectureBridge/CheckoutComposition.cs
+          grep -q 'class MariaDbCatalogueReader : ICatalogueReader' combined/modernization/inventory/Hanouty.Inventory.MariaDb/MariaDbCatalogueReader.cs
+          grep -q 'interface ICatalogueReader' combined/modernization/architecture/Hanouty.ArchitectureBridge/CheckoutComposition.cs
+          echo 'WPF host registration is not exercised by this test; do not classify as W1 acceptance.'
       - name: Preserve exact-source manifest
         if: always()
         uses: actions/upload-artifact@v4
