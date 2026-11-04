@@ -71,11 +71,15 @@ namespace LOGICA.ApplicationLayer.Checkout
             bool begun = false;
             try
             {
-                CheckoutTransactionBoundaryService.Begin(boundary);
+                // Mark ownership before Begin: BeginAndBind can fail after a
+                // transaction has started. Such a failure must attempt rollback.
                 begun = true;
+                CheckoutTransactionBoundaryService.Begin(boundary);
                 if (!boundary.TryClaimOperation(operationId))
                 {
-                    // A duplicate must NOT perform any stock/payment/ticket work.
+                    // The durable claim is a duplicate. Roll back the transaction
+                    // and close it; a rollback/close failure is NOT a confirmed
+                    // duplicate and must never authorize an automatic retry.
                     boundary.Rollback();
                     begun = false;
                     boundary.Close();
