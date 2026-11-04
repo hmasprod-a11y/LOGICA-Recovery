@@ -79,7 +79,18 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             ScanFeedback = "Local catalogue unavailable";
             return;
         }
-        _all = loaded.Where(p => p is not null && !string.IsNullOrWhiteSpace(p.Id)).ToArray();
+        var valid = loaded.Where(p => p is not null && !string.IsNullOrWhiteSpace(p.Id)).ToArray();
+        if (valid.Length != loaded.Count || valid.GroupBy(p => p.Id, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
+        {
+            _all = Array.Empty<ProductSummary>();
+            CatalogueAvailable = false;
+            SelectedProduct = null;
+            ScannerText = "";
+            Refresh();
+            ScanFeedback = "Invalid catalogue identities — reload required";
+            return;
+        }
+        _all = valid;
         CatalogueAvailable = true;
         SelectedProduct = null;
         ScannerText = "";
