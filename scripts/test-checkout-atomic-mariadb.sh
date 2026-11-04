@@ -14,17 +14,21 @@ schema="$(dirname "$0")/../recovered-source/LOGICA/Infrastructure/Checkout/hanou
 CREATE TABLE test_checkout_stock (article_id VARCHAR(32) PRIMARY KEY, quantity INT NOT NULL) ENGINE=InnoDB;
 CREATE TABLE test_checkout_ticket (operation_id VARCHAR(128) PRIMARY KEY, amount DECIMAL(12,2) NOT NULL) ENGINE=InnoDB;
 CREATE TABLE test_checkout_payment (operation_id VARCHAR(128) PRIMARY KEY, amount DECIMAL(12,2) NOT NULL) ENGINE=InnoDB;
+CREATE TABLE test_checkout_movement (operation_id VARCHAR(128) PRIMARY KEY, signed_quantity INT NOT NULL) ENGINE=InnoDB;
 INSERT INTO test_checkout_stock VALUES ('A', 10);
 START TRANSACTION;
 INSERT INTO hanouty_checkout_operations (operation_id) VALUES ('sale-1');
 UPDATE test_checkout_stock SET quantity=quantity-2 WHERE article_id='A';
 INSERT INTO test_checkout_ticket VALUES ('sale-1', 15.00);
 INSERT INTO test_checkout_payment VALUES ('sale-1', 15.00);
+INSERT INTO test_checkout_movement VALUES ('sale-1', -2);
 COMMIT;
 START TRANSACTION;
 INSERT INTO hanouty_checkout_operations (operation_id) VALUES ('rollback-1');
 UPDATE test_checkout_stock SET quantity=quantity-3 WHERE article_id='A';
 INSERT INTO test_checkout_ticket VALUES ('rollback-1', 22.50);
+INSERT INTO test_checkout_payment VALUES ('rollback-1', 22.50);
+INSERT INTO test_checkout_movement VALUES ('rollback-1', -3);
 ROLLBACK;
 SQL
 assert_count() {
@@ -41,10 +45,46 @@ assert_count "SELECT COUNT(*) FROM test_checkout_payment WHERE operation_id='sal
 assert_count "SELECT quantity FROM test_checkout_stock WHERE article_id='A'" 8
 assert_count "SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id='rollback-1'" 0
 assert_count "SELECT COUNT(*) FROM test_checkout_ticket WHERE operation_id='rollback-1'" 0
+assert_count "SELECT COUNT(*) FROM test_checkout_payment WHERE operation_id='rollback-1'" 0
+assert_count "SELECT COUNT(*) FROM test_checkout_movement WHERE operation_id='rollback-1'" 0
 # The second claim must fail with duplicate-key 1062, never post again.
 if "${client[@]}" -e "INSERT INTO hanouty_checkout_operations (operation_id) VALUES ('sale-1')" >/dev/null 2>&1; then
   echo "FAIL: duplicate operation was accepted" >&2
   exit 1
 fi
 assert_count "SELECT quantity FROM test_checkout_stock WHERE article_id='A'" 8
-echo "PASS disposable MariaDB durable claim, payment/stock commit, duplicate rejection and rollback"
+# A return reverses the stock sign and retains negative financial values.
+"${client[@]}" <<'SQL'
+START TRANSACTION;
+INSERT INTO hanouty_checkout_operations (operation_id) VALUES ('return-1');
+UPDATE test_checkout_stock SET quantity=quantity+1 WHERE article_id='A';
+INSERT INTO test_checkout_ticket VALUES ('return-1', -7.50);
+INSERT INTO test_checkout_payment VALUES ('return-1', -7.50);
+INSERT INTO test_checkout_movement VALUES ('return-1', 1);
+COMMIT;
+SQL
+assert_count "SELECT quantity FROM test_checkout_stock WHERE article_id='A'" 9
+assert_count "SELECT amount FROM test_checkout_ticket WHERE operation_id='return-1'" -7.50
+assert_count "SELECT amount FROM test_checkout_payment WHERE operation_id='return-1'" -7.50
+assert_count "SELECT signed_quantity FROM test_checkout_movement WHERE operation_id='return-1'" 1
+# Inject a payment write failure: no journal, ticket, movement or stock survives.
+if "${client[@]}" <<'SQL'
+START TRANSACTION;
+INSERT INTO hanouty_checkout_operations (operation_id) VALUES ('failed-payment');
+UPDATE test_checkout_stock SET quantity=quantity-4 WHERE article_id='A';
+INSERT INTO test_checkout_ticket VALUES ('failed-payment', 31.00);
+INSERT INTO test_checkout_movement VALUES ('failed-payment', -4);
+INSERT INTO test_checkout_payment VALUES ('failed-payment', 31.00);
+INSERT INTO test_checkout_payment VALUES ('failed-payment', 31.00);
+COMMIT;
+SQL
+then
+  echo "FAIL: injected duplicate payment did not fail" >&2
+  exit 1
+fi
+# Connection exit after SQL error rolls back the uncommitted transaction.
+assert_count "SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id='failed-payment'" 0
+assert_count "SELECT COUNT(*) FROM test_checkout_ticket WHERE operation_id='failed-payment'" 0
+assert_count "SELECT COUNT(*) FROM test_checkout_movement WHERE operation_id='failed-payment'" 0
+assert_count "SELECT quantity FROM test_checkout_stock WHERE article_id='A'" 9
+echo "PASS disposable MariaDB sale, signed return, payment failure rollback, durable claim and duplicate rejection"
