@@ -99,7 +99,7 @@ public sealed class CheckoutComposition
     private static IReadOnlyList<ProductSummary> Validate(IReadOnlyList<ProductSummary> products)
     {
         ArgumentNullException.ThrowIfNull(products);
-        var ids = new HashSet<string>(StringComparer.Ordinal);
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var product in products)
         {
             if (product is null || string.IsNullOrWhiteSpace(product.ArticleId))
@@ -126,7 +126,7 @@ public sealed class CheckoutComposition
             string? requestedArticleId = null)
         {
             ArgumentNullException.ThrowIfNull(products);
-            var ids = new HashSet<string>(StringComparer.Ordinal);
+            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var result = new List<ArticleCandidate>(products.Count);
             foreach (var product in products)
             {
