@@ -66,7 +66,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public System.Windows.Input.ICommand ScanCommand { get; }
     public System.Windows.Input.ICommand SelectCommand { get; }
     public System.Windows.Input.ICommand ReloadCommand { get; }
-    public string ScannerText { get => _scannerText; set { _scannerText = value ?? ""; OnPropertyChanged(); } }
+    public string ScannerText { get => _scannerText; set { if (_selectionInFlight || CheckoutUncertain) return; _scannerText = value ?? ""; OnPropertyChanged(); } }
     public string ScanFeedback { get => _scanFeedback; private set { _scanFeedback = value; OnPropertyChanged(); } }
     private bool _isRightToLeft;
     public bool IsRightToLeft
@@ -230,7 +230,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         get => _searchText;
         set
         {
-            if (_selectionInFlight || _searchText == value) return;
+            if (_selectionInFlight || CheckoutUncertain || _searchText == value) return;
             _searchText = value ?? "";
             OnPropertyChanged();
             Refresh();
