@@ -103,6 +103,7 @@ public sealed class CheckoutSession
         {
             _operationId = null;
             _stagedImages.Clear();
+            _stagedExplicitVariants.Clear();
         }
         // Invalidated retains operation ID until the operator clears/rebuilds.
         return result;
@@ -116,7 +117,11 @@ public sealed class CheckoutSession
         if (result != CheckoutOperationOutcome.Unknown)
         {
             _operationId = null;
-            if (result == CheckoutOperationOutcome.Persisted) _stagedImages.Clear();
+            if (result == CheckoutOperationOutcome.Persisted)
+            {
+                _stagedImages.Clear();
+                _stagedExplicitVariants.Clear();
+            }
         }
         return result;
     }
@@ -127,6 +132,7 @@ public sealed class CheckoutSession
             throw new InvalidOperationException("Cannot discard an uncertain operation.");
         _batch.Clear();
         _stagedImages.Clear();
+        _stagedExplicitVariants.Clear();
         _operationId = null;
     }
 
