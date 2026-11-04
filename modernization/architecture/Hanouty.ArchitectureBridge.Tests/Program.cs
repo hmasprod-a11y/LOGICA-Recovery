@@ -449,3 +449,27 @@ sealed class FaultyCatalogue : ICatalogueReader
     public IReadOnlyList<ProductSummary> RefreshArticle(string articleId) =>
         new[] { new ProductSummary("22", "", "Wrong article", null) };
 }
+
+
+// W2 authorization envelope: reject incomplete identity, forged article sets,
+// and unsupported payment values before any production port can be invoked.
+AuthorizedCheckoutRequest W2(string id = "sale-001", string cashier = "cashier-01",
+    CheckoutBatchLine[]? lines = null, CheckoutPayment[]? payments = null) =>
+    new(id, cashier, "MAD", false,
+        lines ?? new[] { new CheckoutBatchLine("article-1", 1) },
+        payments ?? new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 25m) }, 25m);
+W2().Validate();
+Assert(true, "W2 authorized checkout envelope accepts explicit cashier/payment");
+static bool InvalidW2(AuthorizedCheckoutRequest request)
+{
+    try { request.Validate(); return false; }
+    catch (ArgumentException) { return true; }
+}
+Assert(InvalidW2(W2(id: "")), "W2 rejects missing operation ID");
+Assert(InvalidW2(W2(cashier: "")), "W2 rejects unauthenticated cashier");
+Assert(InvalidW2(W2(lines: new[] { new CheckoutBatchLine("A", 1), new CheckoutBatchLine("a", 2) })),
+    "W2 rejects case-colliding article identities");
+Assert(InvalidW2(W2(payments: new[] { new CheckoutPayment((CheckoutPaymentKind)999, 25m) })),
+    "W2 rejects unknown payment kind");
+Assert(InvalidW2(W2(payments: new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, -1m) })),
+    "W2 rejects negative payment amount");
