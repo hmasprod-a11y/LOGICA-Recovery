@@ -50,6 +50,9 @@ public sealed class CheckoutComposition
     public IReadOnlyList<ProductSummary> ImageProducts() =>
         AllProducts().Where(p => p.HasImage).ToArray();
 
+    // One WPF session owns one batch and one stable operation ID. No demo fallback.
+    public CheckoutSession CreateSession() => new(this, CreateCheckoutBatch());
+
     public CheckoutBatchController CreateCheckoutBatch() =>
         new(new CatalogueSelectionAdapter(_reader), _variantPrompt, _cart);
 
