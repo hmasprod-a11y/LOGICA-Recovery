@@ -13,7 +13,11 @@
         <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Margin="0,0,18,0">
-                <TextBlock Text="Catalogue" FontWeight="SemiBold" FontSize="18"/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Catalogue" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center"/>
+                    <Button Content="Reload local catalogue" Command="{Binding ReloadCommand}" Margin="16,0,0,0" Padding="12,6" MinHeight="40" AutomationProperties.Name="Reload local catalogue"/>
+                </StackPanel>
+                <TextBlock Text="{Binding ScanFeedback}" AutomationProperties.Name="Catalogue status" Foreground="DimGray" Margin="0,4,0,4"/>
                 <TextBox Margin="0,10,0,10" Padding="8" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.Name="Search catalogue"/>
                 <TextBlock Text="Scanner / barcode" Margin="0,0,0,5"/>
@@ -48,7 +52,7 @@
                 <TextBlock Text="{Binding SelectedProduct.Name, TargetNullValue=No product selected}"
                            Margin="0,12,0,6" TextWrapping="Wrap"/>
                 <TextBlock Text="{Binding SelectedProduct.Barcode, TargetNullValue=—}"/>
-                <Button Content="Select product (preview)" Command="{Binding SelectCommand}"
+                <Button Content="Select product (preview)" Command="{Binding SelectCommand}" MinHeight="44"
                         Padding="12,8" Margin="0,18,0,0"
                         AutomationProperties.Name="Select product"/>
                 <TextBlock Text="Checkout, stock posting, printing and licensing are disabled until their application contracts are integrated and verified."
