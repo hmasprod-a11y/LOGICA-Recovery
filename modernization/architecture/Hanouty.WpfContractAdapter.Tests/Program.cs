@@ -21,8 +21,7 @@ Check(binding.Session.Submit("wpf-adapter-001") == CheckoutBatchStatus.Committed
     port.Writes == 1 && port.Lines!.Single() == new CheckoutBatchLine("c", 1),
     "explicit stable-ID submission posts one validated atomic batch");
 reader.ChangeVariant = true;
-var fresh = binding.Catalogue.ReadProducts();
-Check(!binding.Checkout.Select(fresh[2]), "changed variant cannot be staged from stale WPF DTO");
+Check(!binding.Checkout.Select(products[2]), "changed variant cannot be staged from stale WPF DTO");
 Console.WriteLine("WPF adapter integration contract regression passed.");
 static void Check(bool ok, string reason) { if (!ok) throw new Exception(reason); }
 
