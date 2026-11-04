@@ -7,6 +7,9 @@ on:
       - '.github/workflows/qa-wpf-windows-preview.yml'
       - 'scripts/verify-beta-rc.ps1'
       - '.github/workflows/qa-w1-real-catalogue-readiness.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/qa-wpf-windows-preview.yml'
   workflow_dispatch:
 
 permissions:
@@ -26,7 +29,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           # WPF belongs to Track 04; validate without merging preview into QA.
-          ref: 116c95a2e0e180b050afa20cc733aea01fa023f9
+          ref: cd7c4df6d20653dc97fe4fe0685a18de7cef0fe6
           persist-credentials: false
           path: wpf-preview
       - name: Assert QA and WPF source provenance
@@ -35,7 +38,7 @@ jobs:
           $qa = (git -C integration-source rev-parse HEAD).Trim()
           if ($qa -ne '${{ github.sha }}') { throw "QA integration SHA mismatch: $qa" }
           $preview = (git -C wpf-preview rev-parse HEAD).Trim()
-          if ($preview -ne '116c95a2e0e180b050afa20cc733aea01fa023f9') { throw "WPF preview SHA mismatch: $preview" }
+          if ($preview -ne 'cd7c4df6d20653dc97fe4fe0685a18de7cef0fe6') { throw "WPF preview SHA mismatch: $preview" }
           "qa=$qa`nwpf=$preview" | Set-Content -LiteralPath source-provenance.txt
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
@@ -121,7 +124,12 @@ jobs:
           if ($bad) { throw 'Sensitive payload found in WPF preview ZIP' }
           $expected = @(Get-Content wpf-publish-inventory.json -Raw | ConvertFrom-Json)
           $actual = @(Get-ChildItem wpf-extracted -Recurse -File)
-          if ($expected.Count -ne $actual.Count) { throw "Extracted ZIP file count differs from publish inventory: $($actual.Count) vs $($expected.Count)" }
+          $unique = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+          foreach ($file in $actual) {
+            $relative = $file.FullName.Substring((Resolve-Path wpf-extracted).Path.Length + 1).Replace([IO.Path]::DirectorySeparatorChar, '/')
+            if (-not $unique.Add($relative)) { throw "Windows case-colliding ZIP entry: $relative" }
+          }
+          if ($expected.Count -ne $unique.Count) { throw "Extracted ZIP file count differs from publish inventory: $($actual.Count) vs $($expected.Count)" }
           foreach ($item in $expected) {
             $relative = [string]$item.path
             if ($relative -match '(^|/)\.\.(?:/|$)' -or [IO.Path]::IsPathRooted($relative)) { throw "Unsafe publish inventory path: $relative" }
