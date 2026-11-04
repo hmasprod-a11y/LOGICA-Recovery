@@ -187,6 +187,20 @@ refusing.SelectedProduct = refusing.BarcodeCandidates[0];
 refusing.SelectCurrent();
 Check(refusing.HasBarcodeAmbiguity && refusing.ScannerText == "777",
     "rejected explicit variant preserves candidate list and scanner for correction");
+var controlState = new CatalogueViewModel(new Reader(items), new RecordingSelection());
+Check(controlState.CanSelectProduct, "valid offline catalogue permits selection");
+controlState.ScannerText = "777";
+controlState.ScanBarcode();
+Check(controlState.HasBarcodeAmbiguity, "duplicate candidates activate chooser");
+controlState.SearchText = "Milk";
+Check(!controlState.HasBarcodeAmbiguity, "filter invalidates duplicate candidate chooser");
+var controlFail = new CatalogueViewModel(new Reader(items), new ThrowingSelection());
+controlFail.SelectedProduct = items[0];
+controlFail.SelectCurrent();
+Check(!controlFail.CanSelectProduct && controlFail.CheckoutUncertain,
+    "uncertain checkout must disable UI selection controls");
+var controlOffline = new CatalogueViewModel(new ChangingReader(items) { Fail = true }, new RecordingSelection());
+Check(!controlOffline.CanSelectProduct, "failed local catalogue must disable selection controls");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
