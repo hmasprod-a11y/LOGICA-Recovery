@@ -36,6 +36,8 @@ public sealed record AuthorizedCheckoutRequest(
         if (Payments is null || Payments.Count == 0 || Payments.Any(x =>
             x is null || !Enum.IsDefined(x.Kind) || x.Amount <= 0))
             throw new ArgumentException("At least one positive supported payment is required.", nameof(Payments));
+        if (IsReturn && Payments.Any(x => x.Kind == CheckoutPaymentKind.Credit))
+            throw new ArgumentException("Credit settlement on returns requires explicit Checkout policy.", nameof(Payments));
         if (ExpectedTotal <= 0)
             throw new ArgumentOutOfRangeException(nameof(ExpectedTotal));
         // Never compare totals here: legacy checkout owns rounding, discounts,
