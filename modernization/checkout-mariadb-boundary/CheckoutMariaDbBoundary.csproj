@@ -9,6 +9,8 @@
   <ItemGroup>
     <PackageReference Include="MySql.Data" Version="9.5.0" />
     <Compile Include="Program.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/CheckoutStockWriter.cs" Link="Production/CheckoutStockWriter.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/StockMovementWriter.cs" Link="Production/StockMovementWriter.cs" />
     <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/MySqlCheckoutAtomicPostingBoundary.cs" Link="Production/MySqlCheckoutAtomicPostingBoundary.cs" />
   </ItemGroup>
 </Project>
