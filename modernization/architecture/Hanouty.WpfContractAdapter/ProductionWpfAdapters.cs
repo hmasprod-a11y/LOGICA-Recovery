@@ -86,7 +86,8 @@ public sealed class ProductionWpfCheckoutSubmission : Wpf.ICheckoutSubmission
 }
 
 public sealed record WpfProductionBinding(CheckoutSession Session,
-    Wpf.ICatalogueReader Catalogue, Wpf.IProductSelection Checkout,\n    Wpf.ICheckoutSubmission Submission);
+    Wpf.ICatalogueReader Catalogue, Wpf.IProductSelection Checkout,
+    Wpf.ICheckoutSubmission Submission);
 
 public static class ProductionWpfServices
 {
@@ -98,6 +99,7 @@ public static class ProductionWpfServices
         var session = composition.CreateSession();
         return new WpfProductionBinding(session,
             new ProductionWpfCatalogueReader(session),
-            new ProductionWpfProductSelection(session),\n            new ProductionWpfCheckoutSubmission(session));
+            new ProductionWpfProductSelection(session),
+            new ProductionWpfCheckoutSubmission(session));
     }
 }
