@@ -163,6 +163,14 @@ duplicateVm.SelectedProduct = duplicateVm.BarcodeCandidates[1];
 duplicateVm.SelectCurrent();
 Check(duplicateSelection.Selected.Count == 1 && duplicateSelection.Selected[0].Id == "5",
     "explicit matching variant must dispatch its stable article identity");
+var keyboardSelection = new RecordingSelection();
+var keyboardVm = new CatalogueViewModel(new Reader(items), keyboardSelection);
+keyboardVm.ScannerText = "777";
+keyboardVm.ScanCommand.Execute(null);
+Check(keyboardVm.BarcodeCandidates.Count == 2 && keyboardSelection.Selected.Count == 0, "duplicate scan waits for explicit choice");
+keyboardVm.SelectedProduct = keyboardVm.BarcodeCandidates[0];
+keyboardVm.SelectCommand.Execute(null);
+Check(keyboardSelection.Selected.Count == 1 && keyboardSelection.Selected[0].Id == "4", "Enter choice selects exact variant");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
