@@ -120,6 +120,29 @@ catch (ApplicationException) {
         "failed atomic write propagates, retains stage, never retries automatically");
 }
 
+// Unknown write outcome: no user interaction may accidentally duplicate a sale.
+Assert(retryBatch.State == CheckoutCommitState.OutcomeUnknown &&
+       retryBatch.UncertainOperationId == "sale-004", "unknown outcome retains stable operation ID");
+try { retryBatch.Commit("sale-005"); throw new Exception("new operation accepted after unknown outcome"); }
+catch (InvalidOperationException) { Assert(failingBatchPort.Attempts == 1, "unknown outcome blocks second write"); }
+try { retryBatch.StageImage(A("21", "")); throw new Exception("staging allowed after unknown outcome"); }
+catch (InvalidOperationException) { Assert(retryBatch.PendingCount == 1, "unknown outcome blocks staging"); }
+try { retryBatch.Clear(); throw new Exception("clearing allowed after unknown outcome"); }
+catch (InvalidOperationException) { Assert(retryBatch.PendingCount == 1, "unknown outcome blocks clearing"); }
+try { retryBatch.ReconcileUnknownOutcome("different-sale", true); throw new Exception("wrong operation reconciled"); }
+catch (InvalidOperationException) { Assert(retryBatch.State == CheckoutCommitState.OutcomeUnknown, "reconciliation requires exact ID"); }
+retryBatch.ReconcileUnknownOutcome("sale-004", true);
+Assert(retryBatch.State == CheckoutCommitState.Ready && retryBatch.PendingCount == 0 &&
+       retryBatch.Commit("sale-006") == CheckoutBatchStatus.Empty,
+       "durably confirmed commit clears stage without resubmission");
+var confirmedAbsent = new CheckoutBatchController(new RecordingCatalogue(), new RecordingPrompt(), new ThrowingAtomicBatchPort());
+confirmedAbsent.StageImage(A("21", ""));
+try { confirmedAbsent.Commit("sale-007"); throw new Exception("failure swallowed"); }
+catch (ApplicationException) { }
+confirmedAbsent.ReconcileUnknownOutcome("sale-007", false);
+Assert(confirmedAbsent.State == CheckoutCommitState.Ready && confirmedAbsent.PendingCount == 1,
+       "durably confirmed absent operation retains stage for explicit retry");
+
 Console.WriteLine("Production selection-to-checkout workflow regression suite passed.");
 
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
