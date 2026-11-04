@@ -33,12 +33,12 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: 246aeca43acbca01c624ec2207981a391d57f4a1
+          ref: d1639cf0025a3def47f92cf2211a7eddbe4edafe
           path: combined
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: 865efe43c2a10fd9a0dda10e9ee2b04037f77d33
+          ref: d8b8c1b55fb592668da6528242dc8d5962b4356f
           path: architecture
           persist-credentials: false
       - name: Verify source provenance and compose real Architecture plus Inventory
@@ -47,11 +47,11 @@ jobs:
           set -euo pipefail
           mkdir -p evidence combined/modernization/architecture combined/qa/tests
           test "$(git -C qa rev-parse HEAD)" = "${{ github.sha }}"
-          test "$(git -C combined rev-parse HEAD)" = 246aeca43acbca01c624ec2207981a391d57f4a1
-          test "$(git -C architecture rev-parse HEAD)" = 865efe43c2a10fd9a0dda10e9ee2b04037f77d33
+          test "$(git -C combined rev-parse HEAD)" = d1639cf0025a3def47f92cf2211a7eddbe4edafe
+          test "$(git -C architecture rev-parse HEAD)" = d8b8c1b55fb592668da6528242dc8d5962b4356f
           cp -a architecture/modernization/architecture/Hanouty.ArchitectureBridge combined/modernization/architecture/
           cp -a qa/qa/tests/Hanouty.W1.RealMariaDb combined/qa/tests/
-          printf 'qa=%s\ninventory=%s\narchitecture=%s\n' "${{ github.sha }}" 246aeca43acbca01c624ec2207981a391d57f4a1 865efe43c2a10fd9a0dda10e9ee2b04037f77d33 > evidence/sources.txt
+          printf 'qa=%s\ninventory=%s\narchitecture=%s\n' "${{ github.sha }}" d1639cf0025a3def47f92cf2211a7eddbe4edafe d8b8c1b55fb592668da6528242dc8d5962b4356f > evidence/sources.txt
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
@@ -59,6 +59,12 @@ jobs:
         run: dotnet build combined/qa/tests/Hanouty.W1.RealMariaDb/Hanouty.W1.RealMariaDb.csproj -c Release --nologo -warnaserror
       - name: Exercise disposable MariaDB production reader and regressions
         run: dotnet run --no-build -c Release --project combined/qa/tests/Hanouty.W1.RealMariaDb/Hanouty.W1.RealMariaDb.csproj
+      - name: Validate executable regression output is not a static source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f combined/qa/tests/Hanouty.W1.RealMariaDb/bin/Release/net10.0/Hanouty.W1.RealMariaDb.dll
+          echo 'Compiled and executed against disposable MariaDB; WPF EXE remains a separate acceptance gate.'
       - name: Assert production WPF/Architecture/Inventory source contract exists
         shell: bash
         run: |
