@@ -31,12 +31,12 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private readonly IProductSelection _selection;
     private readonly IProductImageAvailability _images;
 
-    public CatalogueViewModel(ICatalogueReader reader, IProductSelection? selection = null, IProductImageAvailability? images = null)
+    public CatalogueViewModel(ICatalogueReader reader, IProductSelection selection, IProductImageAvailability? images = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         _reader = reader;
         _all = Array.Empty<ProductSummary>();
-        _selection = selection ?? new PreviewProductSelection();
+        _selection = selection ?? throw new ArgumentNullException(nameof(selection));
         _images = images ?? new LocalProductImageAvailability();
         ScanCommand = new DelegateCommand(_ => ScanBarcode());
         SelectCommand = new DelegateCommand(_ => SelectCurrent());
