@@ -106,6 +106,18 @@ Check(typeof(CatalogueViewModel).GetConstructors().All(ctor =>
 Check(typeof(Hanouty.Desktop.Wpf.MainWindow).GetConstructors().All(ctor =>
     ctor.GetParameters().Any(p => p.ParameterType == typeof(IProductSelection))),
     "production WPF window must require checkout dependency");
+// Value-equal stale objects must be rejected even when WPF SelectedItem changes.
+var staleVm = new CatalogueViewModel(new Reader(items), new RecordingSelection());
+staleVm.SelectedProduct = items[0];
+staleVm.SelectedProduct = items[0] with { };
+staleVm.SelectCurrent();
+Check(staleVm.ScanFeedback == "Product no longer in catalogue",
+    "WPF SelectedItem must retain new reference so stale object cannot dispatch");
+var failingVm = new CatalogueViewModel(new Reader(items), new ThrowingSelection());
+failingVm.SelectedProduct = items[0];
+failingVm.SelectCurrent();
+Check(failingVm.ScanFeedback == "Checkout status unknown — reconcile before retry",
+    "unknown checkout result must never be reported as a successful selection");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
@@ -128,4 +140,9 @@ sealed class ChangingReader(ProductSummary[] products) : ICatalogueReader
 sealed class ImageFixture : IProductImageAvailability
 {
     public bool Exists(string path) => path is "milk.png" or "a.png";
+}
+
+sealed class ThrowingSelection : IProductSelection
+{
+    public bool Select(ProductSummary product) => throw new InvalidOperationException("transport acknowledgement lost");
 }
