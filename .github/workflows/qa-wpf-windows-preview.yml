@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           # WPF belongs to Track 04; validate without merging preview into QA.
-          ref: 5a9c72eed91538518a249d67540e200f96bdb4a2
+          ref: ee4296daca46c8647adc30c219cfaf28984c93e8
           persist-credentials: false
           path: wpf-preview
       - name: Assert QA and WPF source provenance
@@ -35,7 +35,7 @@ jobs:
           $qa = (git -C integration-source rev-parse HEAD).Trim()
           if ($qa -ne '${{ github.sha }}') { throw "QA integration SHA mismatch: $qa" }
           $preview = (git -C wpf-preview rev-parse HEAD).Trim()
-          if ($preview -ne '5a9c72eed91538518a249d67540e200f96bdb4a2') { throw "WPF preview SHA mismatch: $preview" }
+          if ($preview -ne 'ee4296daca46c8647adc30c219cfaf28984c93e8') { throw "WPF preview SHA mismatch: $preview" }
           "qa=$qa`nwpf=$preview" | Set-Content -LiteralPath source-provenance.txt
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
