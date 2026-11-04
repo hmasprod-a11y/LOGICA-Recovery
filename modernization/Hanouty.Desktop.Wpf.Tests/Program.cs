@@ -86,6 +86,16 @@ vm.ScanBarcode();
 vm.SelectedProduct = vm.BarcodeCandidates[1];
 vm.SelectCommand.Execute(null);
 Check(selection.Selected.Last().Id == "5", "explicit ambiguous barcode candidate must dispatch selected article");
+Check(vm.ScannerText == "" && vm.BarcodeCandidates.Count == 0,
+    "acknowledged duplicate variant must clear scanner internally and reset candidates");
+vm.ScannerText = "777";
+vm.ScanBarcode();
+Check(vm.BarcodeCandidates.Count == 2 && vm.SelectedProduct is null,
+    "same barcode must scan again and require a fresh explicit variant choice");
+vm.SelectedProduct = vm.BarcodeCandidates[0];
+vm.SelectCommand.Execute(null);
+Check(selection.Selected.Last().Id == "4" && vm.ScannerText == "",
+    "second variant acknowledgement must clear scanner without duplicate implicit sale");
 var changing = new ChangingReader(items);
 var reloaded = new CatalogueViewModel(changing, new RecordingSelection());
 reloaded.SelectedProduct = items[0];
