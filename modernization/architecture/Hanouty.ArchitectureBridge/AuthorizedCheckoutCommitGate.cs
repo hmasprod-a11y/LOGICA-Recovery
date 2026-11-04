@@ -57,6 +57,21 @@ public sealed class AuthorizedCheckoutCommitGate
             try
             {
                 _posting.Commit(request);
+                // A returning port is not proof that the durable operation was
+                // persisted. Verify against the same authoritative journal;
+                // absence/uncertainty after acknowledgement must fail closed.
+                CheckoutOperationOutcome confirmed;
+                try { confirmed = _journal.Lookup(request.OperationId); }
+                catch
+                {
+                    lock (_sync) _uncertainId = request.OperationId;
+                    throw;
+                }
+                if (confirmed != CheckoutOperationOutcome.Persisted)
+                {
+                    lock (_sync) _uncertainId = request.OperationId;
+                    return FinancialCommitOutcome.Unknown;
+                }
                 return FinancialCommitOutcome.Committed;
             }
             catch
