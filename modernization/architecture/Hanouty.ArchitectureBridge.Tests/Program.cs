@@ -265,6 +265,28 @@ Assert(invalidSession.Scan("999").Outcome == SelectionOutcome.Selected,
 invalidSession.DiscardInvalidated();
 Assert(invalidSession.PendingCount == 0, "explicit discard resets pending session");
 
+// V1 parity: repeated product scans increment quantity, not duplicate sale rows.
+var repeatedCart = new RecordingAtomicBatchPort();
+var repeated = new CheckoutComposition(new CompositionCatalogue(), new RecordingPrompt { Choice = 1 },
+    repeatedCart, new CompositionJournal()).CreateSession();
+Assert(repeated.Scan("123", 2).Outcome == SelectionOutcome.Selected &&
+       repeated.Scan("123", 3).Outcome == SelectionOutcome.Selected &&
+       repeated.SelectImage(repeated.ImageProducts[0], 1).Outcome == SelectionOutcome.Selected,
+       "repeated barcode and image selection stages");
+Assert(repeated.Submit("repeat-001") == CheckoutBatchStatus.Committed &&
+       repeatedCart.Calls.Count == 1 && repeatedCart.Calls[0].Lines.Count == 2 &&
+       repeatedCart.Calls[0].Lines[0] == new CheckoutBatchLine("12", 5) &&
+       repeatedCart.Calls[0].Lines[1] == new CheckoutBatchLine("21", 1),
+       "same article aggregates quantities in first-selection order");
+var overflowCart = new RecordingAtomicBatchPort();
+var overflow = new CheckoutComposition(new CompositionCatalogue(), new RecordingPrompt { Choice = 1 },
+    overflowCart, new CompositionJournal()).CreateSession();
+overflow.Scan("123", int.MaxValue);
+overflow.Scan("123", 1);
+try { overflow.Submit("overflow-001"); throw new Exception("quantity overflow accepted"); }
+catch (OverflowException) { Assert(overflowCart.Calls.Count == 0,
+    "quantity overflow cannot write partial checkout"); }
+
 Console.WriteLine("Production selection-to-checkout workflow regression suite passed.");
 
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
