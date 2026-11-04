@@ -44,8 +44,7 @@ public sealed class ProductionWpfProductSelection : Wpf.IProductSelection
         var current = matches[0];
         if (current is null ||
             !string.Equals(current.ArticleId, product.Id, StringComparison.Ordinal)) return false;
-        if (current is null ||
-            !string.Equals(current.Barcode, product.Barcode, StringComparison.Ordinal) ||
+        if (!string.Equals(current.Barcode, product.Barcode, StringComparison.Ordinal) ||
             !string.Equals(current.DisplayName, product.Name, StringComparison.Ordinal) ||
             !string.Equals(current.ImagePath, product.ImagePath, StringComparison.Ordinal))
             return false;
