@@ -47,6 +47,12 @@ public sealed class AuthorizedCheckoutCommitGate
                 lock (_sync) _uncertainId = request.OperationId;
                 throw;
             }
+            // Reject invalid journal states; they cannot authorize a new write.
+            if (!Enum.IsDefined(prior))
+            {
+                lock (_sync) _uncertainId = request.OperationId;
+                throw new InvalidOperationException("Durable checkout journal returned an unsupported outcome.");
+            }
             if (prior == CheckoutOperationOutcome.Persisted)
                 return FinancialCommitOutcome.AlreadyCommitted;
             if (prior == CheckoutOperationOutcome.Unknown)
@@ -98,6 +104,8 @@ public sealed class AuthorizedCheckoutCommitGate
             // Hold the gate while querying the durable journal: no competing
             // submission can start between reconciliation and state transition.
             var outcome = _journal.Lookup(operationId);
+            if (!Enum.IsDefined(outcome))
+                throw new InvalidOperationException("Durable checkout journal returned an unsupported outcome.");
             if (outcome != CheckoutOperationOutcome.Unknown)
                 _uncertainId = null;
             return outcome;
