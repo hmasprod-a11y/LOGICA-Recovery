@@ -478,6 +478,34 @@ Assert(InvalidW2(W2() with { IsReturn = true, Payments = new[] { new CheckoutPay
     "W2 rejects return credit without explicit checkout policy");
 
 
+
+var paymentJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
+var paymentPort = new RecordingFinancialPort { OnCommit = () => paymentJournal.Outcome = CheckoutOperationOutcome.Persisted };
+var paymentContextReads = 0;
+var financialBatch = new AuthorizedCheckoutBatchAdapter(
+    new AuthorizedCheckoutCommitGate(paymentPort, paymentJournal),
+    () => { paymentContextReads++; return new AuthorizedCheckoutPaymentContext(
+        "cashier-01", "MAD", false,
+        new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 25m) }, 25m); });
+financialBatch.AddBatch(new[] { new CheckoutBatchLine("article-01", 2) }, "financial-batch-001");
+Assert(paymentPort.Calls == 1 && paymentContextReads == 1 &&
+    paymentPort.LastRequest?.OperationId == "financial-batch-001" &&
+    paymentPort.LastRequest.CashierId == "cashier-01" &&
+    paymentPort.LastRequest.Lines[0].Quantity == 2 &&
+    paymentPort.LastRequest.Payments[0].Amount == 25m,
+    "explicit payment adapter sends cashier, tender, quantity and stable ID to existing financial gate");
+financialBatch.AddBatch(new[] { new CheckoutBatchLine("article-01", 2) }, "financial-batch-001");
+Assert(paymentPort.Calls == 1, "durable persisted operation is never posted twice");
+var unknownJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Unknown };
+var unknownPort = new RecordingFinancialPort();
+var unknownBatch = new AuthorizedCheckoutBatchAdapter(
+    new AuthorizedCheckoutCommitGate(unknownPort, unknownJournal),
+    () => new AuthorizedCheckoutPaymentContext("cashier-01", "MAD", false,
+        new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 25m) }, 25m));
+try { unknownBatch.AddBatch(new[] { new CheckoutBatchLine("article-01", 1) }, "unknown-001"); throw new Exception("unknown accepted"); }
+catch (InvalidOperationException ex) when (ex.Message.Contains("Financial outcome unknown")) { }
+Assert(unknownPort.Calls == 0, "unknown journal cannot trigger financial write");
+
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
 {
     public List<(string, int)> Calls { get; } = new();
