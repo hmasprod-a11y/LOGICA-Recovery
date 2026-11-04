@@ -104,7 +104,8 @@ Check(typeof(CatalogueViewModel).GetConstructors().All(ctor =>
     ctor.GetParameters().Any(p => p.ParameterType == typeof(IProductSelection) && !p.IsOptional)),
     "checkout selection dependency must be explicit for every viewmodel constructor");
 Check(typeof(Hanouty.Desktop.Wpf.MainWindow).GetConstructors().All(ctor =>
-    ctor.GetParameters().Any(p => p.ParameterType == typeof(IProductSelection))),
+    ctor.GetParameters().Any(p => p.ParameterType == typeof(IProductSelection)) &&
+    ctor.GetParameters().Any(p => p.ParameterType == typeof(ICheckoutSubmission))),
     "production WPF window must require checkout dependency");
 // Value-equal stale objects must be rejected even when WPF SelectedItem changes.
 var staleVm = new CatalogueViewModel(new Reader(items), new RecordingSelection());
@@ -225,6 +226,30 @@ reentrantVm.SelectCurrent();
 Check(reentrantPort.Calls == 1 && reentrantPort.DisabledDuringCall && reentrantPort.NestedStatePreserved &&
     reentrantVm.CanSelectProduct && reentrantVm.ScanFeedback == "Selection accepted",
     "nested touch/scanner invocation must not stage a second checkout selection");
+var commitPort = new RecordingSubmission();
+var commitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: commitPort);
+Check(commitVm.CanCommit, "real checkout port enables commit control");
+commitPort.Result = CheckoutSubmissionResult.Invalidated;
+commitVm.CommitCommand.Execute(null);
+Check(commitPort.Ids.Count == 1 && !commitVm.CheckoutUncertain &&
+    commitVm.CommitFeedback.Contains("invalidated"), "invalidated checkout must not claim success");
+commitPort.Result = CheckoutSubmissionResult.Unknown;
+commitVm.CommitCheckout();
+Check(commitPort.Ids.Count == 2 && commitPort.Ids[0] == commitPort.Ids[1] &&
+    commitVm.CheckoutUncertain && !commitVm.CanCommit,
+    "unknown result retains stable operation ID and blocks retry");
+commitVm.CommitCheckout();
+Check(commitPort.Ids.Count == 2, "unknown checkout must never auto-retry");
+var committedPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Committed };
+var committedVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: committedPort);
+committedVm.CommitCheckout();
+committedVm.CommitCheckout();
+Check(committedPort.Ids.Count == 2 && committedPort.Ids[0] != committedPort.Ids[1],
+    "only acknowledged commit may release operation ID for next checkout");
+var unregisteredVm = new CatalogueViewModel(new Reader(items), new RecordingSelection());
+Check(!unregisteredVm.CanCommit, "unregistered checkout must fail closed");
+unregisteredVm.CommitCheckout();
+Check(unregisteredVm.CommitFeedback == "Checkout submission unavailable", "no fake checkout fallback");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
@@ -285,5 +310,16 @@ sealed class ReentrantSelection : IProductSelection
             ViewModel.SearchText == beforeText && ViewModel.ScannerText == "777";
         ViewModel.SelectCurrent();
         return true;
+    }
+}
+
+sealed class RecordingSubmission : ICheckoutSubmission
+{
+    public List<string> Ids { get; } = new();
+    public CheckoutSubmissionResult Result { get; set; }
+    public CheckoutSubmissionResult Submit(string stableOperationId)
+    {
+        Ids.Add(stableOperationId);
+        return Result;
     }
 }
