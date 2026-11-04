@@ -22,12 +22,16 @@ public partial class App : Application
         try
         {
             var (catalogue, checkout, submission) = ResolveServices();
+            // Reject incomplete host registrations without entering a cashier session.
+            if (catalogue is null || checkout is null || submission is null)
+                throw new InvalidOperationException("Incomplete production service registration.");
             MainWindow = new MainWindow(catalogue, checkout, submission);
             MainWindow.Show();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
-            MessageBox.Show($"Unable to start local services: {ex.Message}",
+            // Never reveal connection strings, credentials or database internals on a POS terminal.
+            MessageBox.Show("Unable to start authorized local services. Contact the administrator.",
                 "Hanouty — startup blocked", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(2);
         }
