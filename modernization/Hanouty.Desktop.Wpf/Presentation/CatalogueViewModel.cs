@@ -110,8 +110,16 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         // This prevents stale UI objects from being sent to the checkout boundary.
         if (!CatalogueAvailable || !_all.Any(p => ReferenceEquals(p, SelectedProduct))) { ScanFeedback = "Product no longer in catalogue"; SelectedProduct = null; return; }
         if (string.IsNullOrWhiteSpace(SelectedProduct.Id)) { ScanFeedback = "Invalid product identity"; return; }
-        // Preview port explicitly never posts a sale or updates stock.
-        ScanFeedback = _selection.Select(SelectedProduct) ? "Selection accepted" : "Checkout unavailable in preview";
+        // Selection is delegated to the injected Application boundary; WPF never posts directly.
+        try
+        {
+            ScanFeedback = _selection.Select(SelectedProduct) ? "Selection accepted" : "Selection rejected";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or UnauthorizedAccessException)
+        {
+            // Do not retry a potentially committed operation on transport failure.
+            ScanFeedback = "Checkout status unknown — reconcile before retry";
+        }
     }
 
     public string SearchText
@@ -131,7 +139,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         get => _selectedProduct;
         set
         {
-            if (Equals(_selectedProduct, value)) return;
+            if (ReferenceEquals(_selectedProduct, value)) return;
             _selectedProduct = value;
             OnPropertyChanged();
         }
