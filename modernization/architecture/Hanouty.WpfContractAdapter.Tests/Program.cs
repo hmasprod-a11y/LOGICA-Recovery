@@ -19,7 +19,7 @@ Check(binding.Session.PendingCount == 2, "explicit variant and photo stage witho
 Check(port.Writes == 0, "WPF selection must not write a sale");
 Check(!binding.Checkout.Select(new Wpf.ProductSummary("c", "Photo", "", "forged.png")),
     "forged photo is rejected");
-Check(binding.Session.Submit("wpf-adapter-001") == CheckoutBatchStatus.Committed &&
+Check(binding.Submission.Submit("wpf-adapter-001") == Wpf.CheckoutSubmissionResult.Committed &&
     port.Writes == 1 && port.Lines!.Count == 2 &&
     port.Lines[0] == new CheckoutBatchLine("b", 1) &&
     port.Lines[1] == new CheckoutBatchLine("c", 1),
@@ -33,7 +33,7 @@ var changing = ProductionWpfServices.Create(new CheckoutComposition(
 var changingProducts = changing.Catalogue.ReadProducts();
 Check(changing.Checkout.Select(changingProducts[1]), "variant staged before inventory update");
 changingReader.ChangeVariantB = true;
-Check(changing.Session.Submit("changed-variant-001") == CheckoutBatchStatus.Invalidated &&
+Check(changing.Submission.Submit("changed-variant-001") == Wpf.CheckoutSubmissionResult.Invalidated &&
     changingPort.Writes == 0, "changed duplicate variant invalidates entire batch before write");
 changing.Session.DiscardInvalidated();
 Check(changing.Session.PendingCount == 0, "explicit discard clears invalidated variant");
@@ -44,7 +44,7 @@ var barcodeBinding = ProductionWpfServices.Create(new CheckoutComposition(
 var barcodeProducts = barcodeBinding.Catalogue.ReadProducts();
 Check(barcodeBinding.Checkout.Select(barcodeProducts[1]), "explicit variant accepted before barcode change");
 barcodeReader.ChangeBarcodeB = true;
-Check(barcodeBinding.Session.Submit("barcode-change-001") == CheckoutBatchStatus.Invalidated &&
+Check(barcodeBinding.Submission.Submit("barcode-change-001") == Wpf.CheckoutSubmissionResult.Invalidated &&
     barcodePort.Writes == 0, "changed barcode blocks explicit variant atomic write");
 barcodeBinding.Session.DiscardInvalidated();
 Check(!barcodeBinding.Checkout.Select(barcodeProducts[1]), "stale variant barcode refused at selection");
@@ -55,7 +55,7 @@ var duplicate = ProductionWpfServices.Create(new CheckoutComposition(
 var duplicateProducts = duplicate.Catalogue.ReadProducts();
 Check(duplicate.Checkout.Select(duplicateProducts[1]), "explicit duplicate staged before competing barcode removed");
 duplicateReader.RemoveCompetingBarcode = true;
-Check(duplicate.Session.Submit("duplicate-removed-001") == CheckoutBatchStatus.Invalidated &&
+Check(duplicate.Submission.Submit("duplicate-removed-001") == Wpf.CheckoutSubmissionResult.Invalidated &&
     duplicatePort.Writes == 0, "disappearing competing barcode invalidates explicit variant before write");
 duplicate.Session.DiscardInvalidated();
 Check(duplicate.Session.SelectVariant(new ProductSummary("b", "111", "Apple variant", null, "v2")).Outcome == SelectionOutcome.InvalidCandidates,
