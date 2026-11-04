@@ -118,6 +118,43 @@ namespace LOGICA.Infrastructure.Checkout
             }
             Require(journal.IsPersisted(key), "Reconciliation must survive duplicate replay.");
 
+            // A competing transaction must not create a second durable claim.
+            // This is an actual two-connection InnoDB contention test, not a mock.
+            string contested = key + "-contended";
+            using (MySqlConnection first = NewConnection())
+            using (MySqlConnection second = NewConnection())
+            {
+                var winner = new MySqlCheckoutAtomicPostingBoundary(first);
+                winner.Open();
+                winner.BeginAndBind();
+                Require(winner.TryClaimOperation(contested), "First concurrent claim failed.");
+                var loser = new MySqlCheckoutAtomicPostingBoundary(second);
+                loser.Open();
+                loser.BeginAndBind();
+                using (var wait = new System.Threading.ManualResetEventSlim(false))
+                {
+                    bool duplicate = false;
+                    Exception failure = null;
+                    var contender = new System.Threading.Thread(() =>
+                    {
+                        try { duplicate = !loser.TryClaimOperation(contested); }
+                        catch (Exception ex) { failure = ex; }
+                        finally { wait.Set(); }
+                    });
+                    contender.IsBackground = true;
+                    contender.Start();
+                    Require(!wait.Wait(150), "Uncommitted claim was not isolated from concurrent cashier.");
+                    winner.Commit();
+                    winner.Close();
+                    Require(wait.Wait(10000), "Concurrent claim did not settle after commit.");
+                    if (failure != null) throw new InvalidOperationException("Concurrent claim failed.", failure);
+                    Require(duplicate, "Second cashier acquired duplicate durable operation.");
+                }
+                loser.Rollback();
+                loser.Close();
+            }
+            Require(journal.IsPersisted(contested), "Concurrent winning operation not durable.");
+
             // A malformed ID must never be inserted, even when the caller
             // has already begun a transaction.
             using (MySqlConnection connection = NewConnection())
