@@ -20,7 +20,10 @@ public sealed class EmptyCatalogueReader : ICatalogueReader
 
 public sealed class CatalogueViewModel : INotifyPropertyChanged
 {
-    private readonly IReadOnlyList<ProductSummary> _all;
+    private IReadOnlyList<ProductSummary> _all;
+    private readonly ICatalogueReader _reader;
+    private bool _catalogueAvailable;
+    public bool CatalogueAvailable { get => _catalogueAvailable; private set { _catalogueAvailable = value; OnPropertyChanged(); } }
     private string _searchText = "";
     private ProductSummary? _selectedProduct;
     private string _scannerText = "";
@@ -31,19 +34,23 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public CatalogueViewModel(ICatalogueReader reader, IProductSelection? selection = null, IProductImageAvailability? images = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
-        _all = reader.ReadProducts() ?? throw new InvalidOperationException("Catalogue unavailable");
+        _reader = reader;
+        _all = Array.Empty<ProductSummary>();
         _selection = selection ?? new PreviewProductSelection();
         _images = images ?? new LocalProductImageAvailability();
         ScanCommand = new DelegateCommand(_ => ScanBarcode());
         SelectCommand = new DelegateCommand(_ => SelectCurrent());
+        ReloadCommand = new DelegateCommand(_ => ReloadCatalogue());
         PhotoProducts = new ObservableCollection<ProductSummary>(_all.Where(HasPhoto));
         VisibleProducts = new ObservableCollection<ProductSummary>(_all);
+        ReloadCatalogue();
     }
 
     public ObservableCollection<ProductSummary> VisibleProducts { get; }
     public ObservableCollection<ProductSummary> PhotoProducts { get; }
     public System.Windows.Input.ICommand ScanCommand { get; }
     public System.Windows.Input.ICommand SelectCommand { get; }
+    public System.Windows.Input.ICommand ReloadCommand { get; }
     public string ScannerText { get => _scannerText; set { _scannerText = value ?? ""; OnPropertyChanged(); } }
     public string ScanFeedback { get => _scanFeedback; private set { _scanFeedback = value; OnPropertyChanged(); } }
     private bool _isRightToLeft;
@@ -55,10 +62,33 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public System.Windows.FlowDirection LayoutDirection => IsRightToLeft ? System.Windows.FlowDirection.RightToLeft : System.Windows.FlowDirection.LeftToRight;
     public IReadOnlyList<ProductSummary> BarcodeCandidates { get; private set; } = Array.Empty<ProductSummary>();
 
+    public void ReloadCatalogue()
+    {
+        // A failed local read must never leave a stale product available for sale.
+        IReadOnlyList<ProductSummary> loaded;
+        try { loaded = _reader.ReadProducts() ?? Array.Empty<ProductSummary>(); }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            _all = Array.Empty<ProductSummary>();
+            CatalogueAvailable = false;
+            SelectedProduct = null;
+            ScannerText = "";
+            Refresh();
+            ScanFeedback = "Local catalogue unavailable";
+            return;
+        }
+        _all = loaded.Where(p => p is not null && !string.IsNullOrWhiteSpace(p.Id)).ToArray();
+        CatalogueAvailable = true;
+        SelectedProduct = null;
+        ScannerText = "";
+        Refresh();
+        ScanFeedback = _all.Count == 0 ? "No products loaded" : "Catalogue ready";
+    }
+
     public void ScanBarcode()
     {
         var code = ScannerText.Trim();
-        if (code.Length == 0) { BarcodeCandidates = Array.Empty<ProductSummary>(); OnPropertyChanged(nameof(BarcodeCandidates)); ScanFeedback = "Empty barcode"; return; }
+        if (code.Length == 0) { BarcodeCandidates = Array.Empty<ProductSummary>(); SelectedProduct = null; OnPropertyChanged(nameof(BarcodeCandidates)); ScanFeedback = "Empty barcode"; return; }
         var matches = _all.Where(p => string.Equals(p.Barcode, code, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(p.Barcode)).ToArray();
         BarcodeCandidates = matches;
         OnPropertyChanged(nameof(BarcodeCandidates));
@@ -76,6 +106,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public void SelectCurrent()
     {
         if (SelectedProduct is null) { ScanFeedback = "No product selected"; return; }
+        if (!CatalogueAvailable || !_all.Contains(SelectedProduct)) { ScanFeedback = "Product no longer in catalogue"; SelectedProduct = null; return; }
         if (string.IsNullOrWhiteSpace(SelectedProduct.Id)) { ScanFeedback = "Invalid product identity"; return; }
         // Preview port explicitly never posts a sale or updates stock.
         ScanFeedback = _selection.Select(SelectedProduct) ? "Selection accepted" : "Checkout unavailable in preview";
