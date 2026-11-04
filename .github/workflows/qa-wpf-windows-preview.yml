@@ -98,7 +98,7 @@ jobs:
           $runtime = Get-Content wpf-publish/Hanouty.Desktop.Wpf.runtimeconfig.json -Raw
           if ($runtime -notmatch 'Microsoft.WindowsDesktop.App') { throw 'Windows desktop runtime missing' }
           $inventory = @(Get-ChildItem wpf-publish -Recurse -File | ForEach-Object {
-            [pscustomobject]@{ path=$_.FullName.Substring((Resolve-Path wpf-publish).Path.Length + 1).Replace('\\','/'); bytes=$_.Length; sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash }
+            [pscustomobject]@{ path=$_.FullName.Substring((Resolve-Path wpf-publish).Path.Length + 1).Replace([IO.Path]::DirectorySeparatorChar,'/'); bytes=$_.Length; sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash }
           })
           if ($inventory.Count -eq 0) { throw 'Published WPF runtime inventory empty' }
           $inventory | ConvertTo-Json -Depth 4 | Set-Content wpf-publish-inventory.json
