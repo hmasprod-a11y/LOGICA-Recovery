@@ -311,9 +311,11 @@ namespace LOGICA.ApplicationLayer.Checkout
             // changing ItemArray values, silently changing their meaning.
             string[] columnNames = new string[selected.Table.Columns.Count];
             Type[] columnTypes = new Type[columnNames.Length];
+            DataColumn[] originalColumns = new DataColumn[columnNames.Length];
             for (int column = 0; column < columnNames.Length; column++)
             {
-                columnNames[column] = selected.Table.Columns[column].ColumnName;
+                originalColumns[column] = selected.Table.Columns[column];
+                columnNames[column] = originalColumns[column].ColumnName;
                 columnTypes[column] = selected.Table.Columns[column].DataType;
             }
             decimal lineNet = calculateLegacyLineNet(selected);
@@ -333,7 +335,8 @@ namespace LOGICA.ApplicationLayer.Checkout
                 selected.Table.Columns.Count != columnNames.Length)
                 throw new InvalidOperationException("The selected article schema changed during checkout pricing.");
             for (int column = 0; column < columnNames.Length; column++)
-                if (!String.Equals(selected.Table.Columns[column].ColumnName,
+                if (!Object.ReferenceEquals(selected.Table.Columns[column], originalColumns[column]) ||
+                    !String.Equals(selected.Table.Columns[column].ColumnName,
                         columnNames[column], StringComparison.Ordinal) ||
                     selected.Table.Columns[column].DataType != columnTypes[column])
                     throw new InvalidOperationException("The selected article schema changed during checkout pricing.");
