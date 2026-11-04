@@ -5,6 +5,20 @@
 **Status:** development contract on Architecture PR #95; not a commercial release approval.
 
 
+## 2026-11-04 — Real rendered WPF cash-sale executable and Windows mapping correction
+
+This supersedes the prior "combined executable absent" blocker. QA owns the one integration candidate; no end-user payment rollout is authorized.
+
+- QA's initial runner2b754805 failed actual execution41914154405 because no local connection/database was configured. Supervisor completed the existing DisposableCashSaleAcceptance and workflow rather than adding another Host.
+- The executable uses checksum-verified disposable MariaDB127.0.0.1:3307/logica_ci, creates EMPTY TABLE_01 and no financial rows, seeds only catalogue/credentials/sequence/operation ledger, shows the actual MainWindow, scans the authoritative article and calls the real ViewModel.CommitCommand.
+- It asserts persisted ticket/detail/payment/stock/movement/sequence, same-ID duplicate, NEW EXE process restart without duplicate writes, wrong PIN/expected total/changed price denial, complete rollback after a real payment-insert trigger, Unknown journal lock, and persisted reconciliation after a fault injected ONLY AFTER the real production posting port commits. The fault seam is internal to the financial Host acceptance; it cannot replace real posting or writers. Default catalogue-only startup remains read-only.
+- First rendered acceptance found a real production Windows failure: run41921055027 job126893357929, MariaDbCashCheckoutPreparation line68, DataRow column 'Catégorie' not found after credential query. Checkout e9d630d8adb9fb11f22cf08a96d05dcfbdcb9725 maps original legacy SQL identifiers through stable ASCII trusted_cashier/trusted_role/trusted_quantity aliases. No schema migration, role/PIN policy change or fallback grant.
+- Exact new sources: QA5673043907c2eca7e74f0389d54364b888ee999e, Checkout e9d630d8adb9fb11f22cf08a96d05dcfbdcb9725, Architecture production5c73e78002f07121fdc85eb6272dcbd1bae5b31f, WPF0f8869220484100a0cbab18e768c8cf8160da6af. QA [run41921571910](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/41921571910) is SUCCESS in BOTH jobs: Windows126895112260 executes the real rendered WPF cash slice and independently checks every report assertion, Ubuntu126895111630 executes real production financial SQL. The generated report records W2Accepted=false explicitly. Checkout same-SHA MariaDB41921574744 is SUCCESS; its four non-Windows distinct branch checks passed while final legacy net48 Windows41921575283 was still running at this checkpoint. The QA modern financial Windows result is complete; do not conflate it with unfinished legacy packaging.
+- The older WPF claim that the financial Host lacks a contextual adapter was disproved by source: existing FinancialSessionSubmission wraps the SAME session/binding and implements both IContextualCheckoutSubmission and ICheckoutOutcomeReconciliation. Do not add a parallel session/adapter to solve that stale diagnosis.
+- Earlier pending legacy Windows gates41911457416 and41911100941 are now SUCCESS. They do not establish acceptance of this new executable.
+
+**Still open:** actual user PIN/session UI and an explicit cashier-reviewed reset after verified Absent/Persisted (Unknown must remain locked), broader V1 money/tender/returns/promotion/customer parity, manual-stock actor authorization, devices/printing/install/backup/restore/license/offline. Cash-slice evidence explicitly retains W2Accepted=false; do not promote it to all W2/V1/release. No percentage without counted inventories.
+
 ## 2026-11-04 — Empty-basket staging and actual financial Host composition
 
 This checkpoint supersedes the existing-basket restriction in older progress snapshots below; it does not expand accepted V1 pricing or enable cashier rollout.
