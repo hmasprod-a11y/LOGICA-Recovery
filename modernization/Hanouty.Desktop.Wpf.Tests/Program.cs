@@ -213,6 +213,16 @@ resolving.SelectedProduct = resolving.BarcodeCandidates[1];
 resolving.SelectCurrent();
 Check(!resolving.HasBarcodeAmbiguity && resolving.BarcodeCandidates.Count == 0 && resolving.ScannerText == "",
     "acknowledged explicit variant clears candidates and scanner for next scan");
+Check(resolving.ScanFeedback == "Selection accepted",
+    "clearing acknowledged scanner input must preserve accepted feedback");
+resolving.ScannerText = "777";
+resolving.ScanBarcode();
+Check(resolving.HasBarcodeAmbiguity && resolving.BarcodeCandidates.Count == 2,
+    "same barcode can be scanned again only after previous choice completed");
+resolving.SelectedProduct = resolving.BarcodeCandidates[0];
+resolving.SelectCurrent();
+Check(resolving.ScannerText == "" && !resolving.HasBarcodeAmbiguity,
+    "second acknowledged variant must also clear scanner after selection guard releases");
 var refusing = new CatalogueViewModel(new Reader(items), new PreviewProductSelection());
 refusing.ScannerText = "777";
 refusing.ScanBarcode();
