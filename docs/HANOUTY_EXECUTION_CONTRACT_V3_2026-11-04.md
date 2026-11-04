@@ -4,6 +4,45 @@
 **Authority:** user-directed correction to execution, complementary to `docs/HANOUTY_MASTER_MODERNIZATION_V2.md` (PR #95) and functional LOGICA V1 (2026-10-29). If older instructions contradict the user's **final technology decision**, this contract wins for technical architecture, never for functional parity.  
 **Status:** development contract on Architecture PR #95; not a commercial release approval.
 
+## 2026-11-04 03:08 UTC — Binding corrective addendum V3.1 (latest evidence overrides stale §1 snapshot)
+
+This addendum updates execution **and acceptance**, not the user-approved product scope. Sections 0, 2–6 and functional LOGICA V1 continue to apply. The section 1 SHAs, old WPF EmptyCatalogueReader diagnosis, and historical WPF preview failure are **historical baselines**, not current blockers. Do not undo completed fixes or reopen architecture selection.
+
+### Current verified heads / status (all draft unless otherwise stated)
+| Owner | Reviewed head | Evidence | Correct next blocker |
+|---|---|---|---|
+| 01 Architecture PR #95 | `038dbbf89b52fe1daadec785c77242d73db0928f` | Windows, portable .NET10, Core success; typed catalogue snapshot, checkout session, repeated scan/overflow guards and regressions | Real adapter implementations + WPF production composition remain unproven; interfaces must be consumed rather than reinvented |
+| 02 Checkout PR #75 | `367f05160ac1ff1c33f00a0d1e07b72c460b5ff7` | 5/5 CI successful incl Windows and domain; atomic posting/claim/rollback plus catalogue pricing integrity safeguards | Real disposable-MariaDB boundary with durable idempotency, WPF invocation, legacy money parity and failure injection not accepted |
+| 03 Inventory PR #88 / stacked #92 | `a8144451e79c0f0664ab6de5c88dbfaabf53e7aa` | Core, portable, article and domain green; **Windows FAIL** run [41763273059](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/41763273059) | Now errors remain in `Form_2_Familles.cs`, `Form_3_VENTE_ENTETE.cs` and possibly more unqualified `Application` calls, not only former `Form_2_ARTICLES.cs`. Fix entire observed compiler diagnostic batch, then rerun same-head Windows CI |
+| 04 WPF PR #96 | `87185f178bb3bd56c253931bb77a1f416923b7b1` | new touch/image tile guards; portable and core green, Windows in progress at inspection | `MainWindow(ICatalogueReader,IProductSelection)` now **requires injected services**, and `App.ResolveServices` fails closed if unregistered: do not claim old MainWindow uses `EmptyCatalogueReader`. No verified real production registration, local MariaDB adapter, or committed sale |
+| 05 QA PR #93 | `7382dd99b575dba734f0e5f9b302b65ce71f171c` | 7/7 workflows green incl WPF preview on selected pinned source `5a9c72e` | WPF preview is now BEHIND PR #96 head `87185f1`; fresh exact-pair WPF + **real DB** W1 acceptance and W2 sale/rollback pending. Green preview != integrated W1/W2 |
+
+The numbers `35%` or `70%` are estimates **not audit-backed feature percentages**; do not report them as objective completion. QA must produce a V1 parity ledger with exact countable accepted criteria (implemented/accepted/blocked/not started) and sources. No commercial-readiness percentage until this exists.
+
+### Supervisor corrective decisions — executable now
+**Decision D1 (one integration plane):** retain PR #93 `integration/hanouty-qa-desktop-inventory-20261102` as sole QA integration destination. No force merges of stacked/dirty #91/#92, no `main`/`release` mutation. Before integrating, QA records exact branch SHAs, file conflicts, acceptance gates and rollback point. Pin latest reviewed WPF SHA for preview only; never present older green pin as latest HEAD.
+
+**Decision D2 (W0 hard gate / Inventory owner):** immediately triage *all* CS0234 `LOGICA.Application` vs `System.Windows.Forms.Application` compilation errors from same Windows CI log, including Familles, VENTE_ENTETE and any following diagnostics, and apply qualified names or non-invasive alias in each impacted source once. Run real Windows build, correct any cascading errors, preserve original behavior. Source scan without a green Windows build does not close W0. Track04 must explicitly authorize shared desktop form edits or take ownership; coordinate on Issue #94 and continue work on unblocked inventory adapter.
+
+**Decision D3 (W1 / real catalogue first):** Architecture owns ONE contract in `docs/HANOUTY_W1_SHARED_CONTRACT_2026-11-04.md` and associated production interfaces. Explicit mapping needed between Architecture `ProductSummary(ArticleId,Barcode,DisplayName,ImagePath,VariantId)` and WPF local `ProductSummary(Id,Name,Barcode,ImagePath)`; do not silently introduce a second independent reader or discard variant identity. Inventory delivers parameterized READ-ONLY disposable MariaDB adapter implementing one agreed interface, including stable IDs, missing photos, duplicate barcodes and empty/null rules. WPF registers it in **actual** `App.ResolveServices` composition root; do not install demo fallback and do not show blank catalogue as completed deployment. QA on SAME reviewed source set must start real WPF EXE with disposable local MariaDB and prove product list/photo-only/scan. **No W1 acceptance from standalone ViewModel tests**.
+
+**Decision D4 (W2 / complete sale):** Checkout adapts its existing atomic posting service to the *same* Architecture atomic batch/journal interfaces using persistent unique key and single caller-owned MariaDB transaction, including stock+payments+returns, unknown commit reconciliation and restart deduplication. WPF wires real cart/pay/quantity/remove/return commands and preserves scanned barcode on rejected selection; no money arithmetic in XAML. QA exercises exact real WPF → local MariaDB → persisted checkout and rollback, including two-click duplicate, crash/timeout/unknown commit and explicit cashier authorization. No in-memory or fake service accepted.
+
+**Decision D5 (safety and stock):** Stock changes require verified actor authorization at write boundary, not just global feature flag; use disposable database, check duplicate article identities and simultaneous updates, preserve audit and fail-closed rollback. No access to shops' live databases, license bypass, implicit auto migration, weakened regression checks or physical-device acceptance claims.
+
+**Decision D6 (pace & evidence):** Every delivery cycle must leave a coherent production-code + regression batch (or QA exact-source integration job), push SHA and inspect the completed CI on the same SHA; if CI fails, work the precise failure, not a new report. Dependence on another team is not an excuse to avoid independently implementable tests/adapters. Supervisor reconciles Issue #94 after new evidence, with corrected facts and ownership; do not send users misleading chat titles or assess team activity from a single automation run.
+
+### Exit-criteria ledger — independent gates, not blended
+- **W0 BLOCKED** until inventory's own Windows CI green AND QA reviewed-source preview remains green.
+- **W1 BLOCKED** until real MariaDB rows shown in actual WPF EXE with photo and duplicate barcode semantics verified; no placeholder or unregistered host.
+- **W2 BLOCKED** until persisted exactly-once authorized sale/return and rollback/reconciliation via WPF in disposable MariaDB.
+- **W3 BLOCKED** until all V1 modules, PIN/security, reports, printer/labels, customers, suppliers, purchases and stock accepted feature by feature.
+- **W4 BLOCKED** until installed x64 .NET10 offline WPF candidate, restore/rollback, local license and actual shop-hardware acceptance are signed off.
+
+All five teams may advance nonblocked independent work in parallel. A passing legacy Windows build, portable core gate or WPF preview is valuable evidence but does not by itself close W1–W4.
+
+---
+
 ## 0. Non-negotiable target / fixed decisions
 
 C# / .NET 10 LTS / **WPF + MVVM** / Clean Architecture + Modular Monolith / Domain + Application + Infrastructure / **local MariaDB** / 100% offline / locally validated licensing without mandatory server. **WPF is decided**: do not reopen WinUI/Flutter/React selection; do not rebuild legacy WinForms as the new product. Preserve the known-good LOGICA behavior, local DB, barcode/photo/cart, sale/return/totals, suppliers/purchases, stock/counts, receipts/prints/labels, customers, reports, cashier permissions, local activation. Transitional `net48` WinForms exists ONLY as executable regression baseline until the new host passes field acceptance.
