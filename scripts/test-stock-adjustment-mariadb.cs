@@ -43,6 +43,7 @@ internal static class StockAdjustmentMariaDbSmoke
         Require((builder.Server == "127.0.0.1" || builder.Server == "localhost") &&
             builder.Port == 3307 && builder.Database == "logica_ci",
             "Refusing any non-disposable MariaDB target");
+        // Production writer must reject remote write endpoints before opening a connection.
         var assembly = Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "LOGICA.exe"));
         var planType = assembly.GetType("LOGICA.Application.Inventory.StockAdjustmentPlan", true);
         var writerType = assembly.GetType("LOGICA.Infrastructure.Inventory.StockAdjustmentWriter", true);
@@ -50,6 +51,11 @@ internal static class StockAdjustmentMariaDbSmoke
         var apply = writerType.GetMethod("Apply", BindingFlags.Static | BindingFlags.NonPublic);
         var execute = writerType.GetMethod("Execute", BindingFlags.Static | BindingFlags.NonPublic);
         Require(create != null && apply != null && execute != null, "Production stock adjustment methods missing");
+        var remote = new MySqlConnectionStringBuilder(cs) { Server = "192.0.2.10" };
+        ExpectFailure(() => execute.Invoke(null, new object[] {
+            remote.ConnectionString,
+            create.Invoke(null, new object[] { "CI-ARTICLE", 10m, 11m, "CI isolated adjustment", "CI-USER" })
+        }), "remote stock-write endpoint rejected before connection");
         Func<decimal, decimal, object> plan = (before, after) =>
             create.Invoke(null, new object[] { "CI-ARTICLE", before, after, "CI isolated adjustment", "CI-USER" });
 

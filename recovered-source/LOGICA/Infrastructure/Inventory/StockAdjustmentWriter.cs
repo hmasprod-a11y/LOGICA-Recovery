@@ -19,6 +19,13 @@ namespace LOGICA.Infrastructure.Inventory
             if (String.IsNullOrWhiteSpace(connectionString))
                 throw new ArgumentException("A local database connection is required.", "connectionString");
             if (plan == null) throw new ArgumentNullException("plan");
+            // Inventory manual adjustments are offline-only. Never send a write
+            // connection to a remote host, even when a caller misconfigures WPF.
+            var endpoint = new MySqlConnectionStringBuilder(connectionString);
+            if (!String.Equals(endpoint.Server, "127.0.0.1", StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(endpoint.Server, "localhost", StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(endpoint.Server, "::1", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Manual stock adjustment requires local MariaDB.");
             using (var connection = new MySqlConnection(connectionString))
             {
                 connection.Open();
