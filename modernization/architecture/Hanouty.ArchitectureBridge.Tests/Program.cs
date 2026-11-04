@@ -364,6 +364,18 @@ Assert(protectedGate.Reconcile("lookup-failed") == CheckoutOperationOutcome.Abse
 var financialJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
 var financialPort = new RecordingFinancialPort();
 var financialGate = new AuthorizedCheckoutCommitGate(financialPort, financialJournal);
+var reentrantJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
+var reentrantPort = new ReentrantFinancialPort();
+var reentrantGate = new AuthorizedCheckoutCommitGate(reentrantPort, reentrantJournal);
+reentrantPort.OnCommit = () =>
+{
+    try { reentrantGate.Commit(W2(id: "financial-reentrant")); throw new Exception("nested commit accepted"); }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("already in progress")) { }
+    try { reentrantGate.Reconcile("financial-reentrant"); throw new Exception("reconcile during commit accepted"); }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("already in progress")) { }
+};
+Assert(reentrantGate.Commit(W2(id: "financial-outer")) == FinancialCommitOutcome.Committed &&
+       reentrantPort.Calls == 1, "reentrant financial posting and reconciliation cannot overlap");
 Assert(financialGate.Commit(W2(id: "financial-1")) == FinancialCommitOutcome.Committed &&
        financialPort.Calls == 1, "financial gate delegates exactly one validated request");
 financialJournal.Outcome = CheckoutOperationOutcome.Persisted;
@@ -550,4 +562,15 @@ sealed class FailingFinancialJournal : ICheckoutOperationJournal
     public CheckoutOperationOutcome? Outcome { get; set; }
     public CheckoutOperationOutcome Lookup(string operationId) =>
         Outcome ?? throw new ApplicationException("durable journal unavailable");
+}
+
+sealed class ReentrantFinancialPort : IAuthorizedCheckoutPort
+{
+    public Action? OnCommit { get; set; }
+    public int Calls { get; private set; }
+    public void Commit(AuthorizedCheckoutRequest request)
+    {
+        Calls++;
+        OnCommit?.Invoke();
+    }
 }
