@@ -168,6 +168,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         if (!CatalogueAvailable || !_all.Any(p => ReferenceEquals(p, SelectedProduct))) { ScanFeedback = "Product no longer in catalogue"; SelectedProduct = null; return; }
         if (string.IsNullOrWhiteSpace(SelectedProduct.Id)) { ScanFeedback = "Invalid product identity"; return; }
         // Selection is delegated to the injected Application boundary; WPF never posts directly.
+        var clearAcknowledgedVariantScan = false;
         try
         {
             _selectionInFlight = true;
@@ -179,7 +180,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
                 BarcodeCandidates = Array.Empty<ProductSummary>();
                 OnPropertyChanged(nameof(BarcodeCandidates));
                 OnPropertyChanged(nameof(HasBarcodeAmbiguity));
-                ScannerText = "";
+                // ScannerText setter is intentionally locked while the port is running.
+                // Clear only after the acknowledged call has finished.
+                clearAcknowledgedVariantScan = true;
             }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
@@ -191,6 +194,8 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         finally
         {
             _selectionInFlight = false;
+            if (clearAcknowledgedVariantScan && !CheckoutUncertain)
+                ScannerText = "";
             OnPropertyChanged(nameof(CanSelectProduct));
             OnPropertyChanged(nameof(CanCommit));
         }
