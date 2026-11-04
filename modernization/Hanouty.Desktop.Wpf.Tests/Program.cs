@@ -361,6 +361,17 @@ frozenCommitVm.ScannerText = "777";
 frozenCommitVm.SearchText = "Other";
 Check(frozenCommitVm.ScannerText == "123" && frozenCommitVm.SearchText == "Milk" &&
     !frozenCommitVm.CanCommit, "unknown sale freezes cashier inputs and prevents replay");
+// W2 UI contracts do not authorize a sale: cashier context must be explicit,
+// and a durable Unknown outcome remains distinct from Absent or Persisted.
+var paymentContext = new CashierPaymentContext("cashier-1", "register-1", "MAD", "cash", 100m);
+Check(paymentContext.IsWellFormed, "valid cashier/payment context must be representable");
+Check(!(paymentContext with { CashierId = "" }).IsWellFormed &&
+    !(paymentContext with { TenderedAmount = -1m }).IsWellFormed &&
+    !(paymentContext with { RegisterId = " " }).IsWellFormed,
+    "missing cashier/register and negative tender must be rejected at UI boundary");
+Check(CheckoutResolution.Unknown != CheckoutResolution.Absent &&
+    CheckoutResolution.Unknown != CheckoutResolution.Persisted,
+    "unknown durable outcome must never be interpreted as an absent sale");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
