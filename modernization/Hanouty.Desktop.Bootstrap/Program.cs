@@ -12,6 +12,8 @@ public static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        if (args.Length == 2 && args[0] == "--verify-disposable-cash-sale")
+            return DisposableCashSaleAcceptance.Run(Path.GetFullPath(args[1]));
         string? evidence = args.Length == 3 && args[0] == "--catalogue-only" &&
             args[1] == "--verify-disposable-catalogue" ? Path.GetFullPath(args[2]) : null;
         try
