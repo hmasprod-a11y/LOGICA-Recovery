@@ -258,6 +258,17 @@ reentrantVm.SelectCurrent();
 Check(reentrantPort.Calls == 1 && reentrantPort.DisabledDuringCall && reentrantPort.NestedStatePreserved &&
     reentrantVm.CanSelectProduct && reentrantVm.ScanFeedback == "Selection accepted",
     "nested touch/scanner invocation must not stage a second checkout selection");
+// Nested selection must not swap the active article before the port acknowledges it.
+var nestedArticlePort = new ReentrantArticleSelection(items[1]);
+var nestedArticleVm = new CatalogueViewModel(new Reader(items), nestedArticlePort);
+nestedArticlePort.ViewModel = nestedArticleVm;
+nestedArticleVm.SelectedProduct = items[0];
+nestedArticleVm.SelectCurrent();
+Check(nestedArticlePort.Calls == 1 &&
+    ReferenceEquals(nestedArticleVm.SelectedProduct, items[0]) &&
+    nestedArticlePort.SawOriginalArticle &&
+    nestedArticleVm.ScanFeedback == "Selection accepted",
+    "nested touch and SelectedProduct setter must not replace in-flight sale article");
 var commitPort = new RecordingSubmission();
 var commitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: commitPort);
 Check(commitVm.CanCommit, "real checkout port enables commit control");
@@ -399,6 +410,21 @@ sealed class ReentrantSelection : IProductSelection
         NestedStatePreserved = ViewModel.VisibleProducts.Count == beforeRows &&
             ViewModel.SearchText == beforeText && ViewModel.ScannerText == "777";
         ViewModel.SelectCurrent();
+        return true;
+    }
+}
+
+sealed class ReentrantArticleSelection(ProductSummary other) : IProductSelection
+{
+    public CatalogueViewModel? ViewModel { get; set; }
+    public int Calls { get; private set; }
+    public bool SawOriginalArticle { get; private set; }
+    public bool Select(ProductSummary product)
+    {
+        Calls++;
+        ViewModel!.SelectCommand.Execute(other);
+        ViewModel.SelectedProduct = other;
+        SawOriginalArticle = ReferenceEquals(ViewModel.SelectedProduct, product);
         return true;
     }
 }
