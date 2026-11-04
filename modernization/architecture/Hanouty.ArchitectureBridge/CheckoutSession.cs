@@ -48,7 +48,9 @@ public sealed class CheckoutSession
         var visible = System.Linq.Enumerable.FirstOrDefault(ImageProducts,
             p => string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal));
         if (visible is null || !string.Equals(visible.Barcode, product.Barcode, StringComparison.Ordinal) ||
-            !string.Equals(visible.ImagePath, product.ImagePath, StringComparison.Ordinal))
+            !string.Equals(visible.ImagePath, product.ImagePath, StringComparison.Ordinal) ||
+            !string.Equals(visible.VariantId, product.VariantId, StringComparison.Ordinal) ||
+            !_composition.IsCurrentImage(product))
             return new SelectionResponse(SelectionOutcome.InvalidCandidates, null);
         return _batch.StageImage(new ArticleCandidate(product.ArticleId, product.Barcode ?? ""), quantity);
     }
