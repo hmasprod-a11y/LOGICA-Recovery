@@ -109,6 +109,17 @@ Assert(blockedBatch.Commit("sale-003") == CheckoutBatchStatus.Invalidated &&
        "changed article identity blocks entire atomic commit");
 blockedBatch.Clear();
 Assert(blockedBatch.PendingCount == 0, "explicit clear discards staged lines");
+var collapsingCatalogue = new RecordingCatalogue();
+var collapsingCart = new RecordingAtomicBatchPort();
+var collapsingBatch = new CheckoutBatchController(collapsingCatalogue,
+    new RecordingPrompt { Choice = 0 }, collapsingCart);
+Assert(collapsingBatch.StageBarcode("123").Outcome == SelectionOutcome.Selected,
+    "duplicate barcode explicitly staged before catalogue change");
+collapsingCatalogue.ChangeRefresh = true;
+Assert(collapsingBatch.Commit("collapsed-variant") == CheckoutBatchStatus.Invalidated &&
+       collapsingCart.Calls.Count == 0 && collapsingBatch.PendingCount == 1,
+    "duplicate variant collapse blocks commit without cart write");
+
 try { blockedBatch.Commit(" "); throw new Exception("blank operation ID accepted"); }
 catch (ArgumentException) { Assert(blockedCart.Calls.Count == 0, "blank operation ID fails closed"); }
 var failingBatchPort = new ThrowingAtomicBatchPort();
