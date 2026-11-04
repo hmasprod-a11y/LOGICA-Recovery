@@ -193,6 +193,24 @@ Assert(uncertainComposition.Reconcile(absentBatch) == CheckoutOperationOutcome.A
        absentBatch.PendingCount == 1 && absentBatch.State == CheckoutCommitState.Ready,
        "absent durable outcome unlocks retained staged selection");
 
+// Real-reader boundary must fail closed on corrupted/misrouted MariaDB result sets.
+var mismatchedReader = new FaultyCatalogue { Mode = "wrong-barcode" };
+var mismatchedCart = new RecordingAtomicBatchPort();
+var mismatchedBatch = new CheckoutComposition(mismatchedReader, new RecordingPrompt(), mismatchedCart, journal).CreateCheckoutBatch();
+try { mismatchedBatch.StageBarcode("123"); throw new Exception("wrong barcode accepted"); }
+catch (InvalidOperationException) { Assert(mismatchedBatch.PendingCount == 0 && mismatchedCart.Calls.Count == 0,
+    "wrong-barcode catalogue response cannot reach checkout"); }
+var duplicateReader = new FaultyCatalogue { Mode = "duplicate-id" };
+var duplicateBatch = new CheckoutComposition(duplicateReader, new RecordingPrompt(), mismatchedCart, journal).CreateCheckoutBatch();
+try { duplicateBatch.StageBarcode("123"); throw new Exception("duplicate ID accepted"); }
+catch (InvalidOperationException) { Assert(duplicateBatch.PendingCount == 0 && mismatchedCart.Calls.Count == 0,
+    "duplicate identity cannot reach checkout"); }
+var wrongArticleReader = new FaultyCatalogue { Mode = "wrong-article" };
+var wrongArticleBatch = new CheckoutComposition(wrongArticleReader, new RecordingPrompt(), mismatchedCart, journal).CreateCheckoutBatch();
+try { wrongArticleBatch.StageImage(A("21", "")); throw new Exception("wrong article accepted"); }
+catch (InvalidOperationException) { Assert(wrongArticleBatch.PendingCount == 0 && mismatchedCart.Calls.Count == 0,
+    "wrong-article refresh cannot reach checkout"); }
+
 Console.WriteLine("Production selection-to-checkout workflow regression suite passed.");
 
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
@@ -289,4 +307,20 @@ sealed class MutableCompositionCatalogue : ICatalogueReader
     public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => new[] { Current };
     public IReadOnlyList<ProductSummary> RefreshBarcode(string barcode) => new[] { Current };
     public IReadOnlyList<ProductSummary> RefreshArticle(string articleId) => new[] { Current };
+}
+
+sealed class FaultyCatalogue : ICatalogueReader
+{
+    public string Mode { get; set; } = "";
+    public IReadOnlyList<ProductSummary> ListAll() => Array.Empty<ProductSummary>();
+    public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => Mode switch
+    {
+        "wrong-barcode" => new[] { new ProductSummary("11", "other", "Wrong", null) },
+        "duplicate-id" => new[] { new ProductSummary("11", barcode, "A", null),
+                                  new ProductSummary("11", barcode, "B", null) },
+        _ => Array.Empty<ProductSummary>()
+    };
+    public IReadOnlyList<ProductSummary> RefreshBarcode(string barcode) => FindBarcode(barcode);
+    public IReadOnlyList<ProductSummary> RefreshArticle(string articleId) =>
+        new[] { new ProductSummary("22", "", "Wrong article", null) };
 }
