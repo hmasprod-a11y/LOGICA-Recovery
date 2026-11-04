@@ -13,6 +13,7 @@ public sealed class CheckoutSession
     private string? _operationId;
     private readonly List<ProductSummary> _stagedImages = new();
     private readonly List<ProductSummary> _stagedExplicitVariants = new();
+    private readonly List<ProductSummary> _stagedArticles = new();
 
     internal CheckoutSession(CheckoutComposition composition, CheckoutBatchController batch)
     {
@@ -79,12 +80,30 @@ public sealed class CheckoutSession
         return selected;
     }
 
+    // Explicit list selection, including products without a barcode or image.
+    // The selected article must belong to this session's snapshot and remain
+    // identical in the authoritative catalogue before staging or payment.
+    public SelectionResponse SelectArticle(ProductSummary product, int quantity = 1)
+    {
+        EnsureNoSubmission();
+        ArgumentNullException.ThrowIfNull(product);
+        if (string.IsNullOrWhiteSpace(product.ArticleId) ||
+            !System.Linq.Enumerable.Any(Products, p =>
+                string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal) && p == product) ||
+            !_composition.IsCurrentArticle(product))
+            return new SelectionResponse(SelectionOutcome.InvalidCandidates, null);
+        var selected = _batch.StageImage(new ArticleCandidate(product.ArticleId, product.Barcode ?? ""), quantity);
+        if (selected.Outcome == SelectionOutcome.Selected) _stagedArticles.Add(product);
+        return selected;
+    }
+
     public void Clear()
     {
         EnsureNoSubmission();
         _batch.Clear();
         _stagedImages.Clear();
         _stagedExplicitVariants.Clear();
+        _stagedArticles.Clear();
     }
 
     public CheckoutBatchStatus Submit(string operationId)
@@ -100,12 +119,15 @@ public sealed class CheckoutSession
             if (!_composition.IsCurrentImage(image)) return CheckoutBatchStatus.Invalidated;
         foreach (var variant in _stagedExplicitVariants)
             if (!_composition.IsCurrentDuplicateVariant(variant)) return CheckoutBatchStatus.Invalidated;
+        foreach (var article in _stagedArticles)
+            if (!_composition.IsCurrentArticle(article)) return CheckoutBatchStatus.Invalidated;
         var result = _batch.Commit(operationId);
         if (result == CheckoutBatchStatus.Committed || result == CheckoutBatchStatus.Empty)
         {
             _operationId = null;
             _stagedImages.Clear();
             _stagedExplicitVariants.Clear();
+        _stagedArticles.Clear();
         }
         // Invalidated retains operation ID until the operator clears/rebuilds.
         return result;
@@ -123,6 +145,7 @@ public sealed class CheckoutSession
             {
                 _stagedImages.Clear();
                 _stagedExplicitVariants.Clear();
+        _stagedArticles.Clear();
             }
         }
         return result;
@@ -135,6 +158,7 @@ public sealed class CheckoutSession
         _batch.Clear();
         _stagedImages.Clear();
         _stagedExplicitVariants.Clear();
+        _stagedArticles.Clear();
         _operationId = null;
     }
 
