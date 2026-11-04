@@ -41,7 +41,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
         _images = images ?? new LocalProductImageAvailability();
         ScanCommand = new DelegateCommand(_ => ScanBarcode());
-        SelectCommand = new DelegateCommand(_ => SelectCurrent());
+        SelectCommand = new DelegateCommand(product => { if (product is ProductSummary article) SelectedProduct = article; SelectCurrent(); });
         ReloadCommand = new DelegateCommand(_ => ReloadCatalogue());
         PhotoProducts = new ObservableCollection<ProductSummary>(_all.Where(HasPhoto));
         VisibleProducts = new ObservableCollection<ProductSummary>(_all);
