@@ -93,6 +93,21 @@ public sealed record WpfProductionBinding(CheckoutSession Session,
 
 public static class ProductionWpfServices
 {
+    // Explicit payment-enabled composition. The host supplies Inventory's real
+    // catalogue, Checkout's MariaDbCashCheckoutServices posting/journal and
+    // authenticated cashier/tender context; this never runs on product selection.
+    public static WpfProductionBinding CreateFinancial(
+        ICatalogueReader catalogue, ICheckoutVariantPrompt variants,
+        IAuthorizedCheckoutPort posting, ICheckoutOperationJournal journal,
+        Func<AuthorizedCheckoutPaymentContext> paymentContext)
+    {
+        ArgumentNullException.ThrowIfNull(posting);
+        ArgumentNullException.ThrowIfNull(journal);
+        var gate = new AuthorizedCheckoutCommitGate(posting, journal);
+        var financialBatch = new AuthorizedCheckoutBatchAdapter(gate, paymentContext);
+        return Create(new CheckoutComposition(catalogue, variants, financialBatch, journal));
+    }
+
     // Host invokes this at App.ResolveServices using concrete Inventory,
     // Checkout and cashier variant-prompt adapters. No empty fallback.
     public static WpfProductionBinding Create(CheckoutComposition composition)
