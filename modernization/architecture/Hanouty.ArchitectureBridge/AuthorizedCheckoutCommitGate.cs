@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace Hanouty.ArchitectureBridge;
 
@@ -39,12 +40,19 @@ public sealed class AuthorizedCheckoutCommitGate
         }
         try
         {
-            request.Validate();
+            // Freeze caller-owned mutable line/payment lists before any asynchronous
+            // infrastructure boundary. The validated envelope is exactly the one posted.
+            var snapshot = request with
+            {
+                Lines = Array.AsReadOnly(request.Lines?.ToArray() ?? Array.Empty<CheckoutBatchLine>()),
+                Payments = Array.AsReadOnly(request.Payments?.ToArray() ?? Array.Empty<CheckoutPayment>())
+            };
+            snapshot.Validate();
             CheckoutOperationOutcome prior;
-            try { prior = _journal.Lookup(request.OperationId); }
+            try { prior = _journal.Lookup(snapshot.OperationId); }
             catch
             {
-                lock (_sync) _uncertainId = request.OperationId;
+                lock (_sync) _uncertainId = snapshot.OperationId;
                 throw;
             }
             // Reject invalid journal states; they cannot authorize a new write.
@@ -62,7 +70,7 @@ public sealed class AuthorizedCheckoutCommitGate
             }
             try
             {
-                _posting.Commit(request);
+                _posting.Commit(snapshot);
                 // A returning port is not proof that the durable operation was
                 // persisted. Verify against the same authoritative journal;
                 // absence/uncertainty after acknowledgement must fail closed.
