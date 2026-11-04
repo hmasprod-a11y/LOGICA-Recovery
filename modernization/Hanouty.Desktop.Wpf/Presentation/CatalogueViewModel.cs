@@ -28,6 +28,8 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private ProductSummary? _selectedProduct;
     private string _scannerText = "";
     private string _scanFeedback = "";
+    private bool _checkoutUncertain;
+    public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; OnPropertyChanged(); } }
     private readonly IProductSelection _selection;
     private readonly IProductImageAvailability _images;
 
@@ -87,6 +89,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
 
     public void ScanBarcode()
     {
+        if (CheckoutUncertain) { ScanFeedback = "Checkout status unknown — reconcile before retry"; return; }
         var code = ScannerText.Trim();
         if (code.Length == 0) { BarcodeCandidates = Array.Empty<ProductSummary>(); SelectedProduct = null; OnPropertyChanged(nameof(BarcodeCandidates)); ScanFeedback = "Empty barcode"; return; }
         var matches = _all.Where(p => string.Equals(p.Barcode, code, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(p.Barcode)).ToArray();
@@ -106,6 +109,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
 
     public void SelectCurrent()
     {
+        if (CheckoutUncertain) { ScanFeedback = "Checkout status unknown — reconcile before retry"; return; }
         if (SelectedProduct is null) { ScanFeedback = "No product selected"; return; }
         // A candidate must belong to the current snapshot, not merely share its value.
         // This prevents stale UI objects from being sent to the checkout boundary.
@@ -119,6 +123,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or UnauthorizedAccessException)
         {
             // Do not retry a potentially committed operation on transport failure.
+            CheckoutUncertain = true;
             ScanFeedback = "Checkout status unknown — reconcile before retry";
         }
     }
