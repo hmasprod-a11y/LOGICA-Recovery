@@ -347,12 +347,40 @@ class PosSmoke {
       watcher.IsBackground=true;
       watcher.Start();
      }
+     // Diagnostic-only observer: never interacts with a modal or alters posting.
+     // Capture native windows on the blocked STA thread before the 60s harness timeout.
+     var diagnosticStop=new ManualResetEvent(false);
+     var diagnosticThread=new Thread(delegate() {
+      int elapsed=0;
+      while(!diagnosticStop.WaitOne(5000)) {
+       elapsed+=5;
+       try {
+        var windows=new System.Collections.Generic.List<string>();
+        EnumThreadWindows(threadId,delegate(IntPtr hwnd,IntPtr unused) {
+         var cls=new StringBuilder(128);GetClassName(hwnd,cls,cls.Capacity);
+         var title=new StringBuilder(256);GetWindowText(hwnd,title,title.Capacity);
+         windows.Add(cls.ToString()+":"+title.ToString());
+         return true;
+        },IntPtr.Zero);
+        Console.Error.WriteLine("CHECKOUT_DIAG settlement="+settlement+" quantity="+quantity+
+          " elapsed="+elapsed+"s STA_WINDOWS="+String.Join(" || ",windows.ToArray()));
+        Console.Error.Flush();
+       } catch(Exception ex) {
+        Console.Error.WriteLine("CHECKOUT_DIAG observer-error="+ex.GetType().Name);
+       }
+      }
+     });
+     diagnosticThread.IsBackground=true;
+     diagnosticThread.Start();
      try {
       using(var sender=new Button(){Name=settlement=="select-credit-client"?"Button_SOLDER_CREDIT":"CI_CASH_CHECKOUT"}) {
        sale.GetType().GetMethod("Button_Click",Flags).Invoke(sale,new object[]{sender,EventArgs.Empty});
        senderEnabled=sender.Enabled;
       }
      } finally {
+      diagnosticStop.Set();
+      diagnosticThread.Join(1000);
+      diagnosticStop.Dispose();
       if(acceptedPayment!=null)acceptedPayment.Dispose();
       if(selectionDialog!=null)selectionDialog.Dispose();
       stopWatcher.Set();
