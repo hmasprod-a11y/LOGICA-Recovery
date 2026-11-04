@@ -48,6 +48,18 @@ Check(barcodeBinding.Session.Submit("barcode-change-001") == CheckoutBatchStatus
     barcodePort.Writes == 0, "changed barcode blocks explicit variant atomic write");
 barcodeBinding.Session.DiscardInvalidated();
 Check(!barcodeBinding.Checkout.Select(barcodeProducts[1]), "stale variant barcode refused at selection");
+var duplicateReader = new TestCatalogue();
+var duplicatePort = new TestPort();
+var duplicate = ProductionWpfServices.Create(new CheckoutComposition(
+    duplicateReader, new TestPrompt(), duplicatePort, new TestJournal()));
+var duplicateProducts = duplicate.Catalogue.ReadProducts();
+Check(duplicate.Checkout.Select(duplicateProducts[1]), "explicit duplicate staged before competing barcode removed");
+duplicateReader.RemoveCompetingBarcode = true;
+Check(duplicate.Session.Submit("duplicate-removed-001") == CheckoutBatchStatus.Invalidated &&
+    duplicatePort.Writes == 0, "disappearing competing barcode invalidates explicit variant before write");
+duplicate.Session.DiscardInvalidated();
+Check(!duplicate.Checkout.Select(duplicateProducts[1]),
+    "stale WPF duplicate selection rejected when barcode becomes unique");
 var directReader = new TestCatalogue();
 var directBinding = ProductionWpfServices.Create(new CheckoutComposition(
     directReader, new TestPrompt(), new TestPort(), new TestJournal()));
@@ -68,8 +80,9 @@ sealed class TestCatalogue : ICatalogueReader
     public bool ChangeVariantB { get; set; }
     public bool ChangeBarcodeB { get; set; }
     public bool CaseCollision { get; set; }
+    public bool RemoveCompetingBarcode { get; set; }
     public IReadOnlyList<ProductSummary> ListAll() => new[] {
-        new ProductSummary("a", "111", "Apple", null, "v1"),
+        new ProductSummary("a", RemoveCompetingBarcode ? "333" : "111", "Apple", null, "v1"),
         new ProductSummary(CaseCollision ? "A" : "b", ChangeBarcodeB ? "222" : "111", "Apple variant", null, ChangeVariantB ? "v3" : "v2"),
         new ProductSummary("c", "", "Photo", "photo.png", ChangeVariant ? "v2" : "v1")
     };
