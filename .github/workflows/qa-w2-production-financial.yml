@@ -1,0 +1,76 @@
+name: QA W2 production financial persistence integration (not WPF authorization)
+on:
+  push:
+    branches: [integration/hanouty-qa-desktop-inventory-20261102]
+    paths:
+      - '.github/workflows/qa-w2-production-financial.yml'
+      - 'qa/tests/verify-w2-financial-evidence.sh'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-financial-port:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root-test-only
+          MARIADB_DATABASE: checkout_disposable
+          MARIADB_USER: checkout_test
+          MARIADB_PASSWORD: checkout-test-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: qa
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 2bcdc8c17b81b6391bd4afce3c0aa76a9370337b
+          path: checkout
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: f934763edbb0ae15c5e2a449bf6440b0d1bcca39
+          path: checkout/architecture-source
+          persist-credentials: false
+      - name: Verify immutable source graph before financial execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/w2
+          printf 'qa=%s\ncheckout=%s\narchitecture=%s\n' "$(git -C qa rev-parse HEAD)" "$(git -C checkout rev-parse HEAD)" "$(git -C checkout/architecture-source rev-parse HEAD)" > evidence/w2/source-manifest.txt
+          bash qa/qa/tests/verify-w2-financial-evidence.sh evidence/w2/source-manifest.txt "${{ github.sha }}"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install disposable MariaDB client
+        run: sudo apt-get update && sudo apt-get install -y mariadb-client
+      - name: Execute real durable claim and transaction SQL against disposable database
+        working-directory: checkout
+        env:
+          DB_HOST: 127.0.0.1
+          DB_NAME: checkout_disposable
+          DB_USER: checkout_test
+          MYSQL_PWD: checkout-test-only
+        run: bash scripts/test-checkout-atomic-mariadb.sh
+      - name: Execute production C# financial port with real DB readback, duplicate and rollback
+        working-directory: checkout
+        env:
+          CHECKOUT_TEST_CONNECTION: Server=127.0.0.1;Port=3306;Database=checkout_disposable;Uid=checkout_test;Pwd=checkout-test-only;SslMode=Disabled;
+        run: dotnet run --project modernization/checkout-mariadb-boundary/CheckoutMariaDbBoundary.csproj --configuration Release
+      - name: Record scoped acceptance (WPF authorized E2E remains blocked)
+        if: success()
+        run: |
+          printf 'financial_port=passed\nwpf_authorized_e2e=not_executed\nw2_accepted=false\n' > evidence/w2/verdict.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qa-w2-real-financial-${{ github.run_id }}
+          path: evidence/w2/
+          if-no-files-found: error
