@@ -25,8 +25,11 @@ required = {
 }
 for label, needle in required.items():
     assert needle in source, f"missing {label}: {needle}"
-assert "Commit()" not in source, "writer must never commit caller-owned transaction"
-assert "Rollback()" not in source, "caller owns rollback"
+apply_body = source.split("internal static void Apply(", 1)[1]
+assert "Commit()" not in apply_body, "Apply must never commit caller-owned transaction"
+assert "Rollback()" not in apply_body, "Apply must never roll back caller-owned transaction"
+assert "transaction.Commit();" in source.split("internal static void Apply(", 1)[0], "Execute must commit its own transaction"
+assert "transaction.Rollback();" in source.split("internal static void Apply(", 1)[0], "Execute must roll back failed transaction"
 assert "ALTER TABLE" not in source and "DROP TABLE" not in source
 print("PASS: stock adjustment writer source safety contract (not a MariaDB integration test)")
 
