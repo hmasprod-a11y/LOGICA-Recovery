@@ -41,7 +41,11 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
         _images = images ?? new LocalProductImageAvailability();
         ScanCommand = new DelegateCommand(_ => ScanBarcode());
-        SelectCommand = new DelegateCommand(product => { if (product is ProductSummary article) SelectedProduct = article; SelectCurrent(); });
+        SelectCommand = new DelegateCommand(product =>
+        {
+            if (product is ProductSummary article) SelectedProduct = article;
+            SelectCurrent();
+        });
         ReloadCommand = new DelegateCommand(_ => ReloadCatalogue());
         PhotoProducts = new ObservableCollection<ProductSummary>(_all.Where(HasPhoto));
         VisibleProducts = new ObservableCollection<ProductSummary>(_all);
@@ -66,6 +70,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
 
     public void ReloadCatalogue()
     {
+        // Re-reading products never reconciles an uncertain checkout operation.
         // A failed local read must never leave a stale product available for sale.
         IReadOnlyList<ProductSummary> loaded;
         try { loaded = _reader.ReadProducts() ?? Array.Empty<ProductSummary>(); }
@@ -122,6 +127,11 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     {
         if (CheckoutUncertain) { ScanFeedback = "Checkout status unknown — reconcile before retry"; return; }
         if (SelectedProduct is null) { ScanFeedback = "No product selected"; return; }
+        if (BarcodeCandidates.Count > 1 && !BarcodeCandidates.Any(p => ReferenceEquals(p, SelectedProduct)))
+        {
+            ScanFeedback = "Choose a matching barcode variant explicitly";
+            return;
+        }
         // A candidate must belong to the current snapshot, not merely share its value.
         // This prevents stale UI objects from being sent to the checkout boundary.
         if (!CatalogueAvailable || !_all.Any(p => ReferenceEquals(p, SelectedProduct))) { ScanFeedback = "Product no longer in catalogue"; SelectedProduct = null; return; }
