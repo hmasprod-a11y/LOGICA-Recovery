@@ -63,6 +63,43 @@ jobs:
         run: |
           dotnet build wpf/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj -c Release -warnaserror
           if ($LASTEXITCODE -ne 0) { throw 'WPF Windows build failed' }
+      - name: Run WPF MVVM and real executable smoke at reviewed source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet run --project wpf/modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'WPF MVVM regression failed' }
+          dotnet run --project wpf/modernization/Hanouty.Desktop.Wpf.Smoke/Hanouty.Desktop.Wpf.Smoke.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'WPF barcode/image executable smoke failed' }
+      - name: Verify actual production startup registration and no demo fallback
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $app = Get-Content 'wpf/modernization/Hanouty.Desktop.Wpf/App.xaml.cs' -Raw
+          if ($app -notmatch 'ResolveServices' -or $app -notmatch 'OnStartup') { throw 'W1 BLOCKED: production startup service resolution absent' }
+          if ($app -match 'ResolveServices\s*\?\s*\?\s*=' -or $app -match 'new\s+EmptyCatalogueReader\s*\(') { throw 'W1 BLOCKED: production startup has demo fallback' }
+          if ($app -match 'ResolveServices\s+is\s+null' -and $app -match 'Shutdown\s*\(\s*2\s*\)') {
+            throw 'W1 BLOCKED: WPF production startup still shuts down without registered real services; real composition not accepted'
+          }
+      - name: Publish and verify extracted WPF runtime payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish wpf/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj -c Release -r win-x64 --self-contained false -o w1-publish
+          if ($LASTEXITCODE -ne 0) { throw 'WPF publish failed' }
+          $files = @(Get-ChildItem w1-publish -Recurse -File)
+          if ($files.Count -eq 0 -or -not (Test-Path w1-publish/Hanouty.Desktop.Wpf.exe)) { throw 'WPF publish incomplete' }
+          Compress-Archive -Path w1-publish/* -DestinationPath w1-candidate.zip
+          Expand-Archive w1-candidate.zip -DestinationPath w1-extracted
+          $unpacked = @(Get-ChildItem w1-extracted -Recurse -File)
+          if ($unpacked.Count -ne $files.Count) { throw 'WPF ZIP count mismatch' }
+          foreach ($file in $files) {
+            $relative = $file.FullName.Substring((Resolve-Path w1-publish).Path.Length + 1)
+            $target = Join-Path w1-extracted $relative
+            if (-not (Test-Path -LiteralPath $target)) { throw "Missing extracted file: $relative" }
+            if ((Get-FileHash $file.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $target -Algorithm SHA256).Hash) { throw "ZIP hash mismatch: $relative" }
+          }
+          Write-Host "Verified $($files.Count) extracted WPF payload hashes; no production acceptance implied"
       - name: Verify WPF and Architecture catalogue API compatibility before database acceptance
         shell: pwsh
         run: |
