@@ -18,6 +18,8 @@ jobs:
         env:
           MARIADB_ROOT_PASSWORD: disposable-ci-only
           MARIADB_DATABASE: hanouty_w1_disposable
+          MARIADB_USER: qa_ci
+          MARIADB_PASSWORD: disposable-ci-only
         ports:
           - 3306:3306
         options: >-
@@ -33,7 +35,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: 1a10b7e0a776067bbdf40b023b4607506c6ecf7f
+          ref: 563afc1e27976513b6c34b02807fd408054144bb
           path: combined
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -47,11 +49,11 @@ jobs:
           set -euo pipefail
           mkdir -p evidence combined/modernization/architecture combined/qa/tests
           test "$(git -C qa rev-parse HEAD)" = "${{ github.sha }}"
-          test "$(git -C combined rev-parse HEAD)" = 1a10b7e0a776067bbdf40b023b4607506c6ecf7f
+          test "$(git -C combined rev-parse HEAD)" = 563afc1e27976513b6c34b02807fd408054144bb
           test "$(git -C architecture rev-parse HEAD)" = 865efe43c2a10fd9a0dda10e9ee2b04037f77d33
           cp -a architecture/modernization/architecture/Hanouty.ArchitectureBridge combined/modernization/architecture/
           cp -a qa/qa/tests/Hanouty.W1.RealMariaDb combined/qa/tests/
-          printf 'qa=%s\ninventory=%s\narchitecture=%s\n' "${{ github.sha }}" 1a10b7e0a776067bbdf40b023b4607506c6ecf7f 865efe43c2a10fd9a0dda10e9ee2b04037f77d33 > evidence/sources.txt
+          printf 'qa=%s\ninventory=%s\narchitecture=%s\n' "${{ github.sha }}" 563afc1e27976513b6c34b02807fd408054144bb 865efe43c2a10fd9a0dda10e9ee2b04037f77d33 > evidence/sources.txt
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
