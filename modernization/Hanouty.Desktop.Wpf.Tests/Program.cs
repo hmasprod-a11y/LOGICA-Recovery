@@ -434,6 +434,12 @@ Check(financialAdapter.Submit("operation-1", financialContext) == CheckoutSubmis
     "authorized mapping must reach the approved gate exactly once");
 Check(financialAdapter.Reconcile("operation-1") == CheckoutResolution.Persisted,
     "journal reconciliation must report actual persisted operation");
+Check(financialAdapter.Submit("card-blocked", financialContext with { TenderCode = "Card" }) == CheckoutSubmissionResult.Invalidated &&
+    financialPrep.Calls == 1 && financialPort.Writes == 1,
+    "card tender must fail before trusted preparation and financial posting");
+Check(financialAdapter.Submit("transfer-blocked", financialContext with { TenderCode = "BankTransfer" }) == CheckoutSubmissionResult.Invalidated &&
+    financialPrep.Calls == 1 && financialPort.Writes == 1,
+    "bank transfer must fail before trusted preparation in cash-only W2 slice");
 financialPrep.Mismatch = true;
 Check(financialAdapter.Submit("operation-2", financialContext) == CheckoutSubmissionResult.Invalidated &&
     financialPort.Writes == 1, "cashier identity mismatch must never post");
