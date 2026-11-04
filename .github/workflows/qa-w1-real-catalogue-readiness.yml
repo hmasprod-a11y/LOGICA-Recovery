@@ -59,7 +59,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $wpfApi = 'wpf/modernization/Hanouty.Desktop.Wpf/Presentation/CatalogueViewModel.cs'
-          $architectureApi = 'qa/modernization/architecture/Hanouty.ArchitectureBridge/CheckoutBatchController.cs'
+          $architectureApi = 'qa/modernization/architecture/Hanouty.ArchitectureBridge/CheckoutComposition.cs'
           if (-not (Test-Path -LiteralPath $wpfApi)) { throw "W1 BLOCKED: missing WPF catalogue contract: $wpfApi" }
           if (-not (Test-Path -LiteralPath $architectureApi)) { throw "W1 BLOCKED: missing architecture checkout contract: $architectureApi" }
           $wpf = Get-Content -LiteralPath $wpfApi -Raw
