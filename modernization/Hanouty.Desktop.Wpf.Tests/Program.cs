@@ -151,6 +151,18 @@ var missingIdentity = new CatalogueViewModel(new Reader(new[] {
 }), new RecordingSelection());
 Check(!missingIdentity.CatalogueAvailable && missingIdentity.PhotoProducts.Count == 0,
     "missing article identity must not silently drop a row and expose partial catalogue");
+var duplicateSelection = new RecordingSelection();
+var duplicateVm = new CatalogueViewModel(new Reader(items), duplicateSelection);
+duplicateVm.ScannerText = "777";
+duplicateVm.ScanBarcode();
+duplicateVm.SelectedProduct = items[0];
+duplicateVm.SelectCurrent();
+Check(duplicateSelection.Selected.Count == 0 && duplicateVm.ScanFeedback == "Choose a matching barcode variant explicitly",
+    "active duplicate barcode chooser must reject an unrelated product");
+duplicateVm.SelectedProduct = duplicateVm.BarcodeCandidates[1];
+duplicateVm.SelectCurrent();
+Check(duplicateSelection.Selected.Count == 1 && duplicateSelection.Selected[0].Id == "5",
+    "explicit matching variant must dispatch its stable article identity");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
