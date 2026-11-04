@@ -18,7 +18,11 @@ public sealed class ProductionWpfCatalogueReader : Wpf.ICatalogueReader
     public IReadOnlyList<Wpf.ProductSummary> ReadProducts()
     {
         _session.RefreshCatalogue();
-        return _session.Products.Select(p => new Wpf.ProductSummary(
+        var source = _session.Products;
+        if (source.Any(p => string.IsNullOrWhiteSpace(p.ArticleId)) ||
+            source.GroupBy(p => p.ArticleId, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
+            throw new InvalidOperationException("Catalogue contains invalid or duplicate WPF article identities.");
+        return source.Select(p => new Wpf.ProductSummary(
             p.ArticleId, p.DisplayName, p.Barcode, p.ImagePath)).ToArray();
     }
 }
@@ -34,8 +38,14 @@ public sealed class ProductionWpfProductSelection : Wpf.IProductSelection
     public bool Select(Wpf.ProductSummary product)
     {
         ArgumentNullException.ThrowIfNull(product);
-        var current = _session.Products.SingleOrDefault(p =>
-            string.Equals(p.ArticleId, product.Id, StringComparison.Ordinal));
+        var matches = _session.Products.Where(p =>
+            string.Equals(p.ArticleId, product.Id, StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (matches.Length != 1) return false;
+        var current = matches[0];
+        if (current is null ||
+            !string.Equals(current.ArticleId, product.Id, StringComparison.Ordinal)) return false;
+        /*var current = _session.Products.SingleOrDefault(p =>
+            string.Equals(p.ArticleId, product.Id, StringComparison.Ordinal));*/
         if (current is null ||
             !string.Equals(current.Barcode, product.Barcode, StringComparison.Ordinal) ||
             !string.Equals(current.DisplayName, product.Name, StringComparison.Ordinal) ||
