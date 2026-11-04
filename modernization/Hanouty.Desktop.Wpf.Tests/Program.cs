@@ -335,8 +335,19 @@ reconciliationVm.ReconcileCommand.Execute(null);
 Check(reconciliation.Ids.Count == 1 && reconciliation.Ids[0] == operationToReconcile &&
     reconciliationVm.CheckoutUncertain && !reconciliationVm.CanCommit && reconciliationPort.Ids.Count == 1,
     "persisted journal outcome must not unlock checkout or replay posting");
+Check(reconciliationVm.ReviewedResolution == CheckoutResolution.Persisted &&
+    reconciliationVm.CanReviewResolvedCheckout && reconciliationVm.PendingOperationId == operationToReconcile,
+    "persisted result must be reviewable without unlocking or dropping operation ID");
 reconciliation.Result = CheckoutResolution.Absent;
 reconciliationVm.ReconcileCheckout();
+Check(reconciliationVm.ReviewedResolution == CheckoutResolution.Absent &&
+    reconciliationVm.CanReviewResolvedCheckout && reconciliationVm.PendingOperationId == operationToReconcile,
+    "absent result must be reviewable but cannot trigger blind retry");
+reconciliation.Result = CheckoutResolution.Unknown;
+reconciliationVm.ReconcileCheckout();
+Check(reconciliationVm.ReviewedResolution == CheckoutResolution.Unknown &&
+    !reconciliationVm.CanReviewResolvedCheckout && !reconciliationVm.CanCommit,
+    "unknown journal result must revoke review eligibility and keep sale locked");
 Check(reconciliationVm.CheckoutUncertain && reconciliationPort.Ids.Count == 1,
     "absent journal outcome still requires explicit Application session reset");
 reconciliationVm.PaymentContext = new CashierPaymentContext("different", "register", "MAD", "cash", 10m);
