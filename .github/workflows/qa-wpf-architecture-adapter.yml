@@ -22,7 +22,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: 865efe43c2a10fd9a0dda10e9ee2b04037f77d33
+          ref: d8b8c1b55fb592668da6528242dc8d5962b4356f
           path: architecture
           persist-credentials: false
       - name: Verify exact provenance and compose real production source graph
@@ -33,7 +33,7 @@ jobs:
           $sources = @{
             qa = '${{ github.sha }}'
             combined = '116c95a2e0e180b050afa20cc733aea01fa023f9'
-            architecture = '865efe43c2a10fd9a0dda10e9ee2b04037f77d33'
+            architecture = 'd8b8c1b55fb592668da6528242dc8d5962b4356f'
           }
           foreach ($key in $sources.Keys) {
             $actual = (git -C $key rev-parse HEAD).Trim()
@@ -61,6 +61,15 @@ jobs:
         run: |
           dotnet run --no-build -c Release --project combined/modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj
           if ($LASTEXITCODE -ne 0) { throw 'Actual adapter regression failed' }
+      - name: Assert real executable dependency direction and production adapter path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $wpfProject = Get-Content combined/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj -Raw
+          $adapterProject = Get-Content combined/modernization/architecture/Hanouty.WpfContractAdapter/Hanouty.WpfContractAdapter.csproj -Raw
+          if ($wpfProject -match 'Hanouty.WpfContractAdapter') { throw 'Circular reference: WPF must not depend on Adapter' }
+          if ($adapterProject -notmatch 'Hanouty.Desktop.Wpf.csproj') { throw 'Production adapter must reference WPF presentation contract' }
+          if (!(Test-Path combined/modernization/architecture/Hanouty.WpfContractAdapter/ProductionWpfAdapters.cs)) { throw 'Missing real production adapter' }
       - name: Enforce W1 fail closed pending real MariaDB host registration
         shell: pwsh
         run: |
