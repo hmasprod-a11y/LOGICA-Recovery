@@ -45,13 +45,16 @@ internal static class PortableCheckoutSmoke
         public bool Duplicate;
         public bool FailPayment;
         public bool FailCommit;
+        public bool FailBegin;
+        public bool FailClaim;
+        public int Begins;
         public int Claims, Stock, Headers, Journals, Payments, Completions, Commits, Rollbacks, Closes;
         public void Open() { IsOpen = true; }
-        public void BeginAndBind() { }
+        public void BeginAndBind() { Begins++; if (FailBegin) throw new InvalidOperationException("begin failure"); }
         public void Commit() { Commits++; if (FailCommit) throw new InvalidOperationException("commit uncertain"); }
         public void Close() { Closes++; IsOpen = false; }
         public void Rollback() { Rollbacks++; }
-        public bool TryClaimOperation(string id) { Claims++; return !Duplicate; }
+        public bool TryClaimOperation(string id) { Claims++; if (FailClaim) throw new InvalidOperationException("claim failure"); return !Duplicate; }
         public void ApplyStock(CheckoutStockLine line) { Stock++; }
         public void WriteHeader(TicketHeaderRecord record) { Headers++; }
         public void WriteJournal(TicketJournalRecord record) { Journals++; }
@@ -94,6 +97,29 @@ internal static class PortableCheckoutSmoke
         Require(duplicate.Stock == 0 && duplicate.Payments == 0 &&
             duplicate.Commits == 0 && duplicate.Rollbacks == 1,
             "Duplicate durable ID must roll back claim transaction without side effects");
+        // The real database boundary can throw after BeginAndBind has
+        // partially opened a transaction, or while inserting the durable key.
+        // Both must be rolled back before any stock or payment is written.
+        var beginFailure = new AtomicFixture { FailBegin = true };
+        var beginProgress = new CheckoutCommitProgress();
+        bool beginThrown = false;
+        try { CheckoutAtomicPostingService.Execute(beginFailure, AtomicInput(), "sale-begin", beginProgress); }
+        catch (InvalidOperationException) { beginThrown = true; }
+        Require(beginThrown && beginFailure.Begins == 1 &&
+            beginFailure.Rollbacks == 1 && beginFailure.Claims == 0 &&
+            beginFailure.Stock == 0 && beginFailure.Commits == 0 &&
+            beginProgress.RecoveryAction == CheckoutAttemptRecoveryAction.VerifyRollback,
+            "Partial BeginAndBind failure must roll back without posting");
+        var claimFailure = new AtomicFixture { FailClaim = true };
+        var claimProgress = new CheckoutCommitProgress();
+        bool claimThrown = false;
+        try { CheckoutAtomicPostingService.Execute(claimFailure, AtomicInput(), "sale-claim", claimProgress); }
+        catch (InvalidOperationException) { claimThrown = true; }
+        Require(claimThrown && claimFailure.Claims == 1 &&
+            claimFailure.Rollbacks == 1 && claimFailure.Stock == 0 &&
+            claimFailure.Payments == 0 && claimFailure.Commits == 0 &&
+            claimProgress.RecoveryAction == CheckoutAttemptRecoveryAction.VerifyRollback,
+            "Durable claim insert failure must roll back without posting");
         var failed = new AtomicFixture { FailPayment = true };
         var failedProgress = new CheckoutCommitProgress();
         bool paymentFailed = false;
