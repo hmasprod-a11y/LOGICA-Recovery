@@ -53,6 +53,15 @@ jobs:
             Copy-Item "architecture/$relative" "combined/$relative" -Recurse -Force
           }
           if (!(Test-Path combined/modernization/Hanouty.Desktop.Wpf/App.xaml.cs)) { throw 'Missing WPF host' }
+          # Preserve a rollback/reproducibility manifest for the exact compiled source graph.
+          $manifest = @('qa','combined','architecture') | ForEach-Object {
+            $root = $_
+            $sha = (git -C $root rev-parse HEAD).Trim()
+            $dirty = (git -C $root status --porcelain)
+            if ($root -eq 'qa' -and $dirty) { throw 'QA checkout unexpectedly dirty before compilation' }
+            [pscustomobject]@{ source=$root; sha=$sha; original_checkout_clean=([bool](-not $dirty)) }
+          }
+          $manifest | ConvertTo-Json -Depth 3 | Set-Content evidence/rollback-source-manifest.json
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
