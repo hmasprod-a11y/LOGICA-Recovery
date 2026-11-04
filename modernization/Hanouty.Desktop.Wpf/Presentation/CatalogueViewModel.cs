@@ -202,7 +202,12 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         {
             _selectionInFlight = false;
             if (clearAcknowledgedVariantScan && !CheckoutUncertain)
-                ScannerText = "";
+            {
+                // Internal acknowledgement owns the reset; external scanner edits
+                // remain blocked during selection and unknown checkout states.
+                _scannerText = "";
+                OnPropertyChanged(nameof(ScannerText));
+            }
             OnPropertyChanged(nameof(CanSelectProduct));
             OnPropertyChanged(nameof(CanCommit));
         }
