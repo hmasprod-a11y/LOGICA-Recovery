@@ -359,7 +359,16 @@ class PosSmoke {
         EnumThreadWindows(threadId,delegate(IntPtr hwnd,IntPtr unused) {
          var cls=new StringBuilder(128);GetClassName(hwnd,cls,cls.Capacity);
          var title=new StringBuilder(256);GetWindowText(hwnd,title,title.Capacity);
-         windows.Add(cls.ToString()+":"+title.ToString());
+         var children=new System.Collections.Generic.List<string>();
+         if(cls.ToString()=="#32770") {
+          EnumChildWindows(hwnd,delegate(IntPtr child,IntPtr ignored) {
+           var childClass=new StringBuilder(128);GetClassName(child,childClass,childClass.Capacity);
+           var childText=new StringBuilder(512);GetWindowText(child,childText,childText.Capacity);
+           if(childText.Length>0)children.Add(childClass.ToString()+"="+childText.ToString().Replace("\r"," ").Replace("\n"," "));
+           return true;
+          },IntPtr.Zero);
+         }
+         windows.Add(cls.ToString()+":"+title.ToString()+" CHILDREN="+String.Join(" | ",children.ToArray()));
          return true;
         },IntPtr.Zero);
         Console.Error.WriteLine("CHECKOUT_DIAG settlement="+settlement+" quantity="+quantity+
