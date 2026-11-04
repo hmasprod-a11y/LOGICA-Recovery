@@ -7,6 +7,44 @@ on:
 permissions:
   contents: read
 jobs:
+  w2-financial-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root-test-only
+          MARIADB_DATABASE: checkout_disposable
+          MARIADB_USER: checkout_test
+          MARIADB_PASSWORD: checkout-test-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: qa
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: fc630cc1cc2802b35c56e5528dd0ad5043089847
+          path: checkout
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Execute production financial boundary against disposable MariaDB with QA Architecture
+        env:
+          CHECKOUT_TEST_CONNECTION: Server=127.0.0.1;Port=3306;Database=checkout_disposable;Uid=checkout_test;Pwd=checkout-test-only;SslMode=Disabled;
+        run: |
+          set -euo pipefail
+          test "$(git -C checkout rev-parse HEAD)" = fc630cc1cc2802b35c56e5528dd0ad5043089847
+          test -f qa/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj
+          arch="$PWD/qa/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj"
+          dotnet run --project checkout/modernization/checkout-mariadb-boundary/CheckoutMariaDbBoundary.csproj --configuration Release --property:ArchitectureProject="$arch"
+          echo 'FINANCIAL_BOUNDARY_ONLY: real SQL exercised; WPF authorization and E2E remain unaccepted'
   w2-cash-sale:
     runs-on: windows-latest
     timeout-minutes: 30
@@ -24,7 +62,7 @@ jobs:
           path: architecture
       - uses: actions/checkout@v4
         with:
-          ref: fb586e27dfd5477e6cc2156e038f253a9fe9bcb7
+          ref: 14b79c168ec9c32d5e7c0d1ffd0184da5c8a8489
           path: wpf
       - uses: actions/setup-dotnet@v4
         with:
@@ -41,15 +79,12 @@ jobs:
           # its relative Architecture reference is absent in that checkout and would
           # compile a different Architecture assembly from the financial library.
           $qa=(Resolve-Path qa).Path
-          $arch=(Resolve-Path architecture/modernization/architecture).Path
           $wpf=(Resolve-Path wpf/modernization/Hanouty.Desktop.Wpf).Path
-          $archDestination=Join-Path $qa 'modernization/architecture'
-          New-Item -ItemType Directory $archDestination -Force | Out-Null
-          Copy-Item (Join-Path $arch '*') $archDestination -Recurse -Force
+          # QA owns the one Architecture assembly; PR95 is a contract source, not a second copy.
           $wpfDestination=Join-Path $qa 'modernization/Hanouty.Desktop.Wpf'
           New-Item -ItemType Directory $wpfDestination -Force | Out-Null
           Copy-Item (Join-Path $wpf '*') $wpfDestination -Recurse -Force
-          $architectureProject=(Resolve-Path (Join-Path $archDestination 'Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj')).Path
+          $architectureProject=(Resolve-Path (Join-Path $qa 'modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj')).Path
           $checkoutProject=(Resolve-Path checkout/modernization/checkout-mariadb-production/CheckoutMariaDbProduction.csproj).Path
           dotnet build $checkoutProject -c Release --nologo "-p:ArchitectureProject=$architectureProject"
           if($LASTEXITCODE -ne 0) { throw 'CHECKOUT_OWNER: production Checkout failed against the single QA Architecture project' }
