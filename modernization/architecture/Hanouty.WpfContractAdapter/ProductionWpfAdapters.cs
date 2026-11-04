@@ -48,16 +48,19 @@ public sealed class ProductionWpfProductSelection : Wpf.IProductSelection
             !string.Equals(current.DisplayName, product.Name, StringComparison.Ordinal) ||
             !string.Equals(current.ImagePath, product.ImagePath, StringComparison.Ordinal))
             return false;
-        if (current.HasImage)
-            return _session.SelectImage(current).Outcome == SelectionOutcome.Selected;
-        if (string.IsNullOrWhiteSpace(current.Barcode)) return false;
-        // WPF's present selection API has no explicit duplicate-barcode variant
-        // command; don't silently select the first duplicate.
+        // An explicitly clicked tile carries a stable article ID. Duplicate
+        // barcodes MUST preserve that identity even when the tile has a photo;
+        // a barcode scan alone cannot silently choose a variant.
+        if (string.IsNullOrWhiteSpace(current.Barcode))
+            return current.HasImage &&
+                _session.SelectImage(current).Outcome == SelectionOutcome.Selected;
         var matching = _session.Products.Count(p =>
             string.Equals(p.Barcode, current.Barcode, StringComparison.Ordinal));
         if (matching > 1)
             return _session.SelectVariant(current).Outcome == SelectionOutcome.Selected;
         if (matching != 1) return false;
+        if (current.HasImage)
+            return _session.SelectImage(current).Outcome == SelectionOutcome.Selected;
         return _session.Scan(current.Barcode).Outcome == SelectionOutcome.Selected;
     }
 }
