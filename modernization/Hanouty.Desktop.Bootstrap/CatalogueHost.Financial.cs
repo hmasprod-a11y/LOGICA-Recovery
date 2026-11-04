@@ -66,16 +66,9 @@ public sealed partial record CatalogueHost
             return binding.Submission.Submit(stableOperationId);
         }
 
-        public CheckoutResolution Reconcile(string stableOperationId)
-        {
-            if (binding.Session.State != CheckoutCommitState.OutcomeUnknown ||
-                !string.Equals(binding.Session.OperationId, stableOperationId, StringComparison.Ordinal))
-                return CheckoutResolution.Unknown;
-            return binding.Session.Reconcile() switch {
-                CheckoutOperationOutcome.Persisted => CheckoutResolution.Persisted,
-                CheckoutOperationOutcome.Absent => CheckoutResolution.Absent,
-                _ => CheckoutResolution.Unknown
-            };
-        }
+        public CheckoutResolution Reconcile(string stableOperationId) =>
+            binding.Submission is ICheckoutOutcomeReconciliation reconciliation
+                ? reconciliation.Reconcile(stableOperationId)
+                : CheckoutResolution.Unknown;
     }
 }

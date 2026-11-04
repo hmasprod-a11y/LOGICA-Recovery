@@ -32,6 +32,11 @@ jobs:
           ref: f87aada22d596838100e50c23e51a79f640b4ad4
           path: checkout
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 5c73e78002f07121fdc85eb6272dcbd1bae5b31f
+          path: architecture
+          persist-credentials: false
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
@@ -41,6 +46,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C checkout rev-parse HEAD)" = f87aada22d596838100e50c23e51a79f640b4ad4
+          cp -a architecture/modernization/architecture/. qa/modernization/architecture/
+          cp -a architecture/recovered-source/. qa/recovered-source/
           test -f qa/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj
           arch="$PWD/qa/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj"
           dotnet run --project checkout/modernization/checkout-mariadb-boundary/CheckoutMariaDbBoundary.csproj --configuration Release --property:ArchitectureProject="$arch"
@@ -58,7 +65,7 @@ jobs:
           path: checkout
       - uses: actions/checkout@v4
         with:
-          ref: 4e45aa5368732aaa52d89a2fb369358b0ef467cb
+          ref: 5c73e78002f07121fdc85eb6272dcbd1bae5b31f
           path: architecture
       - uses: actions/checkout@v4
         with:
@@ -97,6 +104,8 @@ jobs:
           if($LASTEXITCODE -ne 0) { throw 'ARCHITECTURE_OWNER: composed QA Host failed build' }
           dotnet run --project qa/modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj -c Release
           if($LASTEXITCODE -ne 0) { throw 'WPF_OWNER: full actual WPF test suite failed' }
+          dotnet run --project qa/modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj -c Release
+          if($LASTEXITCODE -ne 0) { throw 'ARCHITECTURE_OWNER: financial reconciliation adapter regressions failed' }
           # Verify the actual build inputs, not merely independent passing checkouts.
           $manifest=@('architecture='+((git -C architecture rev-parse HEAD).Trim()),'checkout='+((git -C checkout rev-parse HEAD).Trim()),'wpf='+((git -C wpf rev-parse HEAD).Trim()),'qa='+((git -C qa rev-parse HEAD).Trim()))
           $manifest | Set-Content evidence/composed-source-manifest.txt
