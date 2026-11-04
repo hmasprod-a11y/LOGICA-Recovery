@@ -163,7 +163,7 @@ namespace LOGICA.Infrastructure.Inventory
                 // A legacy STOCK column may round a decimal quantity on write.
                 // Never record a movement delta that differs from the persisted stock.
                 using (var verify = new MySqlCommand(
-                    "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE = @id FOR UPDATE",
+                    "SELECT STOCK FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE = BINARY @id FOR UPDATE",
                     connection, transaction))
                 {
                     verify.Parameters.AddWithValue("@id", plan.ArticleId);

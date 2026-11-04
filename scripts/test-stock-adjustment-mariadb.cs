@@ -121,6 +121,8 @@ internal static class StockAdjustmentMariaDbSmoke
                     ExpectFailure(() => Apply(apply, wrongCase, c, tx), "case-sensitive stable article identity");
                     tx.Rollback();
                 }
+                Require(Scalar(c, null, "SELECT STOCK FROM TABLE_ARTICLES") == 12m,
+                    "Case mismatch must not alter persisted stock");
                 Require(Scalar(c, null, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == 1m,
                     "Rejected attempts must not write audit");
 
