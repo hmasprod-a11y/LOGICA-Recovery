@@ -192,12 +192,40 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Sql(settings, "ALTER TABLE hanouty_checkout_operations ENGINE=InnoDB");
             uncertain.Window.Close();
         }
+        // Real SQL Commit succeeds before an injected caller acknowledgement fault.
+        // No mock preparation, no-op writer or alternate transaction is used.
+        var committedBeforeFault = Number(settings, "SELECT COUNT(*) FROM hanouty_checkout_operations");
+        var lostAck = CatalogueHost.CreateFinancial(settings, "01", () => pin,
+            new AuthorizedCheckoutPaymentContext("O'Neil", "MAD", false,
+                new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 5.25m) }, 5.25m),
+            () => throw new IOException("injected-after-real-commit-acknowledgement"));
+        try
+        {
+            Select(lostAck);
+            lostAck.ViewModel.CommitCommand.Execute(null);
+            Require(lostAck.ViewModel.CheckoutUncertain && !lostAck.ViewModel.CanCommit &&
+                lostAck.Session.State == CheckoutCommitState.OutcomeUnknown &&
+                Number(settings, "SELECT COUNT(*) FROM hanouty_checkout_operations") == committedBeforeFault + 1 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == 2 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == 2 &&
+                Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == 98,
+                "Lost acknowledgement did not preserve real SQL commit and UI lock.");
+            var committed = Snapshot(settings);
+            lostAck.ViewModel.CommitCommand.Execute(null);
+            Require(Snapshot(settings) == committed, "Unknown UI blindly repeated a committed sale.");
+            lostAck.ViewModel.ReconcileCommand.Execute(null);
+            Require(lostAck.ViewModel.CommitFeedback.Contains("Sale persisted", StringComparison.Ordinal) &&
+                lostAck.Session.State == CheckoutCommitState.Ready && lostAck.ViewModel.CheckoutUncertain &&
+                Snapshot(settings) == committed,
+                "Lost acknowledgement failed persisted reconciliation or bypassed cashier review.");
+        }
+        finally { lostAck.Window.Close(); }
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF exact-cash slice", Operation = operation, WindowLoaded = true,
             EmptyBasket = true, TicketPaymentStockSql = true, Duplicate = true, ProcessRestart = true,
             WrongPinRejected = true, WrongTotalRejected = true, StalePriceRejected = true,
-            AfterPaymentRollback = true, UnknownJournalLocked = true, Reconciliation = true,
-            W2Accepted = false, Remaining = "Cashier PIN/session UI, explicit reviewed UI reset, lost-ack fault and broader V1/device parity"
+            AfterPaymentRollback = true, UnknownJournalLocked = true, LostAcknowledgementPersisted = true, Reconciliation = true,
+            W2Accepted = false, Remaining = "Cashier PIN/session UI, explicit reviewed UI reset and broader V1/device parity"
         }));
     }
 

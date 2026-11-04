@@ -13,7 +13,14 @@ public sealed partial record CatalogueHost
 {
     public static CatalogueHost CreateFinancial(CatalogueSettings settings,
         string twoDigitWorkstation, Func<string> transientPinProvider,
-        AuthorizedCheckoutPaymentContext paymentContext)
+        AuthorizedCheckoutPaymentContext paymentContext) =>
+        CreateFinancial(settings, twoDigitWorkstation, transientPinProvider, paymentContext, null);
+
+    // Internal executable acceptance seam. Fault runs AFTER the real MariaDB
+    // port returns from Commit; it cannot substitute posting or financial writers.
+    internal static CatalogueHost CreateFinancial(CatalogueSettings settings,
+        string twoDigitWorkstation, Func<string> transientPinProvider,
+        AuthorizedCheckoutPaymentContext paymentContext, Action? afterCommitAcknowledgementFault)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(transientPinProvider);
@@ -32,6 +39,8 @@ public sealed partial record CatalogueHost
         Func<MySqlConnection> connections = () => new MySqlConnection(settings.ConnectionString);
         var posting = MariaDbCashCheckoutServices.CreatePostingPort(
             connections, twoDigitWorkstation, transientPinProvider);
+        if (afterCommitAcknowledgementFault is not null)
+            posting = new AcknowledgementFaultPort(posting, afterCommitAcknowledgementFault);
         var journal = MariaDbCashCheckoutServices.CreateOperationJournal(connections);
         var binding = ProductionWpfServices.CreateFinancial(
             new MariaDbCatalogueReader(settings.ConnectionString, settings.DataDirectory),
@@ -44,6 +53,16 @@ public sealed partial record CatalogueHost
         if (!vm.CatalogueAvailable)
             throw new InvalidOperationException("Local financial catalogue could not be loaded.");
         return new CatalogueHost(window, vm, binding.Session);
+    }
+
+    private sealed class AcknowledgementFaultPort(
+        IAuthorizedCheckoutPort actualPosting, Action afterCommit) : IAuthorizedCheckoutPort
+    {
+        public void Commit(AuthorizedCheckoutRequest request)
+        {
+            actualPosting.Commit(request);
+            afterCommit();
+        }
     }
 
     private sealed class FinancialSessionSubmission : IContextualCheckoutSubmission,
