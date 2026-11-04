@@ -106,7 +106,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public void SelectCurrent()
     {
         if (SelectedProduct is null) { ScanFeedback = "No product selected"; return; }
-        if (!CatalogueAvailable || !_all.Contains(SelectedProduct)) { ScanFeedback = "Product no longer in catalogue"; SelectedProduct = null; return; }
+        // A candidate must belong to the current snapshot, not merely share its value.
+        // This prevents stale UI objects from being sent to the checkout boundary.
+        if (!CatalogueAvailable || !_all.Any(p => ReferenceEquals(p, SelectedProduct))) { ScanFeedback = "Product no longer in catalogue"; SelectedProduct = null; return; }
         if (string.IsNullOrWhiteSpace(SelectedProduct.Id)) { ScanFeedback = "Invalid product identity"; return; }
         // Preview port explicitly never posts a sale or updates stock.
         ScanFeedback = _selection.Select(SelectedProduct) ? "Selection accepted" : "Checkout unavailable in preview";
@@ -139,13 +141,14 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
 
     private void Refresh()
     {
-        var matches = _all.Where(p => p.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase)
-            || p.Barcode.Contains(SearchText, StringComparison.OrdinalIgnoreCase)).ToArray();
+        var term = SearchText ?? "";
+        var matches = _all.Where(p => (p.Name ?? "").Contains(term, StringComparison.OrdinalIgnoreCase)
+            || (p.Barcode ?? "").Contains(term, StringComparison.OrdinalIgnoreCase)).ToArray();
         VisibleProducts.Clear();
         foreach (var product in matches) VisibleProducts.Add(product);
         PhotoProducts.Clear();
         foreach (var product in matches.Where(HasPhoto)) PhotoProducts.Add(product);
-        if (SelectedProduct is not null && !matches.Contains(SelectedProduct)) SelectedProduct = null;
+        if (SelectedProduct is not null && !matches.Any(p => ReferenceEquals(p, SelectedProduct))) SelectedProduct = null;
         BarcodeCandidates = Array.Empty<ProductSummary>();
         OnPropertyChanged(nameof(BarcodeCandidates));
     }
