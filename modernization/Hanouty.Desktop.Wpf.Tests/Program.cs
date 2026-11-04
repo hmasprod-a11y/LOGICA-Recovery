@@ -410,6 +410,30 @@ frozenCommitVm.ScannerText = "777";
 frozenCommitVm.SearchText = "Other";
 Check(frozenCommitVm.ScannerText == "123" && frozenCommitVm.SearchText == "Milk" &&
     !frozenCommitVm.CanCommit, "unknown sale freezes cashier inputs and prevents replay");
+// CreateFinancial's session-bound adapter must submit to the same selection
+// session and preserve durable reconciliation, not construct a second basket.
+var boundSession = new SessionFinancialSubmission();
+var boundContext = new CashierPaymentContext("cashier-1", "register-1", "MAD", "Cash", 100m);
+var boundServices = AuthorizedWpfServiceRegistration.CreateSessionBound(
+    new Reader(items), new RecordingSelection(), boundSession, () => boundContext);
+var boundAdapter = (IContextualCheckoutSubmission)boundServices.Submission;
+var boundReconciliation = (ICheckoutOutcomeReconciliation)boundServices.Submission;
+Check(boundAdapter.Submit("bound-op", boundContext) == CheckoutSubmissionResult.Committed &&
+    boundSession.Ids.Count == 1 && boundSession.Ids[0] == "bound-op",
+    "contextual commit must reach the existing financial session exactly once");
+Check(boundReconciliation.Reconcile("bound-op") == CheckoutResolution.Persisted &&
+    boundSession.Reconciled.Count == 1, "reconciliation must delegate to the same financial session");
+Check(boundAdapter.Submit("wrong-register", boundContext with { RegisterId = "other" }) ==
+    CheckoutSubmissionResult.Invalidated && boundSession.Ids.Count == 1,
+    "changed register must never reach financial session");
+Check(boundAdapter.Submit("wrong-amount", boundContext with { TenderedAmount = 99m }) ==
+    CheckoutSubmissionResult.Invalidated && boundSession.Ids.Count == 1,
+    "untrusted tender must never reach financial session");
+Check(boundAdapter.Submit("wrong-tender", boundContext with { TenderCode = "Card" }) ==
+    CheckoutSubmissionResult.Invalidated && boundSession.Ids.Count == 1,
+    "noncash tender must never reach financial session");
+Check(boundAdapter.Reconcile("missing") == CheckoutResolution.Absent,
+    "absent durable operation must remain distinct from unknown");
 // W2 UI contracts do not authorize a sale: cashier context must be explicit,
 // and a durable Unknown outcome remains distinct from Absent or Persisted.
 var paymentContext = new CashierPaymentContext("cashier-1", "register-1", "MAD", "cash", 100m);
@@ -648,5 +672,21 @@ sealed class FinancialPreparation : ITrustedWpfCheckoutPreparation
         return new AuthorizedCheckoutRequest(operationId, Mismatch ? "wrong-cashier" : context.CashierId,
             context.CurrencyCode, Return, new[] { new CheckoutBatchLine("article-1", 1) },
             new[] { new CheckoutPayment(Credit ? CheckoutPaymentKind.Credit : CheckoutPaymentKind.Cash, context.TenderedAmount) }, 100m);
+    }
+}
+
+sealed class SessionFinancialSubmission : ICheckoutSubmission, ICheckoutOutcomeReconciliation
+{
+    public List<string> Ids { get; } = new();
+    public List<string> Reconciled { get; } = new();
+    public CheckoutSubmissionResult Submit(string operationId)
+    {
+        Ids.Add(operationId);
+        return CheckoutSubmissionResult.Committed;
+    }
+    public CheckoutResolution Reconcile(string operationId)
+    {
+        Reconciled.Add(operationId);
+        return Ids.Contains(operationId) ? CheckoutResolution.Persisted : CheckoutResolution.Absent;
     }
 }
