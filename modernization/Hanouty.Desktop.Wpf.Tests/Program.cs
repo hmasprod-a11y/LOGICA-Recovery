@@ -264,6 +264,24 @@ var uncertainCommitVm = new CatalogueViewModel(new Reader(items), new RecordingS
 uncertainCommitVm.CommitCheckout();
 Check(!uncertainCommitVm.CanCommit && uncertainCommitVm.CheckoutUncertain,
     "unknown checkout disables commit controls without auto-retry");
+var nullCatalogueVm = new CatalogueViewModel(new NullCatalogueReader(), new RecordingSelection());
+Check(!nullCatalogueVm.CatalogueAvailable && nullCatalogueVm.VisibleProducts.Count == 0 &&
+    !nullCatalogueVm.CanSelectProduct && !nullCatalogueVm.CanCommit,
+    "null production catalogue response must fail closed rather than appear as valid empty stock");
+var unexpectedReaderVm = new CatalogueViewModel(new UnexpectedReader(), new RecordingSelection());
+Check(!unexpectedReaderVm.CatalogueAvailable && unexpectedReaderVm.VisibleProducts.Count == 0,
+    "unexpected catalogue adapter failure must fail closed without showing stale rows");
+var unexpectedSelectionVm = new CatalogueViewModel(new Reader(items), new UnexpectedSelection());
+unexpectedSelectionVm.SelectedProduct = items[0];
+unexpectedSelectionVm.SelectCurrent();
+Check(unexpectedSelectionVm.CheckoutUncertain && !unexpectedSelectionVm.CanSelectProduct,
+    "unexpected checkout selection failure must latch uncertainty");
+var unexpectedSubmissionVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(),
+    submission: new UnexpectedSubmission());
+unexpectedSubmissionVm.CommitCheckout();
+Check(unexpectedSubmissionVm.CheckoutUncertain && !unexpectedSubmissionVm.CanCommit &&
+    unexpectedSubmissionVm.CommitFeedback.Contains("unknown"),
+    "unexpected transactional adapter failure must not enable checkout retry");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
@@ -350,4 +368,22 @@ sealed class ReentrantSubmission : ICheckoutSubmission
         ViewModel!.CommitCheckout();
         return CheckoutSubmissionResult.Committed;
     }
+}
+
+sealed class NullCatalogueReader : ICatalogueReader
+{
+    public IReadOnlyList<ProductSummary> ReadProducts() => null!;
+}
+sealed class UnexpectedReader : ICatalogueReader
+{
+    public IReadOnlyList<ProductSummary> ReadProducts() => throw new System.FormatException("corrupt local data");
+}
+sealed class UnexpectedSelection : IProductSelection
+{
+    public bool Select(ProductSummary product) => throw new System.FormatException("unexpected application adapter failure");
+}
+sealed class UnexpectedSubmission : ICheckoutSubmission
+{
+    public CheckoutSubmissionResult Submit(string stableOperationId) =>
+        throw new System.FormatException("unexpected checkout adapter failure");
 }
