@@ -6,6 +6,10 @@ on:
         description: 'Reviewed WPF PR #96 commit SHA (40 hex)'
         required: true
         type: string
+      architecture_sha:
+        description: 'Reviewed Architecture PR #95 commit SHA (40 hex)'
+        required: true
+        type: string
       inventory_sha:
         description: 'Reviewed Inventory PR #88 commit SHA (40 hex)'
         required: true
@@ -20,7 +24,7 @@ jobs:
       - name: Validate pinned reviewed source IDs
         shell: pwsh
         run: |
-          foreach ($sha in @('${{ inputs.wpf_sha }}','${{ inputs.inventory_sha }}')) {
+          foreach ($sha in @('${{ inputs.wpf_sha }}','${{ inputs.inventory_sha }}','${{ inputs.architecture_sha }}')) {
             if ($sha -cnotmatch '^[0-9a-f]{40}$') { throw "Expected exact 40-hex source SHA: $sha" }
           }
       - uses: actions/checkout@v4
@@ -34,14 +38,19 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.architecture_sha }}
+          path: architecture
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
           ref: ${{ inputs.inventory_sha }}
           path: inventory
           persist-credentials: false
-      - name: Assert three exact source identities
+      - name: Assert four exact source identities
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($entry in @(@('qa','${{ github.sha }}'),@('wpf','${{ inputs.wpf_sha }}'),@('inventory','${{ inputs.inventory_sha }}'))) {
+          foreach ($entry in @(@('qa','${{ github.sha }}'),@('wpf','${{ inputs.wpf_sha }}'),@('inventory','${{ inputs.inventory_sha }}'),@('architecture','${{ inputs.architecture_sha }}'))) {
             $actual = (git -C $entry[0] rev-parse HEAD).Trim()
             if ($actual -cne $entry[1]) { throw "Unexpected source for $($entry[0]): $actual" }
             "$($entry[0])=$actual" | Add-Content provenance-w1.txt
@@ -59,7 +68,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $wpfApi = 'wpf/modernization/Hanouty.Desktop.Wpf/Presentation/CatalogueViewModel.cs'
-          $architectureApi = 'qa/modernization/architecture/Hanouty.ArchitectureBridge/CheckoutComposition.cs'
+          $architectureApi = 'architecture/modernization/architecture/Hanouty.ArchitectureBridge/CheckoutComposition.cs'
           if (-not (Test-Path -LiteralPath $wpfApi)) { throw "W1 BLOCKED: missing WPF catalogue contract: $wpfApi" }
           if (-not (Test-Path -LiteralPath $architectureApi)) { throw "W1 BLOCKED: missing architecture checkout contract: $architectureApi" }
           $wpf = Get-Content -LiteralPath $wpfApi -Raw
