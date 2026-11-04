@@ -1,0 +1,63 @@
+name: QA W2 cash-sale production graph and acceptance
+on:
+  push:
+    branches: [integration/hanouty-qa-desktop-inventory-20261102]
+    paths: ['.github/workflows/qa-w2-cash-sale.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  w2-cash-sale:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: qa
+      - uses: actions/checkout@v4
+        with:
+          ref: 3bba07b8d7ab3ab7b8f186a0f70876656ef8e236
+          path: checkout
+      - uses: actions/checkout@v4
+        with:
+          ref: 4e45aa5368732aaa52d89a2fb369358b0ef467cb
+          path: architecture
+      - uses: actions/checkout@v4
+        with:
+          ref: fb586e27dfd5477e6cc2156e038f253a9fe9bcb7
+          path: wpf
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build real checkout production library with one Architecture assembly
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory evidence -Force | Out-Null
+          foreach($name in @('qa','checkout','architecture','wpf')) {
+            "$name=$((git -C $name rev-parse HEAD).Trim())" | Add-Content evidence/source-manifest.txt
+          }
+          $architectureProject=(Resolve-Path architecture/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj).Path
+          dotnet build checkout/modernization/checkout-mariadb-production/CheckoutMariaDbProduction.csproj -c Release --nologo "-p:ArchitectureProject=$architectureProject"
+          if($LASTEXITCODE -ne 0) { throw 'CHECKOUT_OWNER: real production Checkout library failed build against Architecture project' }
+          dotnet build wpf/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj -c Release --nologo
+          if($LASTEXITCODE -ne 0) { throw 'WPF_OWNER: actual WPF project failed build' }
+          dotnet build qa/modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj -c Release --nologo
+          if($LASTEXITCODE -ne 0) { throw 'ARCHITECTURE_OWNER: actual QA Host failed build' }
+      - name: Execute cash-sale acceptance starting with empty TABLE_XX
+        shell: pwsh
+        run: |
+          # Fail closed until real WPF -> financial port -> SQL readback exists.
+          # No seeded basket, fake writer, mock payment, or static-success gate.
+          $source=Get-Content qa/modernization/Hanouty.Desktop.Bootstrap/Program.cs -Raw
+          if($source -notmatch 'CreateFinancial|CreateProduction') {
+            throw 'ARCHITECTURE_OWNER W2_BLOCKED: Host Program.Main accepts only --catalogue-only; real financial WPF command is not wired. Cannot execute empty TABLE_XX -> selection -> cash-sale -> SQL readback, rollback, duplicate, PIN/price rejection, Unknown. W2 remains disabled.'
+          }
+          throw 'QA_OWNER W2_NOT_ACCEPTED: executable disposable MariaDB SQL readback/rollback/duplicate/Unknown suite is not yet implemented. Compilation alone is not cash-sale evidence.'
+      - name: Upload source manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-w2-production-source-manifest
+          path: evidence/
+          if-no-files-found: warn
