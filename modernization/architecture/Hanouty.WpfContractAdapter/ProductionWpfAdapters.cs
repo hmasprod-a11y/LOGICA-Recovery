@@ -52,8 +52,7 @@ public sealed class ProductionWpfProductSelection : Wpf.IProductSelection
         // barcodes MUST preserve that identity even when the tile has a photo;
         // a barcode scan alone cannot silently choose a variant.
         if (string.IsNullOrWhiteSpace(current.Barcode))
-            return current.HasImage &&
-                _session.SelectImage(current).Outcome == SelectionOutcome.Selected;
+            return _session.SelectArticle(current).Outcome == SelectionOutcome.Selected;
         var matching = _session.Products.Count(p =>
             string.Equals(p.Barcode, current.Barcode, StringComparison.Ordinal));
         if (matching > 1)
