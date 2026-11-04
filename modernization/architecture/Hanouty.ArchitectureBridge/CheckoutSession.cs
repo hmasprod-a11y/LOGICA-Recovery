@@ -11,6 +11,7 @@ public sealed class CheckoutSession
     private readonly CheckoutComposition _composition;
     private readonly CheckoutBatchController _batch;
     private string? _operationId;
+    private readonly List<ProductSummary> _stagedImages = new();
 
     internal CheckoutSession(CheckoutComposition composition, CheckoutBatchController batch)
     {
@@ -52,13 +53,16 @@ public sealed class CheckoutSession
             !string.Equals(visible.VariantId, product.VariantId, StringComparison.Ordinal) ||
             !_composition.IsCurrentImage(product))
             return new SelectionResponse(SelectionOutcome.InvalidCandidates, null);
-        return _batch.StageImage(new ArticleCandidate(product.ArticleId, product.Barcode ?? ""), quantity);
+        var selected = _batch.StageImage(new ArticleCandidate(product.ArticleId, product.Barcode ?? ""), quantity);
+        if (selected.Outcome == SelectionOutcome.Selected) _stagedImages.Add(product);
+        return selected;
     }
 
     public void Clear()
     {
         EnsureNoSubmission();
         _batch.Clear();
+        _stagedImages.Clear();
     }
 
     public CheckoutBatchStatus Submit(string operationId)
@@ -68,9 +72,16 @@ public sealed class CheckoutSession
         if (_operationId is not null && !string.Equals(_operationId, operationId, StringComparison.Ordinal))
             throw new InvalidOperationException("An existing operation must be reconciled before changing its ID.");
         if (_operationId is null) _operationId = operationId;
+        // A photo/variant can change after the operator stages it but before
+        // payment. Refuse the entire operation before any durable write.
+        foreach (var image in _stagedImages)
+            if (!_composition.IsCurrentImage(image)) return CheckoutBatchStatus.Invalidated;
         var result = _batch.Commit(operationId);
         if (result == CheckoutBatchStatus.Committed || result == CheckoutBatchStatus.Empty)
+        {
             _operationId = null;
+            _stagedImages.Clear();
+        }
         // Invalidated retains operation ID until the operator clears/rebuilds.
         return result;
     }
@@ -80,7 +91,11 @@ public sealed class CheckoutSession
         if (_batch.State != CheckoutCommitState.OutcomeUnknown)
             throw new InvalidOperationException("No uncertain checkout outcome.");
         var result = _composition.Reconcile(_batch);
-        if (result != CheckoutOperationOutcome.Unknown) _operationId = null;
+        if (result != CheckoutOperationOutcome.Unknown)
+        {
+            _operationId = null;
+            if (result == CheckoutOperationOutcome.Persisted) _stagedImages.Clear();
+        }
         return result;
     }
 
@@ -89,6 +104,7 @@ public sealed class CheckoutSession
         if (_batch.State != CheckoutCommitState.Ready)
             throw new InvalidOperationException("Cannot discard an uncertain operation.");
         _batch.Clear();
+        _stagedImages.Clear();
         _operationId = null;
     }
 
