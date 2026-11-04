@@ -30,6 +30,10 @@ assert "Commit()" not in apply_body, "Apply must never commit caller-owned trans
 assert "Rollback()" not in apply_body, "Apply must never roll back caller-owned transaction"
 assert "transaction.Commit();" in source.split("internal static void Apply(", 1)[0], "Execute must commit its own transaction"
 assert "transaction.Rollback();" in source.split("internal static void Apply(", 1)[0], "Execute must roll back failed transaction"
+assert "BeginTransaction(IsolationLevel.ReadCommitted)" in source.split("internal static void Apply(", 1)[0], "Execute must start a dedicated transaction"
+assert "Apply(connection, transaction, plan);" in source.split("internal static void Apply(", 1)[0], "Execute must delegate stock and audit to Apply"
+assert source.index("Apply(connection, transaction, plan);") < source.index("transaction.Commit();"), "Execute must commit only after Apply succeeds"
+assert source.index("transaction.Commit();") < source.index("transaction.Rollback();"), "Execute must roll back failures in its catch handler"
 assert "ALTER TABLE" not in source and "DROP TABLE" not in source
 print("PASS: stock adjustment writer source safety contract (not a MariaDB integration test)")
 
