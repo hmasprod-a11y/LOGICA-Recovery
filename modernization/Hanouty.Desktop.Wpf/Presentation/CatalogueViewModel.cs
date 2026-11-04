@@ -38,6 +38,11 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private CashierPaymentContext? _paymentContext;
     public CashierPaymentContext? PaymentContext { get => _paymentContext; set { if (_selectionInFlight || CheckoutUncertain) return; _paymentContext = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanCommit)); } }
     public string? PendingOperationId => _pendingOperationId;
+    private CheckoutResolution _reviewedResolution = CheckoutResolution.Unknown;
+    // A durable result is evidence for a cashier review, never permission to retry.
+    public CheckoutResolution ReviewedResolution { get => _reviewedResolution; private set { _reviewedResolution = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanReviewResolvedCheckout)); } }
+    public bool CanReviewResolvedCheckout => CheckoutUncertain && ReviewedResolution != CheckoutResolution.Unknown;
+
     public System.Windows.Input.ICommand ReconcileCommand { get; }
     private readonly ICheckoutOutcomeReconciliation? _reconciliation;
     public string CommitFeedback { get => _commitFeedback; private set { _commitFeedback = value; OnPropertyChanged(); } }
@@ -219,6 +224,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         try
         {
             var resolution = _reconciliation.Reconcile(_pendingOperationId);
+            ReviewedResolution = resolution;
             CommitFeedback = resolution switch
             {
                 CheckoutResolution.Persisted => "Sale persisted — cashier review required before a new checkout",
@@ -230,6 +236,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
+            ReviewedResolution = CheckoutResolution.Unknown;
             CommitFeedback = "Checkout status unknown — reconcile before retry";
         }
     }
@@ -241,6 +248,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         if (PaymentContext?.IsWellFormed != true) { CommitFeedback = "Cashier and payment context required"; return; }
         if (CheckoutUncertain) { CommitFeedback = "Checkout status unknown — reconcile before retry"; return; }
         if (!CatalogueAvailable) { CommitFeedback = "Local catalogue unavailable"; return; }
+        ReviewedResolution = CheckoutResolution.Unknown;
         // Stable operation identity is retained for invalidation and unknown outcomes.
         _pendingOperationId ??= Guid.NewGuid().ToString("N");
         try
