@@ -62,6 +62,12 @@ public sealed class CheckoutComposition
             string.Equals(live[0].ImagePath, tile.ImagePath, StringComparison.Ordinal);
     }
 
+    internal bool IsCurrentArticle(ProductSummary selected)
+    {
+        var live = Validate(_reader.RefreshArticle(selected.ArticleId));
+        return live.Count == 1 && live[0] == selected;
+    }
+
     // One WPF session owns one batch and one stable operation ID. No demo fallback.
     public CheckoutSession CreateSession() => new(this, CreateCheckoutBatch());
 
