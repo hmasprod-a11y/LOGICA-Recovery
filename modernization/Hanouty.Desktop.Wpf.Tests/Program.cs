@@ -12,6 +12,26 @@ var items = new[]
     new ProductSummary("4", "Duplicate A", "777", "a.png"),
     new ProductSummary("5", "Duplicate B", "777", null)
 };
+// Barcode identity must agree with the production gateway (ordinal comparison).
+// A case-folded scan must never stage an article that has a different live barcode.
+var caseSelection = new RecordingSelection();
+var caseVm = new CatalogueViewModel(new Reader(new[]
+{
+    new ProductSummary("case-a", "Case A", "AbC123"),
+    new ProductSummary("case-b", "Case B", "abc123")
+}), caseSelection);
+caseVm.ScannerText = "ABC123";
+caseVm.ScanBarcode();
+Check(caseVm.ScanFeedback == "Product not found" && caseSelection.Selected.Count == 0,
+    "barcode scan must not case-fold identity before production checkout");
+caseVm.ScannerText = "AbC123";
+caseVm.ScanBarcode();
+Check(caseSelection.Selected.Count == 1 && caseSelection.Selected[0].Id == "case-a",
+    "exact barcode scan must select only the matching live article");
+caseVm.ScannerText = "abc123";
+caseVm.ScanBarcode();
+Check(caseSelection.Selected.Count == 2 && caseSelection.Selected[1].Id == "case-b",
+    "case-distinct barcode must resolve independently");
 var selection = new RecordingSelection();
 var vm = new CatalogueViewModel(new Reader(items), selection, new ImageFixture());
 Check(vm.VisibleProducts.Count == 5, "all catalogue products must appear, including barcode-free");
