@@ -29,7 +29,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private string _scannerText = "";
     private string _scanFeedback = "";
     private bool _checkoutUncertain;
-    public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); } }
+    public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); OnPropertyChanged(nameof(CanCommit)); } }
     private readonly IProductSelection _selection;
     private bool _selectionInFlight;
     private readonly ICheckoutSubmission? _submission;
@@ -160,6 +160,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         {
             _selectionInFlight = true;
             OnPropertyChanged(nameof(CanSelectProduct));
+            OnPropertyChanged(nameof(CanCommit));
             ScanFeedback = _selection.Select(SelectedProduct) ? "Selection accepted" : "Selection rejected";
             if (ScanFeedback == "Selection accepted" && HasBarcodeAmbiguity)
             {
@@ -179,14 +180,15 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         {
             _selectionInFlight = false;
             OnPropertyChanged(nameof(CanSelectProduct));
+            OnPropertyChanged(nameof(CanCommit));
         }
     }
 
     public void CommitCheckout()
     {
+        if (_selectionInFlight) { CommitFeedback = "Checkout already in progress"; return; }
         if (_submission is null) { CommitFeedback = "Checkout submission unavailable"; return; }
         if (CheckoutUncertain) { CommitFeedback = "Checkout status unknown — reconcile before retry"; return; }
-        if (_selectionInFlight) { CommitFeedback = "Selection already in progress"; return; }
         if (!CatalogueAvailable) { CommitFeedback = "Local catalogue unavailable"; return; }
         // Stable operation identity is retained for invalidation and unknown outcomes.
         _pendingOperationId ??= Guid.NewGuid().ToString("N");
