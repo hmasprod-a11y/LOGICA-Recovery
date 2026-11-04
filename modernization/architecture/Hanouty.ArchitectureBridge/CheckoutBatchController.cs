@@ -11,6 +11,7 @@ public interface IAtomicCheckoutBatchPort
 }
 public sealed record CheckoutBatchLine(string ArticleId, int Quantity);
 public enum CheckoutBatchStatus { Committed, Empty, Invalidated }
+public enum CheckoutCommitState { Ready, OutcomeUnknown }
 
 // Staging does not mutate the cart. Every candidate is revalidated at commit,
 // preventing a stale WPF tile or changed barcode from becoming a sale line.
@@ -21,6 +22,11 @@ public sealed class CheckoutBatchController
     private readonly IAtomicCheckoutBatchPort _cart;
     private readonly List<PendingLine> _pending = new();
     private bool _committing;
+    private string? _uncertainOperationId;
+
+    public CheckoutCommitState State => _uncertainOperationId is null
+        ? CheckoutCommitState.Ready : CheckoutCommitState.OutcomeUnknown;
+    public string? UncertainOperationId => _uncertainOperationId;
 
     public CheckoutBatchController(ICheckoutSelectionCatalogue catalogue,
         ICheckoutVariantPrompt prompt, IAtomicCheckoutBatchPort cart)
@@ -92,11 +98,30 @@ public sealed class CheckoutBatchController
                     return CheckoutBatchStatus.Invalidated;
                 lines.Add(new CheckoutBatchLine(pending.Candidate.ArticleId, pending.Quantity));
             }
-            _cart.AddBatch(lines.AsReadOnly(), operationId);
+            try { _cart.AddBatch(lines.AsReadOnly(), operationId); }
+            catch
+            {
+                // A transaction may have committed before acknowledgement failed.
+                // Fail closed until durable operation-ID reconciliation.
+                _uncertainOperationId = operationId;
+                throw;
+            }
             _pending.Clear();
             return CheckoutBatchStatus.Committed;
         }
         finally { _committing = false; }
+    }
+
+    // Caller MUST verify durable operation ID with Checkout Application storage;
+    // never infer persistence from a UI timeout or retry automatically.
+    public void ReconcileUnknownOutcome(string operationId, bool persisted)
+    {
+        if (_committing) throw new InvalidOperationException("Checkout batch is committing.");
+        if (_uncertainOperationId is null ||
+            !string.Equals(operationId, _uncertainOperationId, StringComparison.Ordinal))
+            throw new InvalidOperationException("No matching uncertain checkout operation.");
+        if (persisted) _pending.Clear();
+        _uncertainOperationId = null;
     }
 
     private SelectionResponse RevalidateBarcode(PendingLine pending)
@@ -121,6 +146,8 @@ public sealed class CheckoutBatchController
     private void EnsureMutable()
     {
         if (_committing) throw new InvalidOperationException("Checkout batch is committing.");
+        if (_uncertainOperationId is not null)
+            throw new InvalidOperationException("Checkout outcome unknown; reconcile before modifying batch.");
     }
     private static void EnsureQuantity(int quantity)
     {
