@@ -62,8 +62,31 @@ public sealed class ProductionWpfProductSelection : Wpf.IProductSelection
     }
 }
 
+// Application-owned submission adapter: WPF only supplies the stable operation ID.
+// No financial posting is authorized by this adapter without a configured
+// IAtomicCheckoutBatchPort and durable operation journal in CheckoutComposition.
+public sealed class ProductionWpfCheckoutSubmission : Wpf.ICheckoutSubmission
+{
+    private readonly CheckoutSession _session;
+    public ProductionWpfCheckoutSubmission(CheckoutSession session) =>
+        _session = session ?? throw new ArgumentNullException(nameof(session));
+
+    public Wpf.CheckoutSubmissionResult Submit(string stableOperationId)
+    {
+        if (string.IsNullOrWhiteSpace(stableOperationId))
+            throw new ArgumentException("Stable operation ID required.", nameof(stableOperationId));
+        return _session.Submit(stableOperationId) switch
+        {
+            CheckoutBatchStatus.Committed => Wpf.CheckoutSubmissionResult.Committed,
+            CheckoutBatchStatus.Empty => Wpf.CheckoutSubmissionResult.Empty,
+            CheckoutBatchStatus.Invalidated => Wpf.CheckoutSubmissionResult.Invalidated,
+            _ => Wpf.CheckoutSubmissionResult.Unknown
+        };
+    }
+}
+
 public sealed record WpfProductionBinding(CheckoutSession Session,
-    Wpf.ICatalogueReader Catalogue, Wpf.IProductSelection Checkout);
+    Wpf.ICatalogueReader Catalogue, Wpf.IProductSelection Checkout,\n    Wpf.ICheckoutSubmission Submission);
 
 public static class ProductionWpfServices
 {
@@ -75,6 +98,6 @@ public static class ProductionWpfServices
         var session = composition.CreateSession();
         return new WpfProductionBinding(session,
             new ProductionWpfCatalogueReader(session),
-            new ProductionWpfProductSelection(session));
+            new ProductionWpfProductSelection(session),\n            new ProductionWpfCheckoutSubmission(session));
     }
 }
