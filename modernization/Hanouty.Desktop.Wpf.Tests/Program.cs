@@ -432,7 +432,7 @@ Check(boundAdapter.Submit("wrong-amount", boundContext with { TenderedAmount = 9
 Check(boundAdapter.Submit("wrong-tender", boundContext with { TenderCode = "Card" }) ==
     CheckoutSubmissionResult.Invalidated && boundSession.Ids.Count == 1,
     "noncash tender must never reach financial session");
-Check(boundAdapter.Reconcile("missing") == CheckoutResolution.Absent,
+Check(boundReconciliation.Reconcile("missing") == CheckoutResolution.Absent,
     "absent durable operation must remain distinct from unknown");
 // W2 UI contracts do not authorize a sale: cashier context must be explicit,
 // and a durable Unknown outcome remains distinct from Absent or Persisted.
