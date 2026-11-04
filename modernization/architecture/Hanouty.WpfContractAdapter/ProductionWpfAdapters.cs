@@ -53,16 +53,19 @@ public sealed class ProductionWpfProductSelection : Wpf.IProductSelection
     }
 }
 
-public sealed record WpfProductionBinding(CheckoutSession Session,\n    Wpf.ICatalogueReader Catalogue, Wpf.IProductSelection Checkout);\n\npublic static class ProductionWpfServices
+public sealed record WpfProductionBinding(CheckoutSession Session,
+    Wpf.ICatalogueReader Catalogue, Wpf.IProductSelection Checkout);
+
+public static class ProductionWpfServices
 {
     // Host invokes this at App.ResolveServices using concrete Inventory,
     // Checkout and cashier variant-prompt adapters. No empty fallback.
-    public static (Wpf.ICatalogueReader Catalogue, Wpf.IProductSelection Checkout)
-        Create(CheckoutComposition composition)
+    public static WpfProductionBinding Create(CheckoutComposition composition)
     {
         ArgumentNullException.ThrowIfNull(composition);
         var session = composition.CreateSession();
-        return (new ProductionWpfCatalogueReader(session),
-                new ProductionWpfProductSelection(session));
+        return new WpfProductionBinding(session,
+            new ProductionWpfCatalogueReader(session),
+            new ProductionWpfProductSelection(session));
     }
 }
