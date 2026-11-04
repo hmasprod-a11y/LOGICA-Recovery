@@ -52,6 +52,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         ScanCommand = new DelegateCommand(_ => ScanBarcode());
         SelectCommand = new DelegateCommand(product =>
         {
+            // A nested touch event must not replace the in-flight article.
+            if (_selectionInFlight) { ScanFeedback = "Selection already in progress"; return; }
+            if (CheckoutUncertain) { ScanFeedback = "Checkout status unknown — reconcile before retry"; return; }
             // A non-null command parameter must be a catalogue article.
             // Never fall back to a previously selected row on malformed input.
             if (product is not null && product is not ProductSummary)
@@ -252,6 +255,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         set
         {
             if (ReferenceEquals(_selectedProduct, value)) return;
+            if (_selectionInFlight || CheckoutUncertain) return;
             _selectedProduct = value;
             OnPropertyChanged();
         }
