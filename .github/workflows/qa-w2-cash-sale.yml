@@ -16,7 +16,7 @@ jobs:
           path: qa
       - uses: actions/checkout@v4
         with:
-          ref: 3bba07b8d7ab3ab7b8f186a0f70876656ef8e236
+          ref: fc630cc1cc2802b35c56e5528dd0ad5043089847
           path: checkout
       - uses: actions/checkout@v4
         with:
@@ -37,13 +37,29 @@ jobs:
           foreach($name in @('qa','checkout','architecture','wpf')) {
             "$name=$((git -C $name rev-parse HEAD).Trim())" | Add-Content evidence/source-manifest.txt
           }
-          $architectureProject=(Resolve-Path architecture/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj).Path
-          dotnet build checkout/modernization/checkout-mariadb-production/CheckoutMariaDbProduction.csproj -c Release --nologo "-p:ArchitectureProject=$architectureProject"
-          if($LASTEXITCODE -ne 0) { throw 'CHECKOUT_OWNER: real production Checkout library failed build against Architecture project' }
-          dotnet build wpf/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj -c Release --nologo
-          if($LASTEXITCODE -ne 0) { throw 'WPF_OWNER: actual WPF project failed build' }
-          dotnet build qa/modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj -c Release --nologo
-          if($LASTEXITCODE -ne 0) { throw 'ARCHITECTURE_OWNER: actual QA Host failed build' }
+          # Compose one executable project graph. Do not build the independent WPF checkout:
+          # its relative Architecture reference is absent in that checkout and would
+          # compile a different Architecture assembly from the financial library.
+          $qa=(Resolve-Path qa).Path
+          $arch=(Resolve-Path architecture/modernization/architecture).Path
+          $wpf=(Resolve-Path wpf/modernization/Hanouty.Desktop.Wpf).Path
+          $archDestination=Join-Path $qa 'modernization/architecture'
+          New-Item -ItemType Directory $archDestination -Force | Out-Null
+          Copy-Item (Join-Path $arch '*') $archDestination -Recurse -Force
+          $wpfDestination=Join-Path $qa 'modernization/Hanouty.Desktop.Wpf'
+          New-Item -ItemType Directory $wpfDestination -Force | Out-Null
+          Copy-Item (Join-Path $wpf '*') $wpfDestination -Recurse -Force
+          $architectureProject=(Resolve-Path (Join-Path $archDestination 'Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj')).Path
+          $checkoutProject=(Resolve-Path checkout/modernization/checkout-mariadb-production/CheckoutMariaDbProduction.csproj).Path
+          dotnet build $checkoutProject -c Release --nologo "-p:ArchitectureProject=$architectureProject"
+          if($LASTEXITCODE -ne 0) { throw 'CHECKOUT_OWNER: production Checkout failed against the single QA Architecture project' }
+          dotnet build (Join-Path $wpfDestination 'Hanouty.Desktop.Wpf.csproj') -c Release --nologo
+          if($LASTEXITCODE -ne 0) { throw 'WPF_OWNER: actual WPF project failed against composed QA Architecture project' }
+          dotnet build (Join-Path $qa 'modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj') -c Release --nologo
+          if($LASTEXITCODE -ne 0) { throw 'ARCHITECTURE_OWNER: composed QA Host failed build' }
+          # Verify the actual build inputs, not merely independent passing checkouts.
+          $manifest=@('architecture='+((git -C architecture rev-parse HEAD).Trim()),'checkout='+((git -C checkout rev-parse HEAD).Trim()),'wpf='+((git -C wpf rev-parse HEAD).Trim()),'qa='+((git -C qa rev-parse HEAD).Trim()))
+          $manifest | Set-Content evidence/composed-source-manifest.txt
       - name: Execute cash-sale acceptance starting with empty TABLE_XX
         shell: pwsh
         run: |
