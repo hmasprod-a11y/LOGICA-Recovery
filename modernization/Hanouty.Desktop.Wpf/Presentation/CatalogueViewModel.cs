@@ -31,6 +31,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private bool _checkoutUncertain;
     public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); } }
     private readonly IProductSelection _selection;
+    private bool _selectionInFlight;
     private readonly IProductImageAvailability _images;
 
     public CatalogueViewModel(ICatalogueReader reader, IProductSelection selection, IProductImageAvailability? images = null)
@@ -68,7 +69,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public System.Windows.FlowDirection LayoutDirection => IsRightToLeft ? System.Windows.FlowDirection.RightToLeft : System.Windows.FlowDirection.LeftToRight;
     public IReadOnlyList<ProductSummary> BarcodeCandidates { get; private set; } = Array.Empty<ProductSummary>();
     public bool HasBarcodeAmbiguity => BarcodeCandidates.Count > 1;
-    public bool CanSelectProduct => CatalogueAvailable && !CheckoutUncertain;
+    public bool CanSelectProduct => CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
 
     public void ReloadCatalogue()
     {
@@ -132,6 +133,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public void SelectCurrent()
     {
         if (CheckoutUncertain) { ScanFeedback = "Checkout status unknown — reconcile before retry"; return; }
+        if (_selectionInFlight) { ScanFeedback = "Selection already in progress"; return; }
         if (!CatalogueAvailable) { ScanFeedback = "Local catalogue unavailable"; return; }
         if (SelectedProduct is null) { ScanFeedback = "No product selected"; return; }
         if (BarcodeCandidates.Count > 1 && !BarcodeCandidates.Any(p => ReferenceEquals(p, SelectedProduct)))
@@ -146,6 +148,8 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         // Selection is delegated to the injected Application boundary; WPF never posts directly.
         try
         {
+            _selectionInFlight = true;
+            OnPropertyChanged(nameof(CanSelectProduct));
             ScanFeedback = _selection.Select(SelectedProduct) ? "Selection accepted" : "Selection rejected";
             if (ScanFeedback == "Selection accepted" && HasBarcodeAmbiguity)
             {
@@ -160,6 +164,11 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             // Do not retry a potentially committed operation on transport failure.
             CheckoutUncertain = true;
             ScanFeedback = "Checkout status unknown — reconcile before retry";
+        }
+        finally
+        {
+            _selectionInFlight = false;
+            OnPropertyChanged(nameof(CanSelectProduct));
         }
     }
 
