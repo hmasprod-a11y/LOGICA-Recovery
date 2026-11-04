@@ -255,7 +255,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         set
         {
             if (ReferenceEquals(_selectedProduct, value)) return;
-            if (_selectionInFlight || CheckoutUncertain) return;
+            if (_selectionInFlight) return;
             _selectedProduct = value;
             OnPropertyChanged();
         }
