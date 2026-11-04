@@ -22,6 +22,7 @@ static class Program
             throw new InvalidOperationException("Refusing non-disposable MariaDB; requires loopback:3306/hanouty_w1_disposable");
         var folder = Path.Combine(Path.GetTempPath(), "hanouty-w1-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(folder, "bd", "images"));
+        bool fixtureCreated = false;
         File.WriteAllBytes(Path.Combine(folder, "bd", "images", "exists.png"), new byte[] { 137, 80, 78, 71 });
         try
         {
@@ -29,8 +30,13 @@ static class Program
             {
                 db.Open();
                 // Dedicated CI-only database; replace only the fixture table, never any shop schema.
-                Sql(db, "DROP TABLE IF EXISTS TABLE_ARTICLES");
+                using (var check = new MySqlCommand("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'TABLE_ARTICLES'", db))
+                {
+                    if (Convert.ToInt64(check.ExecuteScalar()) != 0)
+                        throw new InvalidOperationException("Refusing existing TABLE_ARTICLES even on disposable target.");
+                }
                 Sql(db, "CREATE TABLE TABLE_ARTICLES (ID_ARTICLE VARCHAR(128) NULL, Code VARCHAR(128) NULL, Article VARCHAR(255), Images VARCHAR(255)) ENGINE=InnoDB");
+                fixtureCreated = true;
                 Sql(db, "INSERT INTO TABLE_ARTICLES VALUES ('A-1','Q''42','First','exists.png'),('A-2','Q''42','Variant','missing.png'),('A-3',NULL,'No barcode',NULL),('A-4','','Image-only','0')");
             }
             var reader = new MariaDbCatalogueReader(connectionString, folder);
@@ -77,7 +83,8 @@ static class Program
         }
         finally
         {
-            try { using var db = new MySqlConnection(connectionString); db.Open(); Sql(db, "DROP TABLE IF EXISTS TABLE_ARTICLES"); } catch { }
+            if (fixtureCreated)
+                try { using var db = new MySqlConnection(connectionString); db.Open(); Sql(db, "DROP TABLE IF EXISTS TABLE_ARTICLES"); } catch { }
             Directory.Delete(folder, true);
         }
     }
