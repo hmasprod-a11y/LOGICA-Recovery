@@ -27,7 +27,7 @@ public sealed record CatalogueSettings(string ConnectionString, string DataDirec
     }
 }
 
-public sealed record CatalogueHost(MainWindow Window, CatalogueViewModel ViewModel,
+public sealed partial record CatalogueHost(MainWindow Window, CatalogueViewModel ViewModel,
     CheckoutSession Session)
 {
     // W1 is deliberately read-only. It stages real catalogue selections, but

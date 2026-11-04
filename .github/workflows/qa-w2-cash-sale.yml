@@ -29,7 +29,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: fc630cc1cc2802b35c56e5528dd0ad5043089847
+          ref: f87aada22d596838100e50c23e51a79f640b4ad4
           path: checkout
           persist-credentials: false
       - uses: actions/setup-dotnet@v4
@@ -40,7 +40,7 @@ jobs:
           CHECKOUT_TEST_CONNECTION: Server=127.0.0.1;Port=3306;Database=checkout_disposable;Uid=checkout_test;Pwd=checkout-test-only;SslMode=Disabled;
         run: |
           set -euo pipefail
-          test "$(git -C checkout rev-parse HEAD)" = fc630cc1cc2802b35c56e5528dd0ad5043089847
+          test "$(git -C checkout rev-parse HEAD)" = f87aada22d596838100e50c23e51a79f640b4ad4
           test -f qa/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj
           arch="$PWD/qa/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj"
           dotnet run --project checkout/modernization/checkout-mariadb-boundary/CheckoutMariaDbBoundary.csproj --configuration Release --property:ArchitectureProject="$arch"
@@ -54,7 +54,7 @@ jobs:
           path: qa
       - uses: actions/checkout@v4
         with:
-          ref: fc630cc1cc2802b35c56e5528dd0ad5043089847
+          ref: f87aada22d596838100e50c23e51a79f640b4ad4
           path: checkout
       - uses: actions/checkout@v4
         with:
@@ -62,7 +62,7 @@ jobs:
           path: architecture
       - uses: actions/checkout@v4
         with:
-          ref: 14b79c168ec9c32d5e7c0d1ffd0184da5c8a8489
+          ref: ffd5fb3ae186bebab97ad5f989c70d1b301c528b
           path: wpf
       - uses: actions/setup-dotnet@v4
         with:
@@ -80,7 +80,10 @@ jobs:
           # compile a different Architecture assembly from the financial library.
           $qa=(Resolve-Path qa).Path
           $wpf=(Resolve-Path wpf/modernization/Hanouty.Desktop.Wpf).Path
-          # QA owns the one Architecture assembly; PR95 is a contract source, not a second copy.
+          # Exact PR95 contracts and linked production sources form one assembly.
+          Copy-Item architecture/modernization/architecture qa/modernization -Recurse -Force
+          Copy-Item architecture/recovered-source qa -Recurse -Force
+          Copy-Item wpf/modernization/Hanouty.Desktop.Wpf.Tests qa/modernization -Recurse -Force
           $wpfDestination=Join-Path $qa 'modernization/Hanouty.Desktop.Wpf'
           New-Item -ItemType Directory $wpfDestination -Force | Out-Null
           Copy-Item (Join-Path $wpf '*') $wpfDestination -Recurse -Force
@@ -90,8 +93,10 @@ jobs:
           if($LASTEXITCODE -ne 0) { throw 'CHECKOUT_OWNER: production Checkout failed against the single QA Architecture project' }
           dotnet build (Join-Path $wpfDestination 'Hanouty.Desktop.Wpf.csproj') -c Release --nologo
           if($LASTEXITCODE -ne 0) { throw 'WPF_OWNER: actual WPF project failed against composed QA Architecture project' }
-          dotnet build (Join-Path $qa 'modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj') -c Release --nologo
+          dotnet build (Join-Path $qa 'modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj') -c Release --nologo "-p:ArchitectureProject=$architectureProject" "-p:CheckoutProductionProject=$checkoutProject"
           if($LASTEXITCODE -ne 0) { throw 'ARCHITECTURE_OWNER: composed QA Host failed build' }
+          dotnet run --project qa/modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj -c Release
+          if($LASTEXITCODE -ne 0) { throw 'WPF_OWNER: full actual WPF test suite failed' }
           # Verify the actual build inputs, not merely independent passing checkouts.
           $manifest=@('architecture='+((git -C architecture rev-parse HEAD).Trim()),'checkout='+((git -C checkout rev-parse HEAD).Trim()),'wpf='+((git -C wpf rev-parse HEAD).Trim()),'qa='+((git -C qa rev-parse HEAD).Trim()))
           $manifest | Set-Content evidence/composed-source-manifest.txt
@@ -100,10 +105,6 @@ jobs:
         run: |
           # Fail closed until real WPF -> financial port -> SQL readback exists.
           # No seeded basket, fake writer, mock payment, or static-success gate.
-          $source=Get-Content qa/modernization/Hanouty.Desktop.Bootstrap/Program.cs -Raw
-          if($source -notmatch 'CreateFinancial|CreateProduction') {
-            throw 'ARCHITECTURE_OWNER W2_BLOCKED: Host Program.Main accepts only --catalogue-only; real financial WPF command is not wired. Cannot execute empty TABLE_XX -> selection -> cash-sale -> SQL readback, rollback, duplicate, PIN/price rejection, Unknown. W2 remains disabled.'
-          }
           throw 'QA_OWNER W2_NOT_ACCEPTED: executable disposable MariaDB SQL readback/rollback/duplicate/Unknown suite is not yet implemented. Compilation alone is not cash-sale evidence.'
       - name: Upload source manifest
         if: always()
