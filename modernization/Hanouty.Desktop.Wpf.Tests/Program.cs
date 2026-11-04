@@ -49,7 +49,7 @@ Check(vm.SelectedProduct is null, "filter clears stale selection");
 var preview = new CatalogueViewModel(new Reader(items), new PreviewProductSelection());
 preview.ScannerText = "456";
 preview.ScanBarcode();
-Check(preview.ScanFeedback == "Checkout unavailable in preview", "explicit preview fixture must fail closed");
+Check(preview.ScanFeedback == "Selection rejected" && preview.ScannerText == "456", "rejected selection retains scanner input");
 Check(vm.LayoutDirection == System.Windows.FlowDirection.RightToLeft, "RTL must change actual WPF layout direction");
 vm.IsRightToLeft = false;
 Check(vm.LayoutDirection == System.Windows.FlowDirection.LeftToRight, "LTR must restore actual WPF layout direction");
