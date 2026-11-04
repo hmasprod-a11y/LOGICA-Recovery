@@ -5189,7 +5189,8 @@ public class Form_0_TEMPLATE : Form
 		{
 			Label_DB.Text = System.Windows.Forms.Application.StartupPath;
 		}
-		if (Operators.CompareString(Label_FOLDER.Text, "System.Windows.Forms.Application.StartupPath", TextCompare: false) == 0)
+		if (Operators.CompareString(Label_FOLDER.Text, "Application.StartupPath", TextCompare: false) == 0 ||
+			Operators.CompareString(Label_FOLDER.Text, "System.Windows.Forms.Application.StartupPath", TextCompare: false) == 0)
 		{
 			Label_FOLDER.Text = System.Windows.Forms.Application.StartupPath;
 		}
