@@ -123,9 +123,16 @@ jobs:
       - name: Execute cash-sale acceptance starting with empty TABLE_XX
         shell: pwsh
         run: |
-          # Fail closed until real WPF -> financial port -> SQL readback exists.
-          # No seeded basket, fake writer, mock payment, or static-success gate.
-          throw 'QA_OWNER W2_NOT_ACCEPTED: executable disposable MariaDB SQL readback/rollback/duplicate/Unknown suite is not yet implemented. Compilation alone is not cash-sale evidence.'
+          # Execute the newly compiled actual financial Host, not a text-based readiness check.
+          # The disposable MariaDB/fixture is mandatory: missing setup must fail this gate.
+          $hostExe = Join-Path (Resolve-Path qa).Path 'modernization/Hanouty.Desktop.Bootstrap/bin/Release/net10.0-windows/Hanouty.Desktop.Bootstrap.exe'
+          if (-not (Test-Path $hostExe)) { throw 'QA_OWNER: financial Host executable missing' }
+          $env:HANOUTY_W2_DISPOSABLE_MARKER = 'I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY'
+          & $hostExe --verify-disposable-cash-sale (Join-Path (Resolve-Path evidence).Path 'w2')
+          if ($LASTEXITCODE -ne 0) {
+            Get-Content evidence/w2/w2-failure.txt -ErrorAction SilentlyContinue | Write-Host
+            throw 'QA_OWNER W2_NOT_ACCEPTED: real WPF cash-sale runner failed; see w2-failure.txt'
+          }
       - name: Upload source manifest
         if: always()
         uses: actions/upload-artifact@v4
