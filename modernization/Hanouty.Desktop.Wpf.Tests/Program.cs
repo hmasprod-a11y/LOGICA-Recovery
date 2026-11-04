@@ -282,6 +282,14 @@ unexpectedSubmissionVm.CommitCheckout();
 Check(unexpectedSubmissionVm.CheckoutUncertain && !unexpectedSubmissionVm.CanCommit &&
     unexpectedSubmissionVm.CommitFeedback.Contains("unknown"),
     "unexpected transactional adapter failure must not enable checkout retry");
+var invalidResultPort = new RecordingSubmission { Result = (CheckoutSubmissionResult)987 };
+var invalidResultVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: invalidResultPort);
+invalidResultVm.CommitCheckout();
+Check(invalidResultVm.CheckoutUncertain && !invalidResultVm.CanCommit &&
+    invalidResultVm.CommitFeedback.Contains("unknown") && invalidResultPort.Ids.Count == 1,
+    "unrecognized checkout result must fail closed with unknown transaction outcome");
+invalidResultVm.CommitCheckout();
+Check(invalidResultPort.Ids.Count == 1, "unrecognized result must not retry transaction");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
