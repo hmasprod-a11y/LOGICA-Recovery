@@ -14,6 +14,10 @@ public partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(checkout);
         ArgumentNullException.ThrowIfNull(submission);
         InitializeComponent();
-        DataContext = new CatalogueViewModel(catalogue, checkout, submission: submission);
+        // The host-provided adapter may implement durable journal reconciliation.
+        // Pass the same production instance: never create a second journal or host.
+        DataContext = new CatalogueViewModel(catalogue, checkout,
+            submission: submission,
+            reconciliation: submission as ICheckoutOutcomeReconciliation);
     }
 }
