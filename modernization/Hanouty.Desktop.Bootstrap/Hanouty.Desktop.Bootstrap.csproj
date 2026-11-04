@@ -9,6 +9,7 @@
     <ProjectReference Include="../architecture/Hanouty.WpfContractAdapter/Hanouty.WpfContractAdapter.csproj"/>
     <ProjectReference Include="../inventory/Hanouty.Inventory.MariaDb/Hanouty.Inventory.MariaDb.csproj"/>
   </ItemGroup>
+  <PropertyGroup Condition="'$(CheckoutProductionProject)' != ''"><DefineConstants>$(DefineConstants);HANOUTY_FINANCIAL</DefineConstants></PropertyGroup>
   <ItemGroup Condition="'$(CheckoutProductionProject)' != ''">
     <ProjectReference Include="$(CheckoutProductionProject)" />
   </ItemGroup>
