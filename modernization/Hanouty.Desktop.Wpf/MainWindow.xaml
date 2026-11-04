@@ -88,7 +88,15 @@
                 <Button Content="Select product" Command="{Binding SelectCommand}" MinHeight="44"
                         Padding="12,8" Margin="0,18,0,0"
                         AutomationProperties.Name="Select product" IsEnabled="{Binding CanSelectProduct}"/>
+                <TextBlock Text="Authorized cashier / payment context" FontWeight="SemiBold" Margin="0,16,0,4"/>
+                <TextBlock Text="{Binding PaymentContext.CashierId, TargetNullValue=No authorized cashier}" AutomationProperties.Name="Cashier identity" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding PaymentContext.RegisterId, TargetNullValue=No register}" AutomationProperties.Name="Register identity" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding PaymentContext.TenderCode, TargetNullValue=No tender}" AutomationProperties.Name="Tender type"/>
+                <TextBlock Text="{Binding PaymentContext.TenderedAmount, StringFormat='Tendered: {0:N2}'}" AutomationProperties.Name="Tendered amount"/>
+                <TextBlock Text="Payment remains disabled until an authorized contextual adapter and trusted cashier session are registered." TextWrapping="Wrap" Foreground="DimGray" Margin="0,6,0,0"/>
                 <Button Content="Complete checkout" Command="{Binding CommitCommand}" IsEnabled="{Binding CanCommit}" MinHeight="44" Padding="12,8" Margin="0,18,0,0" AutomationProperties.Name="Complete checkout"/>
+                <TextBlock Text="{Binding PendingOperationId, StringFormat='Operation: {0}'}" TextWrapping="Wrap" AutomationProperties.Name="Pending operation identity" Margin="0,8,0,0"/>
+                <Button Content="Check durable checkout status" Command="{Binding ReconcileCommand}" IsEnabled="{Binding CheckoutUncertain}" MinHeight="44" Padding="12,8" Margin="0,8,0,0" AutomationProperties.Name="Reconcile uncertain checkout"/>
                 <TextBlock Text="{Binding CommitFeedback}" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.Name="Checkout result"/>
                 <TextBlock Text="Stock posting, printing and licensing require separately verified application contracts."
                            Margin="0,22,0,0" TextWrapping="Wrap" Foreground="DimGray"/>
