@@ -281,7 +281,7 @@ Check(nestedArticlePort.Calls == 1 &&
     "nested touch and SelectedProduct setter must not replace in-flight sale article");
 var commitPort = new RecordingSubmission();
 var commitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: commitPort) { PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m) };
-Check(commitVm.CanCommit, "real checkout port enables commit control");
+Check(commitVm.CanCommit, "contextual checkout port with valid payment context enables commit control");
 commitPort.Result = CheckoutSubmissionResult.Invalidated;
 commitVm.CommitCommand.Execute(null);
 Check(commitPort.Ids.Count == 1 && !commitVm.CheckoutUncertain &&
@@ -293,6 +293,26 @@ Check(commitPort.Ids.Count == 2 && commitPort.Ids[0] == commitPort.Ids[1] &&
     "unknown result retains stable operation ID and blocks retry");
 commitVm.CommitCheckout();
 Check(commitPort.Ids.Count == 2, "unknown checkout must never auto-retry");
+var reconciliation = new RecordingReconciliation { Result = CheckoutResolution.Persisted };
+var reconciliationPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
+var reconciliationVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(),
+    submission: reconciliationPort, reconciliation: reconciliation)
+    { PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m) };
+reconciliationVm.CommitCheckout();
+var operationToReconcile = reconciliationVm.PendingOperationId;
+Check(reconciliationVm.CheckoutUncertain && operationToReconcile is not null,
+    "unknown checkout must retain operation identity for journal lookup");
+reconciliationVm.ReconcileCommand.Execute(null);
+Check(reconciliation.Ids.Count == 1 && reconciliation.Ids[0] == operationToReconcile &&
+    reconciliationVm.CheckoutUncertain && !reconciliationVm.CanCommit && reconciliationPort.Ids.Count == 1,
+    "persisted journal outcome must not unlock checkout or replay posting");
+reconciliation.Result = CheckoutResolution.Absent;
+reconciliationVm.ReconcileCheckout();
+Check(reconciliationVm.CheckoutUncertain && reconciliationPort.Ids.Count == 1,
+    "absent journal outcome still requires explicit Application session reset");
+reconciliationVm.PaymentContext = new CashierPaymentContext("different", "register", "MAD", "cash", 10m);
+Check(reconciliationVm.PaymentContext?.CashierId == "cashier",
+    "uncertain checkout must freeze cashier identity");
 var committedPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Committed };
 var committedVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: committedPort) { PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m) };
 committedVm.CommitCheckout();
@@ -302,7 +322,7 @@ Check(committedPort.Ids.Count == 2 && committedPort.Ids[0] != committedPort.Ids[
 var unregisteredVm = new CatalogueViewModel(new Reader(items), new RecordingSelection());
 Check(!unregisteredVm.CanCommit, "unregistered checkout must fail closed");
 unregisteredVm.CommitCheckout();
-Check(unregisteredVm.CommitFeedback == "Checkout submission unavailable", "no fake checkout fallback");
+Check(unregisteredVm.CommitFeedback == "Authorized payment adapter unavailable", "no fake checkout fallback");
 var nestedCommitPort = new ReentrantSubmission();
 var nestedCommitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: nestedCommitPort) { PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m) };
 nestedCommitPort.ViewModel = nestedCommitVm;
@@ -494,4 +514,15 @@ sealed class UnexpectedSubmission : IContextualCheckoutSubmission
     public CheckoutSubmissionResult Submit(string stableOperationId) => throw new InvalidOperationException("legacy submission forbidden");
     public CheckoutSubmissionResult Submit(string stableOperationId, CashierPaymentContext context) =>
         throw new System.FormatException("unexpected checkout adapter failure");
+}
+
+sealed class RecordingReconciliation : ICheckoutOutcomeReconciliation
+{
+    public CheckoutResolution Result { get; set; } = CheckoutResolution.Unknown;
+    public List<string> Ids { get; } = new();
+    public CheckoutResolution Reconcile(string stableOperationId)
+    {
+        Ids.Add(stableOperationId);
+        return Result;
+    }
 }
