@@ -22,7 +22,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: f8487cb1b73d477dfc4a7fe408a6281bfd3fa5ec
+          ref: 6d34e06139f9f10c992a926f5cce090ead72a97e
           path: combined
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -37,7 +37,7 @@ jobs:
           New-Item -ItemType Directory -Force evidence | Out-Null
           $sources = @{
             qa = '${{ github.sha }}'
-            combined = 'f8487cb1b73d477dfc4a7fe408a6281bfd3fa5ec'
+            combined = '6d34e06139f9f10c992a926f5cce090ead72a97e'
             architecture = '4881d3cf5fa8b4150c5873b9cb3a80c7a7b6c8b6'
           }
           foreach ($key in $sources.Keys) {
