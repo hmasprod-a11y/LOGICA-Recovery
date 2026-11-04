@@ -38,12 +38,89 @@ internal static class PortableCheckoutSmoke
     {
         if (!condition) throw new Exception(message);
     }
+
+    private sealed class AtomicFixture : ICheckoutAtomicPostingBoundary
+    {
+        public bool IsOpen { get; private set; }
+        public bool Duplicate;
+        public bool FailPayment;
+        public bool FailCommit;
+        public int Claims, Stock, Headers, Journals, Payments, Completions, Commits, Rollbacks, Closes;
+        public void Open() { IsOpen = true; }
+        public void BeginAndBind() { }
+        public void Commit() { Commits++; if (FailCommit) throw new InvalidOperationException("commit uncertain"); }
+        public void Close() { Closes++; IsOpen = false; }
+        public void Rollback() { Rollbacks++; }
+        public bool TryClaimOperation(string id) { Claims++; return !Duplicate; }
+        public void ApplyStock(CheckoutStockLine line) { Stock++; }
+        public void WriteHeader(TicketHeaderRecord record) { Headers++; }
+        public void WriteJournal(TicketJournalRecord record) { Journals++; }
+        public void WritePayment(TicketPaymentWrite record) {
+            if (FailPayment) throw new InvalidOperationException("payment failure");
+            Payments++;
+        }
+        public void Complete(CheckoutCompletionRecord record) { Completions++; }
+    }
+
+    private static CheckoutPostingInput AtomicInput()
+    {
+        return new CheckoutPostingInput {
+            ReadStock = () => new[] { new CheckoutStockLine { ArticleId = "ARTICLE-1", BasketQuantity = -1 } },
+            ReadHeader = () => new TicketHeaderRecord { TicketNumber = "T1" },
+            ReadJournal = () => new TicketJournalRecord { TicketNumber = "T1" },
+            ReadPayments = () => new[] { new TicketPaymentWrite {
+                Kind = TicketPaymentKind.Cash, Context = new TicketPaymentContext(),
+                AmountText = "-10.50"
+            }},
+            Print = () => { },
+            ReadCompletion = () => new CheckoutCompletionRecord { TicketNumber = "T1" }
+        };
+    }
+
+    private static void TestAtomicProductionPosting()
+    {
+        var sale = new AtomicFixture();
+        var progress = new CheckoutCommitProgress();
+        Require(CheckoutAtomicPostingService.Execute(sale, AtomicInput(), "sale-1", progress)
+            == CheckoutAtomicPostingResult.Committed, "Atomic sale must commit");
+        Require(sale.Claims == 1 && sale.Stock == 1 && sale.Headers == 1 &&
+            sale.Journals == 1 && sale.Payments == 1 && sale.Completions == 1 &&
+            sale.Commits == 1 && sale.Closes == 1 && sale.Rollbacks == 0,
+            "Atomic sale must use the real stock/header/journal/payment/completion posting order");
+        var duplicate = new AtomicFixture { Duplicate = true };
+        Require(CheckoutAtomicPostingService.Execute(duplicate, AtomicInput(), "sale-1",
+            new CheckoutCommitProgress()) == CheckoutAtomicPostingResult.AlreadyCommitted,
+            "Duplicate durable ID must not post twice");
+        Require(duplicate.Stock == 0 && duplicate.Payments == 0 &&
+            duplicate.Commits == 0 && duplicate.Rollbacks == 1,
+            "Duplicate durable ID must roll back claim transaction without side effects");
+        var failed = new AtomicFixture { FailPayment = true };
+        var failedProgress = new CheckoutCommitProgress();
+        bool paymentFailed = false;
+        try { CheckoutAtomicPostingService.Execute(failed, AtomicInput(), "sale-2", failedProgress); }
+        catch (InvalidOperationException) { paymentFailed = true; }
+        Require(paymentFailed && failed.Rollbacks == 1 && failed.Commits == 0 &&
+            failedProgress.RecoveryAction == CheckoutAttemptRecoveryAction.VerifyRollback,
+            "Failed payment must roll back before commit, without automatic retry");
+        var uncertain = new AtomicFixture { FailCommit = true };
+        var uncertainProgress = new CheckoutCommitProgress();
+        bool commitFailed = false;
+        try { CheckoutAtomicPostingService.Execute(uncertain, AtomicInput(), "sale-3", uncertainProgress); }
+        catch (InvalidOperationException) { commitFailed = true; }
+        Require(commitFailed && uncertain.Rollbacks == 0 && uncertain.Commits == 1 &&
+            uncertainProgress.CommitOutcomeUnknown &&
+            uncertainProgress.RecoveryAction == CheckoutAttemptRecoveryAction.ReconcileDatabase,
+            "Commit exception must be unknown, not declared rolled back or retried");
+        Console.WriteLine("PASS atomic production posting: sale/return sign, duplicate ID, payment rollback, unknown commit");
+    }
+
     public static int Run()
     {
         CultureInfo original = CultureInfo.CurrentCulture;
         try
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            TestAtomicProductionPosting();
             var variants = new DataTable();
             variants.Columns.Add("Code", typeof(string));
             variants.Columns.Add("ID_ARTICLE", typeof(string));
