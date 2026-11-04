@@ -361,6 +361,20 @@ brokenJournal.Outcome = CheckoutOperationOutcome.Absent;
 Assert(protectedGate.Reconcile("lookup-failed") == CheckoutOperationOutcome.Absent &&
        protectedGate.UncertainOperationId is null,
     "durable absent reconciliation unlocks after lookup outage");
+var invalidStateJournal = new CompositionJournal { Outcome = (CheckoutOperationOutcome)99 };
+var invalidStatePort = new RecordingFinancialPort();
+var invalidStateGate = new AuthorizedCheckoutCommitGate(invalidStatePort, invalidStateJournal);
+try { invalidStateGate.Commit(W2(id: "invalid-journal")); throw new Exception("invalid journal accepted"); }
+catch (InvalidOperationException ex) when (ex.Message.Contains("unsupported outcome")) { }
+Assert(invalidStatePort.Calls == 0 && invalidStateGate.UncertainOperationId == "invalid-journal",
+    "invalid durable state prevents posting and locks operation");
+try { invalidStateGate.Reconcile("invalid-journal"); throw new Exception("invalid reconciliation accepted"); }
+catch (InvalidOperationException ex) when (ex.Message.Contains("unsupported outcome")) { }
+Assert(invalidStateGate.UncertainOperationId == "invalid-journal",
+    "invalid reconciliation cannot unlock financial gate");
+invalidStateJournal.Outcome = CheckoutOperationOutcome.Absent;
+Assert(invalidStateGate.Reconcile("invalid-journal") == CheckoutOperationOutcome.Absent &&
+       invalidStateGate.UncertainOperationId is null, "valid durable reconciliation unlocks");
 var financialJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
 var financialPort = new RecordingFinancialPort();
 financialPort.OnCommit = () => financialJournal.Outcome = CheckoutOperationOutcome.Persisted;
