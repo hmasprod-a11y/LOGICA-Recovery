@@ -363,12 +363,15 @@ Assert(protectedGate.Reconcile("lookup-failed") == CheckoutOperationOutcome.Abse
     "durable absent reconciliation unlocks after lookup outage");
 var financialJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
 var financialPort = new RecordingFinancialPort();
+financialPort.OnCommit = () => financialJournal.Outcome = CheckoutOperationOutcome.Persisted;
 var financialGate = new AuthorizedCheckoutCommitGate(financialPort, financialJournal);
 var reentrantJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
 var reentrantPort = new ReentrantFinancialPort();
+reentrantPort.OnCommit = () => reentrantJournal.Outcome = CheckoutOperationOutcome.Persisted;
 var reentrantGate = new AuthorizedCheckoutCommitGate(reentrantPort, reentrantJournal);
 reentrantPort.OnCommit = () =>
 {
+    reentrantJournal.Outcome = CheckoutOperationOutcome.Persisted;
     try { reentrantGate.Commit(W2(id: "financial-reentrant")); throw new Exception("nested commit accepted"); }
     catch (InvalidOperationException ex) when (ex.Message.Contains("already in progress")) { }
     try { reentrantGate.Reconcile("financial-reentrant"); throw new Exception("reconcile during commit accepted"); }
@@ -376,6 +379,29 @@ reentrantPort.OnCommit = () =>
 };
 Assert(reentrantGate.Commit(W2(id: "financial-outer")) == FinancialCommitOutcome.Committed &&
        reentrantPort.Calls == 1, "reentrant financial posting and reconciliation cannot overlap");
+var absentJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
+var absentPort = new RecordingFinancialPort();
+var absentGate = new AuthorizedCheckoutCommitGate(absentPort, absentJournal);
+Assert(absentGate.Commit(W2(id: "unconfirmed-financial")) == FinancialCommitOutcome.Unknown &&
+       absentGate.UncertainOperationId == "unconfirmed-financial" && absentPort.Calls == 1,
+    "successful port acknowledgement without durable journal proof remains unknown");
+try { absentGate.Commit(W2(id: "different-financial")); throw new Exception("unconfirmed commit accepted"); }
+catch (InvalidOperationException) { }
+Assert(absentPort.Calls == 1, "unconfirmed financial operation cannot be blindly retried");
+Assert(absentGate.Reconcile("unconfirmed-financial") == CheckoutOperationOutcome.Absent &&
+       absentGate.UncertainOperationId is null,
+    "durable absent reconciliation unlocks without claiming persistence");
+var journalDown = new FailingFinancialJournal();
+var journalDownPort = new RecordingFinancialPort();
+var journalDownGate = new AuthorizedCheckoutCommitGate(journalDownPort, journalDown);
+try { journalDownGate.Commit(W2(id: "journal-down")); throw new Exception("journal failure accepted"); }
+catch (ApplicationException) { }
+Assert(journalDownGate.UncertainOperationId == "journal-down" && journalDownPort.Calls == 0,
+    "journal lookup failure locks operation before any posting");
+journalDown.Outcome = CheckoutOperationOutcome.Absent;
+Assert(journalDownGate.Reconcile("journal-down") == CheckoutOperationOutcome.Absent,
+    "journal recovery reconciles previously unknown operation");
+
 Assert(financialGate.Commit(W2(id: "financial-1")) == FinancialCommitOutcome.Committed &&
        financialPort.Calls == 1, "financial gate delegates exactly one validated request");
 financialJournal.Outcome = CheckoutOperationOutcome.Persisted;
