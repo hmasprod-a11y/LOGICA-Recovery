@@ -26,6 +26,17 @@ Check(binding.Session.Submit("wpf-adapter-001") == CheckoutBatchStatus.Committed
     "explicit stable-ID submission posts one validated atomic batch");
 reader.ChangeVariant = true;
 Check(!binding.Checkout.Select(products[2]), "changed variant cannot be staged from stale WPF DTO");
+var changingReader = new TestCatalogue();
+var changingPort = new TestPort();
+var changing = ProductionWpfServices.Create(new CheckoutComposition(
+    changingReader, new TestPrompt(), changingPort, new TestJournal()));
+var changingProducts = changing.Catalogue.ReadProducts();
+Check(changing.Checkout.Select(changingProducts[1]), "variant staged before inventory update");
+changingReader.ChangeVariantB = true;
+Check(changing.Session.Submit("changed-variant-001") == CheckoutBatchStatus.Invalidated &&
+    changingPort.Writes == 0, "changed duplicate variant invalidates entire batch before write");
+changing.Session.DiscardInvalidated();
+Check(changing.Session.PendingCount == 0, "explicit discard clears invalidated variant");
 reader.CaseCollision = true;
 try { binding.Catalogue.ReadProducts(); throw new Exception("case collision accepted"); }
 catch (InvalidOperationException ex) when (ex.Message.Contains("duplicate WPF article")) { }
@@ -35,10 +46,11 @@ static void Check(bool ok, string reason) { if (!ok) throw new Exception(reason)
 sealed class TestCatalogue : ICatalogueReader
 {
     public bool ChangeVariant { get; set; }
+    public bool ChangeVariantB { get; set; }
     public bool CaseCollision { get; set; }
     public IReadOnlyList<ProductSummary> ListAll() => new[] {
         new ProductSummary("a", "111", "Apple", null, "v1"),
-        new ProductSummary(CaseCollision ? "A" : "b", "111", "Apple variant", null, "v2"),
+        new ProductSummary(CaseCollision ? "A" : "b", "111", "Apple variant", null, ChangeVariantB ? "v3" : "v2"),
         new ProductSummary("c", "", "Photo", "photo.png", ChangeVariant ? "v2" : "v1")
     };
     public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => ListAll().Where(x => x.Barcode == barcode).ToArray();
