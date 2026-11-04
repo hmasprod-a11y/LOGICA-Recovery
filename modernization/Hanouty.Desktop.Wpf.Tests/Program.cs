@@ -290,6 +290,24 @@ Check(invalidResultVm.CheckoutUncertain && !invalidResultVm.CanCommit &&
     "unrecognized checkout result must fail closed with unknown transaction outcome");
 invalidResultVm.CommitCheckout();
 Check(invalidResultPort.Ids.Count == 1, "unrecognized result must not retry transaction");
+var frozenVm = new CatalogueViewModel(new Reader(items), new CountingUncertainSelection());
+frozenVm.ScannerText = "123";
+frozenVm.SearchText = "Milk";
+frozenVm.ScanBarcode();
+Check(frozenVm.CheckoutUncertain && frozenVm.ScannerText == "123", "unknown scan preserves barcode evidence");
+frozenVm.ScannerText = "777";
+frozenVm.SearchText = "Other";
+Check(frozenVm.ScannerText == "123" && frozenVm.SearchText == "Milk",
+    "unknown selection freezes scanner and search until reconciliation");
+var frozenCommitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(),
+    submission: new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown });
+frozenCommitVm.ScannerText = "123";
+frozenCommitVm.SearchText = "Milk";
+frozenCommitVm.CommitCheckout();
+frozenCommitVm.ScannerText = "777";
+frozenCommitVm.SearchText = "Other";
+Check(frozenCommitVm.ScannerText == "123" && frozenCommitVm.SearchText == "Milk" &&
+    !frozenCommitVm.CanCommit, "unknown sale freezes cashier inputs and prevents replay");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
