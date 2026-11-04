@@ -347,6 +347,31 @@ AuthorizedCheckoutRequest W2(string id = "sale-001", string cashier = "cashier-0
         payments ?? new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 25m) }, 25m);
 W2().Validate();
 Assert(true, "W2 authorized checkout envelope accepts explicit cashier/payment");
+var financialJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
+var financialPort = new RecordingFinancialPort();
+var financialGate = new AuthorizedCheckoutCommitGate(financialPort, financialJournal);
+Assert(financialGate.Commit(W2(id: "financial-1")) == FinancialCommitOutcome.Committed &&
+       financialPort.Calls == 1, "financial gate delegates exactly one validated request");
+financialJournal.Outcome = CheckoutOperationOutcome.Persisted;
+Assert(financialGate.Commit(W2(id: "financial-1")) == FinancialCommitOutcome.AlreadyCommitted &&
+       financialPort.Calls == 1, "persisted financial operation never reposts");
+financialJournal.Outcome = CheckoutOperationOutcome.Absent;
+financialPort.ThrowOnCommit = true;
+try { financialGate.Commit(W2(id: "financial-unknown")); throw new Exception("must throw"); }
+catch (ApplicationException) { }
+Assert(financialGate.UncertainOperationId == "financial-unknown" && financialPort.Calls == 2,
+    "ambiguous financial write locks operation ID");
+try { financialGate.Commit(W2(id: "financial-2")); throw new Exception("must block"); }
+catch (InvalidOperationException) { }
+Assert(financialPort.Calls == 2, "unknown financial outcome blocks next write");
+financialJournal.Outcome = CheckoutOperationOutcome.Unknown;
+Assert(financialGate.Reconcile("financial-unknown") == CheckoutOperationOutcome.Unknown &&
+       financialGate.UncertainOperationId == "financial-unknown",
+    "unknown ledger lookup does not unlock");
+financialJournal.Outcome = CheckoutOperationOutcome.Persisted;
+Assert(financialGate.Reconcile("financial-unknown") == CheckoutOperationOutcome.Persisted &&
+       financialGate.UncertainOperationId is null, "durable persisted reconciliation unlocks");
+
 static bool InvalidW2(AuthorizedCheckoutRequest request)
 {
     try { request.Validate(); return false; }
@@ -494,3 +519,14 @@ sealed class FaultyCatalogue : ICatalogueReader
 }
 
 
+
+sealed class RecordingFinancialPort : IAuthorizedCheckoutPort
+{
+    public int Calls { get; private set; }
+    public bool ThrowOnCommit { get; set; }
+    public void Commit(AuthorizedCheckoutRequest request)
+    {
+        Calls++;
+        if (ThrowOnCommit) throw new ApplicationException("acknowledgement lost");
+    }
+}
