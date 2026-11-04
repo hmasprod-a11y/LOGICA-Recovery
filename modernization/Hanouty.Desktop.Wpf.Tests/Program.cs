@@ -1,4 +1,5 @@
 using Hanouty.Desktop.Wpf.Presentation;
+using Hanouty.ArchitectureBridge;
 
 static void Check(bool value, string reason)
 {
@@ -393,6 +394,27 @@ Check(!(paymentContext with { CashierId = "" }).IsWellFormed &&
 Check(CheckoutResolution.Unknown != CheckoutResolution.Absent &&
     CheckoutResolution.Unknown != CheckoutResolution.Persisted,
     "unknown durable outcome must never be interpreted as an absent sale");
+// The real WPF callsite maps into Architecture's approved financial envelope;
+// a durable journal acknowledgement, not a fake UI success, is required.
+var financialJournal = new FinancialJournal();
+var financialPort = new FinancialPort(financialJournal);
+var financialPrep = new FinancialPreparation();
+var financialAdapter = new AuthorizedWpfCheckoutAdapter(financialPrep,
+    new AuthorizedCheckoutCommitGate(financialPort, financialJournal), financialJournal);
+var financialContext = new CashierPaymentContext("cashier-1", "register-1", "MAD", "Cash", 100m);
+Check(financialAdapter.Submit("operation-1", financialContext) == CheckoutSubmissionResult.Committed &&
+    financialPort.Writes == 1 && financialPrep.Calls == 1,
+    "authorized mapping must reach the approved gate exactly once");
+Check(financialAdapter.Reconcile("operation-1") == CheckoutResolution.Persisted,
+    "journal reconciliation must report actual persisted operation");
+financialPrep.Mismatch = true;
+Check(financialAdapter.Submit("operation-2", financialContext) == CheckoutSubmissionResult.Invalidated &&
+    financialPort.Writes == 1, "cashier identity mismatch must never post");
+financialPrep.Mismatch = false;
+Check(financialAdapter.Submit("operation-3", financialContext with { TenderCode = "UnknownTender" }) == CheckoutSubmissionResult.Invalidated &&
+    financialPort.Writes == 1, "unsupported payment kind must never post");
+Check(financialAdapter.Reconcile("missing") == CheckoutResolution.Absent,
+    "absent journal operation must be distinguishable from persisted");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
@@ -525,5 +547,33 @@ sealed class RecordingReconciliation : ICheckoutOutcomeReconciliation
     {
         Ids.Add(stableOperationId);
         return Result;
+    }
+}
+
+sealed class FinancialJournal : ICheckoutOperationJournal
+{
+    public HashSet<string> Persisted { get; } = new();
+    public CheckoutOperationOutcome Lookup(string operationId) => Persisted.Contains(operationId)
+        ? CheckoutOperationOutcome.Persisted : CheckoutOperationOutcome.Absent;
+}
+sealed class FinancialPort(FinancialJournal journal) : IAuthorizedCheckoutPort
+{
+    public int Writes { get; private set; }
+    public void Commit(AuthorizedCheckoutRequest request)
+    {
+        Writes++;
+        journal.Persisted.Add(request.OperationId);
+    }
+}
+sealed class FinancialPreparation : ITrustedWpfCheckoutPreparation
+{
+    public int Calls { get; private set; }
+    public bool Mismatch { get; set; }
+    public AuthorizedCheckoutRequest Prepare(string operationId, CashierPaymentContext context)
+    {
+        Calls++;
+        return new AuthorizedCheckoutRequest(operationId, Mismatch ? "wrong-cashier" : context.CashierId,
+            context.CurrencyCode, false, new[] { new CheckoutBatchLine("article-1", 1) },
+            new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, context.TenderedAmount) }, 100m);
     }
 }
