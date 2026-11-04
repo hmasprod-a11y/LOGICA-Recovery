@@ -37,4 +37,74 @@ namespace LOGICA.ApplicationLayer.Checkout
             boundary.Rollback();
         }
     }
+    // Shared production transaction seam for an offline durable operation ledger.
+    // The infrastructure implementation MUST enforce a UNIQUE operation ID in the
+    // SAME MariaDB transaction as ticket, payment and stock writes. A false claim
+    // means an already persisted operation; it is never silently re-posted.
+    internal interface ICheckoutAtomicPostingBoundary : ICheckoutTransactionBoundary, ICheckoutPostingStore
+    {
+        bool TryClaimOperation(string operationId);
+    }
+
+    internal enum CheckoutAtomicPostingResult { Committed, AlreadyCommitted }
+
+    internal static class CheckoutAtomicPostingService
+    {
+        // Uses the exact production posting order, rather than a second money
+        // calculator or independent stock/payment writer. Printing is still the
+        // legacy callback: callers must provide a transaction-safe receipt
+        // staging callback, not a physical printer side effect before Commit.
+        internal static CheckoutAtomicPostingResult Execute(
+            ICheckoutAtomicPostingBoundary boundary, CheckoutPostingInput input,
+            string operationId, CheckoutCommitProgress progress)
+        {
+            if (boundary == null) throw new System.ArgumentNullException("boundary");
+            if (progress == null) throw new System.ArgumentNullException("progress");
+            if (string.IsNullOrWhiteSpace(operationId))
+                throw new System.ArgumentException("Durable operation ID is required.", "operationId");
+            if (progress.Stage != CheckoutCommitStage.NotStarted)
+                throw new System.InvalidOperationException("Checkout progress cannot be reused.");
+            CheckoutPostingService.Validate(boundary, input);
+            if (!progress.TryStart())
+                throw new System.InvalidOperationException("Checkout progress cannot be reused.");
+
+            bool begun = false;
+            try
+            {
+                CheckoutTransactionBoundaryService.Begin(boundary);
+                begun = true;
+                if (!boundary.TryClaimOperation(operationId))
+                {
+                    // A duplicate must NOT perform any stock/payment/ticket work.
+                    boundary.Rollback();
+                    begun = false;
+                    boundary.Close();
+                    progress.Advance(CheckoutCommitStage.Closed);
+                    return CheckoutAtomicPostingResult.AlreadyCommitted;
+                }
+
+                CheckoutPostingService.Post(boundary, input);
+                // Commit failures are ambiguous: do not issue blind retry or
+                // declare rollback successful. Reconcile the durable ledger.
+                progress.Advance(CheckoutCommitStage.CommitAttempted);
+                boundary.Commit();
+                progress.Advance(CheckoutCommitStage.CommitConfirmed);
+                begun = false;
+                boundary.Close();
+                progress.Advance(CheckoutCommitStage.Closed);
+                return CheckoutAtomicPostingResult.Committed;
+            }
+            catch
+            {
+                if (begun && progress.Stage == CheckoutCommitStage.Posting)
+                {
+                    // Keep the original error when rollback succeeds. A failed
+                    // rollback propagates as failure and must be investigated.
+                    boundary.Rollback();
+                }
+                throw;
+            }
+        }
+    }
+
 }
