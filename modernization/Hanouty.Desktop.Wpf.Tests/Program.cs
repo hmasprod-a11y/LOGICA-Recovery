@@ -222,7 +222,7 @@ var reentrantVm = new CatalogueViewModel(new Reader(items), reentrantPort);
 reentrantPort.ViewModel = reentrantVm;
 reentrantVm.SelectedProduct = items[0];
 reentrantVm.SelectCurrent();
-Check(reentrantPort.Calls == 1 && reentrantPort.DisabledDuringCall &&
+Check(reentrantPort.Calls == 1 && reentrantPort.DisabledDuringCall && reentrantPort.NestedStatePreserved &&
     reentrantVm.CanSelectProduct && reentrantVm.ScanFeedback == "Selection accepted",
     "nested touch/scanner invocation must not stage a second checkout selection");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
@@ -269,11 +269,21 @@ sealed class ReentrantSelection : IProductSelection
     public CatalogueViewModel? ViewModel { get; set; }
     public int Calls { get; private set; }
     public bool DisabledDuringCall { get; private set; }
+    public bool NestedStatePreserved { get; private set; }
     public bool Select(ProductSummary product)
     {
         Calls++;
         DisabledDuringCall = ViewModel is not null && !ViewModel.CanSelectProduct;
-        ViewModel!.SelectCurrent();
+        var beforeRows = ViewModel!.VisibleProducts.Count;
+        var beforeText = ViewModel.SearchText;
+        var beforeScanner = ViewModel.ScannerText;
+        ViewModel.ScannerText = "777";
+        ViewModel.ScanBarcode();
+        ViewModel.SearchText = "nothing";
+        ViewModel.ReloadCatalogue();
+        NestedStatePreserved = ViewModel.VisibleProducts.Count == beforeRows &&
+            ViewModel.SearchText == beforeText && ViewModel.ScannerText == "777";
+        ViewModel.SelectCurrent();
         return true;
     }
 }
