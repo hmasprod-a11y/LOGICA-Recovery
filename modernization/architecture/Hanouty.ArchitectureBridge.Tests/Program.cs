@@ -349,6 +349,8 @@ Assert(InvalidW2(W2(payments: new[] { new CheckoutPayment((CheckoutPaymentKind)9
     "W2 rejects unknown payment kind");
 Assert(InvalidW2(W2(payments: new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, -1m) })),
     "W2 rejects negative payment amount");
+Assert(InvalidW2(W2() with { IsReturn = true, Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Credit, 25m) } }),
+    "W2 rejects return credit without explicit checkout policy");
 
 
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
