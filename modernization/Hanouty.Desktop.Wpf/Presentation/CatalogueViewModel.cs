@@ -131,7 +131,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         if (!CatalogueAvailable) { ScanFeedback = "Local catalogue unavailable"; return; }
         var code = ScannerText.Trim();
         if (code.Length == 0) { BarcodeCandidates = Array.Empty<ProductSummary>(); SelectedProduct = null; OnPropertyChanged(nameof(BarcodeCandidates)); OnPropertyChanged(nameof(HasBarcodeAmbiguity)); ScanFeedback = "Empty barcode"; return; }
-        var matches = _all.Where(p => string.Equals(p.Barcode, code, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(p.Barcode)).ToArray();
+        // Preserve the exact barcode identity used by the Application checkout gateway.
+        // Case-folding here could select a different article than the live catalogue.
+        var matches = _all.Where(p => string.Equals(p.Barcode, code, StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(p.Barcode)).ToArray();
         BarcodeCandidates = matches;
         OnPropertyChanged(nameof(BarcodeCandidates));
         OnPropertyChanged(nameof(HasBarcodeAmbiguity));
