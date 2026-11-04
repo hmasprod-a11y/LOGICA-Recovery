@@ -1,6 +1,6 @@
-using System;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
 using System.Windows;
 using Hanouty.ArchitectureBridge;
@@ -9,10 +9,198 @@ using MySql.Data.MySqlClient;
 
 namespace Hanouty.Desktop.Bootstrap;
 
-// W2 is a separate, opt-in executable acceptance entry point, never the cashier startup path.
-// The fixture is exclusively disposable; missing SQL/schema/authorization is a test failure.
+// Executable acceptance only: the cashier entry point and shop schemas are untouched.
 internal static class DisposableCashSaleAcceptance
 {
+    private static MySqlConnection Open(CatalogueSettings settings)
+    {
+        var db = new MySqlConnection(settings.ConnectionString);
+        db.Open();
+        return db;
+    }
+
+    private static void Require(bool value, string message)
+    {
+        if (!value) throw new InvalidOperationException(message);
+    }
+
+    private static void Sql(CatalogueSettings settings, string sql)
+    {
+        using var db = Open(settings);
+        using var command = new MySqlCommand(sql, db);
+        command.ExecuteNonQuery();
+    }
+
+    private static object Value(CatalogueSettings settings, string sql, string? operation = null)
+    {
+        using var db = Open(settings);
+        using var command = new MySqlCommand(sql, db);
+        if (operation is not null) command.Parameters.AddWithValue("@id", operation);
+        return command.ExecuteScalar() ?? throw new InvalidOperationException("SQL scalar unavailable.");
+    }
+
+    private static decimal Number(CatalogueSettings settings, string sql, string? operation = null) =>
+        Convert.ToDecimal(Value(settings, sql, operation), CultureInfo.InvariantCulture);
+
+    private static string Snapshot(CatalogueSettings settings) => string.Join("|", new[] {
+        "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE",
+        "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL",
+        "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS",
+        "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK",
+        "SELECT COUNT(*) FROM hanouty_checkout_operations",
+        "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'",
+        "SELECT CL FROM TABLE_NUM", "SELECT COUNT(*) FROM TABLE_01"
+    }.Select(q => Number(settings, q).ToString(CultureInfo.InvariantCulture)));
+
+    private static CatalogueHost Host(CatalogueSettings settings, string pin, decimal amount = 5.25m) =>
+        CatalogueHost.CreateFinancial(settings, "01", () => pin,
+            new AuthorizedCheckoutPaymentContext("O'Neil", "MAD", false,
+                new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, amount) }, amount));
+
+    private static void Select(CatalogueHost host)
+    {
+        host.ViewModel.ScannerText = "CODE'1";
+        host.ViewModel.ScanCommand.Execute(null);
+        Require(host.ViewModel.ScanFeedback == "Selection accepted" &&
+            host.ViewModel.ScannerText == "" && host.Session.PendingCount == 1,
+            "Actual WPF scanner command did not stage and acknowledge the real SQL article.");
+        Require(host.ViewModel.CanCommit, "Actual contextual Host did not enable test cash command.");
+    }
+
+    private static void Seed(CatalogueSettings settings)
+    {
+        // CREATE (not DROP/REPLACE): a nonempty or previously used fixture fails.
+        Sql(settings, """
+CREATE TABLE hanouty_checkout_operations (
+ operation_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+ created_utc TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)) ENGINE=InnoDB;
+CREATE TABLE TABLE_ARTICLES (ID_ARTICLE VARCHAR(64) PRIMARY KEY, STOCK DECIMAL(16,3),
+ Code VARCHAR(64),Article VARCHAR(128),Images TEXT,Famille TEXT,PRIX_A DECIMAL(16,3),
+ PRIX_MP DECIMAL(16,3),PRIX_V_1 DECIMAL(16,3),TAUX_TVA DECIMAL(16,3),GROUPE TEXT,
+ PROMOTION DECIMAL(16,3),PRIX_QTE DECIMAL(16,3)) ENGINE=InnoDB;
+CREATE TABLE TABLE_MOUVEMENTS_STOCK (DATES VARCHAR(16),HEURE VARCHAR(16),LIBELLE VARCHAR(128),
+ ID_ARTICLE VARCHAR(64),CODE_ARTICLE VARCHAR(64),ARTICLE VARCHAR(128),QUANTITE DECIMAL(16,3)) ENGINE=InnoDB;
+CREATE TABLE TABLE_NUM (ID INT NOT NULL PRIMARY KEY,CL INT NOT NULL) ENGINE=InnoDB;
+CREATE TABLE TABLE_PASS (ListUser VARCHAR(128),ListPass VARCHAR(256),Catégorie VARCHAR(64)) ENGINE=InnoDB;
+CREATE TABLE TABLE_VENTES_ENTETE (ID_TICKET VARCHAR(64) PRIMARY KEY,TICKET TEXT,DATES TEXT,CAISSIER TEXT,ID_CLIENT TEXT,CODE_CLIENT TEXT,CLIENT TEXT,POSTE TEXT,Total_NET DECIMAL(16,3),OPERATION TEXT) ENGINE=InnoDB;
+CREATE TABLE TABLE_01 (ID_ARTICLE VARCHAR(64),Code TEXT,Article TEXT,Famille TEXT,PRIX_A DECIMAL(16,3),PRIX_MP DECIMAL(16,3),PRIX_V DECIMAL(16,3),Qté DECIMAL(16,3),Remise DECIMAL(16,3),TOTAL_NET DECIMAL(16,3),TAUX_TVA DECIMAL(16,3),GROUPE TEXT) ENGINE=InnoDB;
+CREATE TABLE TABLE_VENTES_JOURNAL (ID_TICKET VARCHAR(64),Ticket TEXT,Dates TEXT,Heure TEXT,ID_ARTICLE VARCHAR(64),Code TEXT,Article TEXT,Famille TEXT,PRIX_A DECIMAL(16,3),PRIX_MP DECIMAL(16,3),PRIX_V DECIMAL(16,3),Qté DECIMAL(16,3),Remise DECIMAL(16,3),Total_NET DECIMAL(16,3),TAUX_TVA DECIMAL(16,3),GROUPE TEXT,Caissier TEXT,Vendeur TEXT,ID_CLIENT TEXT,CODE_CLIENT TEXT,CLIENT TEXT,POSTE TEXT,OPERATION TEXT,NOTES TEXT,NOTES_TYPE_PRIX TEXT,NOTES_MODE_P TEXT) ENGINE=InnoDB;
+CREATE TABLE TABLE_VENTES_REGLEMENTS (ID_TICKET VARCHAR(64),TICKET TEXT,DATES TEXT,CAISSIER TEXT,ID_CLIENT TEXT,CODE_CLIENT TEXT,CLIENT TEXT,POSTE TEXT,MONTANT DECIMAL(16,3),MODE_P TEXT,OPERATION TEXT,NOTES_REMARQUE TEXT) ENGINE=InnoDB;
+INSERT INTO TABLE_ARTICLES VALUES ('W2-Article',100,'CODE''1','Lait d''été',NULL,'Food',1,1,5.25,20,'G',0,0);
+INSERT INTO TABLE_PASS VALUES ('O''Neil','1234','UTILISATEUR');
+INSERT INTO TABLE_NUM VALUES (0,1);
+""");
+        Require(Number(settings, "SELECT COUNT(*) FROM TABLE_01") == 0 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == 0 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == 0,
+            "Fixture must start without basket, sale or payment.");
+    }
+
+    private static void Replay(CatalogueSettings settings, string pin, string operation)
+    {
+        var before = Snapshot(settings);
+        var host = Host(settings, pin);
+        try
+        {
+            Select(host);
+            // Explicit stable-ID recovery uses the SAME production Application
+            // session, never a new UI-generated ID or direct SQL writer.
+            Require(host.Session.Submit(operation) == CheckoutBatchStatus.Committed,
+                "Durable duplicate was not acknowledged by real production composition.");
+            Require(Snapshot(settings) == before, "Duplicate/restart repeated financial writes.");
+        }
+        finally { host.Window.Close(); }
+    }
+
+    private static void Verify(CatalogueSettings settings, string pin, CatalogueHost host, string evidence)
+    {
+        Require(host.Window.IsVisible && host.Window.IsLoaded, "Actual financial WPF window did not render.");
+        Select(host);
+        host.ViewModel.CommitCommand.Execute(null);
+        Require(host.ViewModel.CommitFeedback == "Checkout committed" && !host.ViewModel.CheckoutUncertain &&
+            host.ViewModel.PendingOperationId is null && host.Session.PendingCount == 0,
+            "Actual WPF cash command failed or retained a completed operation.");
+        // Successful UI intentionally clears PendingOperationId. Recover the
+        // committed ID from durable SQL, rather than treating that reset as failure.
+        Require(Number(settings, "SELECT COUNT(*) FROM hanouty_checkout_operations") == 1,
+            "Expected one durable operation.");
+        var operation = Convert.ToString(Value(settings, "SELECT operation_id FROM hanouty_checkout_operations"))!;
+        Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id AND Total_NET=5.25 AND CAISSIER='O''Neil'", operation) == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET=@id AND ID_ARTICLE='W2-Article' AND Qté=1 AND Total_NET=5.25 AND Article='Lait d''été'", operation) == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MONTANT=5.25 AND MODE_P='ESPECES'", operation) == 1 &&
+            Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == 99 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE ID_ARTICLE='W2-Article'") == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_01") == 0 &&
+            Number(settings, "SELECT CL FROM TABLE_NUM") == 2,
+            "Real ticket/detail/payment/stock/movement/sequence SQL readback failed.");
+        Replay(settings, pin, operation);
+        var restart = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false };
+        restart.ArgumentList.Add("--verify-disposable-cash-sale");
+        restart.ArgumentList.Add(Path.Combine(evidence, "restart"));
+        restart.Environment["HANOUTY_W2_REPLAY_OPERATION"] = operation;
+        using (var process = Process.Start(restart) ?? throw new InvalidOperationException("Restart failed."))
+        {
+            if (!process.WaitForExit(60000)) { process.Kill(true); throw new TimeoutException("Restart acceptance timed out."); }
+            Require(process.ExitCode == 0, "Fresh executable process failed duplicate/restart SQL acceptance.");
+        }
+
+        void Denied(string scenario, string candidatePin, decimal total = 5.25m)
+        {
+            var before = Snapshot(settings);
+            var denied = Host(settings, candidatePin, total);
+            try
+            {
+                Select(denied);
+                denied.ViewModel.CommitCommand.Execute(null);
+                Require(Snapshot(settings) == before && denied.ViewModel.CheckoutUncertain &&
+                    !denied.ViewModel.CanCommit && denied.Session.State == CheckoutCommitState.OutcomeUnknown,
+                    scenario + ": rejected/uncertain command changed SQL or unlocked checkout.");
+                denied.ViewModel.ReconcileCommand.Execute(null);
+                Require(denied.ViewModel.CommitFeedback.Contains("Sale absent", StringComparison.Ordinal) &&
+                    denied.Session.State == CheckoutCommitState.Ready && denied.ViewModel.CheckoutUncertain,
+                    scenario + ": verified rollback must reconcile both layers, retaining cashier review lock.");
+            }
+            finally { denied.Window.Close(); }
+        }
+        Denied("wrong PIN", "incorrect");
+        Denied("incorrect tender/expected total", pin, 5m);
+        Sql(settings, "UPDATE TABLE_ARTICLES SET PRIX_V_1=6 WHERE ID_ARTICLE='W2-Article'");
+        try { Denied("changed authoritative price", pin); }
+        finally { Sql(settings, "UPDATE TABLE_ARTICLES SET PRIX_V_1=5.25 WHERE ID_ARTICLE='W2-Article'"); }
+        Sql(settings, "CREATE TRIGGER w2_after_payment AFTER INSERT ON TABLE_VENTES_REGLEMENTS FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='w2-injected-after-payment'");
+        try { Denied("actual after-payment failure rollback", pin); }
+        finally { Sql(settings, "DROP TRIGGER w2_after_payment"); }
+
+        var beforeUnknown = Snapshot(settings);
+        var uncertain = Host(settings, pin);
+        try
+        {
+            Select(uncertain);
+            Sql(settings, "ALTER TABLE hanouty_checkout_operations ENGINE=MyISAM");
+            uncertain.ViewModel.CommitCommand.Execute(null);
+            uncertain.ViewModel.ReconcileCommand.Execute(null);
+            Require(uncertain.ViewModel.CheckoutUncertain && !uncertain.ViewModel.CanCommit &&
+                uncertain.Session.State == CheckoutCommitState.OutcomeUnknown &&
+                Snapshot(settings) == beforeUnknown, "Unknown journal authorized a write or unlocked checkout.");
+            Sql(settings, "ALTER TABLE hanouty_checkout_operations ENGINE=InnoDB");
+            uncertain.ViewModel.ReconcileCommand.Execute(null);
+            Require(uncertain.Session.State == CheckoutCommitState.Ready &&
+                uncertain.ViewModel.CheckoutUncertain, "Unknown resolution bypassed explicit cashier review.");
+        }
+        finally
+        {
+            Sql(settings, "ALTER TABLE hanouty_checkout_operations ENGINE=InnoDB");
+            uncertain.Window.Close();
+        }
+        File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
+            Gate = "real WPF exact-cash slice", Operation = operation, WindowLoaded = true,
+            EmptyBasket = true, TicketPaymentStockSql = true, Duplicate = true, ProcessRestart = true,
+            WrongPinRejected = true, WrongTotalRejected = true, StalePriceRejected = true,
+            AfterPaymentRollback = true, UnknownJournalLocked = true, Reconciliation = true,
+            W2Accepted = false, Remaining = "Cashier PIN/session UI, explicit reviewed UI reset, lost-ack fault and broader V1/device parity"
+        }));
+    }
+
     public static int Run(string evidenceDirectory)
     {
         Directory.CreateDirectory(evidenceDirectory);
@@ -20,61 +208,36 @@ internal static class DisposableCashSaleAcceptance
         {
             var settings = CatalogueSettings.FromEnvironment();
             var cs = new MySqlConnectionStringBuilder(settings.ConnectionString);
-            if (Environment.GetEnvironmentVariable("HANOUTY_W2_DISPOSABLE_MARKER") != "I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY" ||
-                cs.Server != "127.0.0.1" || cs.Database != "logica_ci" || cs.Port != 3307)
-                throw new InvalidOperationException("W2 requires explicitly disposable 127.0.0.1:3307/logica_ci.");
-            var pin = Environment.GetEnvironmentVariable("HANOUTY_W2_TEST_PIN");
-            if (string.IsNullOrWhiteSpace(pin))
-                throw new InvalidOperationException("W2 test cashier PIN was not provided.");
-            var expected = decimal.Parse(Environment.GetEnvironmentVariable("HANOUTY_W2_EXPECTED_TOTAL") ??
-                throw new InvalidOperationException("Fixture must provide authoritative expected total."),
-                System.Globalization.CultureInfo.InvariantCulture);
-            using var db = new MySqlConnection(settings.ConnectionString);
-            db.Open();
-            long Scalar(string sql)
+            Require(Environment.GetEnvironmentVariable("HANOUTY_W2_DISPOSABLE_MARKER") ==
+                "I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY" && cs.Server == "127.0.0.1" &&
+                cs.Database == "logica_ci" && cs.Port == 3307,
+                "W2 requires explicitly disposable 127.0.0.1:3307/logica_ci.");
+            var pin = Environment.GetEnvironmentVariable("HANOUTY_W2_TEST_PIN") ??
+                throw new InvalidOperationException("Disposable fixture PIN required.");
+            var replay = Environment.GetEnvironmentVariable("HANOUTY_W2_REPLAY_OPERATION");
+            if (!string.IsNullOrWhiteSpace(replay))
             {
-                using var command = new MySqlCommand(sql, db);
-                return Convert.ToInt64(command.ExecuteScalar());
+                Replay(settings, pin, replay);
+                File.WriteAllText(Path.Combine(evidenceDirectory, "restart.json"),
+                    JsonSerializer.Serialize(new { Operation = replay, NoDuplicateWrites = true }));
+                return 0;
             }
-            // An already occupied workstation must never be overwritten by test staging.
-            if (Scalar("SELECT COUNT(*) FROM TABLE_XX") != 0)
-                throw new InvalidOperationException("W2 fixture is not EMPTY: TABLE_XX contains a cashier basket.");
-            if (Scalar("SELECT COUNT(*) FROM hanouty_checkout_operations") != 0)
-                throw new InvalidOperationException("W2 fixture has existing operation journal entries.");
-            var context = new AuthorizedCheckoutPaymentContext(
-                Environment.GetEnvironmentVariable("HANOUTY_W2_CASHIER") ?? "qa-cashier",
-                "MAD", false,
-                new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, expected) }, expected);
-            var app = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
-            var host = CatalogueHost.CreateFinancial(settings, "01", () => pin, context);
-            if (!host.ViewModel.CatalogueAvailable || host.ViewModel.VisibleProducts.Count == 0)
-                throw new InvalidOperationException("Real WPF financial catalogue unavailable.");
-            var product = host.ViewModel.VisibleProducts.Single(p =>
-                p.Id == (Environment.GetEnvironmentVariable("HANOUTY_W2_ARTICLE_ID") ??
-                    throw new InvalidOperationException("Fixture article identity required.")));
-            host.ViewModel.SelectCommand.Execute(product);
-            if (host.ViewModel.ScanFeedback != "Selection accepted" || host.Session.PendingCount != 1)
-                throw new InvalidOperationException("WPF SelectCommand did not reach actual checkout session.");
-            if (!host.ViewModel.CanCommit)
-                throw new InvalidOperationException("Real financial WPF CommitCommand is disabled.");
-            host.ViewModel.CommitCommand.Execute(null);
-            var operation = host.ViewModel.PendingOperationId;
-            if (string.IsNullOrWhiteSpace(operation))
-                throw new InvalidOperationException("WPF did not allocate stable operation ID.");
-            var journalCount = Scalar("SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id='" +
-                MySqlHelper.EscapeString(operation) + "'");
-            if (journalCount != 1)
-                throw new InvalidOperationException("WPF command did not persist exactly one operation in SQL.");
-            File.WriteAllText(Path.Combine(evidenceDirectory, "w2-cash-sale.json"),
-                JsonSerializer.Serialize(new { Gate = "W2 partial executable", Operation = operation,
-                    RealWpfSelection = true, SqlOperationCount = journalCount, W2Accepted = false }));
-            // Header/detail/payment/stock, rollback and Unknown still require verified SQL assertions.
-            throw new InvalidOperationException("QA_OWNER W2_NOT_ACCEPTED: journal persisted, but full ticket/payment/stock/rollback/Unknown assertions are not implemented.");
+            Seed(settings);
+            var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            var host = Host(settings, pin);
+            var result = 1;
+            host.Window.ContentRendered += (_, _) =>
+            {
+                try { Verify(settings, pin, host, evidenceDirectory); result = 0; }
+                catch (Exception ex) { File.WriteAllText(Path.Combine(evidenceDirectory, "w2-failure.txt"), ex.ToString()); }
+                finally { host.Window.Close(); app.Shutdown(); }
+            };
+            app.Run(host.Window);
+            return result;
         }
         catch (Exception ex)
         {
             File.WriteAllText(Path.Combine(evidenceDirectory, "w2-failure.txt"), ex.ToString());
-            Console.Error.WriteLine(ex);
             return 1;
         }
     }

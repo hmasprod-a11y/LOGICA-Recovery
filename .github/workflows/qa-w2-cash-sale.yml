@@ -80,7 +80,7 @@ jobs:
           path: architecture
       - uses: actions/checkout@v4
         with:
-          ref: ffd5fb3ae186bebab97ad5f989c70d1b301c528b
+          ref: 0f8869220484100a0cbab18e768c8cf8160da6af
           path: wpf
       - uses: actions/setup-dotnet@v4
         with:
@@ -120,6 +120,43 @@ jobs:
           # Verify the actual build inputs, not merely independent passing checkouts.
           $manifest=@('architecture='+((git -C architecture rev-parse HEAD).Trim()),'checkout='+((git -C checkout rev-parse HEAD).Trim()),'wpf='+((git -C wpf rev-parse HEAD).Trim()),'qa='+((git -C qa rev-parse HEAD).Trim()))
           $manifest | Set-Content evidence/composed-source-manifest.txt
+      - name: Start checksum-verified disposable MariaDB without installing a service
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dbRoot = Join-Path $env:RUNNER_TEMP 'hanouty-w2-cash-mariadb'
+          New-Item -ItemType Directory -Force $dbRoot | Out-Null
+          $url = 'https://archive.mariadb.org/mariadb-10.11.14/winx64-packages'
+          Invoke-WebRequest "$url/mariadb-10.11.14-winx64.zip" -OutFile "$dbRoot/server.zip"
+          $checks = (Invoke-WebRequest "$url/sha256sums.txt").Content
+          $expected = (($checks -split "`n" | Where-Object { $_ -match 'mariadb-10.11.14-winx64.zip\s*$' }) -split '\s+')[0]
+          if ((Get-FileHash "$dbRoot/server.zip" -Algorithm SHA256).Hash -ne $expected) { throw 'MariaDB checksum mismatch' }
+          Expand-Archive "$dbRoot/server.zip" "$dbRoot/server"
+          $bin = (Get-ChildItem "$dbRoot/server" -Recurse -Filter mariadb-install-db.exe | Select-Object -First 1).Directory.FullName
+          & "$bin/mariadb-install-db.exe" "--datadir=$dbRoot/data" --password=logica-ci-only --port=3307
+          if ($LASTEXITCODE -ne 0) { throw 'Disposable MariaDB initialization failed' }
+          $server = Start-Process "$bin/mariadbd.exe" -ArgumentList @("--defaults-file=`"$dbRoot/data/my.ini`"", '--bind-address=127.0.0.1', '--port=3307') -WindowStyle Hidden -PassThru
+          "HANOUTY_W2_SERVER_PID=$($server.Id)" | Out-File $env:GITHUB_ENV -Append
+          "HANOUTY_W2_MARIADB_BIN=$bin" | Out-File $env:GITHUB_ENV -Append
+          $ready = $false
+          for ($i=0; $i -lt 30; $i++) {
+            & "$bin/mariadb-admin.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only ping 2>$null
+            if ($LASTEXITCODE -eq 0) { $ready=$true; break }
+            Start-Sleep -Seconds 1
+          }
+          if (-not $ready) { throw 'Disposable MariaDB did not become ready' }
+      - name: Configure isolated cash-sale database account and empty fixture directory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bin = $env:HANOUTY_W2_MARIADB_BIN
+          "CREATE DATABASE logica_ci CHARACTER SET utf8mb4; CREATE USER 'w2_test'@'localhost' IDENTIFIED BY 'w2-disposable-only'; GRANT ALL ON logica_ci.* TO 'w2_test'@'localhost';" | & "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only
+          if ($LASTEXITCODE -ne 0) { throw 'Disposable W2 account/schema setup failed' }
+          $data = Join-Path $env:RUNNER_TEMP 'hanouty-w2-data'
+          New-Item -ItemType Directory -Force $data | Out-Null
+          "HANOUTY_CATALOGUE_CONNECTION=Server=127.0.0.1;Port=3307;Database=logica_ci;Uid=w2_test;Pwd=w2-disposable-only;SslMode=Disabled;" | Out-File $env:GITHUB_ENV -Append
+          "HANOUTY_DATA_DIRECTORY=$data" | Out-File $env:GITHUB_ENV -Append
+          "HANOUTY_W2_TEST_PIN=1234" | Out-File $env:GITHUB_ENV -Append
       - name: Execute cash-sale acceptance starting with empty TABLE_XX
         shell: pwsh
         run: |
@@ -140,3 +177,11 @@ jobs:
           name: qa-w2-production-source-manifest
           path: evidence/
           if-no-files-found: warn
+      - name: Stop only this workflow's disposable cash-sale server
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:HANOUTY_W2_SERVER_PID) {
+            $server = Get-Process -Id ([int]$env:HANOUTY_W2_SERVER_PID) -ErrorAction SilentlyContinue
+            if ($server -and $server.ProcessName -eq 'mariadbd') { Stop-Process -Id $server.Id }
+          }
