@@ -39,6 +39,27 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Parse and regression-test QA evidence verifier before starting host
+        shell: pwsh
+        run: |
+          $verifier = (Resolve-Path qa/qa/tests/verify-w1-actual-host.ps1).Path
+          $tokens = $null; $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($verifier, [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+          $fixture = Join-Path $env:RUNNER_TEMP 'qa-w1-verifier-fixture'
+          New-Item -ItemType Directory -Force $fixture | Out-Null
+          $validReport = @{ WindowLoaded=$true; Rows=4; StagedSelections=3; FinancialSubmissionEnabled=$false }
+          $validReport | ConvertTo-Json | Set-Content (Join-Path $fixture 'acceptance.json')
+          foreach ($ending in @("`n", "`r`n")) {
+            [IO.File]::WriteAllText((Join-Path $fixture 'sources.txt'), ('qa=' + ('a' * 40) + $ending + 'host=6d34e06139f9f10c992a926f5cce090ead72a97e' + $ending))
+            & $verifier -EvidenceDirectory $fixture
+          }
+          [IO.File]::WriteAllText((Join-Path $fixture 'sources.txt'), ('qa=' + ('a' * 40) + "`n" + 'host=' + ('0' * 40)))
+          $rejected = $false
+          try { & $verifier -EvidenceDirectory $fixture } catch { $rejected = $true }
+          if (-not $rejected) { throw 'Verifier accepted incorrect host SHA' }
+          Remove-Item -Recurse -Force $fixture
+          Write-Host 'PASS verifier parser, LF/CRLF source evidence and wrong-SHA rejection; actual Host execution remains mandatory'
       - name: Build actual combined host and Adapter regression
         shell: pwsh
         run: |
