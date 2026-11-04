@@ -67,11 +67,33 @@ public sealed class ProductionWpfProductSelection : Wpf.IProductSelection
 // Application-owned submission adapter: WPF only supplies the stable operation ID.
 // No financial posting is authorized by this adapter without a configured
 // IAtomicCheckoutBatchPort and durable operation journal in CheckoutComposition.
-public sealed class ProductionWpfCheckoutSubmission : Wpf.ICheckoutSubmission
+public sealed class ProductionWpfCheckoutSubmission : Wpf.ICheckoutSubmission, Wpf.ICheckoutOutcomeReconciliation
 {
     private readonly CheckoutSession _session;
-    public ProductionWpfCheckoutSubmission(CheckoutSession session) =>
+    private readonly AuthorizedCheckoutCommitGate? _financialGate;
+    public ProductionWpfCheckoutSubmission(CheckoutSession session,
+        AuthorizedCheckoutCommitGate? financialGate = null)
+    {
         _session = session ?? throw new ArgumentNullException(nameof(session));
+        _financialGate = financialGate;
+    }
+
+    public Wpf.CheckoutResolution Reconcile(string stableOperationId)
+    {
+        if (_session.State != CheckoutCommitState.OutcomeUnknown ||
+            !string.Equals(_session.OperationId, stableOperationId, StringComparison.Ordinal))
+            return Wpf.CheckoutResolution.Unknown;
+        // Resolve the financial gate AND the staged session. A journal result
+        // must not leave a hidden second lock that poisons the next checkout.
+        if (_financialGate?.UncertainOperationId is not null &&
+            _financialGate.Reconcile(stableOperationId) == CheckoutOperationOutcome.Unknown)
+            return Wpf.CheckoutResolution.Unknown;
+        return _session.Reconcile() switch {
+            CheckoutOperationOutcome.Persisted => Wpf.CheckoutResolution.Persisted,
+            CheckoutOperationOutcome.Absent => Wpf.CheckoutResolution.Absent,
+            _ => Wpf.CheckoutResolution.Unknown
+        };
+    }
 
     public Wpf.CheckoutSubmissionResult Submit(string stableOperationId)
     {
@@ -105,18 +127,22 @@ public static class ProductionWpfServices
         ArgumentNullException.ThrowIfNull(journal);
         var gate = new AuthorizedCheckoutCommitGate(posting, journal);
         var financialBatch = new AuthorizedCheckoutBatchAdapter(gate, paymentContext);
-        return Create(new CheckoutComposition(catalogue, variants, financialBatch, journal));
+        return CreateBinding(new CheckoutComposition(catalogue, variants, financialBatch, journal), gate);
     }
 
     // Host invokes this at App.ResolveServices using concrete Inventory,
     // Checkout and cashier variant-prompt adapters. No empty fallback.
-    public static WpfProductionBinding Create(CheckoutComposition composition)
+    public static WpfProductionBinding Create(CheckoutComposition composition) =>
+        CreateBinding(composition, null);
+
+    private static WpfProductionBinding CreateBinding(CheckoutComposition composition,
+        AuthorizedCheckoutCommitGate? financialGate)
     {
         ArgumentNullException.ThrowIfNull(composition);
         var session = composition.CreateSession();
         return new WpfProductionBinding(session,
             new ProductionWpfCatalogueReader(session),
             new ProductionWpfProductSelection(session),
-            new ProductionWpfCheckoutSubmission(session));
+            new ProductionWpfCheckoutSubmission(session, financialGate));
     }
 }
