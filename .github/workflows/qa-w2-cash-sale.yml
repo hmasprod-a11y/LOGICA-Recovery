@@ -40,6 +40,17 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Initialize disposable operation ledger using reviewed Checkout fixture
+        env:
+          DB_HOST: 127.0.0.1
+          DB_NAME: checkout_disposable
+          DB_USER: checkout_test
+          MYSQL_PWD: checkout-test-only
+        working-directory: checkout
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mariadb-client
+          bash scripts/test-checkout-atomic-mariadb.sh
       - name: Execute production financial boundary against disposable MariaDB with QA Architecture
         env:
           CHECKOUT_TEST_CONNECTION: Server=127.0.0.1;Port=3306;Database=checkout_disposable;Uid=checkout_test;Pwd=checkout-test-only;SslMode=Disabled;
