@@ -54,6 +54,21 @@ jobs:
         run: |
           dotnet build wpf/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj -c Release -warnaserror
           if ($LASTEXITCODE -ne 0) { throw 'WPF Windows build failed' }
+      - name: Verify WPF and Architecture catalogue API compatibility before database acceptance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $wpfApi = 'wpf/modernization/Hanouty.Desktop.Wpf/Presentation/CatalogueViewModel.cs'
+          $architectureApi = 'qa/modernization/architecture/Hanouty.ArchitectureBridge/CheckoutBatchController.cs'
+          if (-not (Test-Path -LiteralPath $wpfApi)) { throw "W1 BLOCKED: missing WPF catalogue contract: $wpfApi" }
+          if (-not (Test-Path -LiteralPath $architectureApi)) { throw "W1 BLOCKED: missing architecture checkout contract: $architectureApi" }
+          $wpf = Get-Content -LiteralPath $wpfApi -Raw
+          $architecture = Get-Content -LiteralPath $architectureApi -Raw
+          if ($wpf -match 'interface\s+ICatalogueReader\s*\{[^}]*ReadProducts\s*\(' -and
+              $architecture -match 'interface\s+ICatalogueReader\s*\{[^}]*ListAll\s*\(') {
+            throw 'W1 BLOCKED: two incompatible ICatalogueReader contracts (WPF ReadProducts vs Architecture ListAll). Approved adapter and real composition required; preview cannot satisfy W1.'
+          }
+          Write-Host 'Catalogue contract mismatch pattern not detected; real MariaDB acceptance still mandatory'
       - name: Fail closed on preview-only catalogue composition
         shell: pwsh
         run: |
