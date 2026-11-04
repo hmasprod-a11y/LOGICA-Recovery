@@ -913,6 +913,32 @@ internal static class PortableCheckoutSmoke
             catch (InvalidOperationException) { reorderedColumnsDuringPricing = true; }
             Require(reorderedColumnsDuringPricing,
                 "Checkout preview rejects reordered pricing columns without changed values");
+            // Replacing a DataColumn with a new object of the same name/type
+            // can leave ItemArray, column order and monetary values unchanged.
+            // A re-entrant pricing callback must not validate that new schema
+            // as the originally selected production catalogue row.
+            DataTable replacedColumnTable = flowMatches.Clone();
+            replacedColumnTable.Rows.Add("DUP", "REPLACED-COLUMN", 7.50m, 0m);
+            CheckoutVariantChoiceResult replacedColumnChoice =
+                CheckoutSelectionFlowService.ChooseBarcode(replacedColumnTable, null);
+            bool replacedColumnRejected = false;
+            try {
+                CheckoutSelectionFlowService.Preview(replacedColumnChoice, 0m,
+                    delegate(DataRow article) {
+                        decimal amount = SalesLinePricing.CalculateNetAmount(
+                            (decimal)article["UnitPrice"], 2m, (decimal)article["Discount"]);
+                        DataTable table = article.Table;
+                        int originalOrdinal = table.Columns["UnitPrice"].Ordinal;
+                        table.Columns.Remove("UnitPrice");
+                        DataColumn replacement = table.Columns.Add("UnitPrice", typeof(decimal));
+                        replacement.SetOrdinal(originalOrdinal);
+                        article["UnitPrice"] = 7.50m;
+                        return amount;
+                    }, "15", port);
+            }
+            catch (InvalidOperationException) { replacedColumnRejected = true; }
+            Require(replacedColumnRejected,
+                "Checkout preview rejects a replaced pricing column with identical name, type and amount");
             // A pricing callback can synchronously mutate the catalogue.
             // Never expose a preview based on a row whose identity changed
             // between selection and completion of the legacy calculation.
