@@ -45,11 +45,13 @@ public sealed class CheckoutBatchController
         if (string.IsNullOrWhiteSpace(barcode))
             return new SelectionResponse(SelectionOutcome.Missing, null);
         var captured = barcode;
+        var candidates = _catalogue.FindBarcode(captured);
         var result = CheckoutSelectionGateway.ResolveBarcode(
-            _catalogue.FindBarcode(captured), _prompt.Choose,
+            candidates, _prompt.Choose,
             () => _catalogue.RefreshBarcode(captured));
         if (result.Outcome == SelectionOutcome.Selected)
-            _pending.Add(new PendingLine(result.Article!, captured, quantity, false));
+            _pending.Add(new PendingLine(result.Article!, captured, quantity, false,
+                candidates.Count > 1));
         return result;
     }
 
@@ -63,7 +65,7 @@ public sealed class CheckoutBatchController
         var result = CheckoutSelectionGateway.ResolveImage(tile,
             () => _catalogue.RefreshArticle(tile.ArticleId));
         if (result.Outcome == SelectionOutcome.Selected)
-            _pending.Add(new PendingLine(result.Article!, null, quantity, true));
+            _pending.Add(new PendingLine(result.Article!, null, quantity, true, false));
         return result;
     }
 
@@ -139,6 +141,10 @@ public sealed class CheckoutBatchController
         // Use the complete live variant set. The original recovered selection
         // service still validates the chosen index and a second fresh snapshot.
         var live = _catalogue.RefreshBarcode(pending.Barcode!);
+        // An explicit variant choice cannot silently degrade to a unique
+        // barcode after another article is removed before commit.
+        if (pending.WasDuplicate && live.Count < 2)
+            return new SelectionResponse(SelectionOutcome.Missing, null);
         var index = -1;
         for (var i = 0; i < live.Count; i++)
         {
@@ -164,5 +170,5 @@ public sealed class CheckoutBatchController
         if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
     }
     private sealed record PendingLine(ArticleCandidate Candidate, string? Barcode,
-        int Quantity, bool IsImage);
+        int Quantity, bool IsImage, bool WasDuplicate);
 }
