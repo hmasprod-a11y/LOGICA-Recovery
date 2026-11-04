@@ -65,6 +65,25 @@ public sealed record CatalogueHost(MainWindow Window, CatalogueViewModel ViewMod
         return new MainWindow(binding.Catalogue, binding.Checkout, binding.Submission);
     }
 
+    // W2: caller supplies the Checkout production posting/journal from the
+    // SAME ArchitectureBridge assembly, plus authenticated payment context.
+    // Never call this for read-only startup or product selection.
+    public static MainWindow CreateFinancial(CatalogueSettings settings,
+        ICheckoutVariantPrompt variants, IAuthorizedCheckoutPort posting,
+        ICheckoutOperationJournal journal,
+        Func<AuthorizedCheckoutPaymentContext> paymentContext)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(variants);
+        ArgumentNullException.ThrowIfNull(posting);
+        ArgumentNullException.ThrowIfNull(journal);
+        ArgumentNullException.ThrowIfNull(paymentContext);
+        var binding = ProductionWpfServices.CreateFinancial(
+            new MariaDbCatalogueReader(settings.ConnectionString, settings.DataDirectory),
+            variants, posting, journal, paymentContext);
+        return new MainWindow(binding.Catalogue, binding.Checkout, binding.Submission);
+    }
+
     private sealed class ExplicitVariantChoice : ICheckoutVariantPrompt
     {
         // WPF already displays candidates and stages the explicitly chosen ID.
