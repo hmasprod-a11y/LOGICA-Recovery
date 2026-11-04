@@ -4,6 +4,26 @@
 **Authority:** user-directed correction to execution, complementary to `docs/HANOUTY_MASTER_MODERNIZATION_V2.md` (PR #95) and functional LOGICA V1 (2026-10-29). If older instructions contradict the user's **final technology decision**, this contract wins for technical architecture, never for functional parity.  
 **Status:** development contract on Architecture PR #95; not a commercial release approval.
 
+
+## 2026-11-04 — Immediate delivery correction (supersedes stale status snapshots below)
+
+**Execution:** Supervisor now also owns Architecture PR #95 in the current hourly supervision conversation; the previous standalone Architecture schedule is paused to avoid duplicate ownership. Checkout, Inventory, WPF and QA remain separate. All V1 scope and safety constraints remain binding.
+
+**Verified:** QA #93 `906b166c0c48202e510eb3f28b3e80d1ad0759e4` has nine distinct successful gates including Windows 41860145234, WPF 41860145356, Adapter 41860145089 and real MariaDB 41860145241. WPF source `c84760ab` corrects empty-catalogue versus unavailable-reader assertions and preserves nested scanner input locking. Do not reopen resolved namespace collisions, ten legacy timeouts or this WPF fixture failure without new evidence. PR #97 `6d34e061` separately proves actual WPF/MariaDB host acceptance; QA must incorporate its reviewed source graph and preserve acknowledged-duplicate scanner reset before claiming unified W1.
+
+**Concrete W2 blind spot found and changed:** Checkout #75 `995dc7fe08debc8cc3212eb21ebea8eab803a3c5` replaces empty posting-store/record substitutes in the existing MariaDB harness with 22 real production sources and compiles `AuthorizedCheckoutMariaDbPort` in net10 against pinned Architecture `f934763e`. It adds actual ticket/journal/cash payment/stock/movement/completion DB readback, durable duplicate replay, injected failure after payment and complete rollback, then retry after verified rollback. Run **41862992819 was queued at intervention checkpoint**; this change is NOT accepted until its actual compilation and database assertions pass. A test project compiling a port is not production WPF registration.
+
+**Critical path, with one accountable owner per output:**
+1. Supervisor completes/reviews the new real financial harness result and fixes failures, then releases the reserved three test/workflow files in Issue #94.
+2. Checkout implements trusted cashier and authoritative pricing preparation using existing authenticated permission state, V1 pricing and existing financial writers; maintain one shared transaction and durable journal. Do not replace this with another DTO/gate or a test preparation fixture.
+3. WPF maps the actual contextual command to the existing authorized envelope/gate and production posting adapter, preserving Unknown lock. Payment stays disabled until trusted posting acceptance.
+4. QA validates the exact combined graph: WPF command -> authorized sale -> persisted ticket/payment/stock/journal -> duplicate/rollback/restart/unknown reconciliation. Reader-only and fixture-backed posting are not W2.
+5. Inventory, current `4e8f03ef`, implements actor-scoped manual adjustment authorization, audit/concurrency/rollback independently; never invoke its separate manual adjustment transaction within Checkout.
+
+**Follow-through:** updated active team automation prompts enforce these immediate tasks. `run_now` returned an inline prompt in the supervisor conversation, not a background worker; do not claim an independent wake or continuous worker. No status-only cycle counts as a production batch. Inspect latest HEAD and completed exact-SHA CI, fix the actual next failure, and advance independent owned code while CI waits. Missing root AGENTS.md (404) alone is not a development blocker. Scheduling remains hourly; actual execution depends on task and runner availability.
+
+W2, W3 and W4 remain unaccepted. No main/release merge, commercial release, shop DB or licensing changes. Progress percentages remain unmeasurable without a counted V1/callsite ledger.
+
 ## 2026-11-04 03:08 UTC — Binding corrective addendum V3.1 (latest evidence overrides stale §1 snapshot)
 
 This addendum updates execution **and acceptance**, not the user-approved product scope. Sections 0, 2–6 and functional LOGICA V1 continue to apply. The section 1 SHAs, old WPF EmptyCatalogueReader diagnosis, and historical WPF preview failure are **historical baselines**, not current blockers. Do not undo completed fixes or reopen architecture selection.
