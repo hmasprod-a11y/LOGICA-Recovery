@@ -5,6 +5,16 @@
 **Status:** development contract on Architecture PR #95; not a commercial release approval.
 
 
+## 2026-11-04 — Verified financial execution and current integration checkpoint
+
+- **Checkout #75 `2bcdc8c17b81b6391bd4afce3c0aa76a9370337b`: five distinct gates SUCCESS**, Windows 41872754790 and real MariaDB 41872754878 included. Actual `AuthorizedCheckoutMariaDbPort` is compiled and invoked in direct transaction tests: preparation receives active transaction; uncommitted operation invisible to another connection; real financial writers persist; duplicate skips preparation; denied preparation rolls back operation claim and business state. The preparation used by these tests is explicitly controlled fixture code, **not production cashier authentication**.
+- Prior full production writer acceptance `995dc7fe`, run41862992819, is **SUCCESS**, no longer queued. Latest Checkout owner moved preparation into transaction on `287c450c`; its exact financial gate41865031946 also passed.
+- Supervisor's three-file financial harness reservation is released; communicate edits through Issue94.
+- WPF #96 `da75499e` adds the real authorized-envelope/financial-gate adapter and controlled regressions. Its three legacy gates passed but did not execute this WPF project. QA preview41873098419 exposed missing Architecture project (`MSB9008`); current QA `9a04ce6f` composes exact WPF da75499e + Architecture88c8c498 and linked production sources in an isolated workspace. **Do not present legacy green checks as acceptance of this WPF graph.**
+- QA actual Host initially failed before execution due reserved PowerShell `$Host` and incorrect doubled checkout path. Supervisor fixed these in9568f8d. The real Host then executed successfully, but independent provenance verification failed on Windows line endings. My first CRLF edit introduced a parser error; corrected in7e458b4b, with mandatory early parser + LF/CRLF positive + wrong-SHA negative regressions. Latest actual-host and current WPF adapter runs must finish before final QA W1 claim.
+- Inventory remains at4e8f03ef, green but no new commit in its latest cycle. Actor-scoped manual-stock authorization is unresolved. Failure to find code in default-branch search is not proof the source is absent: inspect the owned branch login and permissions code; never equate a caller-supplied UserId with authentication.
+- **Still blocking W2:** concrete trusted cashier/authoritative-price preparation and actual WPF financial production registration, followed by combined authorized sale/restart/unknown acceptance. W3/V1 parity and W4 field/release gates remain blocked. No main/release, shop data or licensing changes.
+
 ## 2026-11-04 — Immediate delivery correction (supersedes stale status snapshots below)
 
 **Execution:** Supervisor now also owns Architecture PR #95 in the current hourly supervision conversation; the previous standalone Architecture schedule is paused to avoid duplicate ownership. Checkout, Inventory, WPF and QA remain separate. All V1 scope and safety constraints remain binding.
