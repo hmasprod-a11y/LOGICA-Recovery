@@ -347,6 +347,20 @@ AuthorizedCheckoutRequest W2(string id = "sale-001", string cashier = "cashier-0
         payments ?? new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 25m) }, 25m);
 W2().Validate();
 Assert(true, "W2 authorized checkout envelope accepts explicit cashier/payment");
+var brokenJournal = new FailingFinancialJournal();
+var protectedPort = new RecordingFinancialPort();
+var protectedGate = new AuthorizedCheckoutCommitGate(protectedPort, brokenJournal);
+try { protectedGate.Commit(W2(id: "lookup-failed")); throw new Exception("must throw"); }
+catch (ApplicationException) { }
+Assert(protectedGate.UncertainOperationId == "lookup-failed" && protectedPort.Calls == 0,
+    "failed durable lookup blocks posting and records unknown operation");
+try { protectedGate.Commit(W2(id: "different-operation")); throw new Exception("must block"); }
+catch (InvalidOperationException) { }
+Assert(protectedPort.Calls == 0, "unknown lookup cannot authorize another financial write");
+brokenJournal.Outcome = CheckoutOperationOutcome.Absent;
+Assert(protectedGate.Reconcile("lookup-failed") == CheckoutOperationOutcome.Absent &&
+       protectedGate.UncertainOperationId is null,
+    "durable absent reconciliation unlocks after lookup outage");
 var financialJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
 var financialPort = new RecordingFinancialPort();
 var financialGate = new AuthorizedCheckoutCommitGate(financialPort, financialJournal);
@@ -529,4 +543,11 @@ sealed class RecordingFinancialPort : IAuthorizedCheckoutPort
         Calls++;
         if (ThrowOnCommit) throw new ApplicationException("acknowledgement lost");
     }
+}
+
+sealed class FailingFinancialJournal : ICheckoutOperationJournal
+{
+    public CheckoutOperationOutcome? Outcome { get; set; }
+    public CheckoutOperationOutcome Lookup(string operationId) =>
+        Outcome ?? throw new ApplicationException("durable journal unavailable");
 }
