@@ -57,8 +57,15 @@ namespace LOGICA.Infrastructure.Checkout
         private static void ValidateOperationId(string operationId)
         {
             if (String.IsNullOrWhiteSpace(operationId) || operationId.Length > 128 ||
-                operationId.Trim() != operationId)
+                operationId.Trim() != operationId || !IsAsciiOperationId(operationId))
                 throw new ArgumentException("Operation ID must be 1-128 non-whitespace characters without surrounding spaces.", "operationId");
+        }
+
+        internal static bool IsAsciiOperationId(string operationId)
+        {
+            foreach (char value in operationId)
+                if (value < 0x21 || value > 0x7e) return false;
+            return true;
         }
 
         public void Commit() { transaction.Commit(); }
@@ -93,7 +100,7 @@ namespace LOGICA.Infrastructure.Checkout
 
         internal bool IsPersisted(string operationId)
         {
-            if (String.IsNullOrWhiteSpace(operationId) || operationId.Length > 128 || operationId.Trim() != operationId)
+            if (String.IsNullOrWhiteSpace(operationId) || operationId.Length > 128 || operationId.Trim() != operationId || !MySqlCheckoutAtomicPostingBoundary.IsAsciiOperationId(operationId))
                 throw new ArgumentException("Invalid operation ID.", "operationId");
             using (MySqlConnection connection = createConnection())
             {
