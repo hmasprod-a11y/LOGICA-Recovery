@@ -280,7 +280,7 @@ Check(nestedArticlePort.Calls == 1 &&
     nestedArticleVm.ScanFeedback == "Selection accepted",
     "nested touch and SelectedProduct setter must not replace in-flight sale article");
 var commitPort = new RecordingSubmission();
-var commitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: commitPort);
+var commitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: commitPort) { PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m) };
 Check(commitVm.CanCommit, "real checkout port enables commit control");
 commitPort.Result = CheckoutSubmissionResult.Invalidated;
 commitVm.CommitCommand.Execute(null);
@@ -294,7 +294,7 @@ Check(commitPort.Ids.Count == 2 && commitPort.Ids[0] == commitPort.Ids[1] &&
 commitVm.CommitCheckout();
 Check(commitPort.Ids.Count == 2, "unknown checkout must never auto-retry");
 var committedPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Committed };
-var committedVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: committedPort);
+var committedVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: committedPort) { PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m) };
 committedVm.CommitCheckout();
 committedVm.CommitCheckout();
 Check(committedPort.Ids.Count == 2 && committedPort.Ids[0] != committedPort.Ids[1],
@@ -304,7 +304,7 @@ Check(!unregisteredVm.CanCommit, "unregistered checkout must fail closed");
 unregisteredVm.CommitCheckout();
 Check(unregisteredVm.CommitFeedback == "Checkout submission unavailable", "no fake checkout fallback");
 var nestedCommitPort = new ReentrantSubmission();
-var nestedCommitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: nestedCommitPort);
+var nestedCommitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: nestedCommitPort) { PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m) };
 nestedCommitPort.ViewModel = nestedCommitVm;
 var commitNotifications = 0;
 nestedCommitVm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CatalogueViewModel.CanCommit)) commitNotifications++; };
@@ -313,7 +313,7 @@ Check(nestedCommitPort.Calls == 1 && nestedCommitPort.BlockedWhileExecuting &&
     nestedCommitVm.CanCommit && commitNotifications >= 2,
     "nested checkout commit must be rejected and controls disabled until acknowledgement");
 var uncertainCommitPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
-var uncertainCommitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: uncertainCommitPort);
+var uncertainCommitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: uncertainCommitPort) { PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m) };
 uncertainCommitVm.CommitCheckout();
 Check(!uncertainCommitVm.CanCommit && uncertainCommitVm.CheckoutUncertain,
     "unknown checkout disables commit controls without auto-retry");
@@ -330,13 +330,13 @@ unexpectedSelectionVm.SelectCurrent();
 Check(unexpectedSelectionVm.CheckoutUncertain && !unexpectedSelectionVm.CanSelectProduct,
     "unexpected checkout selection failure must latch uncertainty");
 var unexpectedSubmissionVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(),
-    submission: new UnexpectedSubmission());
+    submission: new UnexpectedSubmission()) { PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m) };
 unexpectedSubmissionVm.CommitCheckout();
 Check(unexpectedSubmissionVm.CheckoutUncertain && !unexpectedSubmissionVm.CanCommit &&
     unexpectedSubmissionVm.CommitFeedback.Contains("unknown"),
     "unexpected transactional adapter failure must not enable checkout retry");
 var invalidResultPort = new RecordingSubmission { Result = (CheckoutSubmissionResult)987 };
-var invalidResultVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: invalidResultPort);
+var invalidResultVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: invalidResultPort) { PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m) };
 invalidResultVm.CommitCheckout();
 Check(invalidResultVm.CheckoutUncertain && !invalidResultVm.CanCommit &&
     invalidResultVm.CommitFeedback.Contains("unknown") && invalidResultPort.Ids.Count == 1,
@@ -353,7 +353,7 @@ frozenVm.SearchText = "Other";
 Check(frozenVm.ScannerText == "123" && frozenVm.SearchText == "Milk",
     "unknown selection freezes scanner and search until reconciliation");
 var frozenCommitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(),
-    submission: new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown });
+    submission: new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown }) { PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m) };
 frozenCommitVm.ScannerText = "123";
 frozenCommitVm.SearchText = "Milk";
 frozenCommitVm.CommitCheckout();
@@ -450,23 +450,25 @@ sealed class ReentrantArticleSelection(ProductSummary other) : IProductSelection
     }
 }
 
-sealed class RecordingSubmission : ICheckoutSubmission
+sealed class RecordingSubmission : IContextualCheckoutSubmission
 {
+    public CheckoutSubmissionResult Submit(string stableOperationId) => throw new InvalidOperationException("legacy submission forbidden");
     public List<string> Ids { get; } = new();
     public CheckoutSubmissionResult Result { get; set; }
-    public CheckoutSubmissionResult Submit(string stableOperationId)
+    public CheckoutSubmissionResult Submit(string stableOperationId, CashierPaymentContext context)
     {
         Ids.Add(stableOperationId);
         return Result;
     }
 }
 
-sealed class ReentrantSubmission : ICheckoutSubmission
+sealed class ReentrantSubmission : IContextualCheckoutSubmission
 {
+    public CheckoutSubmissionResult Submit(string stableOperationId) => throw new InvalidOperationException("legacy submission forbidden");
     public CatalogueViewModel? ViewModel { get; set; }
     public int Calls { get; private set; }
     public bool BlockedWhileExecuting { get; private set; }
-    public CheckoutSubmissionResult Submit(string stableOperationId)
+    public CheckoutSubmissionResult Submit(string stableOperationId, CashierPaymentContext context)
     {
         Calls++;
         BlockedWhileExecuting = ViewModel is not null && !ViewModel.CanCommit;
@@ -487,8 +489,9 @@ sealed class UnexpectedSelection : IProductSelection
 {
     public bool Select(ProductSummary product) => throw new System.FormatException("unexpected application adapter failure");
 }
-sealed class UnexpectedSubmission : ICheckoutSubmission
+sealed class UnexpectedSubmission : IContextualCheckoutSubmission
 {
-    public CheckoutSubmissionResult Submit(string stableOperationId) =>
+    public CheckoutSubmissionResult Submit(string stableOperationId) => throw new InvalidOperationException("legacy submission forbidden");
+    public CheckoutSubmissionResult Submit(string stableOperationId, CashierPaymentContext context) =>
         throw new System.FormatException("unexpected checkout adapter failure");
 }
