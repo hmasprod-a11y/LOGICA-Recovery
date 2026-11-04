@@ -86,6 +86,7 @@ public sealed class CheckoutBatchController
         try
         {
             var lines = new List<CheckoutBatchLine>(_pending.Count);
+            var positions = new Dictionary<string, int>(StringComparer.Ordinal);
             foreach (var pending in _pending)
             {
                 SelectionResponse live = pending.IsImage
@@ -96,7 +97,16 @@ public sealed class CheckoutBatchController
                     live.Article?.ArticleId != pending.Candidate.ArticleId ||
                     live.Article.Barcode != pending.Candidate.Barcode)
                     return CheckoutBatchStatus.Invalidated;
-                lines.Add(new CheckoutBatchLine(pending.Candidate.ArticleId, pending.Quantity));
+                if (positions.TryGetValue(pending.Candidate.ArticleId, out var position))
+                {
+                    var existing = lines[position];
+                    lines[position] = existing with { Quantity = checked(existing.Quantity + pending.Quantity) };
+                }
+                else
+                {
+                    positions.Add(pending.Candidate.ArticleId, lines.Count);
+                    lines.Add(new CheckoutBatchLine(pending.Candidate.ArticleId, pending.Quantity));
+                }
             }
             try { _cart.AddBatch(lines.AsReadOnly(), operationId); }
             catch
