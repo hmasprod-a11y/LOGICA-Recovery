@@ -83,6 +83,43 @@ catch (ArgumentOutOfRangeException) { Assert(hostCart.Calls.Count == priorHostCo
 try { controller.SelectImage(A("21", ""), 0); throw new Exception("invalid tile quantity accepted"); }
 catch (ArgumentOutOfRangeException) { Assert(hostCart.Calls.Count == priorHostCount, "invalid tile quantity rejected before catalogue read"); }
 
+
+// Atomic multi-line checkout: stage first, then revalidate every article.
+var atomicCart = new RecordingAtomicBatchPort();
+var batch = new CheckoutBatchController(new RecordingCatalogue(), new RecordingPrompt { Choice = 1 }, atomicCart);
+Assert(batch.StageImage(A("21", ""), 2).Outcome == SelectionOutcome.Selected, "batch stages barcode-free image");
+Assert(batch.StageBarcode("123", 3).Outcome == SelectionOutcome.Selected, "batch stages duplicate barcode");
+Assert(atomicCart.Calls.Count == 0 && batch.PendingCount == 2, "staging never writes cart");
+var batchStatus = batch.Commit("sale-001");
+Assert(batchStatus == CheckoutBatchStatus.Committed && atomicCart.Calls.Count == 1 &&
+       atomicCart.Calls[0].OperationId == "sale-001" &&
+       atomicCart.Calls[0].Lines.Count == 2 &&
+       atomicCart.Calls[0].Lines[0] == new CheckoutBatchLine("21", 2) &&
+       atomicCart.Calls[0].Lines[1] == new CheckoutBatchLine("12", 3),
+       "one atomic port call contains all validated lines");
+Assert(batch.PendingCount == 0 && batch.Commit("sale-002") == CheckoutBatchStatus.Empty,
+       "successful commit clears pending and empty commit does not write");
+var changedCatalogue = new RecordingCatalogue();
+var blockedCart = new RecordingAtomicBatchPort();
+var blockedBatch = new CheckoutBatchController(changedCatalogue, new RecordingPrompt { Choice = 1 }, blockedCart);
+blockedBatch.StageImage(A("21", ""));
+changedCatalogue.ReplaceImage = true;
+Assert(blockedBatch.Commit("sale-003") == CheckoutBatchStatus.Invalidated &&
+       blockedCart.Calls.Count == 0 && blockedBatch.PendingCount == 1,
+       "changed article identity blocks entire atomic commit");
+blockedBatch.Clear();
+Assert(blockedBatch.PendingCount == 0, "explicit clear discards staged lines");
+try { blockedBatch.Commit(" "); throw new Exception("blank operation ID accepted"); }
+catch (ArgumentException) { Assert(blockedCart.Calls.Count == 0, "blank operation ID fails closed"); }
+var failingBatchPort = new ThrowingAtomicBatchPort();
+var retryBatch = new CheckoutBatchController(new RecordingCatalogue(), new RecordingPrompt(), failingBatchPort);
+retryBatch.StageImage(A("21", ""));
+try { retryBatch.Commit("sale-004"); throw new Exception("atomic port failure swallowed"); }
+catch (ApplicationException) {
+    Assert(failingBatchPort.Attempts == 1 && retryBatch.PendingCount == 1,
+        "failed atomic write propagates, retains stage, never retries automatically");
+}
+
 Console.WriteLine("Production selection-to-checkout workflow regression suite passed.");
 
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
@@ -132,5 +169,21 @@ sealed class RecordingPrompt : ICheckoutVariantPrompt
     {
         Attempts++;
         return Choice;
+    }
+}
+
+sealed class RecordingAtomicBatchPort : IAtomicCheckoutBatchPort
+{
+    public List<(List<CheckoutBatchLine> Lines, string OperationId)> Calls { get; } = new();
+    public void AddBatch(IReadOnlyList<CheckoutBatchLine> lines, string operationId)
+        => Calls.Add((lines.ToList(), operationId));
+}
+sealed class ThrowingAtomicBatchPort : IAtomicCheckoutBatchPort
+{
+    public int Attempts { get; private set; }
+    public void AddBatch(IReadOnlyList<CheckoutBatchLine> lines, string operationId)
+    {
+        Attempts++;
+        throw new ApplicationException("transaction result unknown");
     }
 }
