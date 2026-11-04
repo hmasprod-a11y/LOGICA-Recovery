@@ -7,6 +7,21 @@ static void Check(bool value, string reason)
 {
     if (!value) throw new Exception(reason);
 }
+// Architecture CreateFinancial host registers the same financial adapter and
+// authenticated cash context at WPF startup, without a second host or PIN copy.
+var startupJournal = new FinancialJournal();
+var startupAdapter = new AuthorizedWpfCheckoutAdapter(new FinancialPreparation(),
+    new AuthorizedCheckoutCommitGate(new FinancialPort(startupJournal), startupJournal), startupJournal);
+var startupCash = new CashierPaymentContext("cashier-1", "register-1", "MAD", "Cash", 100m);
+Hanouty.Desktop.Wpf.App.ResolveFinancialServices = () =>
+    (new EmptyCatalogueReader(), new RecordingSelection(), startupAdapter, startupCash);
+var registered = Hanouty.Desktop.Wpf.App.ResolveFinancialServices();
+Check(registered.Payment == startupCash &&
+    ReferenceEquals(registered.Submission, startupAdapter) &&
+    registered.Submission is ICheckoutOutcomeReconciliation &&
+    registered.Submission is IContextualCheckoutSubmission,
+    "CreateFinancial WPF startup must preserve same contextual submission and durable reconciliation");
+Hanouty.Desktop.Wpf.App.ResolveFinancialServices = null;
 var items = new[]
 {
     new ProductSummary("1", "Milk", "123", "milk.png"),
