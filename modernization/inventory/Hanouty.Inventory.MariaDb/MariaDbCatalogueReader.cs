@@ -68,7 +68,7 @@ public sealed class MariaDbCatalogueReader : ICatalogueReader
         if (string.IsNullOrWhiteSpace(legacyName) || legacyName == "0") return null;
         // Legacy Images stores a file name relative to <data>/bd/images.
         // Do not allow DB-supplied paths to escape the image directory.
-        if (Path.IsPathRooted(legacyName) || legacyName != Path.GetFileName(legacyName))
+        if (Path.IsPathRooted(legacyName) || legacyName.Contains('/') || legacyName.Contains((char)92) || legacyName != Path.GetFileName(legacyName))
             return null;
         string candidate = Path.GetFullPath(Path.Combine(_imagesDirectory, legacyName));
         return File.Exists(candidate) ? candidate : null;
