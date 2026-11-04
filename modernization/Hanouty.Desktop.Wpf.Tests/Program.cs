@@ -86,6 +86,20 @@ reloaded.SelectedProduct = items[0];
 reloaded.ScannerText = "";
 reloaded.ScanBarcode();
 Check(reloaded.SelectedProduct is null && reloaded.BarcodeCandidates.Count == 0, "empty scan clears previous selection");
+// A reconstructed object with identical values is not the loaded catalogue row.
+// Only an object from the active snapshot may cross the selection port.
+vm.SearchText = "";
+vm.SelectedProduct = items[0] with { };
+var beforeStale = selection.Selected.Count;
+vm.SelectCurrent();
+Check(vm.ScanFeedback == "Product no longer in catalogue" && selection.Selected.Count == beforeStale,
+    "value-equal stale article must not be sent to checkout");
+var legacyNulls = new[] { new ProductSummary("N", null!, null!, null) };
+var nullVm = new CatalogueViewModel(new Reader(legacyNulls), new RecordingSelection());
+nullVm.SearchText = "anything";
+Check(nullVm.VisibleProducts.Count == 0, "legacy null name/barcode must not crash catalogue search");
+nullVm.SearchText = "";
+Check(nullVm.VisibleProducts.Count == 1, "legacy nullable article stays visible in full catalogue");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
