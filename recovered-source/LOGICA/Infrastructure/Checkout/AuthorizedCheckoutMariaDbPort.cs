@@ -10,7 +10,7 @@ namespace LOGICA.Infrastructure.Checkout
     // and authoritative product/pricing records, NEVER UI-supplied totals.
     internal interface ITrustedCheckoutPostingPreparation
     {
-        CheckoutPostingInput Prepare(AuthorizedCheckoutRequest request, MySqlConnection connection);
+        CheckoutPostingInput Prepare(AuthorizedCheckoutRequest request, MySqlConnection connection, MySqlTransaction transaction);
     }
 
     // This is the production transaction adapter, not a replacement for the
@@ -41,20 +41,46 @@ namespace LOGICA.Infrastructure.Checkout
 
             using (MySqlConnection connection = createConnection())
             {
-                // Prepare is required to verify cashier authority, recalculate
-                // totals and produce real posting records. No fallback exists.
-                CheckoutPostingInput input = trustedPreparation.Prepare(request, connection);
-                if (input == null)
-                    throw new InvalidOperationException("Trusted checkout preparation returned no posting records.");
+                // Authentication, price read and posting MUST share the same
+                // InnoDB snapshot. Preparing before Begin was a TOCTOU risk.
                 var boundary = new MySqlCheckoutAtomicPostingBoundary(connection);
-                var progress = new CheckoutCommitProgress();
-                // Claim, stock, ticket, payment and completion share one InnoDB
-                // transaction. Commit exceptions remain UNKNOWN to the caller;
-                // Architecture's gate reconciles through the durable journal.
-                CheckoutAtomicPostingResult result =
-                    CheckoutAtomicPostingService.Execute(boundary, input, request.OperationId, progress);
-                if (result == CheckoutAtomicPostingResult.AlreadyCommitted)
-                    return; // The gate verifies the durable journal before reporting success.
+                bool begun = false;
+                bool commitAttempted = false;
+                try
+                {
+                    boundary.Open();
+                    boundary.BeginAndBind();
+                    begun = true;
+                    if (!boundary.TryClaimOperation(request.OperationId))
+                    {
+                        boundary.Rollback();
+                        begun = false;
+                        boundary.Close();
+                        return; // Gate independently verifies persisted journal.
+                    }
+                    // Production preparation must use this exact transaction for
+                    // authenticated permission + price reads. Never trust the UI.
+                    CheckoutPostingInput input = trustedPreparation.Prepare(
+                        request, connection, boundary.ActiveTransaction);
+                    if (input == null)
+                        throw new InvalidOperationException("Trusted preparation returned no posting records.");
+                    CheckoutPostingService.Post(boundary, input);
+                    commitAttempted = true;
+                    boundary.Commit();
+                    begun = false;
+                    boundary.Close();
+                }
+                catch
+                {
+                    // Once Commit was attempted, its outcome is UNKNOWN; never
+                    // claim rollback or silently retry. Gate reconciles journal.
+                    if (begun && !commitAttempted)
+                    {
+                        try { boundary.Rollback(); }
+                        finally { boundary.Close(); }
+                    }
+                    throw;
+                }
             }
         }
     }
