@@ -1,10 +1,10 @@
 # Counted-cash refactoring: current checkpoint
 
 - Draft PR #12, branch refactor/cash-counting-rules, based on checkout PR #8; independent of catalogue #10 and movement #11.
-- Verified implementation: 532dbe84717eb88d2ed67b1966bec7930ebfc6e6.
-- [Windows run 40966560485](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40966560485) and independent runs 40966560437/40966568154 passed. No implementation check is pending.
-- Denomination arithmetic and input-reset decision are separated. Preserve mixed decimal/double math, eager repeated sender reads, culture and matching grid-row behavior.
-- Next bounded step: test then extract counted-cash orchestration (background, reset, lazy calculation, total display, payment-row scan/update). Keep the exact ESPECES comparison, snapshot last index, per-match FormatNumber and partial failures. No financial Load, closing or persistence.
+- Verified implementation: 91961b7fdab4dc100968e7248dbc2ecaba30fab2.
+- [Windows run 40967860308](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40967860308) and independent runs 40967860274/40967865045 passed. No implementation check is pending.
+- Denomination arithmetic, input-reset decision and recount orchestration are separated. Preserve mixed decimal/double math, eager repeated sender reads, culture and matching grid-row behavior.
+- Next bounded step: continue method-level audit before choosing another extraction. Financial Load, closing, persistence and real cash-session acceptance remain outside this verified slice.
 
 ## Evidence and method history
 
@@ -44,8 +44,14 @@ Before changing the predicate, CashCountInputRules passed 117 standalone asserti
 
 Windows run 40966560485 passed after input-rule extraction, with all original LostFocus scenarios and prior checkout/build/launcher checks. Independent tests passed, including 759 arithmetic and 117 input-rule assertions. No cash-session/financial mutation path is covered or changed. Revert 532dbe84717eb88d2ed67b1966bec7930ebfc6e6 to undo the latest rule extraction.
 
-## Counted-cash orchestration extraction pending
+## Counted-cash orchestration extraction
 
 Before wiring the handler, CashRecountService passed 214 standalone assertions for background/eager normalization/lazy denomination calculation/total display/payment scan order, exact ESPECES matches, empty grid, first getter/action failure identity and retained partial row updates.
 
 Move only recount ordering into ApplicationLayer.Cash using a narrow context. A nested form context retains original late-bound background/text operations, denomination getters, VB FormatNumber for total and each matching row separately, checked last-index snapshot and raw payment-mode access. No eager snapshot, cached row formatting, financial Load/writes or new validation. Independent runner includes Application/Cash. Full original-handler Windows regression is pending after wiring.
+
+## Verified recount orchestration milestone
+
+Windows run [40967860308](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/40967860308) passed for 91961b7fdab4dc100968e7248dbc2ecaba30fab2, including the original LostFocus fixture and existing checkout/build/launcher checks. Independent runs 40967860274/40967865045 passed: 759 arithmetic, 117 input-rule and 214 recount-order/failure assertions. No costly rerun is needed for this documentation update.
+
+Resume check: PR #8 has advanced to 0f95f970509726c73ae012cbce207e2ae24b1899 with receipt/inventory consultation fixture changes in scripts/test-recovered-db.cs. This parallel test work is not overwritten or imported into the cash branch. PR #12 remains draft; no merge or release.
