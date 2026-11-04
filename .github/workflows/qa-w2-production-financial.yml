@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: 2bcdc8c17b81b6391bd4afce3c0aa76a9370337b
+          ref: 43d2c363f5fef635609488060e0d84e22d3b5851
           path: checkout
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -63,11 +63,14 @@ jobs:
         working-directory: checkout
         env:
           CHECKOUT_TEST_CONNECTION: Server=127.0.0.1;Port=3306;Database=checkout_disposable;Uid=checkout_test;Pwd=checkout-test-only;SslMode=Disabled;
-        run: dotnet run --project modernization/checkout-mariadb-boundary/CheckoutMariaDbBoundary.csproj --configuration Release
+        run: |
+          set -euo pipefail
+          dotnet run --project modernization/checkout-mariadb-boundary/CheckoutMariaDbBoundary.csproj --configuration Release | tee ../evidence/w2/financial-acceptance.log
+          grep -Fq 'PASS REAL TABLE_PASS authentication + authoritative DB price/basket preparation;' ../evidence/w2/financial-acceptance.log
       - name: Record scoped acceptance (WPF authorized E2E remains blocked)
         if: success()
         run: |
-          printf 'financial_port=passed\nwpf_authorized_e2e=not_executed\nw2_accepted=false\n' > evidence/w2/verdict.txt
+          printf 'financial_port=passed\ntrusted_preparation=real_db_tested\nwpf_authorized_e2e=not_executed\nw2_accepted=false\n' > evidence/w2/verdict.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
