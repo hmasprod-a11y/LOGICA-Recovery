@@ -38,6 +38,11 @@ static class Program
                 fixtureCreated = true;
                 Sql(db, "INSERT INTO TABLE_ARTICLES VALUES ('A-1','Q''42','First','exists.png'),('A-2','Q''42','Variant','missing.png'),('A-3',NULL,'No barcode',NULL),('A-4','','Image-only','0')");
             }
+            var remote = new MySqlConnectionStringBuilder(connectionString) { Server = "198.51.100.9" };
+            bool remoteRejected = false;
+            try { _ = new MariaDbCatalogueReader(remote.ConnectionString, folder); }
+            catch (InvalidOperationException) { remoteRejected = true; }
+            Assert(remoteRejected, "remote catalogue connection rejected before opening");
             var reader = new MariaDbCatalogueReader(connectionString, folder);
             var all = reader.ListAll();
             Assert(all.Count == 4, "all products, including NULL and empty barcode");
