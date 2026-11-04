@@ -527,6 +527,22 @@ namespace LOGICA.Infrastructure.Checkout
                 }
             }
             finally { System.Globalization.CultureInfo.CurrentCulture = previousCulture; }
+            // A nontransactional ledger must be rejected BEFORE a durable claim,
+            // and must never be reported Persisted by the production journal.
+            Sql("ALTER TABLE hanouty_checkout_operations ENGINE=MyISAM");
+            try
+            {
+                bool refusedLedger = false;
+                try { correct.Commit(TrustedRequest("trusted-invalid-ledger")); }
+                catch (InvalidOperationException) { refusedLedger = true; }
+                Require(refusedLedger &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id='trusted-invalid-ledger'") == 0 &&
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreateOperationJournal(NewConnection).Lookup("trusted-fr-FR") ==
+                        Hanouty.ArchitectureBridge.CheckoutOperationOutcome.Unknown,
+                    "Nontransactional ledger was written or falsely reported committed.");
+            }
+            finally { Sql("ALTER TABLE hanouty_checkout_operations ENGINE=InnoDB"); }
+            Require(!journal.IsPersisted("trusted-invalid-ledger"), "Rejected ledger left a durable claim.");
             Console.WriteLine("PASS REAL TABLE_PASS authentication + authoritative DB price/basket preparation; denied PIN/category/stale price/underpayment roll back; quoted cashier/article and fr-FR/en-US exact cash persist once. WPF registration and broader V1 policy remain pending.");
         }
 

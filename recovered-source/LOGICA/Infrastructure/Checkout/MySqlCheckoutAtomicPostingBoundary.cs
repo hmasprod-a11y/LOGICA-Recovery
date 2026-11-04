@@ -40,6 +40,7 @@ namespace LOGICA.Infrastructure.Checkout
             if (transaction == null)
                 throw new InvalidOperationException("Checkout transaction has not begun.");
             ValidateOperationId(operationId);
+            EnsureTransactionalOperationTable(command);
             // The UNIQUE primary key serializes duplicate submissions even
             // across independent Windows processes and cashier connections.
             command.Parameters.Clear();
@@ -51,6 +52,19 @@ namespace LOGICA.Infrastructure.Checkout
             {
                 if (ex.Number == 1062) return false;
                 throw;
+            }
+            finally { command.Parameters.Clear(); }
+        }
+
+        internal static void EnsureTransactionalOperationTable(MySqlCommand command)
+        {
+            command.Parameters.Clear();
+            try
+            {
+                command.CommandText = "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@operationTable";
+                command.Parameters.AddWithValue("@operationTable", "hanouty_checkout_operations");
+                if (!String.Equals(Convert.ToString(command.ExecuteScalar()), "InnoDB", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("Durable checkout operations require an existing InnoDB ledger.");
             }
             finally { command.Parameters.Clear(); }
         }
@@ -127,6 +141,7 @@ namespace LOGICA.Infrastructure.Checkout
                 connection.Open();
                 using (MySqlCommand command = connection.CreateCommand())
                 {
+                    MySqlCheckoutAtomicPostingBoundary.EnsureTransactionalOperationTable(command);
                     command.CommandText =
                         "SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id = @operation_id";
                     command.Parameters.Add("@operation_id", MySqlDbType.VarChar).Value = operationId;
