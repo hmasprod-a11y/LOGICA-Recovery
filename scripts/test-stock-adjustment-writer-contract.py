@@ -80,7 +80,7 @@ print('PASS: exact persisted stock checked before audit insert; rollback on roun
 
 # MariaDB ROLLBACK TO SAVEPOINT keeps the savepoint allocated. A recoverable
 # failure must release its own savepoint before the caller continues.
-catch_block = source[source.index('            catch\\n            {', source.index('string savepointName')):]
+catch_block = source[source.index('            catch\n            {', source.index('string savepointName')):]
 assert catch_block.index('"ROLLBACK TO SAVEPOINT " + savepointName') < catch_block.index('"RELEASE SAVEPOINT " + savepointName')
 assert source.count('"RELEASE SAVEPOINT " + savepointName') == 2, 'release on success and failure'
 print('PASS: failed adjustment releases local savepoint after rollback')
