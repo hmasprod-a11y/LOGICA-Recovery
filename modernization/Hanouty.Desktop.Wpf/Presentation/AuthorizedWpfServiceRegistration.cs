@@ -21,4 +21,24 @@ public static class AuthorizedWpfServiceRegistration
         var submission = new AuthorizedWpfCheckoutAdapter(trustedPreparation, gate, journal);
         return (catalogue, selection, submission);
     }
+    // ProductionWpfServices.CreateFinancial owns the ONE CheckoutSession and
+    // the approved gate. Do not construct another gate/preparation here.
+    // The host's paymentContext callback remains authoritative for cashier,
+    // payment, PIN and trusted totals at the Checkout boundary.
+    public static (ICatalogueReader Catalogue, IProductSelection Checkout, ICheckoutSubmission Submission)
+        CreateSessionBound(ICatalogueReader catalogue, IProductSelection selection,
+            ICheckoutSubmission financialSessionSubmission,
+            Func<CashierPaymentContext> currentAuthorizedCashContext)
+    {
+        ArgumentNullException.ThrowIfNull(catalogue);
+        ArgumentNullException.ThrowIfNull(selection);
+        ArgumentNullException.ThrowIfNull(financialSessionSubmission);
+        ArgumentNullException.ThrowIfNull(currentAuthorizedCashContext);
+        if (financialSessionSubmission is not ICheckoutOutcomeReconciliation)
+            throw new ArgumentException("Durable session reconciliation required.", nameof(financialSessionSubmission));
+        return (catalogue, selection,
+            new SessionBoundCashCheckoutSubmission(financialSessionSubmission,
+                currentAuthorizedCashContext));
+    }
+
 }
