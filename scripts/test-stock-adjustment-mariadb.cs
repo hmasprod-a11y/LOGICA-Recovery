@@ -22,7 +22,14 @@ internal static class StockAdjustmentMariaDbSmoke
     }
     static void ExpectFailure(Action action, string scenario)
     {
-        try { action(); } catch (TargetInvocationException) { Console.WriteLine("PASS " + scenario); return; }
+        try { action(); }
+        catch (TargetInvocationException ex)
+        {
+            if (!(ex.InnerException is InvalidOperationException))
+                throw new Exception("Unexpected failure type in " + scenario, ex);
+            Console.WriteLine("PASS " + scenario);
+            return;
+        }
         throw new Exception("Expected rejection: " + scenario);
     }
     static void Apply(MethodInfo writer, object plan, MySqlConnection c, MySqlTransaction t)
