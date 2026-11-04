@@ -468,6 +468,13 @@ var wiredVm = new CatalogueViewModel(wiredBinding.Catalogue, wiredBinding.Checko
     submission: wiredBinding.Submission,
     reconciliation: wiredBinding.Submission as ICheckoutOutcomeReconciliation)
     { PaymentContext = financialContext };
+// Exercise the exact ViewModel that owns the payment command: select the
+// article before submitting, rather than committing against a disconnected UI.
+wiredVm.ScannerText = "123";
+wiredVm.ScanCommand.Execute(null);
+Check(wiredSelection.Selected.Count == 1 && wiredSelection.Selected[0].Id == "1" &&
+    wiredVm.ScannerText == "" && wiredVm.ScanFeedback == "Selection accepted",
+    "same cash-session ViewModel must route barcode selection before payment");
 Check(wiredVm.CanCommit, "registered trusted adapter and context enable the command boundary");
 wiredVm.CommitCommand.Execute(null);
 Check(wiredPort.Writes == 1 && wiredPreparation.Calls == 1 &&
