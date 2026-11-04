@@ -220,6 +220,17 @@ var sessionComposition = new CheckoutComposition(new CompositionCatalogue(),
 var session = sessionComposition.CreateSession();
 Assert(session.Products.Count == 3 && session.ImageProducts.Count == 1,
        "session exposes all products and only image products");
+// Both WPF catalogue views use the same immutable snapshot; tile selection
+// cannot be forged by a stale or fabricated image entry.
+Assert(session.SelectImage(new ProductSummary("21", "", "Forged", "fake/path.png")).Outcome ==
+       SelectionOutcome.InvalidCandidates && session.PendingCount == 0,
+       "forged photo tile cannot stage a sale");
+Assert(session.SelectImage(new ProductSummary("11", "123", "No photo", "fake/path.png")).Outcome ==
+       SelectionOutcome.InvalidCandidates && session.PendingCount == 0,
+       "non-image list product cannot bypass image grid");
+session.RefreshCatalogue();
+Assert(session.Products.Count == 3 && session.ImageProducts.Count == 1,
+       "explicit catalogue refresh preserves list/photo membership");
 Assert(session.Scan("123", 2).Article?.ArticleId == "12" &&
        session.SelectImage(session.ImageProducts[0], 1).Outcome == SelectionOutcome.Selected &&
        session.PendingCount == 2, "session stages real barcode variant and image-only product");
