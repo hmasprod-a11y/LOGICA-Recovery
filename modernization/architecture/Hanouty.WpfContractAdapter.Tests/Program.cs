@@ -83,7 +83,9 @@ Check(directBinding.Session.SelectVariant(new ProductSummary("b", "111", "Apple 
     "explicit variant API refuses forged variant identity");
 reader.CaseCollision = true;
 try { binding.Catalogue.ReadProducts(); throw new Exception("case collision accepted"); }
-catch (InvalidOperationException ex) when (ex.Message.Contains("duplicate WPF article")) { }
+catch (InvalidOperationException ex) when (
+    ex.Message.Contains("duplicate WPF article", StringComparison.Ordinal) ||
+    ex.Message.Contains("Catalogue returned duplicate article identity", StringComparison.Ordinal)) { }
 var collisionReader = new TestCatalogue { CaseCollision = true };
 var collisionComposition = new CheckoutComposition(
     collisionReader, new TestPrompt(), new TestPort(), new TestJournal());
