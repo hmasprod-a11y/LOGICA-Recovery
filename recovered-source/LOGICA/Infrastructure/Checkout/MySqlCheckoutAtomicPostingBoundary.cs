@@ -68,8 +68,19 @@ namespace LOGICA.Infrastructure.Checkout
             return true;
         }
 
-        public void Commit() { transaction.Commit(); }
-        public void Rollback() { transaction.Rollback(); }
+        public void Commit()
+        {
+            if (transaction == null)
+                throw new InvalidOperationException("No checkout transaction is active.");
+            transaction.Commit();
+        }
+
+        public void Rollback()
+        {
+            if (transaction == null)
+                throw new InvalidOperationException("No checkout transaction is active.");
+            transaction.Rollback();
+        }
         public void Close()
         {
             try { connection.Close(); }
