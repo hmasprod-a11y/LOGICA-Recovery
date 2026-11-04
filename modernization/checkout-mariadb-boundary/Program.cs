@@ -249,6 +249,7 @@ namespace LOGICA.Infrastructure.Checkout
             }
             VerifyProductionPosting();
             VerifyAuthorizedPortTransaction();
+            VerifyRealCashPreparation();
             Console.WriteLine("PASS production C# stock sale/return, movement, missing article and rollback.");
             Console.WriteLine("PASS production C# MariaDB boundary: commit, replay, rollback, invalid ID and unknown reconciliation.");
         }
@@ -413,6 +414,120 @@ namespace LOGICA.Infrastructure.Checkout
                 Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 3,
                 "Denied preparation must roll back the claim and preserve all business state.");
             Console.WriteLine("PASS actual authorized port transaction, uncommitted claim isolation, duplicate preparation suppression and denied-preparation rollback; preparation is a TEST fixture, not production authentication.");
+        }
+
+        private static Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest TrustedRequest(string operation,
+            string cashier = "O'Neil", decimal amount = 10.50m)
+        {
+            return new Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest(operation, cashier, "MAD", false,
+                new[] { new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2) },
+                new[] { new Hanouty.ArchitectureBridge.CheckoutPayment(Hanouty.ArchitectureBridge.CheckoutPaymentKind.Cash, amount) },
+                10.50m);
+        }
+
+        private static void SeedTrustedBasket()
+        {
+            Sql("DELETE FROM TABLE_01");
+            Sql("INSERT INTO TABLE_01 VALUES ('CSharp-Stock','CODE''1','Lait d''été','Food',1,1,5.25,2,0,10.50,20,'G')");
+        }
+
+        private static void VerifyRealCashPreparation()
+        {
+            // Existing schema, actual credentials and actual prices in a disposable DB;
+            // the production preparation implementation is used, not a test double.
+            Sql("CREATE TABLE TABLE_PASS (ListUser VARCHAR(128), ListPass VARCHAR(256), Catégorie VARCHAR(64)) ENGINE=InnoDB");
+            Sql("INSERT INTO TABLE_PASS VALUES ('O''Neil','1234','UTILISATEUR')");
+            Sql("ALTER TABLE TABLE_NUM ADD ID INT NOT NULL DEFAULT 0");
+            Sql("ALTER TABLE TABLE_ARTICLES ADD Code VARCHAR(64), ADD Article VARCHAR(128), ADD Famille VARCHAR(64), ADD PRIX_A DECIMAL(16,3), ADD PRIX_MP DECIMAL(16,3), ADD PRIX_V_1 DECIMAL(16,3), ADD TAUX_TVA DECIMAL(16,3), ADD GROUPE VARCHAR(64), ADD PROMOTION DECIMAL(16,3) DEFAULT 0, ADD PRIX_QTE DECIMAL(16,3) DEFAULT 0");
+            Sql("UPDATE TABLE_ARTICLES SET STOCK=100,Code='CODE''1',Article='Lait d''été',Famille='Food',PRIX_A=1,PRIX_MP=1,PRIX_V_1=5.25,TAUX_TVA=20,GROUPE='G' WHERE ID_ARTICLE='CSharp-Stock'");
+            SeedTrustedBasket();
+            var headers = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE");
+            var payments = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS");
+            var stock = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            var journal = new MySqlCheckoutOperationJournal(NewConnection);
+            var detailCount = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL");
+            var movementCount = Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK");
+            var sequenceValue = Scalar("SELECT CL FROM TABLE_NUM");
+
+            Action<string, Action> rejected = (operation, action) =>
+            {
+                bool denied = false;
+                try { action(); }
+                catch (UnauthorizedAccessException) { denied = true; }
+                catch (InvalidOperationException) { denied = true; }
+                catch (NotSupportedException) { denied = true; }
+                Require(denied && !journal.IsPersisted(operation) &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == headers &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == payments &&
+                    Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stock &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_01") == 1 &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL") == detailCount &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movementCount &&
+                    Scalar("SELECT CL FROM TABLE_NUM") == sequenceValue,
+                    "Rejected trusted preparation changed financial/basket/claim state.");
+            };
+            var correct = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(NewConnection, "01", () => "1234");
+            var badPin = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(NewConnection, "01", () => "x' OR 1=1 --");
+            rejected("trusted-bad-pin", () => badPin.Commit(TrustedRequest("trusted-bad-pin")));
+            rejected("trusted-wrong-user", () => correct.Commit(TrustedRequest("trusted-wrong-user", "different")));
+            Sql("UPDATE TABLE_PASS SET Catégorie='DISABLED'");
+            rejected("trusted-denied-category", () => correct.Commit(TrustedRequest("trusted-denied-category")));
+            Sql("UPDATE TABLE_PASS SET Catégorie='UTILISATEUR'");
+            Sql("UPDATE TABLE_ARTICLES SET PRIX_V_1=6 WHERE ID_ARTICLE='CSharp-Stock'");
+            rejected("trusted-stale-price", () => correct.Commit(TrustedRequest("trusted-stale-price")));
+            Sql("UPDATE TABLE_ARTICLES SET PRIX_V_1=5.25 WHERE ID_ARTICLE='CSharp-Stock'");
+            rejected("trusted-underpaid", () => correct.Commit(TrustedRequest("trusted-underpaid", amount:10m)));
+            Sql("UPDATE TABLE_ARTICLES SET PROMOTION=10 WHERE ID_ARTICLE='CSharp-Stock'");
+            rejected("trusted-unaccepted-policy", () => correct.Commit(TrustedRequest("trusted-unaccepted-policy")));
+            Sql("UPDATE TABLE_ARTICLES SET PROMOTION=0 WHERE ID_ARTICLE='CSharp-Stock'");
+
+            var remote = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(
+                () => new MySqlConnection("Server=192.0.2.1;Database=checkout_disposable;Uid=fixture;Pwd=fixture;"),
+                "01", () => "1234");
+            rejected("trusted-remote", () => remote.Commit(TrustedRequest("trusted-remote")));
+            Sql("ALTER TABLE TABLE_PASS ENGINE=MyISAM");
+            rejected("trusted-nontransactional", () => correct.Commit(TrustedRequest("trusted-nontransactional")));
+            Sql("ALTER TABLE TABLE_PASS ENGINE=InnoDB");
+            Sql("CREATE TRIGGER trusted_payment_failure AFTER INSERT ON TABLE_VENTES_REGLEMENTS FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected-after-real-payment'");
+            bool paymentFailed = false;
+            try { correct.Commit(TrustedRequest("trusted-payment-failure")); }
+            catch (MySqlException ex) when (ex.Number == 1644) { paymentFailed = true; }
+            finally { Sql("DROP TRIGGER trusted_payment_failure"); }
+            Require(paymentFailed && !journal.IsPersisted("trusted-payment-failure") &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == headers &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == payments &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL") == detailCount &&
+                Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movementCount &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stock &&
+                Scalar("SELECT COUNT(*) FROM TABLE_01") == 1 && Scalar("SELECT CL FROM TABLE_NUM") == sequenceValue,
+                "Actual trusted cash payment failure did not roll back the complete transaction.");
+
+            var previousCulture = System.Globalization.CultureInfo.CurrentCulture;
+            try
+            {
+                foreach (string culture in new[] { "fr-FR", "en-US" })
+                {
+                    System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo(culture);
+                    SeedTrustedBasket();
+                    string operation = "trusted-" + culture;
+                    correct.Commit(TrustedRequest(operation));
+                    Require(Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreateOperationJournal(NewConnection).Lookup(operation) ==
+                        Hanouty.ArchitectureBridge.CheckoutOperationOutcome.Persisted && journal.IsPersisted(operation) &&
+                        Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='" + operation + "' AND Total_NET=10.50") == 1 &&
+                        Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='" + operation + "' AND MONTANT=10.50 AND CAISSIER='O''Neil'") == 1 &&
+                        Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='" + operation + "' AND Caissier='O''Neil' AND Article='Lait d''été'") == 1 &&
+                        Scalar("SELECT COUNT(*) FROM TABLE_01") == 0,
+                        "Real authenticated cash sale failed culture or quoted-identity persistence.");
+                    stock -= 2;
+                    Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stock,
+                        "Real trusted sale did not update stock exactly once.");
+                    correct.Commit(TrustedRequest(operation));
+                    Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stock,
+                        "Real trusted duplicate changed stock.");
+                }
+            }
+            finally { System.Globalization.CultureInfo.CurrentCulture = previousCulture; }
+            Console.WriteLine("PASS REAL TABLE_PASS authentication + authoritative DB price/basket preparation; denied PIN/category/stale price/underpayment roll back; quoted cashier/article and fr-FR/en-US exact cash persist once. WPF registration and broader V1 policy remain pending.");
         }
 
     }

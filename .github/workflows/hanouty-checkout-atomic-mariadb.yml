@@ -8,6 +8,7 @@ on:
       - 'recovered-source/LOGICA/Infrastructure/Checkout/hanouty_checkout_operations.disposable.sql'
       - 'scripts/test-checkout-atomic-mariadb.sh'
       - 'modernization/checkout-mariadb-boundary/**'
+      - 'modernization/checkout-mariadb-production/**'
       - '.github/workflows/hanouty-checkout-atomic-mariadb.yml'
   workflow_dispatch:
 jobs:
