@@ -9,6 +9,11 @@ var connectionString = Environment.GetEnvironmentVariable("HANOUTY_W1_TEST_CONNE
 var marker = Environment.GetEnvironmentVariable("HANOUTY_W1_DISPOSABLE_MARKER");
 if (marker != "I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY")
     throw new InvalidOperationException("Refusing schema mutation without explicit disposable DB acknowledgement.");
+var builder = new MySqlConnectionStringBuilder(connectionString);
+if (builder.Server is not ("127.0.0.1" or "localhost") ||
+    !string.Equals(builder.Database, "hanouty_w1_disposable", StringComparison.Ordinal) ||
+    builder.Port != 3306)
+    throw new InvalidOperationException("Only loopback disposable CI database hanouty_w1_disposable on port 3306 is allowed.");
 var data = Path.Combine(Path.GetTempPath(), "hanouty-w1-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(Path.Combine(data, "bd", "images"));
 try
