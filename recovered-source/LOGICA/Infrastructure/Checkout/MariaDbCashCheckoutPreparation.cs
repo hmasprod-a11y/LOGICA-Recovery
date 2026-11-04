@@ -62,14 +62,14 @@ namespace LOGICA.Infrastructure.Checkout
             if (string.IsNullOrWhiteSpace(pin) || pin.Length > 256)
                 throw new UnauthorizedAccessException("Cashier authentication failed.");
             var users = Read(connection, transaction,
-                "SELECT ListUser, Catégorie FROM TABLE_PASS WHERE BINARY ListPass=BINARY @pin AND BINARY ListUser=BINARY @cashier FOR UPDATE",
+                "SELECT ListUser AS trusted_cashier, Catégorie AS trusted_role FROM TABLE_PASS WHERE BINARY ListPass=BINARY @pin AND BINARY ListUser=BINARY @cashier FOR UPDATE",
                 ("@pin", pin.Trim()), ("@cashier", request.CashierId));
             pin = null; // Never retain or log a credential in the posting input.
             if (users.Rows.Count != 1 ||
-                Convert.ToString(users.Rows[0]["ListUser"]) != request.CashierId ||
-                !new[] { "ADMIN", "MANAGER", "UTILISATEUR" }.Contains(Convert.ToString(users.Rows[0]["Catégorie"])))
+                Convert.ToString(users.Rows[0]["trusted_cashier"]) != request.CashierId ||
+                !new[] { "ADMIN", "MANAGER", "UTILISATEUR" }.Contains(Convert.ToString(users.Rows[0]["trusted_role"])))
                 throw new UnauthorizedAccessException("Cashier authentication failed.");
-            string cashier = Convert.ToString(users.Rows[0]["ListUser"]);
+            string cashier = Convert.ToString(users.Rows[0]["trusted_cashier"]);
 
             // Lock the same original sequence and basket used by the writers.
             // Reject an unsupported sequence layout rather than advance other counters.
@@ -127,7 +127,7 @@ namespace LOGICA.Infrastructure.Checkout
                 }
             }
             var basket = Read(connection, transaction,
-                "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté,Remise,TOTAL_NET,TAUX_TVA,GROUPE FROM TABLE_" +
+                "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté AS trusted_quantity,Remise,TOTAL_NET,TAUX_TVA,GROUPE FROM TABLE_" +
                 workstation + " ORDER BY ID_ARTICLE FOR UPDATE");
             if (basket.Rows.Count != request.Lines.Count)
                 throw new InvalidOperationException("Authoritative basket changed.");
@@ -139,7 +139,7 @@ namespace LOGICA.Infrastructure.Checkout
             {
                 string id = Convert.ToString(row["ID_ARTICLE"], CultureInfo.InvariantCulture);
                 if (string.IsNullOrWhiteSpace(id) || !seen.Add(id) || !requested.TryGetValue(id, out var quantity) ||
-                    Number(row, "Qté") != quantity)
+                    Number(row, "trusted_quantity") != quantity)
                     throw new InvalidOperationException("Authoritative basket identity or quantity changed.");
                 var articles = Read(connection, transaction,
                     "SELECT * FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE", ("@id", id));
