@@ -4,6 +4,7 @@
         Title="Hanouty POS V2.0 — Desktop" Height="650" Width="1080"
         MinHeight="480" MinWidth="760" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" SnapsToDevicePixels="True"
         TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
+    <Window.Resources><BooleanToVisibilityConverter x:Key="BoolVisibility"/></Window.Resources>
     <DockPanel Margin="20" FlowDirection="{Binding LayoutDirection}">
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,16">
             <TextBlock Text="Hanouty POS" FontSize="28" FontWeight="SemiBold"/>
@@ -30,8 +31,10 @@
                 </TextBox>
                 <TextBlock Text="{Binding ScanFeedback}" Margin="0,6,0,10"
                            AutomationProperties.Name="Barcode result"/>
-                <TextBlock Text="Barcode matches — select explicitly when barcode is shared" Margin="0,4,0,4"/>
+                <TextBlock Text="Barcode matches — select explicitly when barcode is shared" Margin="0,4,0,4"
+                           Visibility="{Binding HasBarcodeAmbiguity, Converter={StaticResource BoolVisibility}}"/>
                 <ListBox ItemsSource="{Binding BarcodeCandidates}" Height="90" DisplayMemberPath="Name"
+                         Visibility="{Binding HasBarcodeAmbiguity, Converter={StaticResource BoolVisibility}}"
                          SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
                          AutomationProperties.Name="Barcode candidates">
                     <ListBox.InputBindings>
@@ -39,6 +42,7 @@
                     </ListBox.InputBindings>
                 </ListBox>
                 <Button Content="Choose selected barcode variant" Command="{Binding SelectCommand}"
+                        Visibility="{Binding HasBarcodeAmbiguity, Converter={StaticResource BoolVisibility}}"
                         MinHeight="44" Margin="0,4,0,8" Padding="12,8"
                         AutomationProperties.Name="Choose barcode variant"/>
                 <DataGrid ItemsSource="{Binding VisibleProducts}" AutoGenerateColumns="False"
