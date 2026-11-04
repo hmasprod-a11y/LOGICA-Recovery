@@ -55,6 +55,8 @@ public sealed class ProductionWpfProductSelection : Wpf.IProductSelection
         // command; don't silently select the first duplicate.
         var matching = _session.Products.Count(p =>
             string.Equals(p.Barcode, current.Barcode, StringComparison.Ordinal));
+        if (matching > 1)
+            return _session.SelectVariant(current).Outcome == SelectionOutcome.Selected;
         if (matching != 1) return false;
         return _session.Scan(current.Barcode).Outcome == SelectionOutcome.Selected;
     }
