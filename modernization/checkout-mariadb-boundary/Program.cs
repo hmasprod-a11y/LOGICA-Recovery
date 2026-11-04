@@ -440,7 +440,7 @@ namespace LOGICA.Infrastructure.Checkout
             Sql("ALTER TABLE TABLE_NUM ADD ID INT NOT NULL DEFAULT 0");
             Sql("ALTER TABLE TABLE_ARTICLES ADD Code VARCHAR(64), ADD Article VARCHAR(128), ADD Famille VARCHAR(64), ADD PRIX_A DECIMAL(16,3), ADD PRIX_MP DECIMAL(16,3), ADD PRIX_V_1 DECIMAL(16,3), ADD TAUX_TVA DECIMAL(16,3), ADD GROUPE VARCHAR(64), ADD PROMOTION DECIMAL(16,3) DEFAULT 0, ADD PRIX_QTE DECIMAL(16,3) DEFAULT 0");
             Sql("UPDATE TABLE_ARTICLES SET STOCK=100,Code='CODE''1',Article='Lait d''été',Famille='Food',PRIX_A=1,PRIX_MP=1,PRIX_V_1=5.25,TAUX_TVA=20,GROUPE='G' WHERE ID_ARTICLE='CSharp-Stock'");
-            SeedTrustedBasket();
+            Sql("DELETE FROM TABLE_01");
             var headers = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE");
             var payments = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS");
             var stock = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
@@ -449,6 +449,7 @@ namespace LOGICA.Infrastructure.Checkout
             var movementCount = Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK");
             var sequenceValue = Scalar("SELECT CL FROM TABLE_NUM");
 
+            var expectedBasketRows = 0;
             Action<string, Action> rejected = (operation, action) =>
             {
                 bool denied = false;
@@ -460,13 +461,26 @@ namespace LOGICA.Infrastructure.Checkout
                     Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == headers &&
                     Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == payments &&
                     Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stock &&
-                    Scalar("SELECT COUNT(*) FROM TABLE_01") == 1 &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_01") == expectedBasketRows &&
                     Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL") == detailCount &&
                     Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movementCount &&
                     Scalar("SELECT CL FROM TABLE_NUM") == sequenceValue,
                     "Rejected trusted preparation changed financial/basket/claim state.");
             };
             var correct = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(NewConnection, "01", () => "1234");
+            // Preserve an unrelated existing cashier basket, including its values.
+            SeedTrustedBasket();
+            expectedBasketRows = 1;
+            rejected("trusted-occupied", () => correct.Commit(TrustedRequest("trusted-occupied")));
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_01 WHERE ID_ARTICLE='CSharp-Stock' AND Qté=2 AND TOTAL_NET=10.50") == 1,
+                "Occupied basket content was modified.");
+            Sql("DELETE FROM TABLE_01");
+            expectedBasketRows = 0;
+            // Fail after staging a valid line; the staged row must roll back too.
+            rejected("trusted-missing-article", () => correct.Commit(
+                TrustedRequest("trusted-missing-article") with { Lines = new[] {
+                    new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2),
+                    new Hanouty.ArchitectureBridge.CheckoutBatchLine("missing-article", 1) } }));
             var badPin = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(NewConnection, "01", () => "x' OR 1=1 --");
             rejected("trusted-bad-pin", () => badPin.Commit(TrustedRequest("trusted-bad-pin")));
             rejected("trusted-wrong-user", () => correct.Commit(TrustedRequest("trusted-wrong-user", "different")));
@@ -499,7 +513,7 @@ namespace LOGICA.Infrastructure.Checkout
                 Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL") == detailCount &&
                 Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movementCount &&
                 Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stock &&
-                Scalar("SELECT COUNT(*) FROM TABLE_01") == 1 && Scalar("SELECT CL FROM TABLE_NUM") == sequenceValue,
+                Scalar("SELECT COUNT(*) FROM TABLE_01") == expectedBasketRows && Scalar("SELECT CL FROM TABLE_NUM") == sequenceValue,
                 "Actual trusted cash payment failure did not roll back the complete transaction.");
 
             var previousCulture = System.Globalization.CultureInfo.CurrentCulture;
@@ -508,7 +522,8 @@ namespace LOGICA.Infrastructure.Checkout
                 foreach (string culture in new[] { "fr-FR", "en-US" })
                 {
                     System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo(culture);
-                    SeedTrustedBasket();
+                    Sql("DELETE FROM TABLE_01");
+                    Require(Scalar("SELECT COUNT(*) FROM TABLE_01") == 0, "Cash acceptance must begin with an empty basket.");
                     string operation = "trusted-" + culture;
                     correct.Commit(TrustedRequest(operation));
                     Require(Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreateOperationJournal(NewConnection).Lookup(operation) ==
@@ -543,7 +558,7 @@ namespace LOGICA.Infrastructure.Checkout
             }
             finally { Sql("ALTER TABLE hanouty_checkout_operations ENGINE=InnoDB"); }
             Require(!journal.IsPersisted("trusted-invalid-ledger"), "Rejected ledger left a durable claim.");
-            Console.WriteLine("PASS REAL TABLE_PASS authentication + authoritative DB price/basket preparation; denied PIN/category/stale price/underpayment roll back; quoted cashier/article and fr-FR/en-US exact cash persist once. WPF registration and broader V1 policy remain pending.");
+            Console.WriteLine("PASS REAL TABLE_PASS authentication + authoritative empty-basket staging; occupied basket preserved; denied PIN/category/stale price/underpayment roll back; quoted cashier/article and fr-FR/en-US exact cash persist once. WPF registration and broader V1 policy remain pending.");
         }
 
     }
