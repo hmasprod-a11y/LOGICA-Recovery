@@ -11,6 +11,14 @@ namespace Hanouty.Desktop.Bootstrap;
 // Included only when the build explicitly references the real Checkout library.
 public sealed partial record CatalogueHost
 {
+    private Func<string, CheckoutResolution, Func<string>, bool>? reviewedReset;
+
+    // The WPF reviewed-reset command invokes this only on explicit cashier
+    // confirmation; PIN is freshly provided, never stored in ViewModel state.
+    public bool TryReviewResolvedCheckout(string stableOperationId,
+        CheckoutResolution expected, Func<string> transientReviewPin) =>
+        reviewedReset?.Invoke(stableOperationId, expected, transientReviewPin) ?? false;
+
     public static CatalogueHost CreateFinancial(CatalogueSettings settings,
         string twoDigitWorkstation, Func<string> transientPinProvider,
         AuthorizedCheckoutPaymentContext paymentContext) =>
@@ -56,7 +64,43 @@ public sealed partial record CatalogueHost
         var vm = (CatalogueViewModel)window.DataContext;
         if (!vm.CatalogueAvailable)
             throw new InvalidOperationException("Local financial catalogue could not be loaded.");
-        return new CatalogueHost(window, vm, binding.Session);
+        var result = new CatalogueHost(window, vm, binding.Session);
+        string? lastReviewed = null;
+        var reviewing = false;
+        result.reviewedReset = (operation, expected, reviewPin) =>
+        {
+            if (reviewing || reviewPin is null || string.IsNullOrWhiteSpace(operation) ||
+                operation == lastReviewed ||
+                expected is not (CheckoutResolution.Persisted or CheckoutResolution.Absent) ||
+                !vm.CanReviewResolvedCheckout || vm.ReviewedResolution != expected ||
+                !string.Equals(vm.PendingOperationId, operation, StringComparison.Ordinal) ||
+                vm.PaymentContext != context || binding.Session.State != CheckoutCommitState.Ready)
+                return false;
+            reviewing = true;
+            try
+            {
+                var outcome = expected == CheckoutResolution.Persisted
+                    ? CheckoutOperationOutcome.Persisted : CheckoutOperationOutcome.Absent;
+                if (journal.Lookup(operation) != outcome) return false;
+                MariaDbCashCheckoutServices.VerifyCashierSession(connections, captured.CashierId, reviewPin);
+                // PIN entry can pump UI events. Recheck durable/session identity
+                // after reauthorization before touching even the staged draft.
+                if (journal.Lookup(operation) != outcome ||
+                    !vm.CanReviewResolvedCheckout || vm.ReviewedResolution != expected ||
+                    !string.Equals(vm.PendingOperationId, operation, StringComparison.Ordinal) ||
+                    vm.PaymentContext != context || binding.Session.State != CheckoutCommitState.Ready)
+                    return false;
+                binding.Session.DiscardInvalidated();
+                lastReviewed = operation;
+                return true; // UI owner may now explicitly reset its review state.
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+            {
+                return false; // No UI unlock, automatic retry or financial posting.
+            }
+            finally { reviewing = false; }
+        };
+        return result;
     }
 
     private sealed class AcknowledgementFaultPort(

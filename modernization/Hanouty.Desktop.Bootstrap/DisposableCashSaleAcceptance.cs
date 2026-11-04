@@ -187,6 +187,28 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 Require(denied.ViewModel.CommitFeedback.Contains("Sale absent", StringComparison.Ordinal) &&
                     denied.Session.State == CheckoutCommitState.Ready && denied.ViewModel.CheckoutUncertain,
                     scenario + ": verified rollback must reconcile both layers, retaining cashier review lock.");
+                var reviewId = denied.ViewModel.PendingOperationId!;
+                var pinReads = 0;
+                Require(!denied.TryReviewResolvedCheckout(reviewId, CheckoutResolution.Unknown,
+                    () => { pinReads++; return pin; }) && pinReads == 0,
+                    "Unknown cannot authorize review or request PIN.");
+                Require(!denied.TryReviewResolvedCheckout("wrong-operation", CheckoutResolution.Absent,
+                    () => { pinReads++; return pin; }) && pinReads == 0,
+                    "Unrelated operation cannot authorize review.");
+                Require(!denied.TryReviewResolvedCheckout(reviewId, CheckoutResolution.Absent,
+                    () => { pinReads++; return "incorrect"; }) && pinReads == 1 &&
+                    denied.Session.PendingCount == 1 && Snapshot(settings) == before &&
+                    denied.ViewModel.CheckoutUncertain,
+                    "Wrong review PIN cleared draft or changed SQL.");
+                Require(denied.TryReviewResolvedCheckout(reviewId, CheckoutResolution.Absent,
+                    () => { pinReads++; return pin; }) && pinReads == 2 &&
+                    denied.Session.PendingCount == 0 && Snapshot(settings) == before &&
+                    denied.ViewModel.CheckoutUncertain,
+                    "Verified explicit review must clear only Application draft, leaving UI reset to its owner.");
+                Require(!denied.TryReviewResolvedCheckout(reviewId, CheckoutResolution.Absent,
+                    () => { pinReads++; return pin; }) && pinReads == 2,
+                    "Reviewed operation was authorized twice.");
+
             }
             finally { denied.Window.Close(); }
         }
@@ -210,6 +232,11 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Require(uncertain.ViewModel.CheckoutUncertain && !uncertain.ViewModel.CanCommit &&
                 uncertain.Session.State == CheckoutCommitState.OutcomeUnknown &&
                 Snapshot(settings) == beforeUnknown, "Unknown journal authorized a write or unlocked checkout.");
+            var unknownPinReads = 0;
+            Require(!uncertain.TryReviewResolvedCheckout(uncertain.ViewModel.PendingOperationId!,
+                CheckoutResolution.Absent, () => { unknownPinReads++; return pin; }) &&
+                unknownPinReads == 0, "Unknown journal must not be reviewed as absent.");
+
             Sql(settings, "ALTER TABLE hanouty_checkout_operations ENGINE=InnoDB");
             uncertain.ViewModel.ReconcileCommand.Execute(null);
             Require(uncertain.Session.State == CheckoutCommitState.Ready &&
@@ -246,10 +273,17 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 lostAck.Session.State == CheckoutCommitState.Ready && lostAck.ViewModel.CheckoutUncertain &&
                 Snapshot(settings) == committed,
                 "Lost acknowledgement failed persisted reconciliation or bypassed cashier review.");
+            Require(lostAck.TryReviewResolvedCheckout(lostAck.ViewModel.PendingOperationId!,
+                CheckoutResolution.Persisted, () => pin) &&
+                Snapshot(settings) == committed && lostAck.ViewModel.CheckoutUncertain,
+                "Persisted explicit review repeated financial writes or unlocked UI automatically.");
+
         }
         finally { lostAck.Window.Close(); }
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF exact-cash slice", Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
+            ReviewCallbackAuthenticated = true, WrongReviewPinRejected = true,
+            UnknownReviewBlocked = true, NoFinancialReplayOnReview = true,
             EmptyBasket = true, TicketPaymentStockSql = true, Duplicate = true, ProcessRestart = true,
             WrongPinRejected = true, WrongTotalRejected = true, StalePriceRejected = true,
             AfterPaymentRollback = true, UnknownJournalLocked = true, LostAcknowledgementPersisted = true, Reconciliation = true,
