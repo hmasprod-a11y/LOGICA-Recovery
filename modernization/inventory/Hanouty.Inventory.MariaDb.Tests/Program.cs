@@ -43,6 +43,18 @@ static class Program
             Assert(all.Count == 4, "all products, including NULL and empty barcode");
             Assert(all.Count(p => p.ImagePath != null) == 1 && File.Exists(all.Single(p => p.ImagePath != null).ImagePath), "only existing photos");
             Assert(reader.FindBarcode("Q'42").Count == 2, "quoted duplicate barcode candidates preserved");
+            using (var db = new MySqlConnection(connectionString))
+            {
+                db.Open();
+                Sql(db, "INSERT INTO TABLE_ARTICLES VALUES ('A-5','TRAVERSAL','Unsafe slash','../exists.png')");
+                Sql(db, "INSERT INTO TABLE_ARTICLES VALUES ('A-6','BACKSLASH','Unsafe backslash','..\\\\exists.png')");
+            }
+            Assert(reader.ListAll().Where(p => p.ArticleId == "A-5" || p.ArticleId == "A-6").All(p => p.ImagePath == null), "slash and backslash traversal images rejected");
+            using (var db = new MySqlConnection(connectionString))
+            {
+                db.Open();
+                Sql(db, "DELETE FROM TABLE_ARTICLES WHERE ID_ARTICLE IN ('A-5','A-6')");
+            }
             Assert(reader.RefreshBarcode("Q'42").Count == 2, "refresh duplicate barcode candidates");
             Assert(reader.FindBarcode("Q'42' OR 1=1 --").Count == 0, "barcode SQL injection cannot broaden");
             Assert(reader.FindBarcode("").Count == 1, "empty barcode is not NULL");
