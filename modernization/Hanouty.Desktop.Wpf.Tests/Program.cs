@@ -43,7 +43,7 @@ var offline = new CatalogueViewModel(new EmptyCatalogueReader(), new RecordingSe
 Check(offline.VisibleProducts.Count == 0, "offline startup does not invent products");
 offline.ScannerText = "123";
 offline.ScanBarcode();
-Check(offline.ScanFeedback == "Product not found", "offline scan fails closed");
+Check(offline.ScanFeedback == "Local catalogue unavailable", "offline scan fails closed with actionable unavailable status");
 vm.SearchText = "Milk";
 Check(vm.SelectedProduct is null, "filter clears stale selection");
 var preview = new CatalogueViewModel(new Reader(items), new PreviewProductSelection());
@@ -77,7 +77,7 @@ reloaded.ReloadCatalogue();
 Check(!reloaded.CatalogueAvailable && reloaded.VisibleProducts.Count == 0 && reloaded.PhotoProducts.Count == 0 && reloaded.SelectedProduct is null, "failed local read clears all sale-facing state");
 reloaded.ScannerText = "123";
 reloaded.ScanBarcode();
-Check(reloaded.ScanFeedback == "Product not found", "unavailable catalogue must not select");
+Check(reloaded.ScanFeedback == "Local catalogue unavailable", "unavailable catalogue must not select");
 changing.Fail = false;
 changing.Products = items;
 reloaded.ReloadCatalogue();
@@ -201,6 +201,22 @@ Check(!controlFail.CanSelectProduct && controlFail.CheckoutUncertain,
     "uncertain checkout must disable UI selection controls");
 var controlOffline = new CatalogueViewModel(new ChangingReader(items) { Fail = true }, new RecordingSelection());
 Check(!controlOffline.CanSelectProduct, "failed local catalogue must disable selection controls");
+var uncertainReloadReader = new ChangingReader(items);
+var uncertainReloadSelection = new CountingUncertainSelection();
+var uncertainReloadVm = new CatalogueViewModel(uncertainReloadReader, uncertainReloadSelection);
+uncertainReloadVm.ScannerText = "123";
+uncertainReloadVm.ScanBarcode();
+Check(uncertainReloadVm.CheckoutUncertain && uncertainReloadVm.ScannerText == "123",
+    "uncertain checkout must preserve the scanned barcode");
+uncertainReloadVm.ReloadCatalogue();
+Check(uncertainReloadVm.CheckoutUncertain && uncertainReloadVm.ScannerText == "123" &&
+    uncertainReloadVm.ScanFeedback == "Checkout status unknown — reconcile before retry",
+    "successful catalogue reload must not erase checkout uncertainty or scanned barcode");
+uncertainReloadReader.Fail = true;
+uncertainReloadVm.ReloadCatalogue();
+Check(!uncertainReloadVm.CatalogueAvailable && uncertainReloadVm.CheckoutUncertain &&
+    uncertainReloadVm.ScannerText == "123" && uncertainReloadSelection.Calls == 1,
+    "failed reload must not erase uncertain operation evidence or replay checkout");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
