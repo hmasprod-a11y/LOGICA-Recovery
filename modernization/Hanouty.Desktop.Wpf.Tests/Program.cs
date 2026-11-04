@@ -250,6 +250,20 @@ var unregisteredVm = new CatalogueViewModel(new Reader(items), new RecordingSele
 Check(!unregisteredVm.CanCommit, "unregistered checkout must fail closed");
 unregisteredVm.CommitCheckout();
 Check(unregisteredVm.CommitFeedback == "Checkout submission unavailable", "no fake checkout fallback");
+var nestedCommitPort = new ReentrantSubmission();
+var nestedCommitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: nestedCommitPort);
+nestedCommitPort.ViewModel = nestedCommitVm;
+var commitNotifications = 0;
+nestedCommitVm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CatalogueViewModel.CanCommit)) commitNotifications++; };
+nestedCommitVm.CommitCheckout();
+Check(nestedCommitPort.Calls == 1 && nestedCommitPort.BlockedWhileExecuting &&
+    nestedCommitVm.CanCommit && commitNotifications >= 2,
+    "nested checkout commit must be rejected and controls disabled until acknowledgement");
+var uncertainCommitPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
+var uncertainCommitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: uncertainCommitPort);
+uncertainCommitVm.CommitCheckout();
+Check(!uncertainCommitVm.CanCommit && uncertainCommitVm.CheckoutUncertain,
+    "unknown checkout disables commit controls without auto-retry");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
@@ -321,5 +335,19 @@ sealed class RecordingSubmission : ICheckoutSubmission
     {
         Ids.Add(stableOperationId);
         return Result;
+    }
+}
+
+sealed class ReentrantSubmission : ICheckoutSubmission
+{
+    public CatalogueViewModel? ViewModel { get; set; }
+    public int Calls { get; private set; }
+    public bool BlockedWhileExecuting { get; private set; }
+    public CheckoutSubmissionResult Submit(string stableOperationId)
+    {
+        Calls++;
+        BlockedWhileExecuting = ViewModel is not null && !ViewModel.CanCommit;
+        ViewModel!.CommitCheckout();
+        return CheckoutSubmissionResult.Committed;
     }
 }
