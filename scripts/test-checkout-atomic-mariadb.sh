@@ -126,4 +126,24 @@ if "${client[@]}" -e "INSERT INTO hanouty_checkout_operations (operation_id) VAL
   exit 1
 fi
 assert_count "SELECT quantity FROM test_checkout_stock WHERE article_id='A'" 9
-echo "PASS disposable MariaDB sale, return, rollback, payment failure and concurrent commit/rollback claim resolution"
+# Simulate an acknowledgement lost after COMMIT: the connection that
+# committed is gone, and a fresh connection must reconcile by operation ID.
+"${client[@]}" <<'SQL'
+START TRANSACTION;
+INSERT INTO hanouty_checkout_operations (operation_id) VALUES ('ack-lost-1');
+UPDATE test_checkout_stock SET quantity=quantity-1 WHERE article_id='A';
+INSERT INTO test_checkout_ticket VALUES ('ack-lost-1', 7.50);
+INSERT INTO test_checkout_payment VALUES ('ack-lost-1', 7.50);
+INSERT INTO test_checkout_movement VALUES ('ack-lost-1', -1);
+COMMIT;
+SQL
+assert_count "SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id='ack-lost-1'" 1
+assert_count "SELECT quantity FROM test_checkout_stock WHERE article_id='A'" 8
+if "${client[@]}" -e "INSERT INTO hanouty_checkout_operations (operation_id) VALUES ('ack-lost-1')" >/dev/null 2>&1; then
+  echo "FAIL: lost-ack retry posted the same sale twice" >&2
+  exit 1
+fi
+assert_count "SELECT COUNT(*) FROM test_checkout_ticket WHERE operation_id='ack-lost-1'" 1
+assert_count "SELECT COUNT(*) FROM test_checkout_payment WHERE operation_id='ack-lost-1'" 1
+assert_count "SELECT quantity FROM test_checkout_stock WHERE article_id='A'" 8
+echo "PASS disposable MariaDB sale/return, rollback, concurrent claims and lost-ack durable reconciliation"
