@@ -76,6 +76,20 @@ jobs:
           $app = Get-Content combined/modernization/Hanouty.Desktop.Wpf/App.xaml.cs -Raw
           if ($app -notmatch 'ResolveServices\s+is\s+null' -or $app -notmatch 'Shutdown\(2\)') { throw 'WPF must reject missing production services' }
           Write-Host 'Source graph compiled; W1 actual MariaDB/EXE acceptance remains unproven.'
+      - name: Capture compiled production adapter and WPF binary digests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $paths = @(
+            'combined/modernization/architecture/Hanouty.WpfContractAdapter/bin/Release/net10.0-windows/Hanouty.WpfContractAdapter.dll',
+            'combined/modernization/Hanouty.Desktop.Wpf/bin/Release/net10.0-windows/Hanouty.Desktop.Wpf.dll'
+          )
+          foreach ($path in $paths) {
+            if (!(Test-Path -LiteralPath $path)) { throw "Compiled production binary missing: $path" }
+            $digest = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+            "$path=$digest" | Add-Content evidence/compiled-binaries-sha256.txt
+          }
+          Write-Host 'Compiled binary hashes captured; no live WPF/MariaDB acceptance inferred.'
       - name: Preserve exact source manifest
         if: always()
         uses: actions/upload-artifact@v4
