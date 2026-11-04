@@ -79,6 +79,8 @@ jobs:
           & ./combined/scripts/test-w1-bootstrap.ps1 -MariaDbBin $env:HANOUTY_W1_MARIADB_BIN -HostExe ./combined/modernization/Hanouty.Desktop.Bootstrap/bin/Release/net10.0-windows/Hanouty.Desktop.Bootstrap.exe -EvidenceDirectory ./evidence/w1
           if (-not $?) { throw 'Actual Windows WPF catalogue acceptance failed' }
           git -C combined rev-parse HEAD | Set-Content evidence/w1/host-tested-sha.txt
+          & ./qa/qa/tests/verify-w1-actual-host.ps1 -EvidenceDirectory ./evidence/w1
+          if ($LASTEXITCODE -ne 0 -or -not $?) { throw 'QA independent W1 evidence validation failed' }
       - name: Preserve rendered window and acceptance evidence
         if: always()
         uses: actions/upload-artifact@v4
