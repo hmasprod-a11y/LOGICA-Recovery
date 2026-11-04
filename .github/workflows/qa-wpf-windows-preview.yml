@@ -32,6 +32,22 @@ jobs:
           ref: da75499e6ea58b2775ecdc08be26718ba1d4ea6d
           persist-credentials: false
           path: wpf-preview
+      - name: Checkout exact Architecture source required by current WPF adapter
+        uses: actions/checkout@v4
+        with:
+          ref: 88c8c498998ef115d8fe1fadef28fa12dce27cec
+          path: architecture-source
+          persist-credentials: false
+      - name: Compose approved Architecture and its linked production sources
+        shell: pwsh
+        run: |
+          $architectureSha = (git -C architecture-source rev-parse HEAD).Trim()
+          if ($architectureSha -ne '88c8c498998ef115d8fe1fadef28fa12dce27cec') { throw 'Architecture source mismatch' }
+          New-Item -ItemType Directory -Force wpf-preview/modernization/architecture | Out-Null
+          Copy-Item architecture-source/modernization/architecture/* wpf-preview/modernization/architecture -Recurse -Force
+          Copy-Item architecture-source/recovered-source/* wpf-preview/recovered-source -Recurse -Force
+          if (-not (Test-Path wpf-preview/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj)) { throw 'Required real Architecture project absent' }
+          Write-Host 'Composed exact reviewed WPF + Architecture + Architecture-linked production sources; no repository merge'
       - name: Assert QA and WPF source provenance
         shell: pwsh
         run: |
@@ -39,7 +55,7 @@ jobs:
           if ($qa -ne '${{ github.sha }}') { throw "QA integration SHA mismatch: $qa" }
           $preview = (git -C wpf-preview rev-parse HEAD).Trim()
           if ($preview -ne 'da75499e6ea58b2775ecdc08be26718ba1d4ea6d') { throw "WPF preview SHA mismatch: $preview" }
-          "qa=$qa`nwpf=$preview" | Set-Content -LiteralPath source-provenance.txt
+          "qa=$qa`nwpf=$preview`narchitecture=88c8c498998ef115d8fe1fadef28fa12dce27cec" | Set-Content -LiteralPath source-provenance.txt
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
