@@ -58,8 +58,8 @@ duplicateReader.RemoveCompetingBarcode = true;
 Check(duplicate.Session.Submit("duplicate-removed-001") == CheckoutBatchStatus.Invalidated &&
     duplicatePort.Writes == 0, "disappearing competing barcode invalidates explicit variant before write");
 duplicate.Session.DiscardInvalidated();
-Check(!duplicate.Checkout.Select(duplicateProducts[1]),
-    "stale WPF duplicate selection rejected when barcode becomes unique");
+Check(duplicate.Session.SelectVariant(new ProductSummary("b", "111", "Apple variant", null, "v2")).Outcome == SelectionOutcome.InvalidCandidates,
+    "explicit variant API rejects stale duplicate after competing barcode removed");
 var directReader = new TestCatalogue();
 var directBinding = ProductionWpfServices.Create(new CheckoutComposition(
     directReader, new TestPrompt(), new TestPort(), new TestJournal()));
