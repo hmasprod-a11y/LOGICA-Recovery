@@ -207,7 +207,10 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             };
             if (result is CheckoutSubmissionResult.Committed or CheckoutSubmissionResult.Empty)
                 _pendingOperationId = null;
-            if (result == CheckoutSubmissionResult.Unknown) CheckoutUncertain = true;
+            // Unknown and future/unrecognized result values are both indeterminate.
+            // Never silently leave the checkout button enabled after a protocol mismatch.
+            if (result is not (CheckoutSubmissionResult.Committed or CheckoutSubmissionResult.Empty or CheckoutSubmissionResult.Invalidated))
+                CheckoutUncertain = true;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
