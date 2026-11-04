@@ -83,18 +83,33 @@ public sealed class CheckoutComposition
         private readonly ICatalogueReader _source;
         public CatalogueSelectionAdapter(ICatalogueReader source) => _source = source;
         public IReadOnlyList<ArticleCandidate> FindBarcode(string barcode) =>
-            Convert(_source.FindBarcode(barcode));
+            Convert(_source.FindBarcode(barcode), barcode);
         public IReadOnlyList<ArticleCandidate> RefreshBarcode(string barcode) =>
-            Convert(_source.RefreshBarcode(barcode));
+            Convert(_source.RefreshBarcode(barcode), barcode);
         public IReadOnlyList<ArticleCandidate> RefreshArticle(string articleId) =>
-            Convert(_source.RefreshArticle(articleId));
+            Convert(_source.RefreshArticle(articleId), null, articleId);
 
-        private static IReadOnlyList<ArticleCandidate> Convert(IReadOnlyList<ProductSummary> products)
+        private static IReadOnlyList<ArticleCandidate> Convert(
+            IReadOnlyList<ProductSummary> products, string? requestedBarcode = null,
+            string? requestedArticleId = null)
         {
             ArgumentNullException.ThrowIfNull(products);
-            return products.Select(p => p is not null && !string.IsNullOrWhiteSpace(p.ArticleId)
-                ? new ArticleCandidate(p.ArticleId, p.Barcode ?? "")
-                : throw new InvalidOperationException("Invalid catalogue identity.")).ToArray();
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            var result = new List<ArticleCandidate>(products.Count);
+            foreach (var product in products)
+            {
+                if (product is null || string.IsNullOrWhiteSpace(product.ArticleId) ||
+                    !ids.Add(product.ArticleId))
+                    throw new InvalidOperationException("Catalogue returned invalid or duplicate article identity.");
+                if (requestedBarcode is not null &&
+                    !string.Equals(product.Barcode, requestedBarcode, StringComparison.Ordinal))
+                    throw new InvalidOperationException("Catalogue returned an article for a different barcode.");
+                if (requestedArticleId is not null &&
+                    !string.Equals(product.ArticleId, requestedArticleId, StringComparison.Ordinal))
+                    throw new InvalidOperationException("Catalogue returned an article for a different identity.");
+                result.Add(new ArticleCandidate(product.ArticleId, product.Barcode ?? ""));
+            }
+            return result;
         }
     }
 }
