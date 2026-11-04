@@ -12,6 +12,7 @@ public sealed class CheckoutSession
     private readonly CheckoutBatchController _batch;
     private string? _operationId;
     private readonly List<ProductSummary> _stagedImages = new();
+    private readonly List<ProductSummary> _stagedExplicitVariants = new();
 
     internal CheckoutSession(CheckoutComposition composition, CheckoutBatchController batch)
     {
@@ -58,11 +59,30 @@ public sealed class CheckoutSession
         return selected;
     }
 
+    // Explicit WPF duplicate-barcode choice: article identity is authoritative,
+    // not the position in a mutable variant list. Revalidate at stage and commit.
+    public SelectionResponse SelectVariant(ProductSummary product, int quantity = 1)
+    {
+        EnsureNoSubmission();
+        ArgumentNullException.ThrowIfNull(product);
+        if (string.IsNullOrWhiteSpace(product.Barcode) ||
+            !System.Linq.Enumerable.Any(Products, p =>
+                string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal) &&
+                p == product) ||
+            !_composition.IsCurrentArticle(product))
+            return new SelectionResponse(SelectionOutcome.InvalidCandidates, null);
+        var selected = _batch.StageImage(new ArticleCandidate(product.ArticleId, product.Barcode), quantity);
+        if (selected.Outcome == SelectionOutcome.Selected)
+            _stagedExplicitVariants.Add(product);
+        return selected;
+    }
+
     public void Clear()
     {
         EnsureNoSubmission();
         _batch.Clear();
         _stagedImages.Clear();
+        _stagedExplicitVariants.Clear();
     }
 
     public CheckoutBatchStatus Submit(string operationId)
@@ -76,6 +96,8 @@ public sealed class CheckoutSession
         // payment. Refuse the entire operation before any durable write.
         foreach (var image in _stagedImages)
             if (!_composition.IsCurrentImage(image)) return CheckoutBatchStatus.Invalidated;
+        foreach (var variant in _stagedExplicitVariants)
+            if (!_composition.IsCurrentArticle(variant)) return CheckoutBatchStatus.Invalidated;
         var result = _batch.Commit(operationId);
         if (result == CheckoutBatchStatus.Committed || result == CheckoutBatchStatus.Empty)
         {
