@@ -22,15 +22,19 @@ Check(binding.Session.Submit("wpf-adapter-001") == CheckoutBatchStatus.Committed
     "explicit stable-ID submission posts one validated atomic batch");
 reader.ChangeVariant = true;
 Check(!binding.Checkout.Select(products[2]), "changed variant cannot be staged from stale WPF DTO");
+reader.CaseCollision = true;
+try { binding.Catalogue.ReadProducts(); throw new Exception("case collision accepted"); }
+catch (InvalidOperationException ex) when (ex.Message.Contains("duplicate WPF article")) { }
 Console.WriteLine("WPF adapter integration contract regression passed.");
 static void Check(bool ok, string reason) { if (!ok) throw new Exception(reason); }
 
 sealed class TestCatalogue : ICatalogueReader
 {
     public bool ChangeVariant { get; set; }
+    public bool CaseCollision { get; set; }
     public IReadOnlyList<ProductSummary> ListAll() => new[] {
         new ProductSummary("a", "111", "Apple", null, "v1"),
-        new ProductSummary("b", "111", "Apple variant", null, "v2"),
+        new ProductSummary(CaseCollision ? "A" : "b", "111", "Apple variant", null, "v2"),
         new ProductSummary("c", "", "Photo", "photo.png", ChangeVariant ? "v2" : "v1")
     };
     public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => ListAll().Where(x => x.Barcode == barcode).ToArray();
