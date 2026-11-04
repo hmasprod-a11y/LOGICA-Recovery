@@ -69,10 +69,16 @@ jobs:
           $preview = @($production | Where-Object { (Get-Content $_.FullName -Raw) -match 'new\s+PreviewProductSelection\s*\(' })
           if ($preview.Count -gt 0) { throw "W2 BLOCKED: production WPF still instantiates PreviewProductSelection: $($preview.FullName -join ', ')" }
           Write-Host 'PASS: no detected production preview catalogue or checkout composition; DB acceptance still separately required'
-      - name: Explicitly report missing disposable MariaDB acceptance
+      - name: Require executable disposable MariaDB acceptance suite
         shell: pwsh
         run: |
-          throw 'W1 NOT ACCEPTED: this readiness gate is not a MariaDB integration test. Require disposable MariaDB seed, real catalogue adapter, verified image existence, barcode/variant queries, and observed WPF UI rows before promoting.'
+          $ErrorActionPreference = 'Stop'
+          $suite = 'qa/tests/w1-real-catalogue-mariadb.ps1'
+          if (-not (Test-Path -LiteralPath $suite -PathType Leaf)) {
+            throw "W1 NOT ACCEPTED: missing QA-owned disposable MariaDB + WPF production acceptance runner: $suite"
+          }
+          & $suite -WpfRoot 'wpf' -InventoryRoot 'inventory'
+          if (-not $?) { throw 'W1 real MariaDB catalogue acceptance failed' }
       - name: Upload provenance on failed acceptance
         if: always()
         uses: actions/upload-artifact@v4
