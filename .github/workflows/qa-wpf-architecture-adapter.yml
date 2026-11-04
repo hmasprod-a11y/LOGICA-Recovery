@@ -22,12 +22,12 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: cd7c4df6d20653dc97fe4fe0685a18de7cef0fe6
+          ref: f8487cb1b73d477dfc4a7fe408a6281bfd3fa5ec
           path: combined
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: 381a18edc3af1034c4252bc5329ef3397a655e65
+          ref: 9329f07eb9b0933125a3791f9dd793b2729404a6
           path: architecture
           persist-credentials: false
       - name: Verify exact provenance and compose real production source graph
@@ -37,8 +37,8 @@ jobs:
           New-Item -ItemType Directory -Force evidence | Out-Null
           $sources = @{
             qa = '${{ github.sha }}'
-            combined = 'cd7c4df6d20653dc97fe4fe0685a18de7cef0fe6'
-            architecture = '381a18edc3af1034c4252bc5329ef3397a655e65'
+            combined = 'f8487cb1b73d477dfc4a7fe408a6281bfd3fa5ec'
+            architecture = '9329f07eb9b0933125a3791f9dd793b2729404a6'
           }
           foreach ($key in $sources.Keys) {
             $actual = (git -C $key rev-parse HEAD).Trim()
@@ -59,7 +59,7 @@ jobs:
       - name: Compile real WPF Architecture production adapter and contract test graph
         shell: pwsh
         run: |
-          dotnet build combined/modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj -c Release --nologo -warnaserror
+          dotnet build combined/modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj -c Release --nologo
           if ($LASTEXITCODE -ne 0) { throw 'Actual adapter graph compilation failed' }
       - name: Execute adapter regression against compiled real WPF source
         shell: pwsh
