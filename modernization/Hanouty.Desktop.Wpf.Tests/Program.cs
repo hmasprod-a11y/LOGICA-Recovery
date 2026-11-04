@@ -217,6 +217,14 @@ uncertainReloadVm.ReloadCatalogue();
 Check(!uncertainReloadVm.CatalogueAvailable && uncertainReloadVm.CheckoutUncertain &&
     uncertainReloadVm.ScannerText == "123" && uncertainReloadSelection.Calls == 1,
     "failed reload must not erase uncertain operation evidence or replay checkout");
+var reentrantPort = new ReentrantSelection();
+var reentrantVm = new CatalogueViewModel(new Reader(items), reentrantPort);
+reentrantPort.ViewModel = reentrantVm;
+reentrantVm.SelectedProduct = items[0];
+reentrantVm.SelectCurrent();
+Check(reentrantPort.Calls == 1 && reentrantPort.DisabledDuringCall &&
+    reentrantVm.CanSelectProduct && reentrantVm.ScanFeedback == "Selection accepted",
+    "nested touch/scanner invocation must not stage a second checkout selection");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
@@ -253,5 +261,19 @@ sealed class CountingUncertainSelection : IProductSelection
     {
         Calls++;
         throw new InvalidOperationException("acknowledgement lost");
+    }
+}
+
+sealed class ReentrantSelection : IProductSelection
+{
+    public CatalogueViewModel? ViewModel { get; set; }
+    public int Calls { get; private set; }
+    public bool DisabledDuringCall { get; private set; }
+    public bool Select(ProductSummary product)
+    {
+        Calls++;
+        DisabledDuringCall = ViewModel is not null && !ViewModel.CanSelectProduct;
+        ViewModel!.SelectCurrent();
+        return true;
     }
 }
