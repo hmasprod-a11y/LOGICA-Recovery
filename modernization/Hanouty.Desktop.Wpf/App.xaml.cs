@@ -7,7 +7,7 @@ namespace Hanouty.Desktop.Wpf;
 public partial class App : Application
 {
     // Registered by the approved production composition root, never a demo fallback.
-    public static Func<(ICatalogueReader Catalogue, IProductSelection Checkout)>? ResolveServices { get; set; }
+    public static Func<(ICatalogueReader Catalogue, IProductSelection Checkout, ICheckoutSubmission Submission)>? ResolveServices { get; set; }
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -21,8 +21,8 @@ public partial class App : Application
         }
         try
         {
-            var (catalogue, checkout) = ResolveServices();
-            MainWindow = new MainWindow(catalogue, checkout);
+            var (catalogue, checkout, submission) = ResolveServices();
+            MainWindow = new MainWindow(catalogue, checkout, submission);
             MainWindow.Show();
         }
         catch (Exception ex)
