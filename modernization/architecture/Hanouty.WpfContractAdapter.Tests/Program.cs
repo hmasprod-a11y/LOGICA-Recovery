@@ -71,6 +71,13 @@ Check(directBinding.Session.SelectVariant(new ProductSummary("b", "111", "Apple 
 reader.CaseCollision = true;
 try { binding.Catalogue.ReadProducts(); throw new Exception("case collision accepted"); }
 catch (InvalidOperationException ex) when (ex.Message.Contains("duplicate WPF article")) { }
+var collisionReader = new TestCatalogue { CaseCollision = true };
+var collisionComposition = new CheckoutComposition(
+    collisionReader, new TestPrompt(), new TestPort(), new TestJournal());
+try { collisionComposition.AllProducts(); throw new Exception("case-colliding catalogue accepted"); }
+catch (InvalidOperationException ex) when (ex.Message.Contains("duplicate article identity")) { }
+try { collisionComposition.CreateSession().Scan("111"); throw new Exception("case-colliding barcode candidates accepted"); }
+catch (InvalidOperationException ex) when (ex.Message.Contains("duplicate article identity")) { }
 Console.WriteLine("WPF adapter integration contract regression passed.");
 static void Check(bool ok, string reason) { if (!ok) throw new Exception(reason); }
 
