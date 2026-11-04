@@ -23,7 +23,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private IReadOnlyList<ProductSummary> _all;
     private readonly ICatalogueReader _reader;
     private bool _catalogueAvailable;
-    public bool CatalogueAvailable { get => _catalogueAvailable; private set { _catalogueAvailable = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); } }
+    public bool CatalogueAvailable { get => _catalogueAvailable; private set { _catalogueAvailable = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); OnPropertyChanged(nameof(CanCommit)); } }
     private string _searchText = "";
     private ProductSummary? _selectedProduct;
     private string _scannerText = "";
@@ -32,15 +32,23 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); } }
     private readonly IProductSelection _selection;
     private bool _selectionInFlight;
+    private readonly ICheckoutSubmission? _submission;
+    private string? _pendingOperationId;
+    private string _commitFeedback = "Checkout submission unavailable";
+    public string CommitFeedback { get => _commitFeedback; private set { _commitFeedback = value; OnPropertyChanged(); } }
+    public bool CanCommit => _submission is not null && CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
+    public System.Windows.Input.ICommand CommitCommand { get; }
     private readonly IProductImageAvailability _images;
 
-    public CatalogueViewModel(ICatalogueReader reader, IProductSelection selection, IProductImageAvailability? images = null)
+    public CatalogueViewModel(ICatalogueReader reader, IProductSelection selection, IProductImageAvailability? images = null, ICheckoutSubmission? submission = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         _reader = reader;
         _all = Array.Empty<ProductSummary>();
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
         _images = images ?? new LocalProductImageAvailability();
+        _submission = submission;
+        CommitCommand = new DelegateCommand(_ => CommitCheckout());
         ScanCommand = new DelegateCommand(_ => ScanBarcode());
         SelectCommand = new DelegateCommand(product =>
         {
@@ -174,6 +182,44 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         }
     }
 
+    public void CommitCheckout()
+    {
+        if (_submission is null) { CommitFeedback = "Checkout submission unavailable"; return; }
+        if (CheckoutUncertain) { CommitFeedback = "Checkout status unknown — reconcile before retry"; return; }
+        if (_selectionInFlight) { CommitFeedback = "Selection already in progress"; return; }
+        if (!CatalogueAvailable) { CommitFeedback = "Local catalogue unavailable"; return; }
+        // Stable operation identity is retained for invalidation and unknown outcomes.
+        _pendingOperationId ??= Guid.NewGuid().ToString("N");
+        try
+        {
+            _selectionInFlight = true;
+            OnPropertyChanged(nameof(CanSelectProduct));
+            OnPropertyChanged(nameof(CanCommit));
+            var result = _submission.Submit(_pendingOperationId);
+            CommitFeedback = result switch
+            {
+                CheckoutSubmissionResult.Committed => "Checkout committed",
+                CheckoutSubmissionResult.Empty => "Cart is empty",
+                CheckoutSubmissionResult.Invalidated => "Cart invalidated — cashier must review",
+                _ => "Checkout status unknown — reconcile before retry"
+            };
+            if (result is CheckoutSubmissionResult.Committed or CheckoutSubmissionResult.Empty)
+                _pendingOperationId = null;
+            if (result == CheckoutSubmissionResult.Unknown) CheckoutUncertain = true;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or UnauthorizedAccessException)
+        {
+            CheckoutUncertain = true;
+            CommitFeedback = "Checkout status unknown — reconcile before retry";
+        }
+        finally
+        {
+            _selectionInFlight = false;
+            OnPropertyChanged(nameof(CanSelectProduct));
+            OnPropertyChanged(nameof(CanCommit));
+        }
+    }
+
     public string SearchText
     {
         get => _searchText;
@@ -257,4 +303,13 @@ public sealed class LocalProductImageAvailability : IProductImageAvailability
         catch (UnauthorizedAccessException) { return false; }
         catch (NotSupportedException) { return false; }
     }
+}
+
+public enum CheckoutSubmissionResult { Committed, Empty, Invalidated, Unknown }
+
+// WPF only owns the user command; the Application adapter owns the transaction,
+// durable operation journal, cashier authorization and monetary calculations.
+public interface ICheckoutSubmission
+{
+    CheckoutSubmissionResult Submit(string stableOperationId);
 }
