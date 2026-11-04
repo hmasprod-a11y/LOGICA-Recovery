@@ -132,6 +132,15 @@ blockedVm.SelectedProduct = items[1];
 blockedVm.SelectCurrent();
 Check(uncertainSelection.Calls == 1 && blockedVm.CheckoutUncertain,
     "scanner, button and catalogue reload cannot replay uncertain operation");
+var tileSelection = new RecordingSelection();
+var tileVm = new CatalogueViewModel(new Reader(items), tileSelection, new ImageFixture());
+Check(tileVm.PhotoProducts.Count == 2, "photo tiles must only contain image-backed articles");
+tileVm.SelectCommand.Execute(tileVm.PhotoProducts[0]);
+Check(tileSelection.Selected.Count == 1 && tileSelection.Selected[0].Id == "1",
+    "touch tile command parameter must dispatch exact article");
+tileVm.SelectCommand.Execute(new ProductSummary("1", "Milk", "123", "milk.png"));
+Check(tileSelection.Selected.Count == 1 && tileVm.ScanFeedback == "Product no longer in catalogue",
+    "forged touch tile article must not dispatch");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
