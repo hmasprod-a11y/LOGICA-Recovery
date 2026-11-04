@@ -375,6 +375,23 @@ Assert(invalidStateGate.UncertainOperationId == "invalid-journal",
 invalidStateJournal.Outcome = CheckoutOperationOutcome.Absent;
 Assert(invalidStateGate.Reconcile("invalid-journal") == CheckoutOperationOutcome.Absent &&
        invalidStateGate.UncertainOperationId is null, "valid durable reconciliation unlocks");
+var mutableFinancialLines = new[] { new CheckoutBatchLine("immutable-article", 1) };
+var mutableFinancialPayments = new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 25m) };
+var snapshotJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
+var snapshotPort = new RecordingFinancialPort();
+snapshotPort.OnCommit = () =>
+{
+    mutableFinancialLines[0] = new CheckoutBatchLine("forged-article", 99);
+    mutableFinancialPayments[0] = new CheckoutPayment(CheckoutPaymentKind.Credit, 1m);
+    snapshotJournal.Outcome = CheckoutOperationOutcome.Persisted;
+};
+var snapshotGate = new AuthorizedCheckoutCommitGate(snapshotPort, snapshotJournal);
+Assert(snapshotGate.Commit(W2(id: "snapshot-1", lines: mutableFinancialLines,
+       payments: mutableFinancialPayments)) == FinancialCommitOutcome.Committed &&
+       snapshotPort.LastRequest!.Lines[0].ArticleId == "immutable-article" &&
+       snapshotPort.LastRequest.Payments[0].Kind == CheckoutPaymentKind.Cash,
+    "financial posting uses immutable validated line/payment snapshot");
+
 var financialJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
 var financialPort = new RecordingFinancialPort();
 financialPort.OnCommit = () => financialJournal.Outcome = CheckoutOperationOutcome.Persisted;
@@ -590,9 +607,12 @@ sealed class RecordingFinancialPort : IAuthorizedCheckoutPort
 {
     public int Calls { get; private set; }
     public bool ThrowOnCommit { get; set; }
+    public AuthorizedCheckoutRequest? LastRequest { get; private set; }
     public void Commit(AuthorizedCheckoutRequest request)
     {
         Calls++;
+        LastRequest = request;
+        OnCommit?.Invoke();
         if (ThrowOnCommit) throw new ApplicationException("acknowledgement lost");
     }
 }
