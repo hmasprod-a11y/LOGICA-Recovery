@@ -58,18 +58,7 @@ namespace LOGICA.Infrastructure.Checkout
                     throw new InvalidOperationException("Cash posting requires existing transactional tables.");
             }
 
-            string pin = readPin();
-            if (string.IsNullOrWhiteSpace(pin) || pin.Length > 256)
-                throw new UnauthorizedAccessException("Cashier authentication failed.");
-            var users = Read(connection, transaction,
-                "SELECT ListUser AS trusted_cashier, Catégorie AS trusted_role FROM TABLE_PASS WHERE BINARY ListPass=BINARY @pin AND BINARY ListUser=BINARY @cashier FOR UPDATE",
-                ("@pin", pin.Trim()), ("@cashier", request.CashierId));
-            pin = null; // Never retain or log a credential in the posting input.
-            if (users.Rows.Count != 1 ||
-                Convert.ToString(users.Rows[0]["trusted_cashier"]) != request.CashierId ||
-                !new[] { "ADMIN", "MANAGER", "UTILISATEUR" }.Contains(Convert.ToString(users.Rows[0]["trusted_role"])))
-                throw new UnauthorizedAccessException("Cashier authentication failed.");
-            string cashier = Convert.ToString(users.Rows[0]["trusted_cashier"]);
+            string cashier = AuthenticateCashier(request.CashierId, connection, transaction, readPin);
 
             // Lock the same original sequence and basket used by the writers.
             // Reject an unsupported sequence layout rather than advance other counters.
@@ -206,6 +195,28 @@ namespace LOGICA.Infrastructure.Checkout
                 },
                 ReadCompletion = () => new CheckoutCompletionRecord { Workstation = workstation, TicketNumber = ticket }
             };
+        }
+
+        // Shared by posting preparation and explicit cashier reauthorization.
+        // A caller-owned transaction and real TABLE_PASS remain authoritative.
+        internal static string AuthenticateCashier(string cashierId,
+            MySqlConnection connection, MySqlTransaction transaction, Func<string> readPin)
+        {
+            if (string.IsNullOrWhiteSpace(cashierId) || readPin == null)
+                throw new UnauthorizedAccessException("Cashier authentication failed.");
+            string pin = readPin();
+            if (string.IsNullOrWhiteSpace(pin) || pin.Length > 256)
+                throw new UnauthorizedAccessException("Cashier authentication failed.");
+            var users = Read(connection, transaction,
+                "SELECT ListUser AS trusted_cashier, Catégorie AS trusted_role FROM TABLE_PASS WHERE BINARY ListPass=BINARY @pin AND BINARY ListUser=BINARY @cashier FOR UPDATE",
+                ("@pin", pin.Trim()), ("@cashier", cashierId));
+            pin = null; // Never retain or log a credential in the posting input.
+            if (users.Rows.Count != 1 ||
+                Convert.ToString(users.Rows[0]["trusted_cashier"]) != cashierId ||
+                !new[] { "ADMIN", "MANAGER", "UTILISATEUR" }.Contains(Convert.ToString(users.Rows[0]["trusted_role"])))
+                throw new UnauthorizedAccessException("Cashier authentication failed.");
+            return Convert.ToString(users.Rows[0]["trusted_cashier"]);
+
         }
 
         private static decimal Number(DataRow row, string column)

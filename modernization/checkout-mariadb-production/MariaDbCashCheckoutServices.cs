@@ -24,6 +24,33 @@ namespace Hanouty.Checkout.MariaDb
             return new Journal(() => LocalConnection(connections));
         }
 
+        // Reauthorization for an explicit reviewed UI reset. This grants no
+        // stock permission and performs no financial/basket/journal mutation.
+        // Posting STILL independently authenticates inside its own transaction.
+        public static void VerifyCashierSession(Func<MySqlConnection> connections,
+            string cashierId, Func<string> transientPinProvider)
+        {
+            if (connections == null) throw new ArgumentNullException(nameof(connections));
+            if (transientPinProvider == null) throw new ArgumentNullException(nameof(transientPinProvider));
+            using (var connection = LocalConnection(connections))
+            {
+                connection.Open();
+                using (var transaction = connection.BeginTransaction())
+                {
+                    using (var command = new MySqlCommand(
+                        "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='TABLE_PASS'",
+                        connection, transaction))
+                    {
+                        if (!string.Equals(Convert.ToString(command.ExecuteScalar()), "InnoDB", StringComparison.Ordinal))
+                            throw new InvalidOperationException("Cashier verification requires transactional credential storage.");
+                    }
+                    MariaDbCashCheckoutPreparation.AuthenticateCashier(
+                        cashierId, connection, transaction, transientPinProvider);
+                    transaction.Commit();
+                }
+            }
+        }
+
         private static MySqlConnection LocalConnection(Func<MySqlConnection> connections)
         {
             var connection = connections() ?? throw new InvalidOperationException("Local checkout connection is unavailable.");

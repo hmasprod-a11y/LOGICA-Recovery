@@ -481,10 +481,29 @@ namespace LOGICA.Infrastructure.Checkout
                 TrustedRequest("trusted-missing-article") with { Lines = new[] {
                     new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2),
                     new Hanouty.ArchitectureBridge.CheckoutBatchLine("missing-article", 1) } }));
+            var reviewPinReads = 0;
+            Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.VerifyCashierSession(
+                NewConnection, "O'Neil", () => { reviewPinReads++; return "1234"; });
+            Require(reviewPinReads == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_01") == 0 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == headers &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == payments &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stock &&
+                Scalar("SELECT CL FROM TABLE_NUM") == sequenceValue,
+                "Real cashier reauthorization must consume PIN once and perform no business writes.");
+            rejected("review-wrong-pin", () =>
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.VerifyCashierSession(
+                    NewConnection, "O'Neil", () => "incorrect"));
+            rejected("review-wrong-identity", () =>
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.VerifyCashierSession(
+                    NewConnection, "other-cashier", () => "1234"));
             var badPin = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(NewConnection, "01", () => "x' OR 1=1 --");
             rejected("trusted-bad-pin", () => badPin.Commit(TrustedRequest("trusted-bad-pin")));
             rejected("trusted-wrong-user", () => correct.Commit(TrustedRequest("trusted-wrong-user", "different")));
             Sql("UPDATE TABLE_PASS SET Catégorie='DISABLED'");
+            rejected("review-disabled-category", () =>
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.VerifyCashierSession(
+                    NewConnection, "O'Neil", () => "1234"));
             rejected("trusted-denied-category", () => correct.Commit(TrustedRequest("trusted-denied-category")));
             Sql("UPDATE TABLE_PASS SET Catégorie='UTILISATEUR'");
             Sql("UPDATE TABLE_ARTICLES SET PRIX_V_1=6 WHERE ID_ARTICLE='CSharp-Stock'");
