@@ -55,3 +55,5 @@ jobs:
         env:
           CHECKOUT_TEST_CONNECTION: Server=127.0.0.1;Port=3306;Database=checkout_disposable;Uid=checkout_test;Pwd=checkout-test-only;SslMode=Disabled;
         run: dotnet run --project modernization/checkout-mariadb-boundary/CheckoutMariaDbBoundary.csproj --configuration Release
+      - name: Compile actual .NET 10 financial port and production ticket/payment/stock writers
+        run: dotnet build modernization/checkout-mariadb-production/CheckoutMariaDbProduction.csproj --configuration Release --no-incremental -p:ArchitectureProject=../../architecture-source/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj
