@@ -118,6 +118,20 @@ failingVm.SelectedProduct = items[0];
 failingVm.SelectCurrent();
 Check(failingVm.ScanFeedback == "Checkout status unknown — reconcile before retry",
     "unknown checkout result must never be reported as a successful selection");
+var uncertainSelection = new CountingUncertainSelection();
+var blockedVm = new CatalogueViewModel(new Reader(items), uncertainSelection);
+blockedVm.ScannerText = "123";
+blockedVm.ScanBarcode();
+Check(blockedVm.CheckoutUncertain && uncertainSelection.Calls == 1,
+    "uncertain acknowledgement must latch checkout safety state");
+blockedVm.ScanBarcode();
+blockedVm.SelectedProduct = items[1];
+blockedVm.SelectCurrent();
+blockedVm.ReloadCatalogue();
+blockedVm.SelectedProduct = items[1];
+blockedVm.SelectCurrent();
+Check(uncertainSelection.Calls == 1 && blockedVm.CheckoutUncertain,
+    "scanner, button and catalogue reload cannot replay uncertain operation");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
@@ -145,4 +159,14 @@ sealed class ImageFixture : IProductImageAvailability
 sealed class ThrowingSelection : IProductSelection
 {
     public bool Select(ProductSummary product) => throw new InvalidOperationException("transport acknowledgement lost");
+}
+
+sealed class CountingUncertainSelection : IProductSelection
+{
+    public int Calls { get; private set; }
+    public bool Select(ProductSummary product)
+    {
+        Calls++;
+        throw new InvalidOperationException("acknowledgement lost");
+    }
 }
