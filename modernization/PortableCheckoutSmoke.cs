@@ -20,6 +20,22 @@ internal static class PortableCheckoutSmoke
             return Convert.ToDouble(a, CultureInfo.InvariantCulture) < Convert.ToDouble(b, CultureInfo.InvariantCulture);
         }
     }
+    private sealed class ReentrantTotalSemantics : ILegacyCheckoutSemantics
+    {
+        internal Action OnConvert;
+        private readonly Semantics inner = new Semantics();
+        public bool EqualsText(string a, string b) { return inner.EqualsText(a, b); }
+        public double ToDouble(string value) { return inner.ToDouble(value); }
+        public decimal ToDecimal(string value)
+        {
+            Action action = OnConvert;
+            OnConvert = null;
+            if (action != null) action();
+            return inner.ToDecimal(value);
+        }
+        public double Val(object value) { return inner.Val(value); }
+        public bool IsStockBelow(object a, object b) { return inner.IsStockBelow(a, b); }
+    }
     private sealed class Lookup : IStockAvailabilityLookup
     {
         public int Calls;
@@ -939,6 +955,27 @@ internal static class PortableCheckoutSmoke
             catch (InvalidOperationException) { replacedColumnRejected = true; }
             Require(replacedColumnRejected,
                 "Checkout preview rejects a replaced pricing column with identical name, type and amount");
+            // The legacy total-consistency conversion runs after line pricing.
+            // Its callback must not allow a stale sale preview to escape.
+            DataTable totalCallbackTable = flowMatches.Clone();
+            totalCallbackTable.Rows.Add("DUP", "TOTAL-CALLBACK", 7.50m, 0m);
+            CheckoutVariantChoiceResult totalCallbackChoice =
+                CheckoutSelectionFlowService.ChooseBarcode(totalCallbackTable, null);
+            var totalSemantics = new ReentrantTotalSemantics();
+            totalSemantics.OnConvert = delegate {
+                totalCallbackTable.Rows[0]["UnitPrice"] = 8.50m;
+            };
+            bool changedDuringTotalRejected = false;
+            try {
+                CheckoutSelectionFlowService.Preview(totalCallbackChoice, 0m,
+                    delegate(DataRow article) {
+                        return SalesLinePricing.CalculateNetAmount(
+                            (decimal)article["UnitPrice"], 2m, (decimal)article["Discount"]);
+                    }, "15", totalSemantics);
+            }
+            catch (InvalidOperationException) { changedDuringTotalRejected = true; }
+            Require(changedDuringTotalRejected,
+                "Total comparison callback must not return a preview after unit-price mutation");
             // A pricing callback can synchronously mutate the catalogue.
             // Never expose a preview based on a row whose identity changed
             // between selection and completion of the legacy calculation.
