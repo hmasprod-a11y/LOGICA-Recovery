@@ -69,7 +69,9 @@ public sealed class CheckoutSession
             !System.Linq.Enumerable.Any(Products, p =>
                 string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal) &&
                 p == product) ||
-            !_composition.IsCurrentArticle(product))
+            !_composition.IsCurrentArticle(product) ||
+            System.Linq.Enumerable.Count(Products, p =>
+                string.Equals(p.Barcode, product.Barcode, StringComparison.Ordinal)) < 2)
             return new SelectionResponse(SelectionOutcome.InvalidCandidates, null);
         var selected = _batch.StageImage(new ArticleCandidate(product.ArticleId, product.Barcode), quantity);
         if (selected.Outcome == SelectionOutcome.Selected)
