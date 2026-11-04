@@ -179,10 +179,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         get => _searchText;
         set
         {
-            if (_searchText == value) return;
+            if (_selectionInFlight || _searchText == value) return;
             _searchText = value ?? "";
             OnPropertyChanged();
-            if (_selectionInFlight) return;
             Refresh();
         }
     }
