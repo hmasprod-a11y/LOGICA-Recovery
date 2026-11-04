@@ -145,6 +145,58 @@ namespace LOGICA.Infrastructure.Checkout
             catch (MySqlException) { connectionFailed = true; }
             Require(connectionFailed, "Unavailable journal must propagate unknown outcome.");
 
+            // Real production stock/movement writers, with signed V1 sale/return.
+            using (MySqlConnection db = NewConnection())
+            {
+                db.Open();
+                using (MySqlCommand setup = db.CreateCommand())
+                {
+                    setup.CommandText = "CREATE TABLE TABLE_ARTICLES (ID_ARTICLE VARCHAR(64) PRIMARY KEY, STOCK DECIMAL(16,3) NOT NULL) ENGINE=InnoDB";
+                    setup.ExecuteNonQuery();
+                    setup.CommandText = "CREATE TABLE TABLE_MOUVEMENTS_STOCK (DATES VARCHAR(16), HEURE VARCHAR(16), LIBELLE VARCHAR(128), ID_ARTICLE VARCHAR(64), CODE_ARTICLE VARCHAR(64), ARTICLE VARCHAR(128), QUANTITE DECIMAL(16,3)) ENGINE=InnoDB";
+                    setup.ExecuteNonQuery();
+                    setup.CommandText = "INSERT INTO TABLE_ARTICLES VALUES ('CSharp-Stock',10)";
+                    setup.ExecuteNonQuery();
+                }
+                using (MySqlTransaction tx = db.BeginTransaction())
+                using (MySqlCommand cmd = db.CreateCommand())
+                {
+                    cmd.Transaction = tx;
+                    CheckoutStockWriter.Apply(cmd, db, "SALE-1", "CSharp-Stock", "CODE", "Article", 2m);
+                    CheckoutStockWriter.Apply(cmd, db, "RETURN-1", "CSharp-Stock", "CODE", "Article", -1m);
+                    tx.Commit();
+                }
+                using (MySqlCommand check = db.CreateCommand())
+                {
+                    check.CommandText = "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'";
+                    Require(Convert.ToDecimal(check.ExecuteScalar()) == 9m, "Sale/return stock parity failed.");
+                    check.CommandText = "SELECT SUM(QUANTITE) FROM TABLE_MOUVEMENTS_STOCK WHERE ID_ARTICLE='CSharp-Stock'";
+                    Require(Convert.ToDecimal(check.ExecuteScalar()) == -1m, "Signed movement parity failed.");
+                }
+                using (MySqlTransaction tx = db.BeginTransaction())
+                using (MySqlCommand cmd = db.CreateCommand())
+                {
+                    cmd.Transaction = tx;
+                    bool missingRejected = false;
+                    try { CheckoutStockWriter.Apply(cmd, db, "BAD", "missing", "CODE", "Article", 3m); }
+                    catch (InvalidOperationException) { missingRejected = true; }
+                    Require(missingRejected, "Missing article must fail closed.");
+                    CheckoutStockWriter.Apply(cmd, db, "ROLLBACK", "CSharp-Stock", "CODE", "Article", 4m);
+                    tx.Rollback();
+                }
+                using (MySqlCommand check = db.CreateCommand())
+                {
+                    check.CommandText = "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'";
+                    Require(Convert.ToDecimal(check.ExecuteScalar()) == 9m, "Rollback changed stock.");
+                    check.CommandText = "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE='TICKET | ROLLBACK'";
+                    Require(Convert.ToInt64(check.ExecuteScalar()) == 0, "Rollback left movement.");
+                    bool noTxRejected = false;
+                    try { CheckoutStockWriter.Apply(check, db, "NO-TX", "CSharp-Stock", "CODE", "Article", 1m); }
+                    catch (InvalidOperationException) { noTxRejected = true; }
+                    Require(noTxRejected, "Writer accepted no transaction.");
+                }
+            }
+            Console.WriteLine("PASS production C# stock sale/return, movement, missing article and rollback.");
             Console.WriteLine("PASS production C# MariaDB boundary: commit, replay, rollback, invalid ID and unknown reconciliation.");
         }
     }
