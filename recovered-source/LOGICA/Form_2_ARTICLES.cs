@@ -13585,7 +13585,7 @@ public class Form_2_ARTICLES : Form
 				newpoint.X -= x;
 				newpoint.Y -= y;
 				((Control)Panel_INFO).Location = newpoint;
-				Application.DoEvents();
+				System.Windows.Forms.Application.DoEvents();
 			}
 		}
 	}
@@ -17064,7 +17064,7 @@ public class Form_2_ARTICLES : Form
 				newpoint.X -= x;
 				newpoint.Y -= y;
 				((Control)PictureBox_ROBOT).Location = newpoint;
-				Application.DoEvents();
+				System.Windows.Forms.Application.DoEvents();
 			}
 		}
 	}
@@ -17597,7 +17597,7 @@ public class Form_2_ARTICLES : Form
 							val2.CommandText = "UPDATE     TABLE_NUM    SET ARTICLE =  ARTICLE + 1   ";
 							val2.Connection = Module1.cn_SQL;
 							val2.ExecuteNonQuery();
-							Application.DoEvents();
+							System.Windows.Forms.Application.DoEvents();
 							Thread.Sleep(1);
 							DataGrid_COLLECTION.CurrentCell = DataGrid_COLLECTION.Rows[num7].Cells[0];
 							num7++;
