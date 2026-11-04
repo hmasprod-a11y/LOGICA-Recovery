@@ -24,6 +24,7 @@ namespace LOGICA.Infrastructure.Checkout
             posting = new MySqlCheckoutPostingStore(command, connection);
         }
 
+        internal MySqlTransaction ActiveTransaction { get { return transaction ?? throw new InvalidOperationException("Checkout transaction has not begun."); } }
         public bool IsOpen { get { return connection.State == ConnectionState.Open; } }
         public void Open() { connection.Open(); }
         public void BeginAndBind()
