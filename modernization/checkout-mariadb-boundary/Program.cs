@@ -155,6 +155,55 @@ namespace LOGICA.Infrastructure.Checkout
             }
             Require(journal.IsPersisted(contested), "Concurrent winning operation not durable.");
 
+            // If the first cashier rolls back, a waiting cashier must be
+            // allowed to claim the ID exactly once. This proves rollback
+            // releases the InnoDB unique-key lock rather than poisoning retries.
+            string rolledBackContested = key + "-contended-rollback";
+            using (MySqlConnection first = NewConnection())
+            using (MySqlConnection second = NewConnection())
+            {
+                var aborted = new MySqlCheckoutAtomicPostingBoundary(first);
+                aborted.Open();
+                aborted.BeginAndBind();
+                Require(aborted.TryClaimOperation(rolledBackContested), "Initial rollback contender failed.");
+                var successor = new MySqlCheckoutAtomicPostingBoundary(second);
+                successor.Open();
+                successor.BeginAndBind();
+                using (var wait = new System.Threading.ManualResetEventSlim(false))
+                {
+                    bool claimed = false;
+                    Exception failure = null;
+                    var contender = new System.Threading.Thread(() =>
+                    {
+                        try { claimed = successor.TryClaimOperation(rolledBackContested); }
+                        catch (Exception ex) { failure = ex; }
+                        finally { wait.Set(); }
+                    });
+                    contender.IsBackground = true;
+                    contender.Start();
+                    Require(!wait.Wait(150), "Uncommitted rollback contender was not isolated.");
+                    aborted.Rollback();
+                    aborted.Close();
+                    Require(wait.Wait(10000), "Successor did not settle after rollback.");
+                    if (failure != null) throw new InvalidOperationException("Rollback contender failed.", failure);
+                    Require(claimed, "Rollback did not release durable operation ID.");
+                }
+                successor.Commit();
+                successor.Close();
+            }
+            Require(journal.IsPersisted(rolledBackContested),
+                "Successor claim after rollback must be durable.");
+            using (MySqlConnection connection = NewConnection())
+            {
+                var duplicate = new MySqlCheckoutAtomicPostingBoundary(connection);
+                duplicate.Open();
+                duplicate.BeginAndBind();
+                Require(!duplicate.TryClaimOperation(rolledBackContested),
+                    "Rollback successor must not be posted twice.");
+                duplicate.Rollback();
+                duplicate.Close();
+            }
+
             // A malformed ID must never be inserted, even when the caller
             // has already begun a transaction.
             using (MySqlConnection connection = NewConnection())
