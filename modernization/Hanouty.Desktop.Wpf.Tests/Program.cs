@@ -133,6 +133,18 @@ blockedVm.SelectedProduct = items[1];
 blockedVm.SelectCurrent();
 Check(uncertainSelection.Calls == 1 && blockedVm.CheckoutUncertain,
     "scanner, button and catalogue reload cannot replay uncertain operation");
+// A malformed command parameter must never dispatch a previously selected row.
+var malformedSelection = new RecordingSelection();
+var malformedVm = new CatalogueViewModel(new Reader(items), malformedSelection);
+malformedVm.SelectedProduct = items[0];
+malformedVm.SelectCommand.Execute("not-a-product");
+Check(malformedSelection.Selected.Count == 0 &&
+    malformedVm.ScanFeedback == "Invalid product selection" &&
+    ReferenceEquals(malformedVm.SelectedProduct, items[0]),
+    "malformed touch command cannot accidentally sell a stale selected row");
+malformedVm.SelectCommand.Execute(null);
+Check(malformedSelection.Selected.Count == 1 && malformedSelection.Selected[0].Id == "1",
+    "keyboard command with null parameter must retain selected-row behavior");
 var tileSelection = new RecordingSelection();
 var tileVm = new CatalogueViewModel(new Reader(items), tileSelection, new ImageFixture());
 Check(tileVm.PhotoProducts.Count == 2, "photo tiles must only contain image-backed articles");
