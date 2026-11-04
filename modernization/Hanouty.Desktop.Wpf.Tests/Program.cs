@@ -141,6 +141,16 @@ Check(tileSelection.Selected.Count == 1 && tileSelection.Selected[0].Id == "1",
 tileVm.SelectCommand.Execute(new ProductSummary("1", "Milk", "123", "milk.png"));
 Check(tileSelection.Selected.Count == 1 && tileVm.ScanFeedback == "Product no longer in catalogue",
     "forged touch tile article must not dispatch");
+var duplicatedIdentity = new CatalogueViewModel(new Reader(new[] {
+    new ProductSummary("SAME", "A", "1"), new ProductSummary("same", "B", "2")
+}), new RecordingSelection());
+Check(!duplicatedIdentity.CatalogueAvailable && duplicatedIdentity.VisibleProducts.Count == 0,
+    "duplicate article IDs must fail closed regardless of case");
+var missingIdentity = new CatalogueViewModel(new Reader(new[] {
+    new ProductSummary("", "Broken", "99")
+}), new RecordingSelection());
+Check(!missingIdentity.CatalogueAvailable && missingIdentity.PhotoProducts.Count == 0,
+    "missing article identity must not silently drop a row and expose partial catalogue");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
