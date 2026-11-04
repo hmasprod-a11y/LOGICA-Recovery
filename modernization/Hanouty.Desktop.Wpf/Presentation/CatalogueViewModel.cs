@@ -86,8 +86,8 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         // A failed local read must never leave a stale product available for sale.
         var pendingScannerText = CheckoutUncertain ? ScannerText : "";
         IReadOnlyList<ProductSummary> loaded;
-        try { loaded = _reader.ReadProducts() ?? Array.Empty<ProductSummary>(); }
-        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or InvalidOperationException)
+        try { loaded = _reader.ReadProducts() ?? throw new InvalidOperationException("Catalogue reader returned null."); }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
             _all = Array.Empty<ProductSummary>();
             CatalogueAvailable = false;
@@ -170,7 +170,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
                 ScannerText = "";
             }
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
             // Do not retry a potentially committed operation on transport failure.
             CheckoutUncertain = true;
@@ -209,7 +209,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
                 _pendingOperationId = null;
             if (result == CheckoutSubmissionResult.Unknown) CheckoutUncertain = true;
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
             CheckoutUncertain = true;
             CommitFeedback = "Checkout status unknown — reconcile before retry";
