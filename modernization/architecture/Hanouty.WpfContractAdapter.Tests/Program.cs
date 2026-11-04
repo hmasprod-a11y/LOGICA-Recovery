@@ -60,6 +60,19 @@ Check(duplicate.Submission.Submit("duplicate-removed-001") == Wpf.CheckoutSubmis
 duplicate.Session.DiscardInvalidated();
 Check(duplicate.Session.SelectVariant(new ProductSummary("b", "111", "Apple variant", null, "v2")).Outcome == SelectionOutcome.InvalidCandidates,
     "explicit variant API rejects stale duplicate after competing barcode removed");
+// A photographed duplicate barcode must retain explicit variant identity,
+// not be staged through the generic photo path.
+var photoDuplicateReader = new TestCatalogue { PhotoVariantB = true };
+var photoDuplicatePort = new TestPort();
+var photoDuplicate = ProductionWpfServices.Create(new CheckoutComposition(
+    photoDuplicateReader, new TestPrompt(), photoDuplicatePort, new TestJournal()));
+var photoDuplicateProducts = photoDuplicate.Catalogue.ReadProducts();
+Check(photoDuplicate.Checkout.Select(photoDuplicateProducts[1]),
+    "photographed duplicate barcode stages explicit variant");
+photoDuplicateReader.RemoveCompetingBarcode = true;
+Check(photoDuplicate.Submission.Submit("photo-duplicate-001") == Wpf.CheckoutSubmissionResult.Invalidated &&
+    photoDuplicatePort.Writes == 0,
+    "photographed duplicate cannot bypass competing-barcode revalidation");
 var directReader = new TestCatalogue();
 var directBinding = ProductionWpfServices.Create(new CheckoutComposition(
     directReader, new TestPrompt(), new TestPort(), new TestJournal()));
@@ -84,13 +97,14 @@ static void Check(bool ok, string reason) { if (!ok) throw new Exception(reason)
 sealed class TestCatalogue : ICatalogueReader
 {
     public bool ChangeVariant { get; set; }
+    public bool PhotoVariantB { get; set; }
     public bool ChangeVariantB { get; set; }
     public bool ChangeBarcodeB { get; set; }
     public bool CaseCollision { get; set; }
     public bool RemoveCompetingBarcode { get; set; }
     public IReadOnlyList<ProductSummary> ListAll() => new[] {
         new ProductSummary("a", RemoveCompetingBarcode ? "333" : "111", "Apple", null, "v1"),
-        new ProductSummary(CaseCollision ? "A" : "b", ChangeBarcodeB ? "222" : "111", "Apple variant", null, ChangeVariantB ? "v3" : "v2"),
+        new ProductSummary(CaseCollision ? "A" : "b", ChangeBarcodeB ? "222" : "111", "Apple variant", PhotoVariantB ? "variant.png" : null, ChangeVariantB ? "v3" : "v2"),
         new ProductSummary("c", "", "Photo", "photo.png", ChangeVariant ? "v2" : "v1")
     };
     public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => ListAll().Where(x => x.Barcode == barcode).ToArray();
