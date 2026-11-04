@@ -50,6 +50,18 @@ public sealed class CheckoutComposition
     public IReadOnlyList<ProductSummary> ImageProducts() =>
         AllProducts().Where(p => p.HasImage).ToArray();
 
+    // The tile is a UI snapshot, not authority to sell. Inventory must confirm
+    // the exact article, variant and photo are still present before staging.
+    internal bool IsCurrentImage(ProductSummary tile)
+    {
+        var live = Validate(_reader.RefreshArticle(tile.ArticleId));
+        return live.Count == 1 && live[0].HasImage &&
+            string.Equals(live[0].ArticleId, tile.ArticleId, StringComparison.Ordinal) &&
+            string.Equals(live[0].Barcode, tile.Barcode, StringComparison.Ordinal) &&
+            string.Equals(live[0].VariantId, tile.VariantId, StringComparison.Ordinal) &&
+            string.Equals(live[0].ImagePath, tile.ImagePath, StringComparison.Ordinal);
+    }
+
     // One WPF session owns one batch and one stable operation ID. No demo fallback.
     public CheckoutSession CreateSession() => new(this, CreateCheckoutBatch());
 
