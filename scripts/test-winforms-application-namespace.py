@@ -21,6 +21,12 @@ forms = (
     "Form_5_CLIENTS_RDV.cs",
     "Form_5_CLIENTS_REGLE.cs",
     "Form_5_CLIENTS.cs",
+    "Form_6_FOURNISSEURS_ETAT_CREDITS.cs",
+    "Form_6_FOURNISSEURS_HISTORIQUE_CREDIT_INITIAL.cs",
+    "Form_6_FOURNISSEURS_LISTE.cs",
+    "Form_6_FOURNISSEURS_MODIFICATION_CREDIT_INITIAL.cs",
+    "Form_6_FOURNISSEURS_REGLE.cs",
+    "Form_6_FOURNISSEURS.cs",
     "Form_6_COMMANDES.cs",
     "Form_6_DEPENSES.cs",
 )
