@@ -8,11 +8,12 @@ public partial class MainWindow : Window
 {
     // The production host must supply real Application adapters from its composition root.
     // No EmptyCatalogueReader or PreviewProductSelection may silently enter a sale workflow.
-    public MainWindow(ICatalogueReader catalogue, IProductSelection checkout)
+    public MainWindow(ICatalogueReader catalogue, IProductSelection checkout, ICheckoutSubmission submission)
     {
         ArgumentNullException.ThrowIfNull(catalogue);
         ArgumentNullException.ThrowIfNull(checkout);
+        ArgumentNullException.ThrowIfNull(submission);
         InitializeComponent();
-        DataContext = new CatalogueViewModel(catalogue, checkout);
+        DataContext = new CatalogueViewModel(catalogue, checkout, submission: submission);
     }
 }
