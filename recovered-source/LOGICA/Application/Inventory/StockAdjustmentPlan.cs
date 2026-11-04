@@ -24,6 +24,13 @@ namespace LOGICA.Application.Inventory
             UserId = userId;
         }
 
+        private static bool ContainsControlCharacter(string value)
+        {
+            foreach (char character in value)
+                if (Char.IsControl(character)) return true;
+            return false;
+        }
+
         internal static StockAdjustmentPlan Create(string articleId, decimal beforeStock,
             decimal afterStock, string reason, string userId)
         {
@@ -33,6 +40,9 @@ namespace LOGICA.Application.Inventory
                 throw new ArgumentException("A stock adjustment reason is required.", "reason");
             if (String.IsNullOrWhiteSpace(userId))
                 throw new ArgumentException("A stock adjustment user is required.", "userId");
+            if (ContainsControlCharacter(articleId) || ContainsControlCharacter(reason) ||
+                ContainsControlCharacter(userId))
+                throw new ArgumentException("Stock adjustment identity and audit fields must not contain control characters.");
             if (beforeStock < 0m || afterStock < 0m)
                 throw new ArgumentOutOfRangeException("afterStock", "Stock cannot be negative.");
             if (beforeStock == afterStock)
