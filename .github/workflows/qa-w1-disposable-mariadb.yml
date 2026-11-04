@@ -38,7 +38,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: fa4fb4b591ea858fdf3c00098fbe5780caa5341c
+          ref: 4e8f03efab78cd8c1d01c877d825760bec578698
           path: combined
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -52,12 +52,12 @@ jobs:
           set -euo pipefail
           mkdir -p evidence combined/modernization/architecture combined/qa/tests
           test "$(git -C qa rev-parse HEAD)" = "${{ github.sha }}"
-          test "$(git -C combined rev-parse HEAD)" = fa4fb4b591ea858fdf3c00098fbe5780caa5341c
+          test "$(git -C combined rev-parse HEAD)" = 4e8f03efab78cd8c1d01c877d825760bec578698
           test "$(git -C architecture rev-parse HEAD)" = 4881d3cf5fa8b4150c5873b9cb3a80c7a7b6c8b6
           rm -rf combined/modernization/architecture/Hanouty.ArchitectureBridge
           cp -a architecture/modernization/architecture/Hanouty.ArchitectureBridge combined/modernization/architecture/
           cp -a qa/qa/tests/Hanouty.W1.RealMariaDb combined/qa/tests/
-          printf 'qa=%s\ninventory=%s\narchitecture=%s\n' "${{ github.sha }}" fa4fb4b591ea858fdf3c00098fbe5780caa5341c 4881d3cf5fa8b4150c5873b9cb3a80c7a7b6c8b6 > evidence/sources.txt
+          printf 'qa=%s\ninventory=%s\narchitecture=%s\n' "${{ github.sha }}" 4e8f03efab78cd8c1d01c877d825760bec578698 4881d3cf5fa8b4150c5873b9cb3a80c7a7b6c8b6 > evidence/sources.txt
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
