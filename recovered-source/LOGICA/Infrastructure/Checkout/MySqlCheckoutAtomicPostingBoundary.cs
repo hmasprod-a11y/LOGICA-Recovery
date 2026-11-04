@@ -83,11 +83,19 @@ namespace LOGICA.Infrastructure.Checkout
         }
         public void Close()
         {
+            // A successful Commit must release its transaction and command.
+            // Closing a connection is not proof that a failed Commit rolled
+            // back: the caller must still reconcile the durable operation ID.
             try { connection.Close(); }
             finally
             {
                 command.Transaction = null;
-                transaction = null;
+                if (transaction != null)
+                {
+                    transaction.Dispose();
+                    transaction = null;
+                }
+                command.Dispose();
             }
         }
 
