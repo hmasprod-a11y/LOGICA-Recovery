@@ -417,6 +417,20 @@ Check(financialAdapter.Submit("operation-3", financialContext with { TenderCode 
     financialPort.Writes == 1, "unsupported payment kind must never post");
 Check(financialAdapter.Reconcile("missing") == CheckoutResolution.Absent,
     "absent journal operation must be distinguishable from persisted");
+// The same production adapter must reach the ViewModel command and its journal
+// reconciliation path, rather than being exercised only as an isolated gate.
+var wiredJournal = new FinancialJournal();
+var wiredPort = new FinancialPort(wiredJournal);
+var wiredPreparation = new FinancialPreparation();
+var wiredAdapter = new AuthorizedWpfCheckoutAdapter(wiredPreparation,
+    new AuthorizedCheckoutCommitGate(wiredPort, wiredJournal), wiredJournal);
+var wiredVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(),
+    submission: wiredAdapter, reconciliation: wiredAdapter) { PaymentContext = financialContext };
+Check(wiredVm.CanCommit, "registered trusted adapter and context enable the command boundary");
+wiredVm.CommitCommand.Execute(null);
+Check(wiredPort.Writes == 1 && wiredPreparation.Calls == 1 &&
+    wiredVm.CommitFeedback == "Checkout committed",
+    "ViewModel command must call trusted preparation and durable gate exactly once");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
