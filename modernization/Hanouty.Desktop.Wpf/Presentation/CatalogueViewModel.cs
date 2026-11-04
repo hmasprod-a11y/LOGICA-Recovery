@@ -23,13 +23,13 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private IReadOnlyList<ProductSummary> _all;
     private readonly ICatalogueReader _reader;
     private bool _catalogueAvailable;
-    public bool CatalogueAvailable { get => _catalogueAvailable; private set { _catalogueAvailable = value; OnPropertyChanged(); } }
+    public bool CatalogueAvailable { get => _catalogueAvailable; private set { _catalogueAvailable = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); } }
     private string _searchText = "";
     private ProductSummary? _selectedProduct;
     private string _scannerText = "";
     private string _scanFeedback = "";
     private bool _checkoutUncertain;
-    public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; OnPropertyChanged(); } }
+    public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); } }
     private readonly IProductSelection _selection;
     private readonly IProductImageAvailability _images;
 
@@ -68,6 +68,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public System.Windows.FlowDirection LayoutDirection => IsRightToLeft ? System.Windows.FlowDirection.RightToLeft : System.Windows.FlowDirection.LeftToRight;
     public IReadOnlyList<ProductSummary> BarcodeCandidates { get; private set; } = Array.Empty<ProductSummary>();
     public bool HasBarcodeAmbiguity => BarcodeCandidates.Count > 1;
+    public bool CanSelectProduct => CatalogueAvailable && !CheckoutUncertain;
 
     public void ReloadCatalogue()
     {
@@ -108,7 +109,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     {
         if (CheckoutUncertain) { ScanFeedback = "Checkout status unknown — reconcile before retry"; return; }
         var code = ScannerText.Trim();
-        if (code.Length == 0) { BarcodeCandidates = Array.Empty<ProductSummary>(); SelectedProduct = null; OnPropertyChanged(nameof(BarcodeCandidates)); ScanFeedback = "Empty barcode"; return; }
+        if (code.Length == 0) { BarcodeCandidates = Array.Empty<ProductSummary>(); SelectedProduct = null; OnPropertyChanged(nameof(BarcodeCandidates)); OnPropertyChanged(nameof(HasBarcodeAmbiguity)); ScanFeedback = "Empty barcode"; return; }
         var matches = _all.Where(p => string.Equals(p.Barcode, code, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(p.Barcode)).ToArray();
         BarcodeCandidates = matches;
         OnPropertyChanged(nameof(BarcodeCandidates));
@@ -128,6 +129,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public void SelectCurrent()
     {
         if (CheckoutUncertain) { ScanFeedback = "Checkout status unknown — reconcile before retry"; return; }
+        if (!CatalogueAvailable) { ScanFeedback = "Local catalogue unavailable"; return; }
         if (SelectedProduct is null) { ScanFeedback = "No product selected"; return; }
         if (BarcodeCandidates.Count > 1 && !BarcodeCandidates.Any(p => ReferenceEquals(p, SelectedProduct)))
         {
@@ -195,6 +197,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         if (SelectedProduct is not null && !matches.Any(p => ReferenceEquals(p, SelectedProduct))) SelectedProduct = null;
         BarcodeCandidates = Array.Empty<ProductSummary>();
         OnPropertyChanged(nameof(BarcodeCandidates));
+        OnPropertyChanged(nameof(HasBarcodeAmbiguity));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
