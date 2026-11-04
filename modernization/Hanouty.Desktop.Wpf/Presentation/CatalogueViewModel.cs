@@ -73,6 +73,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
 
     public void ReloadCatalogue()
     {
+        if (_selectionInFlight) { ScanFeedback = "Selection already in progress"; return; }
         // Re-reading products never reconciles an uncertain checkout operation.
         // A failed local read must never leave a stale product available for sale.
         var pendingScannerText = CheckoutUncertain ? ScannerText : "";
@@ -110,6 +111,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
 
     public void ScanBarcode()
     {
+        if (_selectionInFlight) { ScanFeedback = "Selection already in progress"; return; }
         if (CheckoutUncertain) { ScanFeedback = "Checkout status unknown — reconcile before retry"; return; }
         if (!CatalogueAvailable) { ScanFeedback = "Local catalogue unavailable"; return; }
         var code = ScannerText.Trim();
@@ -180,6 +182,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             if (_searchText == value) return;
             _searchText = value ?? "";
             OnPropertyChanged();
+            if (_selectionInFlight) return;
             Refresh();
         }
     }
