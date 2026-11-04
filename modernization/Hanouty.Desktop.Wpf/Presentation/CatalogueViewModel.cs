@@ -35,12 +35,17 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private readonly ICheckoutSubmission? _submission;
     private string? _pendingOperationId;
     private string _commitFeedback = "Checkout submission unavailable";
+    private CashierPaymentContext? _paymentContext;
+    public CashierPaymentContext? PaymentContext { get => _paymentContext; set { if (_selectionInFlight || CheckoutUncertain) return; _paymentContext = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanCommit)); } }
+    public string? PendingOperationId => _pendingOperationId;
+    public System.Windows.Input.ICommand ReconcileCommand { get; }
+    private readonly ICheckoutOutcomeReconciliation? _reconciliation;
     public string CommitFeedback { get => _commitFeedback; private set { _commitFeedback = value; OnPropertyChanged(); } }
-    public bool CanCommit => _submission is not null && CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
+    public bool CanCommit => _submission is IContextualCheckoutSubmission && PaymentContext?.IsWellFormed == true && CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
     public System.Windows.Input.ICommand CommitCommand { get; }
     private readonly IProductImageAvailability _images;
 
-    public CatalogueViewModel(ICatalogueReader reader, IProductSelection selection, IProductImageAvailability? images = null, ICheckoutSubmission? submission = null)
+    public CatalogueViewModel(ICatalogueReader reader, IProductSelection selection, IProductImageAvailability? images = null, ICheckoutSubmission? submission = null, ICheckoutOutcomeReconciliation? reconciliation = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         _reader = reader;
@@ -48,6 +53,8 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
         _images = images ?? new LocalProductImageAvailability();
         _submission = submission;
+        _reconciliation = reconciliation;
+        ReconcileCommand = new DelegateCommand(_ => ReconcileCheckout());
         CommitCommand = new DelegateCommand(_ => CommitCheckout());
         ScanCommand = new DelegateCommand(_ => ScanBarcode());
         SelectCommand = new DelegateCommand(product =>
@@ -201,10 +208,32 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         }
     }
 
+    public void ReconcileCheckout()
+    {
+        if (!CheckoutUncertain || _pendingOperationId is null || _reconciliation is null || _selectionInFlight) return;
+        try
+        {
+            var resolution = _reconciliation.Reconcile(_pendingOperationId);
+            CommitFeedback = resolution switch
+            {
+                CheckoutResolution.Persisted => "Sale persisted — cashier review required before a new checkout",
+                CheckoutResolution.Absent => "Sale absent — cashier review required before a new checkout",
+                _ => "Checkout status unknown — reconcile before retry"
+            };
+            // A journal result is informational until Application supplies an
+            // explicit safe session reset. Never unlock or replay here.
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            CommitFeedback = "Checkout status unknown — reconcile before retry";
+        }
+    }
+
     public void CommitCheckout()
     {
         if (_selectionInFlight) { CommitFeedback = "Checkout already in progress"; return; }
-        if (_submission is null) { CommitFeedback = "Checkout submission unavailable"; return; }
+        if (_submission is not IContextualCheckoutSubmission contextual) { CommitFeedback = "Authorized payment adapter unavailable"; return; }
+        if (PaymentContext?.IsWellFormed != true) { CommitFeedback = "Cashier and payment context required"; return; }
         if (CheckoutUncertain) { CommitFeedback = "Checkout status unknown — reconcile before retry"; return; }
         if (!CatalogueAvailable) { CommitFeedback = "Local catalogue unavailable"; return; }
         // Stable operation identity is retained for invalidation and unknown outcomes.
@@ -214,7 +243,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             _selectionInFlight = true;
             OnPropertyChanged(nameof(CanSelectProduct));
             OnPropertyChanged(nameof(CanCommit));
-            var result = _submission.Submit(_pendingOperationId);
+            var result = contextual.Submit(_pendingOperationId, PaymentContext);
             CommitFeedback = result switch
             {
                 CheckoutSubmissionResult.Committed => "Checkout committed",
