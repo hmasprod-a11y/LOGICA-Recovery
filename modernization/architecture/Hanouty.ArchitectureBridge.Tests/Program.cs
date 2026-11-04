@@ -342,6 +342,12 @@ static bool InvalidW2(AuthorizedCheckoutRequest request)
     catch (ArgumentException) { return true; }
 }
 Assert(InvalidW2(W2(id: "")), "W2 rejects missing operation ID");
+Assert(InvalidW2(W2() with { Currency = " " }), "W2 rejects missing currency");
+Assert(InvalidW2(W2(lines: Array.Empty<CheckoutBatchLine>())), "W2 rejects empty sale lines");
+Assert(InvalidW2(W2(lines: new[] { new CheckoutBatchLine("article-1", 0) })), "W2 rejects zero quantity");
+Assert(InvalidW2(W2() with { ExpectedTotal = 0m }), "W2 rejects zero expected total");
+(W2() with { IsReturn = true }).Validate();
+Assert(true, "W2 allows non-credit return pending real Checkout policy");
 Assert(InvalidW2(W2(cashier: "")), "W2 rejects unauthenticated cashier");
 Assert(InvalidW2(W2(lines: new[] { new CheckoutBatchLine("A", 1), new CheckoutBatchLine("a", 2) })),
     "W2 rejects case-colliding article identities");
