@@ -1,3 +1,5 @@
+using ICatalogueReader = Hanouty.Desktop.Wpf.Presentation.ICatalogueReader;
+using ProductSummary = Hanouty.Desktop.Wpf.Presentation.ProductSummary;
 using Hanouty.Desktop.Wpf.Presentation;
 using Hanouty.ArchitectureBridge;
 
