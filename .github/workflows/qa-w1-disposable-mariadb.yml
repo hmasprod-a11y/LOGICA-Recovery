@@ -1,0 +1,68 @@
+name: QA W1 disposable MariaDB production catalogue integration
+on:
+  push:
+    branches: [integration/hanouty-qa-desktop-inventory-20261102]
+    paths:
+      - 'qa/tests/Hanouty.W1.RealMariaDb/**'
+      - '.github/workflows/qa-w1-disposable-mariadb.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-inventory-mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-ci-only
+          MARIADB_DATABASE: hanouty_w1_disposable
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      HANOUTY_W1_TEST_CONNECTION: 'Server=127.0.0.1;Port=3306;Database=hanouty_w1_disposable;Uid=root;Pwd=disposable-ci-only;SslMode=None'
+      HANOUTY_W1_DISPOSABLE_MARKER: I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: qa
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 1a10b7e0a776067bbdf40b023b4607506c6ecf7f
+          path: combined
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 865efe43c2a10fd9a0dda10e9ee2b04037f77d33
+          path: architecture
+          persist-credentials: false
+      - name: Verify source provenance and compose real Architecture plus Inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence combined/modernization/architecture combined/qa/tests
+          test "$(git -C qa rev-parse HEAD)" = "${{ github.sha }}"
+          test "$(git -C combined rev-parse HEAD)" = 1a10b7e0a776067bbdf40b023b4607506c6ecf7f
+          test "$(git -C architecture rev-parse HEAD)" = 865efe43c2a10fd9a0dda10e9ee2b04037f77d33
+          cp -a architecture/modernization/architecture/Hanouty.ArchitectureBridge combined/modernization/architecture/
+          cp -a qa/qa/tests/Hanouty.W1.RealMariaDb combined/qa/tests/
+          printf 'qa=%s\ninventory=%s\narchitecture=%s\n' "${{ github.sha }}" 1a10b7e0a776067bbdf40b023b4607506c6ecf7f 865efe43c2a10fd9a0dda10e9ee2b04037f77d33 > evidence/sources.txt
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compile production Inventory MariaDB reader with actual Architecture contract
+        run: dotnet build combined/qa/tests/Hanouty.W1.RealMariaDb/Hanouty.W1.RealMariaDb.csproj -c Release --nologo -warnaserror
+      - name: Exercise disposable MariaDB production reader and regressions
+        run: dotnet run --no-build -c Release --project combined/qa/tests/Hanouty.W1.RealMariaDb/Hanouty.W1.RealMariaDb.csproj
+      - name: Preserve exact-source manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-w1-real-mariadb-source-evidence
+          path: evidence/
+          if-no-files-found: error
