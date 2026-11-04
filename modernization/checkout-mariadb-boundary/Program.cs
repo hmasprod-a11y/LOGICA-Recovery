@@ -104,7 +104,48 @@ namespace LOGICA.Infrastructure.Checkout
                 boundary.Close();
             }
             Require(journal.IsPersisted(rolledBack), "Retry must be durable.");
-            Console.WriteLine("PASS production C# MySqlCheckoutAtomicPostingBoundary claim, duplicate, rollback and reconciliation.");
+            // A lost acknowledgement after COMMIT is not permission to repost.
+            // The second connection must see the committed claim, and a third
+            // connection must still reject it after the first was closed.
+            using (MySqlConnection connection = NewConnection())
+            {
+                MySqlCheckoutAtomicPostingBoundary boundary = new MySqlCheckoutAtomicPostingBoundary(connection);
+                boundary.Open();
+                boundary.BeginAndBind();
+                Require(!boundary.TryClaimOperation(key), "Lost-ack replay must not claim committed ID.");
+                boundary.Rollback();
+                boundary.Close();
+            }
+            Require(journal.IsPersisted(key), "Reconciliation must survive duplicate replay.");
+
+            // A malformed ID must never be inserted, even when the caller
+            // has already begun a transaction.
+            using (MySqlConnection connection = NewConnection())
+            {
+                MySqlCheckoutAtomicPostingBoundary boundary = new MySqlCheckoutAtomicPostingBoundary(connection);
+                boundary.Open();
+                boundary.BeginAndBind();
+                bool rejected = false;
+                try { boundary.TryClaimOperation(" invalid "); }
+                catch (ArgumentException) { rejected = true; }
+                Require(rejected, "Whitespace-surrounded operation ID must be rejected.");
+                boundary.Rollback();
+                boundary.Close();
+            }
+
+            // The durable journal must not mistake a missing operation for
+            // an unknown database result; an actual connection error must
+            // propagate instead of authorizing a retry.
+            Require(!journal.IsPersisted("not-present-" + Guid.NewGuid().ToString("N")),
+                "A never-submitted operation must be absent.");
+            var unreachable = new MySqlCheckoutOperationJournal(() =>
+                new MySqlConnection("Server=127.0.0.1;Port=1;Database=checkout_disposable;Uid=checkout_test;Pwd=checkout-test-only;SslMode=Disabled;Connection Timeout=1;"));
+            bool connectionFailed = false;
+            try { unreachable.IsPersisted(key); }
+            catch (MySqlException) { connectionFailed = true; }
+            Require(connectionFailed, "Unavailable journal must propagate unknown outcome.");
+
+            Console.WriteLine("PASS production C# MariaDB boundary: commit, replay, rollback, invalid ID and unknown reconciliation.");
         }
     }
 }
