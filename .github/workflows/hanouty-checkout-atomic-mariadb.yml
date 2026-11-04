@@ -5,6 +5,7 @@ on:
       - 'recovered-source/LOGICA/Infrastructure/Checkout/MySqlCheckoutAtomicPostingBoundary.cs'
       - 'recovered-source/LOGICA/Infrastructure/Checkout/hanouty_checkout_operations.disposable.sql'
       - 'scripts/test-checkout-atomic-mariadb.sh'
+      - 'modernization/checkout-mariadb-boundary/**'
       - '.github/workflows/hanouty-checkout-atomic-mariadb.yml'
   workflow_dispatch:
 jobs:
@@ -34,3 +35,10 @@ jobs:
           DB_USER: checkout_test
           MYSQL_PWD: checkout-test-only
         run: bash scripts/test-checkout-atomic-mariadb.sh
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Exercise actual C# production MariaDB boundary
+        env:
+          CHECKOUT_TEST_CONNECTION: Server=127.0.0.1;Port=3306;Database=checkout_disposable;Uid=checkout_test;Pwd=checkout-test-only;SslMode=None;
+        run: dotnet run --project modernization/checkout-mariadb-boundary/CheckoutMariaDbBoundary.csproj --configuration Release
