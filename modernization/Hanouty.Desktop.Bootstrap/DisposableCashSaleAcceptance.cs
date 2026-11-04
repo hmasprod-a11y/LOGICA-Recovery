@@ -118,6 +118,31 @@ INSERT INTO TABLE_NUM VALUES (0,1);
     {
         Require(host.Window.IsVisible && host.Window.IsLoaded, "Actual financial WPF window did not render.");
         Select(host);
+        var originalContext = host.ViewModel.PaymentContext ??
+            throw new InvalidOperationException("Host cash context missing.");
+        var staged = Snapshot(settings);
+        string? rejectedOperation = null;
+        foreach (var edited in new[] {
+            originalContext with { CashierId = "forged-cashier" },
+            originalContext with { RegisterId = "02" },
+            originalContext with { CurrencyCode = "EUR" },
+            originalContext with { TenderedAmount = 999m },
+            originalContext with { TenderCode = "Card" }
+        })
+        {
+            host.ViewModel.PaymentContext = edited;
+            host.ViewModel.CommitCommand.Execute(null);
+            rejectedOperation ??= host.ViewModel.PendingOperationId;
+            Require(host.ViewModel.CommitFeedback == "Cart invalidated — cashier must review" &&
+                !host.ViewModel.CheckoutUncertain && host.Session.PendingCount == 1 &&
+                host.Session.State == CheckoutCommitState.Ready &&
+                rejectedOperation is not null &&
+                host.ViewModel.PendingOperationId == rejectedOperation && Snapshot(settings) == staged,
+                "Edited UI cashier/register/currency/tender bypassed same-session authorization or changed SQL.");
+        }
+        // Explicitly restore the captured context after deterministic local
+        // rejection, preserving the SAME basket and operation ID (no blind retry).
+        host.ViewModel.PaymentContext = originalContext;
         host.ViewModel.CommitCommand.Execute(null);
         Require(host.ViewModel.CommitFeedback == "Checkout committed" && !host.ViewModel.CheckoutUncertain &&
             host.ViewModel.PendingOperationId is null && host.Session.PendingCount == 0,
@@ -224,7 +249,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         }
         finally { lostAck.Window.Close(); }
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
-            Gate = "real WPF exact-cash slice", Operation = operation, WindowLoaded = true,
+            Gate = "real WPF exact-cash slice", Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
             EmptyBasket = true, TicketPaymentStockSql = true, Duplicate = true, ProcessRestart = true,
             WrongPinRejected = true, WrongTotalRejected = true, StalePriceRejected = true,
             AfterPaymentRollback = true, UnknownJournalLocked = true, LostAcknowledgementPersisted = true, Reconciliation = true,

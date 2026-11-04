@@ -80,7 +80,7 @@ jobs:
           path: architecture
       - uses: actions/checkout@v4
         with:
-          ref: 0f8869220484100a0cbab18e768c8cf8160da6af
+          ref: 44ad5d84bd99308de9947269399dbf0a4bb647d3
           path: wpf
       - uses: actions/setup-dotnet@v4
         with:
@@ -175,7 +175,7 @@ jobs:
         shell: pwsh
         run: |
           $report = Get-Content evidence/w2/w2-cash-sale.json -Raw | ConvertFrom-Json
-          foreach ($field in @('WindowLoaded','EmptyBasket','TicketPaymentStockSql','Duplicate','ProcessRestart','WrongPinRejected','WrongTotalRejected','StalePriceRejected','AfterPaymentRollback','UnknownJournalLocked','LostAcknowledgementPersisted','Reconciliation')) {
+          foreach ($field in @('WindowLoaded','EditedContextRejected','SingleSessionBinding','EmptyBasket','TicketPaymentStockSql','Duplicate','ProcessRestart','WrongPinRejected','WrongTotalRejected','StalePriceRejected','AfterPaymentRollback','UnknownJournalLocked','LostAcknowledgementPersisted','Reconciliation')) {
             if ($report.$field -ne $true) { throw "Missing executed acceptance assertion: $field" }
           }
           if ($report.W2Accepted -ne $false) { throw 'Cash-slice evidence must not promote full W2 or commercial payment readiness' }

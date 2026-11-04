@@ -48,8 +48,11 @@ public sealed partial record CatalogueHost
             new ExplicitVariantChoice(), posting, journal, () => captured);
         var context = new CashierPaymentContext(captured.CashierId,
             twoDigitWorkstation, captured.Currency, "Cash", captured.Payments[0].Amount);
-        var submission = new FinancialSessionSubmission(binding, context);
-        var window = new MainWindow(binding.Catalogue, binding.Checkout, submission, context);
+        // Reuse WPF's single-session adapter rather than maintain a second
+        // contextual implementation in the Host. SQL still authenticates on commit.
+        var services = AuthorizedWpfServiceRegistration.CreateSessionBound(
+            binding.Catalogue, binding.Checkout, binding.Submission, () => context);
+        var window = new MainWindow(services.Catalogue, services.Checkout, services.Submission, context);
         var vm = (CatalogueViewModel)window.DataContext;
         if (!vm.CatalogueAvailable)
             throw new InvalidOperationException("Local financial catalogue could not be loaded.");
@@ -67,29 +70,4 @@ public sealed partial record CatalogueHost
         }
     }
 
-    private sealed class FinancialSessionSubmission : IContextualCheckoutSubmission,
-        ICheckoutOutcomeReconciliation
-    {
-        private readonly WpfProductionBinding binding;
-        private readonly CashierPaymentContext context;
-        internal FinancialSessionSubmission(WpfProductionBinding binding, CashierPaymentContext context)
-        {
-            this.binding = binding;
-            this.context = context;
-        }
-
-        public CheckoutSubmissionResult Submit(string stableOperationId) =>
-            throw new InvalidOperationException("Explicit cash-session context required.");
-
-        public CheckoutSubmissionResult Submit(string stableOperationId, CashierPaymentContext supplied)
-        {
-            if (supplied != context) return CheckoutSubmissionResult.Invalidated;
-            return binding.Submission.Submit(stableOperationId);
-        }
-
-        public CheckoutResolution Reconcile(string stableOperationId) =>
-            binding.Submission is ICheckoutOutcomeReconciliation reconciliation
-                ? reconciliation.Reconcile(stableOperationId)
-                : CheckoutResolution.Unknown;
-    }
 }
