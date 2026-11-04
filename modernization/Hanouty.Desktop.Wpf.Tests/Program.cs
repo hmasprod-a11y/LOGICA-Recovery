@@ -171,6 +171,22 @@ Check(keyboardVm.BarcodeCandidates.Count == 2 && keyboardSelection.Selected.Coun
 keyboardVm.SelectedProduct = keyboardVm.BarcodeCandidates[0];
 keyboardVm.SelectCommand.Execute(null);
 Check(keyboardSelection.Selected.Count == 1 && keyboardSelection.Selected[0].Id == "4", "Enter choice selects exact variant");
+var resolving = new CatalogueViewModel(new Reader(items), new RecordingSelection());
+resolving.ScannerText = "777";
+resolving.ScanBarcode();
+Check(resolving.HasBarcodeAmbiguity && resolving.BarcodeCandidates.Count == 2,
+    "duplicate scan must expose active ambiguity state");
+resolving.SelectedProduct = resolving.BarcodeCandidates[1];
+resolving.SelectCurrent();
+Check(!resolving.HasBarcodeAmbiguity && resolving.BarcodeCandidates.Count == 0 && resolving.ScannerText == "",
+    "acknowledged explicit variant clears candidates and scanner for next scan");
+var refusing = new CatalogueViewModel(new Reader(items), new PreviewProductSelection());
+refusing.ScannerText = "777";
+refusing.ScanBarcode();
+refusing.SelectedProduct = refusing.BarcodeCandidates[0];
+refusing.SelectCurrent();
+Check(refusing.HasBarcodeAmbiguity && refusing.ScannerText == "777",
+    "rejected explicit variant preserves candidate list and scanner for correction");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
