@@ -53,7 +53,7 @@ public sealed class ProductionWpfProductSelection : Wpf.IProductSelection
     }
 }
 
-public static class ProductionWpfServices
+public sealed record WpfProductionBinding(CheckoutSession Session,\n    Wpf.ICatalogueReader Catalogue, Wpf.IProductSelection Checkout);\n\npublic static class ProductionWpfServices
 {
     // Host invokes this at App.ResolveServices using concrete Inventory,
     // Checkout and cashier variant-prompt adapters. No empty fallback.
