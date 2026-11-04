@@ -41,6 +41,8 @@ static class Program
             var reader = new MariaDbCatalogueReader(connectionString, folder);
             var all = reader.ListAll();
             Assert(all.Count == 4, "all products, including NULL and empty barcode");
+            Assert(all.All(p => p.VariantId == null), "no fabricated variant identity");
+            Assert(reader.FindBarcode("Q\u002742").All(p => p.VariantId == null), "duplicate barcodes do not fabricate variants");
             Assert(all.Count(p => p.ImagePath != null) == 1 && File.Exists(all.Single(p => p.ImagePath != null).ImagePath), "only existing photos");
             Assert(reader.FindBarcode("Q'42").Count == 2, "quoted duplicate barcode candidates preserved");
             using (var db = new MySqlConnection(connectionString))
