@@ -41,6 +41,13 @@ public sealed class AuthorizedWpfCheckoutAdapter : IContextualCheckoutSubmission
             request.CashierId != context.CashierId ||
             !string.Equals(request.Currency, context.CurrencyCode, StringComparison.Ordinal))
             return CheckoutSubmissionResult.Invalidated;
+        // W2 cash-sale slice only: returns and credit must wait for their own
+        // approved policy and real posting acceptance. Never silently route
+        // these through a cash-only trusted preparation.
+        if (request.IsReturn || request.Payments is null ||
+            request.Payments.Count != 1 ||
+            request.Payments[0].Kind == CheckoutPaymentKind.Credit)
+            return CheckoutSubmissionResult.Invalidated;
         if (!Enum.TryParse<CheckoutPaymentKind>(context.TenderCode, true, out var tender) ||
             !Enum.IsDefined(tender) || request.Payments is null || request.Payments.Count != 1 ||
             request.Payments[0].Kind != tender || request.Payments[0].Amount != context.TenderedAmount)
