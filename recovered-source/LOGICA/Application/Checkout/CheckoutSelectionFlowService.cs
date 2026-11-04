@@ -345,6 +345,18 @@ namespace LOGICA.ApplicationLayer.Checkout
                     throw new InvalidOperationException("The selected article values changed during checkout pricing.");
             decimal basketNet = decimal.Add(existingBasketNet, lineNet);
             bool differs = BasketTotalConsistency.AreDifferent(basketNet, displayedTotal, legacy);
+            // The legacy total-comparison adapter may also pump WinForms events.
+            // A price, identity or schema change after pricing but before the
+            // preview is returned must invalidate the same sale/return preview.
+            if (selected.RowState == DataRowState.Deleted ||
+                selected.RowState == DataRowState.Detached ||
+                !Object.ReferenceEquals(selected.Table, originalColumns[0].Table) ||
+                selected.Table.Columns.Count != originalColumns.Length)
+                throw new InvalidOperationException("The selected article changed during total comparison.");
+            for (int column = 0; column < originalColumns.Length; column++)
+                if (!Object.ReferenceEquals(selected.Table.Columns[column], originalColumns[column]) ||
+                    !Object.Equals(selected[column], pricingSnapshot[column]))
+                    throw new InvalidOperationException("The selected article changed during total comparison.");
             return new CheckoutBasketPreview(
                 choice.Status, choice.SelectedRow, lineNet, basketNet, differs);
         }
