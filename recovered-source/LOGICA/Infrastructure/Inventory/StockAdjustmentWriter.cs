@@ -122,7 +122,7 @@ namespace LOGICA.Infrastructure.Inventory
             string code, name;
             decimal current;
             using (var select = new MySqlCommand(
-                "SELECT STOCK, Code, Article FROM TABLE_ARTICLES WHERE ID_ARTICLE = @id FOR UPDATE",
+                "SELECT STOCK, Code, Article FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE = BINARY @id FOR UPDATE",
                 connection, transaction))
             {
                 select.Parameters.AddWithValue("@id", plan.ArticleId);
@@ -150,7 +150,7 @@ namespace LOGICA.Infrastructure.Inventory
             try
             {
                 using (var update = new MySqlCommand(
-                    "UPDATE TABLE_ARTICLES SET STOCK = @after WHERE ID_ARTICLE = @id AND STOCK = @before",
+                    "UPDATE TABLE_ARTICLES SET STOCK = @after WHERE BINARY ID_ARTICLE = BINARY @id AND STOCK = @before",
                     connection, transaction))
                 {
                     update.Parameters.AddWithValue("@after", plan.AfterStock);

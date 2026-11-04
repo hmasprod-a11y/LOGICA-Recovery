@@ -115,6 +115,12 @@ internal static class StockAdjustmentMariaDbSmoke
                 try { Sql(c, null, "INSERT INTO TABLE_ARTICLES VALUES ('CI-ARTICLE',12,'CI','Duplicate')"); }
                 catch (MySqlException ex) { duplicateRejected = ex.Number == 1062; }
                 Require(duplicateRejected, "UNIQUE identity must reject concurrent duplicate inserts");
+                using (var tx = c.BeginTransaction())
+                {
+                    var wrongCase = create.Invoke(null, new object[] { "ci-article", 12m, 14m, "CI isolated adjustment", "CI-USER" });
+                    ExpectFailure(() => Apply(apply, wrongCase, c, tx), "case-sensitive stable article identity");
+                    tx.Rollback();
+                }
                 Require(Scalar(c, null, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == 1m,
                     "Rejected attempts must not write audit");
 

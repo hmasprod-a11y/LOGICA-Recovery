@@ -43,6 +43,8 @@ namespace LOGICA.Application.Inventory
             if (ContainsControlCharacter(articleId) || ContainsControlCharacter(reason) ||
                 ContainsControlCharacter(userId))
                 throw new ArgumentException("Stock adjustment identity and audit fields must not contain control characters.");
+            if (articleId.Trim().Length > 128)
+                throw new ArgumentException("Article identity exceeds supported length.", "articleId");
             if (beforeStock < 0m || afterStock < 0m)
                 throw new ArgumentOutOfRangeException("afterStock", "Stock cannot be negative.");
             if (beforeStock == afterStock)
