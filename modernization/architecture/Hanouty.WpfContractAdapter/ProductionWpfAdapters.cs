@@ -44,8 +44,6 @@ public sealed class ProductionWpfProductSelection : Wpf.IProductSelection
         var current = matches[0];
         if (current is null ||
             !string.Equals(current.ArticleId, product.Id, StringComparison.Ordinal)) return false;
-        /*var current = _session.Products.SingleOrDefault(p =>
-            string.Equals(p.ArticleId, product.Id, StringComparison.Ordinal));*/
         if (current is null ||
             !string.Equals(current.Barcode, product.Barcode, StringComparison.Ordinal) ||
             !string.Equals(current.DisplayName, product.Name, StringComparison.Ordinal) ||
