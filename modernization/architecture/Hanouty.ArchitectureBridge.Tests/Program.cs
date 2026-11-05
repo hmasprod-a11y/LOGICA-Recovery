@@ -247,6 +247,10 @@ Assert(duplicatePhotoSession.SelectImage(duplicatePhotoSession.ImageProducts[0])
        SelectionOutcome.InvalidCandidates && duplicatePhotoSession.PendingCount == 0 &&
        duplicatePhotoPort.Calls.Count == 0,
        "duplicate photo article identity cannot stage or post");
+Assert(duplicatePhotoSession.SelectArticle(duplicatePhotoSession.Products[0]).Outcome ==
+       SelectionOutcome.InvalidCandidates && duplicatePhotoSession.PendingCount == 0 &&
+       duplicatePhotoPort.Calls.Count == 0,
+       "duplicate list article identity cannot stage or post");
 session.RefreshCatalogue();
 Assert(session.Products.Count == 3 && session.ImageProducts.Count == 1,
        "explicit catalogue refresh preserves list/photo membership");
