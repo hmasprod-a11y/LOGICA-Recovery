@@ -78,7 +78,14 @@ public partial class MainWindow : Window
                 _readTrustedCashTotal() != total || _readBasketIdentity?.Invoke() != identity)
                 return false;
             // Host authenticates the cashier and checks the trusted quote.
-            return _setFinancialContext(draft.Cashier, draft.Register, draft.CashMad);
+            // A successful callback is not sufficient if a reentrant Host call
+            // moved this window into Unknown or an in-flight financial operation.
+            if (!_setFinancialContext(draft.Cashier, draft.Register, draft.CashMad)) return false;
+            return vm.FinancialSessionActive && !vm.CheckoutBusy &&
+                !vm.CheckoutUncertain && vm.PendingOperationId is null &&
+                vm.PaymentContext is { } authorized &&
+                authorized.CashierId == draft.Cashier &&
+                authorized.TenderedAmount == draft.CashMad;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         { return false; }
