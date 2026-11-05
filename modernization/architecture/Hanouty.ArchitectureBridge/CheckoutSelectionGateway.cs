@@ -30,7 +30,7 @@ public static class CheckoutSelectionGateway
                 var choices = new List<ArticleCandidate>(snapshots.Count);
                 foreach (var s in snapshots)
                     choices.Add(new ArticleCandidate(s.ArticleId, s.Code));
-                return chooseVariant(choices);
+                return chooseVariant(choices.AsReadOnly());
             },
             () => ToTable(refresh()));
         return Map(result);
