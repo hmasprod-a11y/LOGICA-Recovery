@@ -6,7 +6,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- Only the Bootstrap executable is published to customers. -->
+    <OutputType Condition="'$(HanoutyWpfAsLibrary)' == 'true'">Library</OutputType>
   </PropertyGroup>
+  <ItemGroup Condition="'$(HanoutyWpfAsLibrary)' == 'true'">
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj" />
   </ItemGroup>
