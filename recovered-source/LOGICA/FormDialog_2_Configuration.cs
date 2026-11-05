@@ -2315,7 +2315,7 @@ public class FormDialog_2_Configuration : Form
 	{
 		try
 		{
-			string path = Path.Combine(Application.StartupPath, fileName);
+			string path = Path.Combine(global::System.Windows.Forms.Application.StartupPath, fileName);
 			return File.Exists(path) ? File.ReadAllText(path).Trim() : fallback;
 		}
 		catch (IOException) { return fallback; }
@@ -2658,7 +2658,7 @@ public class FormDialog_2_Configuration : Form
 			{
 				if (CheckBox_me_STARTUP.Checked)
 				{
-					string shortcutTarget = ResolveStartupShortcutTarget(Application.StartupPath, Module1._CHEMIN_FOLDER, Application.ProductName + ".exe");
+					string shortcutTarget = ResolveStartupShortcutTarget(global::System.Windows.Forms.Application.StartupPath, Module1._CHEMIN_FOLDER, global::System.Windows.Forms.Application.ProductName + ".exe");
 					object objectValue = RuntimeHelpers.GetObjectValue(Interaction.CreateObject("WScript.Shell"));
 					object objectValue2 = RuntimeHelpers.GetObjectValue(NewLateBinding.LateGet(objectValue, null, "CreateShortcut", new object[1] { Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory) + "\\LOGICA.lnk" }, null, null, null));
 					NewLateBinding.LateSet(objectValue2, null, "TargetPath", new object[1] { shortcutTarget }, null, null);
@@ -2714,12 +2714,12 @@ public class FormDialog_2_Configuration : Form
 				val2.Close();
 				Module1.cn_SQL.Close();
 				MyProject.Forms.Form_0_TEMPLATE.TextBox_BRANCHEMENT.Text = ReadOptionalSetting("BRANCHEMENT", Combo_BRANCHEMENT.Text);
-				File.WriteAllText(Application.StartupPath + "/acces_rfid.sni", Conversions.ToString(CheckBox_me_RFID.Checked));
-				File.WriteAllText(Application.StartupPath + "/choix_vendeur.sni", Conversions.ToString(CheckBox_me_VENDEUR.Checked));
-				File.WriteAllText(Application.StartupPath + "/choix_client.sni", Conversions.ToString(CheckBox_me_CLIENT.Checked));
-				File.WriteAllText(Application.StartupPath + "/gestion_credit.sni", Conversions.ToString(CheckBox_me_GESTION_CREDIT.Checked));
-				File.WriteAllText(Application.StartupPath + "/mode_windows.sni", Conversions.ToString(CheckBox_me_MODE_WINDOWS.Checked));
-				File.WriteAllText(Application.StartupPath + "/afficher_ecran_pub.sni", Conversions.ToString(CheckBox_me_ECRAN_PUB.Checked));
+				File.WriteAllText(global::System.Windows.Forms.Application.StartupPath + "/acces_rfid.sni", Conversions.ToString(CheckBox_me_RFID.Checked));
+				File.WriteAllText(global::System.Windows.Forms.Application.StartupPath + "/choix_vendeur.sni", Conversions.ToString(CheckBox_me_VENDEUR.Checked));
+				File.WriteAllText(global::System.Windows.Forms.Application.StartupPath + "/choix_client.sni", Conversions.ToString(CheckBox_me_CLIENT.Checked));
+				File.WriteAllText(global::System.Windows.Forms.Application.StartupPath + "/gestion_credit.sni", Conversions.ToString(CheckBox_me_GESTION_CREDIT.Checked));
+				File.WriteAllText(global::System.Windows.Forms.Application.StartupPath + "/mode_windows.sni", Conversions.ToString(CheckBox_me_MODE_WINDOWS.Checked));
+				File.WriteAllText(global::System.Windows.Forms.Application.StartupPath + "/afficher_ecran_pub.sni", Conversions.ToString(CheckBox_me_ECRAN_PUB.Checked));
 				if (CheckBox_me_ECRAN_PUB.Checked)
 				{
 					((ServerComputer)MyProject.Computer).FileSystem.CreateDirectory("c:\\PHOTOS");
@@ -2732,13 +2732,13 @@ public class FormDialog_2_Configuration : Form
 						NewLateBinding.LateCall(objectValue6, null, "Save", new object[0], null, null, null, IgnoreReturn: true);
 					}
 				}
-				File.WriteAllText(Application.StartupPath + "/PRINTER_RAPPORT.sni", Combo_PRINTER_RAPPORT.Text);
-				File.WriteAllText(Application.StartupPath + "/PRINTER_CL.sni", Combo_PRINTER_SOLDER.Text);
-				File.WriteAllText(Application.StartupPath + "/PRINTER_ADD.sni", Combo_PRINTER_ADDITION.Text);
-				File.WriteAllText(Application.StartupPath + "/PRINTER_C1.sni", Combo_PRINTER_C1.Text);
-				File.WriteAllText(Application.StartupPath + "/PRINTER_C2.sni", Combo_PRINTER_C2.Text);
-				File.WriteAllText(Application.StartupPath + "/PRINTER_C3.sni", Combo_PRINTER_C3.Text);
-				File.WriteAllText(Application.StartupPath + "/PRINTER_C4.sni", Combo_PRINTER_C4.Text);
+				File.WriteAllText(global::System.Windows.Forms.Application.StartupPath + "/PRINTER_RAPPORT.sni", Combo_PRINTER_RAPPORT.Text);
+				File.WriteAllText(global::System.Windows.Forms.Application.StartupPath + "/PRINTER_CL.sni", Combo_PRINTER_SOLDER.Text);
+				File.WriteAllText(global::System.Windows.Forms.Application.StartupPath + "/PRINTER_ADD.sni", Combo_PRINTER_ADDITION.Text);
+				File.WriteAllText(global::System.Windows.Forms.Application.StartupPath + "/PRINTER_C1.sni", Combo_PRINTER_C1.Text);
+				File.WriteAllText(global::System.Windows.Forms.Application.StartupPath + "/PRINTER_C2.sni", Combo_PRINTER_C2.Text);
+				File.WriteAllText(global::System.Windows.Forms.Application.StartupPath + "/PRINTER_C3.sni", Combo_PRINTER_C3.Text);
+				File.WriteAllText(global::System.Windows.Forms.Application.StartupPath + "/PRINTER_C4.sni", Combo_PRINTER_C4.Text);
 				MessageBox.Show("Modifié avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
 			}
 			catch (Exception ex)
@@ -2755,10 +2755,10 @@ public class FormDialog_2_Configuration : Form
 					Bitmap val3 = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 					Graphics val4 = Graphics.FromImage((Image)(object)val3);
 					val4.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-					((Image)val3).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+					((Image)val3).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 					val3 = null;
 					string right = "ERROR | ";
-					File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+					File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 				}
 				catch (Exception ex3)
 				{
