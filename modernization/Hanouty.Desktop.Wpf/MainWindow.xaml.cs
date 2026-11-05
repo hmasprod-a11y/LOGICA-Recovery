@@ -42,7 +42,11 @@ public partial class MainWindow : Window
             // when a Host callback does not mutate the ViewModel itself.
             // This also invalidates stale product/scanner and cash context.
             vm.FinancialSessionActive = false;
-            return true;
+            // A Host callback may have synchronously moved the ViewModel into
+            // an unresolved operation. The setter deliberately refuses logout
+            // in that state; never report a successful local session revocation.
+            return !vm.FinancialSessionActive && !vm.CheckoutUncertain &&
+                vm.PendingOperationId is null;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
