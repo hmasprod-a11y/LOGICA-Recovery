@@ -46,10 +46,19 @@ namespace LOGICA.Infrastructure.Inventory
             // Connector/NET retains transaction.Connection after Commit/Dispose.
             // Reference equality alone therefore does not prove an active server transaction.
             // Read-only check; never begin/commit/repair a caller's transaction here.
-            using (var active = new MySqlCommand("SELECT @@in_transaction", connection, transaction))
+            try
             {
-                if (Convert.ToInt32(active.ExecuteScalar(), CultureInfo.InvariantCulture) != 1)
-                    throw new UnauthorizedAccessException("Authorization requires an active server transaction.");
+                using (var active = new MySqlCommand("SELECT @@in_transaction", connection, transaction))
+                {
+                    if (Convert.ToInt32(active.ExecuteScalar(), CultureInfo.InvariantCulture) != 1)
+                        throw new UnauthorizedAccessException("Authorization requires an active server transaction.");
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // A completed/disposed Connector/NET transaction can retain a
+                // Connection reference; never pass it to a permission provider.
+                throw new UnauthorizedAccessException("Authorization requires an active server transaction.");
             }
             VerifiedManualStockActor actor = authorization.VerifyForWrite(
                 connection, transaction, authenticatedSessionId, plan.UserId);
