@@ -69,7 +69,16 @@ namespace LOGICA.ApplicationLayer.Checkout
                 throw new ArgumentNullException("chooseDuplicate",
                     "Duplicate barcodes require an explicit article choice.");
 
-            int index = read.Snapshots.Count == 1 ? 0 : chooseDuplicate(read.Snapshots);
+            int index;
+            if (read.Snapshots.Count == 1)
+                index = 0;
+            else
+            {
+                // The duplicate chooser remains mandatory even with nullable
+                // annotations enabled in the shared .NET 10 production source.
+                var chooser = chooseDuplicate ?? throw new ArgumentNullException("chooseDuplicate");
+                index = chooser(read.Snapshots);
+            }
             if (index == -1)
                 return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.Cancelled, null);
             if (index < 0 || index >= read.Snapshots.Count)
