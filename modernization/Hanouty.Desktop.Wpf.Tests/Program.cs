@@ -774,6 +774,36 @@ var reviewThread = new System.Threading.Thread(() =>
             failedLogoutVm.FinancialSessionActive && failedLogoutVm.PaymentContext == financialContext,
             "Host logout exception must not crash WPF or falsely expire the cashier session");
         failedLogoutWindow.Close();
+
+        // A Host denial is not a successful logout, and an unresolved sale must
+        // not even invoke the Host logout callback (including on direct calls).
+        var deniedLogoutWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new RecordingSelection(), new RecordingSubmission(), financialContext,
+            requireFreshPaymentContext: true);
+        var deniedLogoutVm = (CatalogueViewModel)deniedLogoutWindow.DataContext;
+        int deniedLogoutCalls = 0;
+        deniedLogoutWindow.ConfigureCashierEntry((_, _, _) => true, () => 10m,
+            () => { deniedLogoutCalls++; return false; });
+        Check(!deniedLogoutWindow.EndFinancialSession() && deniedLogoutCalls == 1 &&
+            deniedLogoutVm.FinancialSessionActive && deniedLogoutVm.PaymentContext == financialContext,
+            "Host denial must retain authorized session without reporting logout");
+        deniedLogoutWindow.Close();
+
+        var lockedLogoutPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
+        var lockedLogoutWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new RecordingSelection(), lockedLogoutPort, financialContext,
+            requireFreshPaymentContext: true);
+        var lockedLogoutVm = (CatalogueViewModel)lockedLogoutWindow.DataContext;
+        int lockedLogoutCalls = 0;
+        lockedLogoutWindow.ConfigureCashierEntry((_, _, _) => true, () => 10m,
+            () => { lockedLogoutCalls++; return true; });
+        lockedLogoutVm.CommitCheckout();
+        var lockedOperation = lockedLogoutVm.PendingOperationId;
+        Check(lockedLogoutVm.CheckoutUncertain && !lockedLogoutWindow.EndFinancialSession() &&
+            lockedLogoutCalls == 0 && lockedLogoutVm.PendingOperationId == lockedOperation &&
+            lockedLogoutPort.Ids.Count == 1,
+            "unknown financial outcome blocks real window logout without touching Host or operation");
+        lockedLogoutWindow.Close();
     }
     catch (Exception ex) { windowReviewError = ex; }
 });
