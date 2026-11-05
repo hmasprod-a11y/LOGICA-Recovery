@@ -13,6 +13,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using Application = System.Windows.Forms.Application;
 using LOGICA.My;
 using Microsoft.VisualBasic;
 using Microsoft.VisualBasic.CompilerServices;
