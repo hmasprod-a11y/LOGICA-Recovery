@@ -507,25 +507,25 @@ catch (InvalidOperationException ex) when (ex.Message.Contains("Financial outcom
 Assert(unknownPort.Calls == 0, "unknown journal cannot trigger financial write");
 
 
-var snapshotPort = new RecordingAtomicBatchPort();
+var lineSnapshotPort = new RecordingAtomicBatchPort();
 var snapshotSession = new CheckoutComposition(new CompositionCatalogue(),
-    new RecordingPrompt { Choice = 0 }, snapshotPort, new CompositionJournal()).CreateSession();
+    new RecordingPrompt { Choice = 0 }, lineSnapshotPort, new CompositionJournal()).CreateSession();
 Assert(snapshotSession.PendingLines.Count == 0, "empty session snapshot has no lines");
 snapshotSession.Scan("123", 2);
 snapshotSession.Scan("123", 3);
 var capturedLines = snapshotSession.PendingLines;
 Assert(capturedLines.Count == 1 && capturedLines[0] == new CheckoutBatchLine("11", 5) &&
-    snapshotPort.Calls.Count == 0, "pending lines aggregate repeated scans without posting");
+    lineSnapshotPort.Calls.Count == 0, "pending lines aggregate repeated scans without posting");
 try { ((IList<CheckoutBatchLine>)capturedLines)[0] = new CheckoutBatchLine("forged", 99);
     throw new Exception("mutable pending snapshot"); }
 catch (NotSupportedException) { }
 snapshotSession.Scan("123", 1);
 Assert(capturedLines[0].Quantity == 5 && snapshotSession.PendingLines[0].Quantity == 6,
     "pending lines are detached from later session edits");
-snapshotPort.OnAdd = () => Assert(snapshotSession.PendingLines.Single() ==
+lineSnapshotPort.OnAdd = () => Assert(snapshotSession.PendingLines.Single() ==
     new CheckoutBatchLine("11", 6), "context provider reads same frozen cart during commit");
 Assert(snapshotSession.Submit("snapshot-live-commit") == CheckoutBatchStatus.Committed &&
-    snapshotPort.Calls.Single().Lines.Single() == new CheckoutBatchLine("11", 6) &&
+    lineSnapshotPort.Calls.Single().Lines.Single() == new CheckoutBatchLine("11", 6) &&
     snapshotSession.PendingLines.Count == 0,
     "production commit shares snapshot aggregation and clears committed lines");
 var unknownSnapshotPort = new ThrowingAtomicBatchPort();
