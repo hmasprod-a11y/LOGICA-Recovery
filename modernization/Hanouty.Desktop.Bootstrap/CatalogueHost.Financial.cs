@@ -12,6 +12,34 @@ namespace Hanouty.Desktop.Bootstrap;
 public sealed partial record CatalogueHost
 {
     private Func<string, CheckoutResolution, Func<string>, bool>? reviewedReset;
+    private Func<AuthorizedCheckoutPaymentContext, bool>? setFinancialContext;
+    private Func<bool>? endFinancialSession;
+
+    // The existing Host owns one basket and one fixed register. A new payment
+    // expectation is explicit for EACH sale; SQL still authorizes and prices it.
+    public bool TrySetFinancialContext(AuthorizedCheckoutPaymentContext next) =>
+        setFinancialContext?.Invoke(next) ?? false;
+    public bool TryEndFinancialSession() => endFinancialSession?.Invoke() ?? false;
+
+    private static AuthorizedCheckoutPaymentContext FreezeCashContext(
+        AuthorizedCheckoutPaymentContext value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        // Freeze caller-owned lists before validating: callers cannot change
+        // captured tender while a PIN dialog pumps Windows messages.
+        var frozen = value with {
+            Payments = Array.AsReadOnly(value.Payments?.ToArray() ?? Array.Empty<CheckoutPayment>())
+        };
+        if (string.IsNullOrWhiteSpace(frozen.CashierId) ||
+            frozen.Currency != "MAD" || frozen.IsReturn ||
+            frozen.Payments.Count != 1 ||
+            frozen.Payments[0] is not { Kind: CheckoutPaymentKind.Cash, Amount: > 0m } ||
+            frozen.ExpectedTotal <= 0m ||
+            frozen.ExpectedTotal > frozen.Payments[0].Amount ||
+            decimal.Round(frozen.Payments[0].Amount, 2) != frozen.Payments[0].Amount)
+            throw new ArgumentException("Explicit MAD cash context required.", nameof(value));
+        return frozen;
+    }
 
     // The WPF reviewed-reset command invokes this only on explicit cashier
     // confirmation; PIN is freshly provided, never stored in ViewModel state.
@@ -47,19 +75,7 @@ public sealed partial record CatalogueHost
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(transientPinProvider);
-        ArgumentNullException.ThrowIfNull(paymentContext);
-        // Capture tender once. SQL preparation remains the sole price and
-        // authentication authority; this context cannot grant a sale permission.
-        if (string.IsNullOrWhiteSpace(paymentContext.CashierId) ||
-            paymentContext.Currency != "MAD" || paymentContext.IsReturn ||
-            paymentContext.Payments is null || paymentContext.Payments.Count != 1 ||
-            paymentContext.Payments[0] is not { Kind: CheckoutPaymentKind.Cash, Amount: > 0m } ||
-            paymentContext.ExpectedTotal <= 0m ||
-            paymentContext.ExpectedTotal > paymentContext.Payments[0].Amount)
-            throw new ArgumentException("Explicit MAD cash session context required.", nameof(paymentContext));
-        var captured = paymentContext with {
-            Payments = Array.AsReadOnly(paymentContext.Payments.ToArray())
-        };
+        AuthorizedCheckoutPaymentContext? captured = FreezeCashContext(paymentContext);
         Func<MySqlConnection> connections = () => new MySqlConnection(settings.ConnectionString);
         var posting = MariaDbCashCheckoutServices.CreatePostingPort(
             connections, twoDigitWorkstation, transientPinProvider);
@@ -68,23 +84,54 @@ public sealed partial record CatalogueHost
         var journal = MariaDbCashCheckoutServices.CreateOperationJournal(connections);
         var binding = ProductionWpfServices.CreateFinancial(
             new MariaDbCatalogueReader(settings.ConnectionString, settings.DataDirectory),
-            new ExplicitVariantChoice(), posting, journal, () => captured);
-        var context = new CashierPaymentContext(captured.CashierId,
+            new ExplicitVariantChoice(), posting, journal, () => captured ??
+                throw new InvalidOperationException("Fresh payment context required."));
+        CashierPaymentContext? context = new CashierPaymentContext(captured.CashierId,
             twoDigitWorkstation, captured.Currency, "Cash", captured.Payments[0].Amount);
         // Reuse WPF's single-session adapter rather than maintain a second
         // contextual implementation in the Host. SQL still authenticates on commit.
         var services = AuthorizedWpfServiceRegistration.CreateSessionBound(
             binding.Catalogue, binding.Checkout, binding.Submission, () => context);
-        var window = new MainWindow(services.Catalogue, services.Checkout, services.Submission, context);
+        var window = new MainWindow(services.Catalogue, services.Checkout, services.Submission, context, requireFreshPaymentContext: true);
         var vm = (CatalogueViewModel)window.DataContext;
         if (!vm.CatalogueAvailable)
             throw new InvalidOperationException("Local financial catalogue could not be loaded.");
         var result = new CatalogueHost(window, vm, binding.Session);
         string? lastReviewed = null;
         var reviewing = false;
+        bool CanChangeContext() => !reviewing && !vm.CheckoutBusy &&
+            !vm.CheckoutUncertain && vm.PendingOperationId is null &&
+            binding.Session.OperationId is null && binding.Session.State == CheckoutCommitState.Ready;
+        result.setFinancialContext = next =>
+        {
+            if (!CanChangeContext()) return false;
+            AuthorizedCheckoutPaymentContext frozen;
+            try { frozen = FreezeCashContext(next); }
+            catch (ArgumentException) { return false; }
+            // A staged basket belongs to its current cashier; changing amount
+            // is allowed before submission, changing identity is not.
+            if (binding.Session.PendingCount != 0 &&
+                (captured is null || frozen.CashierId != captured.CashierId))
+                return false;
+            captured = frozen;
+            context = new CashierPaymentContext(frozen.CashierId,
+                twoDigitWorkstation, frozen.Currency, "Cash", frozen.Payments[0].Amount);
+            vm.FinancialSessionActive = true;
+            vm.PaymentContext = context;
+            return true;
+        };
+        result.endFinancialSession = () =>
+        {
+            if (!CanChangeContext() || binding.Session.PendingCount != 0) return false;
+            captured = null;
+            context = null;
+            vm.PaymentContext = null;
+            vm.FinancialSessionActive = false;
+            return true;
+        };
         result.reviewedReset = (operation, expected, reviewPin) =>
         {
-            if (reviewing || reviewPin is null || string.IsNullOrWhiteSpace(operation) ||
+            if (reviewing || captured is null || context is null || reviewPin is null || string.IsNullOrWhiteSpace(operation) ||
                 operation == lastReviewed ||
                 expected is not (CheckoutResolution.Persisted or CheckoutResolution.Absent) ||
                 !vm.CanReviewResolvedCheckout || vm.ReviewedResolution != expected ||

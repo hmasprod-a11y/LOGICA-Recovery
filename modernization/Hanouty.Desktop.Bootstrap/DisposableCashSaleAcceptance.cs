@@ -227,6 +227,9 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 Require(Snapshot(settings) == before && denied.ViewModel.CheckoutUncertain &&
                     !denied.ViewModel.CanCommit && denied.Session.State == CheckoutCommitState.OutcomeUnknown,
                     scenario + ": rejected/uncertain command changed SQL or unlocked checkout.");
+                Require(!denied.TrySetFinancialContext(new AuthorizedCheckoutPaymentContext("O'Neil", "MAD", false,
+                    new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 10m) }, 5.25m)) &&
+                    !denied.TryEndFinancialSession(), "Unknown outcome allowed context/session replacement.");
                 denied.ViewModel.ReconcileCommand.Execute(null);
                 Require(denied.ViewModel.CommitFeedback.Contains("Sale absent", StringComparison.Ordinal) &&
                     denied.Session.State == CheckoutCommitState.Ready && denied.ViewModel.CheckoutUncertain,
@@ -408,10 +411,93 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         }
         finally { interactive.Window.Close(); }
 
+
+        // Regression: one Window, one CheckoutSession, different baskets/totals
+        // and cashier credentials. No rebuilding Host to hide stale capture.
+        AuthorizedCheckoutPaymentContext CashContext(decimal total, decimal tender, string cashier = "O'Neil") =>
+            new(cashier, "MAD", false, new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, tender) }, total);
+        var originalPayments = new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 10m) };
+        CatalogueHost? lifecycle = null;
+        var lifecyclePin = pin;
+        var lifecyclePinReads = 0;
+        var lifecycleStock = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+        var lifecycleSales = Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE");
+        var lifecycleSequence = Number(settings, "SELECT CL FROM TABLE_NUM");
+        lifecycle = CatalogueHost.CreateFinancial(settings, "01", () => {
+            lifecyclePinReads++;
+            Require(!lifecycle!.TrySetFinancialContext(CashContext(5.25m, 999m)) &&
+                !lifecycle.TryEndFinancialSession(), "PIN reentry changed an in-flight context/session.");
+            return lifecyclePin;
+        }, new AuthorizedCheckoutPaymentContext("O'Neil", "MAD", false, originalPayments, 5.25m));
+        try
+        {
+            var originalWindow = lifecycle.Window;
+            var originalSession = lifecycle.Session;
+            originalPayments[0] = new CheckoutPayment(CheckoutPaymentKind.Cash, 999m);
+            Select(lifecycle);
+            Require(!lifecycle.TryEndFinancialSession() &&
+                !lifecycle.TrySetFinancialContext(CashContext(5.25m, 10m, "other-cashier")),
+                "A staged basket was abandoned or transferred to another cashier.");
+            lifecycle.ViewModel.CommitCommand.Execute(null);
+            Require(lifecycle.ViewModel.CommitFeedback == "Checkout committed" &&
+                lifecycle.ViewModel.PaymentContext is null && !lifecycle.ViewModel.CanCommit &&
+                lifecyclePinReads == 1, "Completed sale retained reusable payment context.");
+            var firstLifecycleId = Convert.ToString(Value(settings,
+                "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE WHERE TICKET='" +
+                lifecycleSequence.ToString("000000", CultureInfo.InvariantCulture) + "'"))!;
+            Require(Number(settings, "SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id", firstLifecycleId) == 5.25m &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MONTANT=10", firstLifecycleId) == 1,
+                "Caller-owned payment list changed the frozen first tender.");
+            var afterFirst = Snapshot(settings);
+            // Select the next basket BEFORE entering the new tender.
+            lifecycle.ViewModel.ScannerText = "CODE'1";
+            lifecycle.ViewModel.ScanCommand.Execute(null);
+            Require(lifecycle.Session.PendingCount == 1 && !lifecycle.ViewModel.CanCommit,
+                "Next basket must require a fresh explicit payment context.");
+            lifecycle.ViewModel.CommitCommand.Execute(null);
+            Require(Snapshot(settings) == afterFirst && lifecycle.ViewModel.PendingOperationId is null,
+                "Old tender was reused for the next basket.");
+            Require(lifecycle.TrySetFinancialContext(CashContext(10.50m, 20m)),
+                "Ready same-cashier basket could not accept its new payment context.");
+            lifecycle.ViewModel.ScannerText = "CODE'1";
+            lifecycle.ViewModel.ScanCommand.Execute(null);
+            lifecycle.ViewModel.CommitCommand.Execute(null);
+            var secondLifecycleId = Convert.ToString(Value(settings,
+                "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE WHERE TICKET='" +
+                (lifecycleSequence + 1).ToString("000000", CultureInfo.InvariantCulture) + "'"))!;
+            Require(lifecycle.ViewModel.CommitFeedback == "Checkout committed" &&
+                lifecycle.ViewModel.PaymentContext is null && lifecyclePinReads == 2 &&
+                firstLifecycleId != secondLifecycleId &&
+                ReferenceEquals(lifecycle.Window, originalWindow) && ReferenceEquals(lifecycle.Session, originalSession) &&
+                Number(settings, "SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id", secondLifecycleId) == 10.50m &&
+                Number(settings, "SELECT Qté FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET=@id", secondLifecycleId) == 2m &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MONTANT=20", secondLifecycleId) == 1 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MONTANT=-9.50", secondLifecycleId) == 1 &&
+                Number(settings, "SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id", secondLifecycleId) == 10.50m &&
+                Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == lifecycleStock - 3m,
+                "Same Host/session reused stale total/tender or lost quantity/operation identity.");
+
+            Require(lifecycle.TryEndFinancialSession() &&
+                lifecycle.ViewModel.PaymentContext is null && !lifecycle.ViewModel.CanCommit && !lifecycle.ViewModel.CanSelectProduct,
+                "Empty resolved session could not be explicitly ended.");
+            Sql(settings, "INSERT INTO TABLE_PASS VALUES ('Second cashier','4321','UTILISATEUR')");
+            lifecyclePin = "4321";
+            Require(lifecycle.TrySetFinancialContext(CashContext(5.25m, 5.25m, "Second cashier")),
+                "New empty session could not accept a different cashier claim.");
+            Select(lifecycle);
+            lifecycle.ViewModel.CommitCommand.Execute(null);
+            Require(lifecycle.ViewModel.CommitFeedback == "Checkout committed" && lifecyclePinReads == 3 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE CAISSIER='Second cashier' AND Total_NET=5.25") == 1 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == lifecycleSales + 3 &&
+                Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == lifecycleStock - 4m,
+                "New cashier was not independently authenticated on the same Host.");
+        }
+        finally { lifecycle.Window.Close(); }
+
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF exact-cash slice", Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
             ReviewCallbackAuthenticated = true, WrongReviewPinRejected = true,
-            UnknownReviewBlocked = true, NoFinancialReplayOnReview = true, ExplicitReviewedUiReset = true, PinDialogRenderedAndCleared = true, InitialCashierPinUi = true, InitialPinCancelAndWrongRejected = true, CashChangeSql = true, ChangeRowRollback = true,
+            UnknownReviewBlocked = true, NoFinancialReplayOnReview = true, ExplicitReviewedUiReset = true, PinDialogRenderedAndCleared = true, InitialCashierPinUi = true, InitialPinCancelAndWrongRejected = true, CashChangeSql = true, SameHostDifferentTotals = true, PaymentContextConsumed = true, ContextFrozenDuringPin = true, CashierSwitchAuthenticated = true, UnknownContextChangeBlocked = true, ChangeRowRollback = true,
             EmptyBasket = true, TicketPaymentStockSql = true, Duplicate = true, ProcessRestart = true,
             WrongPinRejected = true, WrongTotalRejected = true, StalePriceRejected = true,
             AfterPaymentRollback = true, UnknownJournalLocked = true, LostAcknowledgementPersisted = true, Reconciliation = true,
