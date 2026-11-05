@@ -55,6 +55,18 @@ namespace LOGICA.Infrastructure.Checkout
             decimal paid = ReadExactCashTenderAmount(connection, transaction, originalTicketId);
             if (string.IsNullOrWhiteSpace(articleId) || originalQuantity <= 0m)
                 throw new InvalidOperationException("A positive original line quantity is required.");
+            // A full-ticket cash refund cannot be inferred from one matching
+            // line if other lines exist, even when totals happen to match.
+            using (var countCommand = connection.CreateCommand())
+            {
+                countCommand.Transaction = transaction;
+                countCommand.CommandText =
+                    "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL " +
+                    "WHERE BINARY ID_TICKET=BINARY @original";
+                countCommand.Parameters.AddWithValue("@original", originalTicketId);
+                if (Convert.ToInt64(countCommand.ExecuteScalar()) != 1L)
+                    throw new InvalidOperationException("Full-ticket cash return requires exactly one original sale line.");
+            }
             using (var command = connection.CreateCommand())
             {
                 command.Transaction = transaction;
