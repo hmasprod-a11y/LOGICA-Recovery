@@ -176,6 +176,15 @@ if (detachedPhotos is IList<ProductSummary> immutablePhotos)
         "photo grid mutation rejected without changing catalogue"); }
 }
 
+// A variant prompt receives read-only candidates; it must never rewrite article
+// identity in the bridge's selection buffer before the live revalidation.
+var guardedPrompt = new CandidateMutationPrompt();
+var guardedCart = new RecordingAtomicBatchPort();
+var guardedBatch = new CheckoutComposition(sharedReader, guardedPrompt, guardedCart, journal).CreateCheckoutBatch();
+Assert(guardedBatch.StageBarcode("123").Outcome == SelectionOutcome.Selected &&
+       guardedPrompt.MutationRejected && guardedBatch.PendingCount == 1 &&
+       guardedCart.Calls.Count == 0,
+       "variant prompt cannot mutate bridge selection candidates");
 var composedBatch = composition.CreateCheckoutBatch();
 Assert(composedBatch.StageBarcode("123", 2).Article?.ArticleId == "12", "composition selects explicit duplicate barcode");
 Assert(composedBatch.StageImage(A("21", ""), 1).Outcome == SelectionOutcome.Selected,
@@ -788,6 +797,21 @@ sealed class RecordingCatalogue : ICheckoutSelectionCatalogue
         return new[] { new ArticleCandidate(ReplaceImage ? "22" : articleId, "") };
     }
 }
+sealed class CandidateMutationPrompt : ICheckoutVariantPrompt
+{
+    public bool MutationRejected { get; private set; }
+    public int Choose(IReadOnlyList<ArticleCandidate> candidates)
+    {
+        try
+        {
+            ((System.Collections.Generic.IList<ArticleCandidate>)candidates)[0] =
+                new ArticleCandidate("forged", "123");
+        }
+        catch (NotSupportedException) { MutationRejected = true; }
+        return 1;
+    }
+}
+
 sealed class RecordingPrompt : ICheckoutVariantPrompt
 {
     public int Choice { get; set; }
