@@ -76,7 +76,16 @@ try {
     # Record every extracted payload file, not only the bootstrap assembly.
     # A dependency DLL must not be replaceable without changing the manifest.
     $packageRoot = [IO.Path]::GetFullPath($ExtractedDirectory).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
-    $packageFiles = @(Get-ChildItem -LiteralPath $ExtractedDirectory -File -Recurse | Sort-Object FullName)
+    # A linked directory can hide payload outside the extracted archive; rejecting
+    # linked files alone does not cover directory junctions or symbolic links.
+    $packageDirectories = @((Get-Item -LiteralPath $ExtractedDirectory)) +
+        @(Get-ChildItem -LiteralPath $ExtractedDirectory -Directory -Recurse -Force)
+    foreach ($directory in $packageDirectories) {
+        if (($directory.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Extracted WPF package contains a linked directory: $($directory.FullName)"
+        }
+    }
+    $packageFiles = @(Get-ChildItem -LiteralPath $ExtractedDirectory -File -Recurse -Force | Sort-Object FullName)
     if ($packageFiles.Count -lt 4) { throw 'Extracted WPF package has an incomplete payload.' }
     $hashes = @()
     foreach ($item in $packageFiles) {
