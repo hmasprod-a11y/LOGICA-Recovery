@@ -26,7 +26,7 @@ jobs:
             # Inspect code, not configuration sentinel strings/comments. In
             # particular, the persisted token "Application.StartupPath" must
             # remain compatible with existing .sni files.
-            $source = [regex]::Replace($source, '(?s)//[^\\r\\n]*|/\\*.*?\\*/|@"(?:""|[^"])*"|"(?:\\\\.|[^"\\\\])*"', '')
+            $source = [regex]::Replace($source, '(?s)//[^\r\n]*|/\*.*?\*/|@"(?:""|[^"])*"|"(?:\\.|[^"\\])*"', '')
             # In LOGICA namespace, unqualified Application resolves to LOGICA.Application.
             # Only bare Application is ambiguous; qualified System.Windows.Forms.Application is valid.
             if ($source -match '(?m)^namespace\s+LOGICA(?:\.[\w.]+)?\s*[;{]' -and
