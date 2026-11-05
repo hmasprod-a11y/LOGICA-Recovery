@@ -99,7 +99,7 @@ public partial class MainWindow : Window
     {
         // Header, scrollbar and empty-space double-clicks are not product actions.
         if (e.OriginalSource is not System.Windows.DependencyObject origin) return;
-        for (var node = origin; node is not null; node = System.Windows.Media.VisualTreeHelper.GetParent(node))
+        for (var node = origin; node is not null; node = GetInteractionParent(node))
         {
             if (node is System.Windows.Controls.DataGridRow row)
             {
@@ -110,6 +110,18 @@ public partial class MainWindow : Window
             }
             if (node is System.Windows.Controls.DataGrid) return;
         }
+    }
+
+    // DataGrid templates may raise input from a ContentElement, not a Visual.
+    // VisualTreeHelper.GetParent(ContentElement) throws and would interrupt the
+    // cashier scanner/selection flow. Walk the appropriate WPF tree safely.
+    internal static System.Windows.DependencyObject? GetInteractionParent(System.Windows.DependencyObject node)
+    {
+        if (node is System.Windows.FrameworkContentElement content)
+            return content.Parent;
+        if (node is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D)
+            return System.Windows.Media.VisualTreeHelper.GetParent(node);
+        return System.Windows.LogicalTreeHelper.GetParent(node);
     }
 
     private void CashierEntry_Click(object sender, RoutedEventArgs e) => ShowCashierEntry();
