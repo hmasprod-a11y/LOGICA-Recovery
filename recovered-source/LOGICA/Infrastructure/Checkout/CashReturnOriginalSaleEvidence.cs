@@ -45,6 +45,43 @@ namespace LOGICA.Infrastructure.Checkout
             }
         }
 
+        // Original journal is the only eligible price/quantity source for a
+        // full-quantity return; never recalculate from current TABLE_ARTICLES.
+        // The caller must separately enforce durable one-return-per-original.
+        internal static decimal ReadOriginalFullQuantityLineAmount(
+            MySqlConnection connection, MySqlTransaction transaction,
+            string originalTicketId, string articleId, decimal originalQuantity)
+        {
+            decimal paid = ReadExactCashTenderAmount(connection, transaction, originalTicketId);
+            if (string.IsNullOrWhiteSpace(articleId) || originalQuantity <= 0m)
+                throw new InvalidOperationException("A positive original line quantity is required.");
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText =
+                    "SELECT Qté,PRIX_V,Remise,Total_NET,OPERATION FROM TABLE_VENTES_JOURNAL " +
+                    "WHERE BINARY ID_TICKET=BINARY @original AND BINARY ID_ARTICLE=BINARY @article FOR UPDATE";
+                command.Parameters.AddWithValue("@original", originalTicketId);
+                command.Parameters.AddWithValue("@article", articleId);
+                using (var reader = command.ExecuteReader())
+                {
+                    if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1) ||
+                        reader.IsDBNull(2) || reader.IsDBNull(3) || reader.IsDBNull(4))
+                        throw new InvalidOperationException("Original sale line is missing.");
+                    decimal quantity = Convert.ToDecimal(reader.GetValue(0));
+                    decimal price = Convert.ToDecimal(reader.GetValue(1));
+                    decimal discount = Convert.ToDecimal(reader.GetValue(2));
+                    decimal lineTotal = Convert.ToDecimal(reader.GetValue(3));
+                    string operation = Convert.ToString(reader.GetValue(4));
+                    if (reader.Read() || quantity != originalQuantity || price < 0m ||
+                        discount != 0m || lineTotal <= 0m || lineTotal != paid ||
+                        operation != "VENTE")
+                        throw new InvalidOperationException("Original line is not an eligible full-quantity exact-cash sale.");
+                    return lineTotal;
+                }
+            }
+        }
+
         internal static decimal ReadExactCashSaleAmount(
             MySqlConnection connection, MySqlTransaction transaction, string originalTicketId)
         {
