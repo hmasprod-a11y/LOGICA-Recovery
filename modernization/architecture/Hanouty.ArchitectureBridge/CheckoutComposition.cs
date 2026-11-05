@@ -48,7 +48,7 @@ public sealed class CheckoutComposition
 
     public IReadOnlyList<ProductSummary> AllProducts() => Validate(_reader.ListAll());
     public IReadOnlyList<ProductSummary> ImageProducts() =>
-        AllProducts().Where(p => p.HasImage).ToArray();
+        Array.AsReadOnly(AllProducts().Where(p => p.HasImage).ToArray());
 
     // The tile is a UI snapshot, not authority to sell. Inventory must confirm
     // the exact article, variant and photo are still present before staging.
