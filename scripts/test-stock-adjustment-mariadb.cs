@@ -129,6 +129,31 @@ internal static class StockAdjustmentMariaDbSmoke {
                     Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m,"Authorized stock not persisted");
                     Require(Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,"Authorized movement audit missing");
                     Require(Number(db,"SELECT QUANTITE FROM TABLE_MOUVEMENTS_STOCK")==2m,"Incorrect audited movement delta");
+                    // The global V1 configuration is an additional mandatory
+                    // condition, never a substitute for a verified actor grant.
+                    // Test both disabled and ambiguous rows with a real valid session.
+                    object configPlan=create.Invoke(null,new object[]{
+                        "CI-ARTICLE",12m,13m,"configuration denial","CI-USER"});
+                    Sql(db,"UPDATE TABLE_PARAMETRES SET VALEUR='False' WHERE OBJET='MODIF_STOCK_MANUEL'");
+                    try {
+                        executeAuthorized.Invoke(null,new object[]{cs,configPlan,provider,"CI-SECRET-SESSION"});
+                        throw new Exception("Disabled manual stock configuration accepted valid actor");
+                    } catch(TargetInvocationException ex) {
+                        if(!(ex.InnerException is InvalidOperationException)) throw;
+                    }
+                    Sql(db,"UPDATE TABLE_PARAMETRES SET VALEUR='True' WHERE OBJET='MODIF_STOCK_MANUEL'");
+                    Sql(db,"INSERT INTO TABLE_PARAMETRES VALUES ('MODIF_STOCK_MANUEL','True')");
+                    try {
+                        executeAuthorized.Invoke(null,new object[]{cs,configPlan,provider,"CI-SECRET-SESSION"});
+                        throw new Exception("Ambiguous manual stock configuration accepted valid actor");
+                    } catch(TargetInvocationException ex) {
+                        if(!(ex.InnerException is InvalidOperationException)) throw;
+                    }
+                    Sql(db,"DELETE FROM TABLE_PARAMETRES WHERE OBJET='MODIF_STOCK_MANUEL'");
+                    Sql(db,"INSERT INTO TABLE_PARAMETRES VALUES ('MODIF_STOCK_MANUEL','True')");
+                    Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m &&
+                        Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,
+                        "Disabled or ambiguous configuration changed stock/audit");
                     // Caller-owned authorized writes must participate in the
                     // outer transaction: rolling it back removes BOTH stock and
                     // the movement audit, not just one of them.
