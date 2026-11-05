@@ -242,56 +242,56 @@ Assert(session.SelectImage(new ProductSummary("11", "123", "No photo", "fake/pat
 {
 // Invalid catalogues fail at the composition boundary, before a tile exists.
 // Preserve that fail-closed contract instead of indexing an invalid snapshot.
-var duplicatePhotoPort = new RecordingAtomicBatchPort();
-var duplicatePhotoSession = new CheckoutComposition(new DuplicatePhotoCatalogue(),
-    new RecordingPrompt(), duplicatePhotoPort, new CompositionJournal()).CreateSession();
-var duplicateTile = new ProductSummary("photo-duplicate", "", "Same", "images/duplicate.png");
+var rescueDuplicatePhotoPort = new RecordingAtomicBatchPort();
+var rescueDuplicatePhotoSession = new CheckoutComposition(new DuplicatePhotoCatalogue(),
+    new RecordingPrompt(), rescueDuplicatePhotoPort, new CompositionJournal()).CreateSession();
+var rescueDuplicateTile = new ProductSummary("photo-duplicate", "", "Same", "images/duplicate.png");
 foreach (Action readOrSelect in new Action[] {
-    () => { _ = duplicatePhotoSession.Products; },
-    () => { _ = duplicatePhotoSession.ImageProducts; },
-    () => { duplicatePhotoSession.SelectImage(duplicateTile); },
-    () => { duplicatePhotoSession.SelectArticle(duplicateTile); } })
+    () => { _ = rescueDuplicatePhotoSession.Products; },
+    () => { _ = rescueDuplicatePhotoSession.ImageProducts; },
+    () => { rescueDuplicatePhotoSession.SelectImage(rescueDuplicateTile); },
+    () => { rescueDuplicatePhotoSession.SelectArticle(rescueDuplicateTile); } })
 {
-    var rejected = false;
+    var rescueRejected = false;
     try { readOrSelect(); }
     catch (InvalidOperationException error)
-    { rejected = error.Message == "Catalogue returned duplicate article identity."; }
-    Assert(rejected && duplicatePhotoSession.PendingCount == 0 && duplicatePhotoPort.Calls.Count == 0,
-        "duplicate catalogue identity is rejected before exposure or selection");
+    { rescueRejected = error.Message == "Catalogue returned duplicate article identity."; }
+    Assert(rescueRejected && rescueDuplicatePhotoSession.PendingCount == 0 && rescueDuplicatePhotoPort.Calls.Count == 0,
+        "duplicate catalogue identity is rescueRejected before exposure or selection");
 }
 
 // Neither the reader's array nor a caller holding IReadOnlyList may alter the
 // session snapshot after validation. A failed refresh must not replace it.
-var snapshotReader = new SnapshotCatalogue();
-var snapshotPort = new RecordingAtomicBatchPort();
-var snapshotSession = new CheckoutComposition(snapshotReader, new RecordingPrompt(),
-    snapshotPort, new CompositionJournal()).CreateSession();
-var originalSnapshot = snapshotSession.Products;
-var originalProduct = originalSnapshot[0];
-snapshotReader.Rows[0] = originalProduct with { DisplayName = "Reader changed" };
-Assert(originalSnapshot[0] == originalProduct,
+var rescueSnapshotReader = new SnapshotCatalogue();
+var rescueSnapshotPort = new RecordingAtomicBatchPort();
+var rescueSnapshotSession = new CheckoutComposition(rescueSnapshotReader, new RecordingPrompt(),
+    rescueSnapshotPort, new CompositionJournal()).CreateSession();
+var rescueOriginalSnapshot = rescueSnapshotSession.Products;
+var rescueOriginalProduct = rescueOriginalSnapshot[0];
+rescueSnapshotReader.Rows[0] = rescueOriginalProduct with { DisplayName = "Reader changed" };
+Assert(rescueOriginalSnapshot[0] == rescueOriginalProduct,
     "catalogue snapshot is detached from reader-owned array");
-var mutationRejected = false;
-try { ((IList<ProductSummary>)originalSnapshot)[0] = snapshotReader.Rows[0]; }
-catch (NotSupportedException) { mutationRejected = true; }
-Assert(mutationRejected && snapshotSession.Products[0] == originalProduct,
+var rescueMutationRejected = false;
+try { ((IList<ProductSummary>)rescueOriginalSnapshot)[0] = rescueSnapshotReader.Rows[0]; }
+catch (NotSupportedException) { rescueMutationRejected = true; }
+Assert(rescueMutationRejected && rescueSnapshotSession.Products[0] == rescueOriginalProduct,
     "validated session catalogue cannot be mutated through a writable list cast");
-snapshotReader.Rows = new[] { originalProduct, originalProduct with { ArticleId = "SNAPSHOT-1" } };
-var duplicateRefreshRejected = false;
-try { snapshotSession.RefreshCatalogue(); }
+rescueSnapshotReader.Rows = new[] { rescueOriginalProduct, rescueOriginalProduct with { ArticleId = "SNAPSHOT-1" } };
+var rescueDuplicateRefreshRejected = false;
+try { rescueSnapshotSession.RefreshCatalogue(); }
 catch (InvalidOperationException error)
-{ duplicateRefreshRejected = error.Message == "Catalogue returned duplicate article identity."; }
-Assert(duplicateRefreshRejected && ReferenceEquals(snapshotSession.Products, originalSnapshot) &&
-       snapshotSession.PendingCount == 0 && snapshotPort.Calls.Count == 0,
+{ rescueDuplicateRefreshRejected = error.Message == "Catalogue returned duplicate article identity."; }
+Assert(rescueDuplicateRefreshRejected && ReferenceEquals(rescueSnapshotSession.Products, rescueOriginalSnapshot) &&
+       rescueSnapshotSession.PendingCount == 0 && rescueSnapshotPort.Calls.Count == 0,
     "case-insensitive duplicate refresh leaves last validated snapshot intact without posting");
-snapshotReader.Rows = new[] { originalProduct with { DisplayName = "Recovered" } };
-snapshotSession.RefreshCatalogue();
-Assert(snapshotSession.Products[0].DisplayName == "Recovered" &&
-       !ReferenceEquals(snapshotSession.Products, originalSnapshot),
+rescueSnapshotReader.Rows = new[] { rescueOriginalProduct with { DisplayName = "Recovered" } };
+rescueSnapshotSession.RefreshCatalogue();
+Assert(rescueSnapshotSession.Products[0].DisplayName == "Recovered" &&
+       !ReferenceEquals(rescueSnapshotSession.Products, rescueOriginalSnapshot),
     "explicit refresh recovers after catalogue identity repair");
-Assert(snapshotSession.SelectImage(snapshotSession.ImageProducts[0]).Outcome == SelectionOutcome.Selected &&
-       snapshotSession.Submit("snapshot-recovered") == CheckoutBatchStatus.Committed &&
-       snapshotPort.Calls.Count == 1,
+Assert(rescueSnapshotSession.SelectImage(rescueSnapshotSession.ImageProducts[0]).Outcome == SelectionOutcome.Selected &&
+       rescueSnapshotSession.Submit("snapshot-recovered") == CheckoutBatchStatus.Committed &&
+       rescueSnapshotPort.Calls.Count == 1,
     "repaired catalogue supports one real session submission without duplicate posting");
 }
 session.RefreshCatalogue();
