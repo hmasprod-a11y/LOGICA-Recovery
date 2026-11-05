@@ -820,6 +820,27 @@ var reviewThread = new System.Threading.Thread(() =>
             "fresh authorized context restores exactly one acknowledged checkout");
         logoutWindow.Close();
 
+        // A synchronous Host logout callback must not reenter logout, sign-in
+        // or cashier review before the authoritative revocation is complete.
+        var reentrantLogoutWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new RecordingSelection(), new RecordingSubmission(), financialContext,
+            requireFreshPaymentContext: true);
+        var reentrantLogoutVm = (CatalogueViewModel)reentrantLogoutWindow.DataContext;
+        int reentrantLogoutCalls = 0;
+        reentrantLogoutWindow.ConfigureCashierEntry((_, _, _) => true, () => 10m,
+            () => {
+                reentrantLogoutCalls++;
+                Check(!reentrantLogoutWindow.EndFinancialSession() &&
+                    !reentrantLogoutWindow.ShowCashierEntry() &&
+                    !reentrantLogoutWindow.ReviewResolvedCheckout(() => "unused"),
+                    "Host logout callback cannot reenter financial session UI");
+                return true;
+            });
+        Check(reentrantLogoutWindow.EndFinancialSession() && reentrantLogoutCalls == 1 &&
+            !reentrantLogoutVm.FinancialSessionActive && reentrantLogoutVm.PaymentContext is null,
+            "single successful Host logout expires UI session and tender exactly once");
+        reentrantLogoutWindow.Close();
+
         // The production logout callback can fail (offline/session backend error).
         // The actual WPF window must fail closed without throwing or inventing a logout.
         var failedLogoutWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
