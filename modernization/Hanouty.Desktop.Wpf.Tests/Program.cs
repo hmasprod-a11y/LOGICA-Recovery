@@ -1111,6 +1111,26 @@ reviewThread.Start();
 reviewThread.Join();
 if (windowReviewError is not null) throw new Exception("MainWindow reviewed reset regression", windowReviewError);
 
+// Actual STA window interactions: original-sale lookup is disabled without a
+// registered Host, respects cashier session, and survives RTL layout switching.
+var originalWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+    new RecordingSelection(), new RecordingSubmission(), financialContext,
+    requireFreshPaymentContext: true);
+Check(!originalWindow.SearchOriginalSales("receipt-1"),
+    "unregistered Host lookup must fail closed in real window");
+originalWindow.ConfigureOriginalSaleLookup(new OriginalSaleLookupFixture());
+var originalWindowVm = (CatalogueViewModel)originalWindow.DataContext;
+Check(originalWindow.SearchOriginalSales("receipt-1"),
+    "authenticated window must query registered persisted-sale Host reader");
+originalWindowVm.IsRightToLeft = true;
+Check(originalWindow.FlowDirection == System.Windows.FlowDirection.RightToLeft ||
+    originalWindowVm.LayoutDirection == System.Windows.FlowDirection.RightToLeft,
+    "RTL selection path preserves layout direction");
+originalWindowVm.FinancialSessionActive = false;
+Check(!originalWindow.SearchOriginalSales("receipt-1"),
+    "logged-out cashier cannot query original sale");
+originalWindow.Close();
+
 // Read-only original sale selection: authoritative Host lookup only, no financial
 // command, duplicate persisted IDs fail closed and stale candidates cannot be reused.
 var originalLookup = new OriginalSaleLookupFixture();
