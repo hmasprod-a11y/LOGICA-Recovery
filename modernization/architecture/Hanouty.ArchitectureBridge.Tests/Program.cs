@@ -239,6 +239,14 @@ Assert(session.SelectImage(new ProductSummary("21", "", "Forged", "fake/path.png
 Assert(session.SelectImage(new ProductSummary("11", "123", "No photo", "fake/path.png")).Outcome ==
        SelectionOutcome.InvalidCandidates && session.PendingCount == 0,
        "non-image list product cannot bypass image grid");
+// Ambiguous duplicate photo identities must not silently choose the first tile.
+var duplicatePhotoPort = new RecordingAtomicBatchPort();
+var duplicatePhotoSession = new CheckoutComposition(new DuplicatePhotoCatalogue(),
+    new RecordingPrompt(), duplicatePhotoPort, new CompositionJournal()).CreateSession();
+Assert(duplicatePhotoSession.SelectImage(duplicatePhotoSession.ImageProducts[0]).Outcome ==
+       SelectionOutcome.InvalidCandidates && duplicatePhotoSession.PendingCount == 0 &&
+       duplicatePhotoPort.Calls.Count == 0,
+       "duplicate photo article identity cannot stage or post");
 session.RefreshCatalogue();
 Assert(session.Products.Count == 3 && session.ImageProducts.Count == 1,
        "explicit catalogue refresh preserves list/photo membership");
@@ -787,6 +795,14 @@ sealed class CompositionCatalogue : ICatalogueReader
     public IReadOnlyList<ProductSummary> RefreshBarcode(string barcode) => FindBarcode(barcode);
     public IReadOnlyList<ProductSummary> RefreshArticle(string articleId) =>
         Products.Where(p => p.ArticleId == articleId).ToArray();
+}
+sealed class DuplicatePhotoCatalogue : ICatalogueReader
+{
+    private static readonly ProductSummary Tile = new("photo-duplicate", "", "Same", "images/duplicate.png");
+    public IReadOnlyList<ProductSummary> ListAll() => new[] { Tile, Tile };
+    public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => Array.Empty<ProductSummary>();
+    public IReadOnlyList<ProductSummary> RefreshBarcode(string barcode) => Array.Empty<ProductSummary>();
+    public IReadOnlyList<ProductSummary> RefreshArticle(string articleId) => new[] { Tile, Tile };
 }
 sealed class CompositionJournal : ICheckoutOperationJournal
 {
