@@ -31,6 +31,9 @@ internal static class StockAdjustmentMariaDbSmoke {
         var apply=writerType.GetMethod("Apply",BindingFlags.Static|BindingFlags.NonPublic);
         var execute=writerType.GetMethod("Execute",BindingFlags.Static|BindingFlags.NonPublic);
         var validate=writerType.GetMethod("ValidateAuthorizationContext",BindingFlags.Static|BindingFlags.NonPublic);
+        var applyAuthorized=writerType.GetMethod("ApplyAuthorized",BindingFlags.Static|BindingFlags.NonPublic);
+        var executeAuthorized=writerType.GetMethod("ExecuteAuthorized",BindingFlags.Static|BindingFlags.NonPublic);
+        Require(applyAuthorized!=null && executeAuthorized!=null,"Missing production authorized adjustment entry points");
         Require(validate!=null,"Missing writer-side actor authorization boundary");
         using(var db=new MySqlConnection(cs)) {
             db.Open();
@@ -49,6 +52,12 @@ internal static class StockAdjustmentMariaDbSmoke {
                     }
                 }
                 object scopedPlan=create.Invoke(null,new object[]{"CI-ARTICLE",10m,12m,"scoped authorization check","CI-USER"});
+                Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,scopedPlan,deny,"CI-SESSION"}));
+                Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,scopedPlan,null,"CI-SESSION"}));
+                using(var authorizedTx=db.BeginTransaction()) {
+                    Denied(()=>applyAuthorized.Invoke(null,new object[]{db,authorizedTx,scopedPlan,deny,"CI-SESSION"}));
+                    authorizedTx.Commit();
+                }
                 using(var tx=db.BeginTransaction()) {
                     Denied(()=>validate.Invoke(null,new object[]{db,tx,scopedPlan,null,"CI-SESSION"}));
                     Denied(()=>validate.Invoke(null,new object[]{db,tx,scopedPlan,deny,""}));
