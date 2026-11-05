@@ -33,7 +33,15 @@ public partial class MainWindow : Window
         if (_cashierEntryOpen || _reviewOpen || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _endFinancialSession is null) return false;
-        try { return _endFinancialSession(); }
+        try
+        {
+            if (!_endFinancialSession()) return false;
+            // The Host has confirmed logout. Revoke the WPF session locally even
+            // when a Host callback does not mutate the ViewModel itself.
+            // This also invalidates stale product/scanner and cash context.
+            vm.FinancialSessionActive = false;
+            return true;
+        }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
             // A failed Host logout must not crash the cashier window or claim success.
