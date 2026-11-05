@@ -14,7 +14,7 @@ namespace LOGICA.ApplicationLayer.Clients
     // Re-read Amount for the numeric guard just as the original form does.
     internal static class ClientSettlementValidationService
     {
-        internal static string FirstWarning(IClientSettlementValidationContext context, ILegacySettlementSemantics legacy)
+        internal static string? FirstWarning(IClientSettlementValidationContext context, ILegacySettlementSemantics legacy)
         {
             if (legacy.IsEmpty(context.ClientId))
                 return "Veuillez remplir le champ -ID_CLIENT- ";
