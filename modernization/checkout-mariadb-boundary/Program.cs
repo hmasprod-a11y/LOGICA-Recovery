@@ -615,6 +615,26 @@ namespace LOGICA.Infrastructure.Checkout
                             catch (InvalidOperationException) { mismatchedSettlementRejected = true; }
                             Require(mismatchedSettlementRejected,
                                 "Original header/payment mismatch must reject refund evidence.");
+                            // A mixed/unsupported payment mode must never be
+                            // accepted as an exact-cash original sale.
+                            using (var tamperMode = evidenceDb.CreateCommand())
+                            {
+                                tamperMode.Transaction = evidenceTx;
+                                tamperMode.CommandText =
+                                    "UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=MONTANT+0.01, MODE_P='CARTE' " +
+                                    "WHERE ID_TICKET=@id";
+                                tamperMode.Parameters.AddWithValue("@id", operation);
+                                Require(tamperMode.ExecuteNonQuery() == 1,
+                                    "Expected one original payment to change its mode.");
+                            }
+                            bool nonCashOriginalRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                    evidenceDb, evidenceTx, operation);
+                            }
+                            catch (InvalidOperationException) { nonCashOriginalRejected = true; }
+                            Require(nonCashOriginalRejected,
+                                "Non-cash original settlement must reject cash return evidence.");
                             evidenceTx.Rollback();
                         }
                     }
