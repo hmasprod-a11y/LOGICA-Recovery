@@ -804,6 +804,45 @@ var reviewThread = new System.Threading.Thread(() =>
             lockedLogoutPort.Ids.Count == 1,
             "unknown financial outcome blocks real window logout without touching Host or operation");
         lockedLogoutWindow.Close();
+
+        // Host PIN rejection and exceptions must never consume the durable
+        // review identity. PIN is supplied lazily and is never retained by WPF.
+        var reviewFailurePort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
+        var reviewFailureJournal = new RecordingReconciliation { Result = CheckoutResolution.Persisted };
+        var reviewFailureWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new RecordingSelection(), new ReconciledSubmission(reviewFailurePort, reviewFailureJournal),
+            financialContext, requireFreshPaymentContext: true);
+        var reviewFailureVm = (CatalogueViewModel)reviewFailureWindow.DataContext;
+        reviewFailureVm.CommitCheckout();
+        reviewFailureVm.ReconcileCheckout();
+        var reviewFailureId = reviewFailureVm.PendingOperationId;
+        int reviewFailureHostCalls = 0;
+        int reviewFailurePinReads = 0;
+        reviewFailureWindow.ConfigureReviewedCheckout((id, outcome, readPin) =>
+        {
+            reviewFailureHostCalls++;
+            Check(id == reviewFailureId && outcome == CheckoutResolution.Persisted,
+                "review failure must preserve exact durable operation and result");
+            if (reviewFailureHostCalls == 1) return false; // Host rejects PIN without reading it.
+            Check(readPin() == "transient-pin", "PIN callback is evaluated only by Host");
+            if (reviewFailureHostCalls == 2) throw new System.IO.IOException("host unavailable");
+            return true;
+        });
+        Func<string> transientPin = () => { reviewFailurePinReads++; return "transient-pin"; };
+        Check(!reviewFailureWindow.ReviewResolvedCheckout(transientPin) &&
+            reviewFailurePinReads == 0 && reviewFailureVm.CheckoutUncertain &&
+            reviewFailureVm.PendingOperationId == reviewFailureId,
+            "Host PIN rejection must not read PIN or unlock checkout");
+        Check(!reviewFailureWindow.ReviewResolvedCheckout(transientPin) &&
+            reviewFailurePinReads == 1 && reviewFailureVm.CheckoutUncertain &&
+            reviewFailureVm.PendingOperationId == reviewFailureId,
+            "Host exception after transient PIN read must keep operation locked");
+        Check(reviewFailureWindow.ReviewResolvedCheckout(transientPin) &&
+            reviewFailureHostCalls == 3 && reviewFailurePinReads == 2 &&
+            !reviewFailureVm.CheckoutUncertain && reviewFailureVm.PendingOperationId is null &&
+            reviewFailurePort.Ids.Count == 1,
+            "fresh Host authorization alone unlocks reviewed result without reposting");
+        reviewFailureWindow.Close();
     }
     catch (Exception ex) { windowReviewError = ex; }
 });
