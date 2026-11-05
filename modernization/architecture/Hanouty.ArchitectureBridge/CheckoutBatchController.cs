@@ -73,6 +73,8 @@ public sealed class CheckoutBatchController
     // This never authorizes a sale, calculates prices or touches persistence.
     public IReadOnlyList<CheckoutBatchLine> SnapshotLines()
     {
+        if (_committing)
+            throw new InvalidOperationException("Cannot quote a basket during financial commit.");
         if (_uncertainOperationId is not null)
             throw new InvalidOperationException("Resolve uncertain operation before requesting a fresh cart preview.");
         // Reads are safe during synchronous commit: mutation is already locked.
