@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # QA-only disposable MariaDB stock contention fixture. Never point at a shop DB.
 set -euo pipefail
-: "${CHECKOUT_TEST_CONNECTION:?Set disposable connection string for the existing Checkout test DB}"
 : "${HANOUTY_DISPOSABLE_DB_ONLY:?Explicitly acknowledge a disposable database}"
 [[ "$HANOUTY_DISPOSABLE_DB_ONLY" == "YES" ]] || { echo "Disposable acknowledgement required" >&2; exit 2; }
 : "${MYSQL_HOST:=127.0.0.1}" "${MYSQL_PORT:=3306}" "${MYSQL_USER:=checkout_test}" "${MYSQL_DATABASE:=checkout_disposable}"
+[[ ("$MYSQL_HOST" == "127.0.0.1" || "$MYSQL_HOST" == "localhost") &&
+   "$MYSQL_PORT" == "3306" && "$MYSQL_DATABASE" == "checkout_disposable" ]] || {
+  echo "Fixture requires explicit disposable loopback:3306/checkout_disposable" >&2; exit 2;
+}
+
 mysql=(mariadb --batch --skip-column-names --host="$MYSQL_HOST" --port="$MYSQL_PORT" --user="$MYSQL_USER" "$MYSQL_DATABASE")
 # Distinct fixture tables prevent interference with production Inventory schema.
 "${mysql[@]}" <<'SQL'
@@ -19,12 +23,22 @@ trap cleanup EXIT
 START TRANSACTION;
 UPDATE qa_stock_contention SET qty=qty-1 WHERE id=1 AND qty>=1;
 INSERT INTO qa_stock_contention_audit VALUES ('sale-1',1);
+DO GET_LOCK('hanouty_qa_stock_row_locked',10);
 DO SLEEP(3);
 COMMIT;
 SQL
 ) &
 first=$!
-sleep 1
+# Wait for a signal acquired AFTER the first UPDATE owns the actual row lock.
+# A fixed sleep alone could accidentally reverse the winner on a busy runner.
+locked=false
+for ((attempt=0; attempt<100; attempt++)); do
+  owner=$("${mysql[@]}" -e "SELECT COALESCE(IS_USED_LOCK('hanouty_qa_stock_row_locked'),0)")
+  if [[ "$owner" != "0" ]]; then locked=true; break; fi
+  if ! kill -0 "$first" 2>/dev/null; then wait "$first"; echo 'First transaction exited before lock signal' >&2; exit 1; fi
+  sleep 0.05
+done
+[[ "$locked" == "true" ]] || { echo 'First transaction lock was not observed' >&2; exit 1; }
 "${mysql[@]}" <<'SQL'
 SET innodb_lock_wait_timeout=10;
 START TRANSACTION;
