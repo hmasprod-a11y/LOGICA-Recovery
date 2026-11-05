@@ -15,8 +15,8 @@ $checks = (Invoke-WebRequest "$url/sha256sums.txt").Content
 # Parse GNU sha256sum format (two spaces or binary '*') and optional ./ prefix.
 # Require exactly one archive entry and a full 64-character digest; never bypass integrity.
 $matching = @()
-foreach ($line in ($checks -split "`r?`n")) {
-    if ($line -match '^([0-9a-fA-F]{64})[ \t]+\\*?(?:\\./)?([^/\\\\]+)[ \t]*$' -and
+foreach ($line in ($checks -split '\r?\n')) {
+    if ($line -match '^([0-9a-fA-F]{64})[ \t]+\*?(?:\./)?([^/\\]+)[ \t]*$' -and
         $Matches[2] -ceq $archive) {
         $matching += $Matches[1].ToLowerInvariant()
     }
