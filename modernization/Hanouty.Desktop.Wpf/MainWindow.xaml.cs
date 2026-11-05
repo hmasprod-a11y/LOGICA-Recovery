@@ -164,9 +164,19 @@ public partial class MainWindow : Window
     private void ReviewResolvedCheckout_Click(object sender, RoutedEventArgs e) =>
         ReviewResolvedCheckout(ReadReviewPin);
 
-    public string PromptCashierPin() => PromptCashierPin(((CatalogueViewModel)DataContext).PaymentContext?.CashierId ?? "");
-    public string PromptCashierPin(string cashier) => ReadPin("Authorize cash checkout",
-        $"Cashier: {cashier}\nConfirm this cashier session for the displayed cash payment.");
+    public string PromptCashierPin() => PromptCashierPin((DataContext as CatalogueViewModel)?.PaymentContext?.CashierId ?? "");
+    public string PromptCashierPin(string cashier)
+    {
+        // Host may synchronously ask for PIN while a modal login/logout or
+        // durable-outcome review is active. Never prompt for a competing sale.
+        if (_cashierEntryOpen || _logoutOpen || _reviewOpen ||
+            DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
+            vm.CheckoutUncertain || vm.PendingOperationId is not null ||
+            vm.PaymentContext is null || vm.PaymentContext.CashierId != cashier)
+            return "";
+        return ReadPin("Authorize cash checkout",
+            $"Cashier: {cashier}\nConfirm this cashier session for the displayed cash payment.");
+    }
 
     private string ReadReviewPin()
     {
