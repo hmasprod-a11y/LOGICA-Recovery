@@ -106,8 +106,12 @@ namespace LOGICA.Infrastructure.Checkout
                 !ReferenceEquals(transaction.Connection, connection) ||
                 connection.State != ConnectionState.Open)
                 throw new InvalidOperationException("Original sale verification requires the active checkout transaction.");
-            if (string.IsNullOrWhiteSpace(originalTicketId) || originalTicketId.Length > 64)
-                throw new InvalidOperationException("A persisted original sale identifier is required.");
+            if (string.IsNullOrWhiteSpace(originalTicketId) || originalTicketId.Length > 64 ||
+                originalTicketId.Trim() != originalTicketId)
+                throw new InvalidOperationException("A canonical persisted original sale identifier is required.");
+            foreach (char character in originalTicketId)
+                if (char.IsControl(character))
+                    throw new InvalidOperationException("Original sale identifier contains a control character.");
 
             using (var command = connection.CreateCommand())
             {
