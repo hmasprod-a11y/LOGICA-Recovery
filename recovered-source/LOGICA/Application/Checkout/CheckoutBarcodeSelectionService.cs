@@ -52,9 +52,9 @@ namespace LOGICA.ApplicationLayer.Checkout
             int originalIndex = originalTable.Rows.IndexOf(basketLine);
             int originalRowCount = originalTable.Rows.Count;
             int originalColumnCount = originalTable.Columns.Count;
-            DataColumn originalCodeColumn = originalTable.Columns["Code"];
-            DataColumn originalIdColumn = originalTable.Columns["ID_ARTICLE"];
-            if (originalIndex < 0) return false;
+            DataColumn? originalCodeColumn = originalTable.Columns["Code"];
+            DataColumn? originalIdColumn = originalTable.Columns["ID_ARTICLE"];
+            if (originalIndex < 0 || originalCodeColumn == null || originalIdColumn == null) return false;
             object originalCode = basketLine["Code"];
             object originalId = basketLine["ID_ARTICLE"];
             if (!legacyEquals(originalCode, scannedCode))
@@ -86,7 +86,7 @@ namespace LOGICA.ApplicationLayer.Checkout
         // This is called by the existing Form_3_VENTE handler. Keep the original
         // DataTable modal callback and nullable DataRow result; centralize its
         // identity rules in the same flow used by the refreshed adapter.
-        internal static DataRow Select(DataTable matches, Func<DataTable, int> chooseDuplicate)
+        internal static DataRow? Select(DataTable matches, Func<DataTable, int> chooseDuplicate)
         {
             // The original WinForms handler has no second SQL read yet. Keep
             // that legacy in-memory behavior until Track C wires a real refresh.
@@ -145,12 +145,12 @@ namespace LOGICA.ApplicationLayer.Checkout
             // copy into the basket even if the chosen ID still exists.
             CheckoutVariantSnapshotReadResult initial =
                 CheckoutVariantSnapshotService.EvaluateSnapshot(displayedMatches);
-            string scannedCode = initial.Status == CheckoutVariantSnapshotReadStatus.Ready &&
+            string? scannedCode = initial.Status == CheckoutVariantSnapshotReadStatus.Ready &&
                 initial.Snapshots.Count > 0 ? initial.Snapshots[0].Code : null;
             CheckoutVariantChoiceResult choice =
                 CheckoutSelectionFlowService.ChooseBarcodeWithLegacyDialog(
                     displayedMatches, chooseDuplicate, delegate {
-                        DataTable live = readCurrentMatches();
+                        DataTable? live = readCurrentMatches();
                         if (live == null || Object.ReferenceEquals(live, displayedMatches) ||
                             !live.Columns.Contains("Code"))
                             return null;
