@@ -21,6 +21,12 @@ internal static class StockAdjustmentMariaDbSmoke {
         var assembly=Assembly.LoadFrom(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"LOGICA.exe"));
         var planType=assembly.GetType("LOGICA.Application.Inventory.StockAdjustmentPlan",true);
         var writerType=assembly.GetType("LOGICA.Infrastructure.Inventory.StockAdjustmentWriter",true);
+        var denyType=assembly.GetType("LOGICA.Application.Inventory.DenyAllManualStockAuthorization",true);
+        var deny=Activator.CreateInstance(denyType,true);
+        var verify=denyType.GetMethod("VerifyForWrite",BindingFlags.Public|BindingFlags.Instance);
+        Require(verify!=null,"Missing explicit deny-by-default authorization adapter");
+        Denied(()=>verify.Invoke(deny,new object[]{null,null,"FORGED-SESSION","ADMIN"}));
+        Denied(()=>verify.Invoke(deny,new object[]{null,null,"","CI-USER"}));
         var create=planType.GetMethod("Create",BindingFlags.Static|BindingFlags.NonPublic);
         var apply=writerType.GetMethod("Apply",BindingFlags.Static|BindingFlags.NonPublic);
         var execute=writerType.GetMethod("Execute",BindingFlags.Static|BindingFlags.NonPublic);
