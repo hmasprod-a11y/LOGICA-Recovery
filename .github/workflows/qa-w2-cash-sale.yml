@@ -80,7 +80,7 @@ jobs:
           path: architecture
       - uses: actions/checkout@v4
         with:
-          ref: 5ba352c6966874e29c436ba2bb521c1aa32e5f74
+          ref: c3365c54f554c736df74d76c298a506cc39f52d6
           path: wpf
       - uses: actions/setup-dotnet@v4
         with:
