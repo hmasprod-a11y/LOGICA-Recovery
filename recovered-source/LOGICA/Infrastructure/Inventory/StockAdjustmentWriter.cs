@@ -53,7 +53,7 @@ namespace LOGICA.Infrastructure.Inventory
                 "WHERE BINARY s.SESSION_TOKEN=BINARY @token " +
                 "AND BINARY s.ACTOR_ID=BINARY @actor " +
                 "AND s.REVOKED_AT IS NULL AND s.EXPIRES_AT>UTC_TIMESTAMP() " +
-                "AND g.PERMISSION_CODE='ManualStockAdjustment' " +
+                "AND BINARY g.PERMISSION_CODE=BINARY 'ManualStockAdjustment' " +
                 "AND g.REVOKED_AT IS NULL AND (g.EXPIRES_AT IS NULL OR g.EXPIRES_AT>UTC_TIMESTAMP()) " +
                 "FOR UPDATE", db, tx))
             {
