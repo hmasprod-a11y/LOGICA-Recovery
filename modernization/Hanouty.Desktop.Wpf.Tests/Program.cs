@@ -56,6 +56,8 @@ var logoutSelection = new RecordingSelection();
 var logoutVm = new CatalogueViewModel(new Reader(new[] { new ProductSummary("logout-item", "Logout item", "900") }), logoutSelection);
 logoutVm.SelectedProduct = logoutVm.VisibleProducts[0];
 logoutVm.FinancialSessionActive = false;
+Check(logoutVm.SelectedProduct is null && logoutVm.BarcodeCandidates.Count == 0 && logoutVm.ScannerText == "",
+    "logout must discard stale selected article, variant choice and scanner text");
 logoutVm.SelectedProduct = null;
 logoutVm.SelectCommand.Execute(null);
 logoutVm.SelectCommand.Execute(logoutVm.VisibleProducts[0]);
@@ -68,6 +70,20 @@ logoutVm.SelectedProduct = logoutVm.VisibleProducts[0];
 logoutVm.SelectCommand.Execute(null);
 Check(logoutSelection.Selected.Count == 1,
     "authorized fresh session restores direct selection without stale action replay");
+// A duplicate barcode chooser from the previous cashier must not survive logout.
+var variantLogoutSelection = new RecordingSelection();
+var variantLogoutVm = new CatalogueViewModel(new Reader(items), variantLogoutSelection);
+variantLogoutVm.ScannerText = "777";
+variantLogoutVm.ScanBarcode();
+Check(variantLogoutVm.HasBarcodeAmbiguity, "duplicate barcode chooser must be visible before logout");
+variantLogoutVm.FinancialSessionActive = false;
+Check(!variantLogoutVm.HasBarcodeAmbiguity && variantLogoutVm.BarcodeCandidates.Count == 0 &&
+    variantLogoutVm.ScannerText == "" && variantLogoutVm.SelectedProduct is null,
+    "logout discards old cashier duplicate barcode choice and scanner input");
+variantLogoutVm.FinancialSessionActive = true;
+variantLogoutVm.SelectCommand.Execute(null);
+Check(variantLogoutSelection.Selected.Count == 0,
+    "re-login cannot silently dispatch a variant staged by previous cashier");
 var selection = new RecordingSelection();
 var vm = new CatalogueViewModel(new Reader(items), selection, new ImageFixture());
 Check(vm.VisibleProducts.Count == 5, "all catalogue products must appear, including barcode-free");
