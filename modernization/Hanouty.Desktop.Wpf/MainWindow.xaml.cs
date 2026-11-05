@@ -25,7 +25,7 @@ public partial class MainWindow : Window
     public bool ShowCashierEntry()
     {
         if (_cashierEntryOpen || DataContext is not CatalogueViewModel vm || vm.CheckoutBusy || vm.CheckoutUncertain ||
-            !vm.FinancialSessionActive || _setFinancialContext is null || _readTrustedCashTotal is null)
+            vm.PendingOperationId is not null || _setFinancialContext is null || _readTrustedCashTotal is null)
             return false;
         decimal? trustedTotal;
         try { trustedTotal = _readTrustedCashTotal(); }
@@ -42,12 +42,13 @@ public partial class MainWindow : Window
         finally { _cashierEntryOpen = false; }
         if (draft is null) return false;
         // Recheck after the modal interaction; Host independently rejects busy/unknown.
-        if (vm.CheckoutBusy || vm.CheckoutUncertain || !vm.FinancialSessionActive) return false;
+        if (vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null) return false;
         try
         {
             // The basket may have changed during a modal dialog. Never approve a stale quote.
             if (_readTrustedCashTotal() != trustedTotal) return false;
             if (!_setFinancialContext(draft.Value.Cashier, draft.Value.Register, draft.Value.CashMad)) return false;
+            vm.FinancialSessionActive = true;
             vm.PaymentContext = new CashierPaymentContext(draft.Value.Cashier, draft.Value.Register, "MAD", "Cash", draft.Value.CashMad);
             return true;
         }
