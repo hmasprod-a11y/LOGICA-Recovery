@@ -7,6 +7,46 @@ using LOGICA.Application.Inventory;
 
 namespace LOGICA.Infrastructure.Inventory
 {
+    // Opt-in persisted permission contract. These tables must be provisioned by
+    // an approved installer; the writer never creates or migrates shop schema.
+    // The session token is a bearer secret, not a user name or ADMIN label.
+    internal sealed class MariaDbManualStockAuthorization : IManualStockAuthorization
+    {
+        public VerifiedManualStockActor VerifyForWrite(object connection, object transaction,
+            string authenticatedSessionId, string requestedUserId)
+        {
+            var db = connection as MySqlConnection;
+            var tx = transaction as MySqlTransaction;
+            if (db == null || tx == null || String.IsNullOrWhiteSpace(authenticatedSessionId) ||
+                String.IsNullOrWhiteSpace(requestedUserId))
+                throw new UnauthorizedAccessException("Authenticated inventory session required.");
+            // Both rows are locked in the caller's stock transaction. Revocation
+            // and expiry are checked on the database clock, never on WPF state.
+            using (var command = new MySqlCommand(
+                "SELECT s.ACTOR_ID FROM HANOUTY_AUTH_SESSIONS s " +
+                "INNER JOIN HANOUTY_ACTOR_GRANTS g ON g.ACTOR_ID=s.ACTOR_ID " +
+                "WHERE BINARY s.SESSION_TOKEN=BINARY @token " +
+                "AND BINARY s.ACTOR_ID=BINARY @actor " +
+                "AND s.REVOKED_AT IS NULL AND s.EXPIRES_AT>UTC_TIMESTAMP() " +
+                "AND g.PERMISSION_CODE='ManualStockAdjustment' " +
+                "AND g.REVOKED_AT IS NULL AND (g.EXPIRES_AT IS NULL OR g.EXPIRES_AT>UTC_TIMESTAMP()) " +
+                "FOR UPDATE", db, tx))
+            {
+                command.Parameters.AddWithValue("@token", authenticatedSessionId);
+                command.Parameters.AddWithValue("@actor", requestedUserId);
+                using (var reader = command.ExecuteReader())
+                {
+                    if (!reader.Read() || reader.IsDBNull(0))
+                        throw new UnauthorizedAccessException("Manual stock grant missing, revoked or expired.");
+                    string actor = Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture);
+                    if (reader.Read())
+                        throw new UnauthorizedAccessException("Ambiguous manual stock permission.");
+                    return new VerifiedManualStockActor(actor);
+                }
+            }
+        }
+    }
+
     // Opt-in writer. The caller owns Commit/Rollback and MUST NOT reuse a sale transaction.
     // Legacy WinForms is not yet wired to this entry point.
     internal static class StockAdjustmentWriter
