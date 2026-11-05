@@ -126,8 +126,9 @@ namespace LOGICA.Infrastructure.Checkout
                     if (!reader.Read() || reader.IsDBNull(0))
                         throw new InvalidOperationException("Original cash sale is missing.");
                     decimal total = Convert.ToDecimal(reader.GetValue(0));
-                    if (reader.Read() || total <= 0m)
-                        throw new InvalidOperationException("Original sale is not unique or has invalid amount.");
+                    if (reader.Read() || total <= 0m ||
+                        decimal.Round(total, 2, MidpointRounding.AwayFromZero) != total)
+                        throw new InvalidOperationException("Original sale is not unique or has invalid whole-cent amount.");
                     return total;
                 }
             }
