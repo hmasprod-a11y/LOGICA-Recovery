@@ -5182,16 +5182,16 @@ public class Form_0_TEMPLATE : Form
 	{
 		((Control)TableLayoutPanel1).Dock = (DockStyle)5;
 		((Form)this).KeyPreview = true;
-		Label_DB.Text = File.ReadAllText(Application.StartupPath + "/CHEMIN_DB.sni");
-		Label_FOLDER.Text = File.ReadAllText(Application.StartupPath + "/CHEMIN_FOLDER.sni");
-		Label_POSTE.Text = File.ReadAllText(Application.StartupPath + "/poste.sni");
-		if (Operators.CompareString(Label_DB.Text, "Application.StartupPath", TextCompare: false) == 0)
+		Label_DB.Text = File.ReadAllText(System.Windows.Forms.Application.StartupPath + "/CHEMIN_DB.sni");
+		Label_FOLDER.Text = File.ReadAllText(System.Windows.Forms.Application.StartupPath + "/CHEMIN_FOLDER.sni");
+		Label_POSTE.Text = File.ReadAllText(System.Windows.Forms.Application.StartupPath + "/poste.sni");
+		if (Operators.CompareString(Label_DB.Text, "System.Windows.Forms.Application.StartupPath", TextCompare: false) == 0)
 		{
-			Label_DB.Text = Application.StartupPath;
+			Label_DB.Text = System.Windows.Forms.Application.StartupPath;
 		}
-		if (Operators.CompareString(Label_FOLDER.Text, "Application.StartupPath", TextCompare: false) == 0)
+		if (Operators.CompareString(Label_FOLDER.Text, "System.Windows.Forms.Application.StartupPath", TextCompare: false) == 0)
 		{
-			Label_FOLDER.Text = Application.StartupPath;
+			Label_FOLDER.Text = System.Windows.Forms.Application.StartupPath;
 		}
 	}
 
@@ -5244,11 +5244,11 @@ public class Form_0_TEMPLATE : Form
 					logo_ar_vente = (Bitmap)MyProject.Forms.Form_3_VENTE.PictureBox100.Image;
 					logo_ar_vente_logo = (Bitmap)MyProject.Forms.Form_3_VENTE.Picture_LOGO.Image;
 				}
-				if (Operators.CompareString(File.ReadAllText(Application.StartupPath + "\\log_erreur.sni"), "", TextCompare: false) != 0)
+				if (Operators.CompareString(File.ReadAllText(System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni"), "", TextCompare: false) != 0)
 				{
 					((Control)Picture_ALERT).Visible = true;
 				}
-				TextBox_MODE_WINDOWS.Text = File.ReadAllText(Application.StartupPath + "/mode_windows.sni");
+				TextBox_MODE_WINDOWS.Text = File.ReadAllText(System.Windows.Forms.Application.StartupPath + "/mode_windows.sni");
 				Label_GESTION_TABLE.Text = "DIRECTE";
 				try
 				{
@@ -5290,7 +5290,7 @@ public class Form_0_TEMPLATE : Form
 				}
 				if (Operators.CompareString(Thread.CurrentThread.CurrentUICulture.NumberFormat.NumberDecimalSeparator, ".", TextCompare: false) != 0)
 				{
-					Application.DoEvents();
+					System.Windows.Forms.Application.DoEvents();
 					Thread.Sleep(500);
 					SetLocaleInfo(1024u, 14u, ".");
 					SetLocaleInfo(1024u, 22u, ".");
@@ -5327,10 +5327,10 @@ public class Form_0_TEMPLATE : Form
 					Bitmap val3 = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 					Graphics val4 = Graphics.FromImage((Image)(object)val3);
 					val4.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-					((Image)val3).Save(Application.StartupPath + "\\tchak\\" + text2 + ".snidb", ImageFormat.Jpeg);
+					((Image)val3).Save(System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text2 + ".snidb", ImageFormat.Jpeg);
 					val3 = null;
 					string right = "ERROR | ";
-					File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyyHHmmssfff") + Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex4.ToString()), "\r\n"), "Ligne : "), fileLineNumber3), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+					File.AppendAllText(System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyyHHmmssfff") + Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex4.ToString()), "\r\n"), "Ligne : "), fileLineNumber3), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 				}
 				catch (Exception ex5)
 				{
@@ -5548,7 +5548,7 @@ public class Form_0_TEMPLATE : Form
 					registryKey.SetValue("{0776ae27-5ab9-4e18-9063-E763D346581438650482}", "46565482", RegistryValueKind.DWord);
 					registryKey.SetValue("{1EFB6597-857C-11D1-B16A-RFBCD386581438650486}", "86565486", RegistryValueKind.DWord);
 					Interaction.MsgBox("merci pour l'activation ,Redémarrer le programme", MsgBoxStyle.Information, "Activation");
-					Application.Restart();
+					System.Windows.Forms.Application.Restart();
 				}
 				else if (Operators.CompareString(text, Text_ara_disk.Text, TextCompare: false) != 0)
 				{
@@ -5571,10 +5571,10 @@ public class Form_0_TEMPLATE : Form
 				Bitmap val = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 				Graphics val2 = Graphics.FromImage((Image)(object)val);
 				val2.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-				((Image)val).Save(Application.StartupPath + "\\tchak\\" + text2 + ".snidb", ImageFormat.Jpeg);
+				((Image)val).Save(System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text2 + ".snidb", ImageFormat.Jpeg);
 				val = null;
 				string right = "ERROR | ";
-				File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyyHHmmssfff") + Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+				File.AppendAllText(System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyyHHmmssfff") + Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 			}
 			catch (Exception ex3)
 			{
@@ -5612,7 +5612,7 @@ public class Form_0_TEMPLATE : Form
 			val2.ExecuteNonQuery();
 			Module1.cn_SQL.Close();
 			Interaction.MsgBox("merci pour l'activation ,Redémarrer le programme", MsgBoxStyle.Information, "Activation");
-			Application.Restart();
+			System.Windows.Forms.Application.Restart();
 		}
 	}
 
@@ -5626,7 +5626,7 @@ public class Form_0_TEMPLATE : Form
 		//IL_00b1: Expected Obj, but got Unknown
 		try
 		{
-			Interaction.Shell(Application.StartupPath + "\\CLAVIER.exe");
+			Interaction.Shell(System.Windows.Forms.Application.StartupPath + "\\CLAVIER.exe");
 		}
 		catch (Exception ex)
 		{
@@ -5642,10 +5642,10 @@ public class Form_0_TEMPLATE : Form
 				Bitmap val = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 				Graphics val2 = Graphics.FromImage((Image)(object)val);
 				val2.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-				((Image)val).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+				((Image)val).Save(System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 				val = null;
 				string right = "ERROR | ";
-				File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyyHHmmssfff") + Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+				File.AppendAllText(System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyyHHmmssfff") + Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 			}
 			catch (Exception ex3)
 			{
@@ -5706,7 +5706,7 @@ public class Form_0_TEMPLATE : Form
 	{
 		try
 		{
-			Interaction.Shell(Application.StartupPath + "\\CLAVIER.exe");
+			Interaction.Shell(System.Windows.Forms.Application.StartupPath + "\\CLAVIER.exe");
 		}
 		catch (Exception ex)
 		{
@@ -5726,7 +5726,7 @@ public class Form_0_TEMPLATE : Form
 
 	private void Label_DB_DoubleClick(object sender, EventArgs e)
 	{
-		Process.Start("notepad.EXE", Application.StartupPath + "/CHEMIN_DB.sni");
+		Process.Start("notepad.EXE", System.Windows.Forms.Application.StartupPath + "/CHEMIN_DB.sni");
 	}
 
 	private void Label_FOLDER_Click(object sender, EventArgs e)
@@ -5735,7 +5735,7 @@ public class Form_0_TEMPLATE : Form
 
 	private void Label_FOLDER_DoubleClick(object sender, EventArgs e)
 	{
-		Process.Start("notepad.EXE", Application.StartupPath + "/CHEMIN_FOLDER.sni");
+		Process.Start("notepad.EXE", System.Windows.Forms.Application.StartupPath + "/CHEMIN_FOLDER.sni");
 	}
 
 	private void Label_POSTE_Click(object sender, EventArgs e)
@@ -5744,11 +5744,11 @@ public class Form_0_TEMPLATE : Form
 
 	private void Label_POSTE_DoubleClick(object sender, EventArgs e)
 	{
-		Process.Start("notepad.EXE", Application.StartupPath + "/poste.sni");
+		Process.Start("notepad.EXE", System.Windows.Forms.Application.StartupPath + "/poste.sni");
 	}
 
 	private void Button1323234_Click(object sender, EventArgs e)
 	{
-		Application.Restart();
+		System.Windows.Forms.Application.Restart();
 	}
 }
