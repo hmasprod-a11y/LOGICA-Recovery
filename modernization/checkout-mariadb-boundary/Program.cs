@@ -576,6 +576,27 @@ namespace LOGICA.Infrastructure.Checkout
                         Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='" + operation + "' AND Caissier='O''Neil' AND Article='Lait d''été'") == 1 &&
                         Scalar("SELECT COUNT(*) FROM TABLE_01") == 0,
                         "Real authenticated cash sale failed culture or quoted-identity persistence.");
+                    // Verify original-sale evidence using real persisted SQL rows
+                    // and the same transaction; do not authorize a refund yet.
+                    using (var evidenceDb = NewConnection())
+                    {
+                        evidenceDb.Open();
+                        using (var evidenceTx = evidenceDb.BeginTransaction())
+                        {
+                            Require(CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                evidenceDb, evidenceTx, operation) == 10.50m,
+                                "Original sale exact-cash evidence differs from persisted payment.");
+                            bool missingOriginalRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                    evidenceDb, evidenceTx, operation + "-missing");
+                            }
+                            catch (InvalidOperationException) { missingOriginalRejected = true; }
+                            Require(missingOriginalRejected,
+                                "Missing original sale must not qualify for cash refund.");
+                            evidenceTx.Rollback();
+                        }
+                    }
                     stock -= 2;
                     Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stock,
                         "Real trusted sale did not update stock exactly once.");
