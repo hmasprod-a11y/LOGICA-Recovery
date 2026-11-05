@@ -613,6 +613,32 @@ Assert(reentrantQuoteBatch.Commit("reentrant-quote-001") == CheckoutBatchStatus.
     quoteBlocked && reentrantQuoteBatch.SnapshotLines().Count == 0,
     "reentrant quote blocked during commit and cleared after posting");
 
+// A lost acknowledgement must not reopen quote or permit implicit retry.
+var uncertainQuotePort = new RecordingAtomicBatchPort();
+var uncertainQuoteBatch = new CheckoutBatchController(new RecordingCatalogue(),
+    new RecordingPrompt { Choice = 0 }, uncertainQuotePort);
+uncertainQuoteBatch.StageImage(A("21", ""), 2);
+var quoteRejectedInsideFault = false;
+uncertainQuotePort.OnAdd = () => {
+    try { _ = uncertainQuoteBatch.SnapshotLines(); }
+    catch (InvalidOperationException) { quoteRejectedInsideFault = true; }
+    throw new ApplicationException("acknowledgement lost after posting");
+};
+try { uncertainQuoteBatch.Commit("uncertain-quote-001"); throw new Exception("lost acknowledgement swallowed"); }
+catch (ApplicationException) { }
+var quoteRejectedAfterFault = false;
+try { _ = uncertainQuoteBatch.SnapshotLines(); }
+catch (InvalidOperationException) { quoteRejectedAfterFault = true; }
+Assert(quoteRejectedInsideFault && quoteRejectedAfterFault &&
+    uncertainQuoteBatch.State == CheckoutCommitState.OutcomeUnknown &&
+    uncertainQuotePort.Calls.Count == 1 && uncertainQuoteBatch.PendingCount == 1,
+    "lost acknowledgement blocks quote during commit and until durable reconciliation");
+uncertainQuoteBatch.ReconcileUnknownOutcome("uncertain-quote-001", false);
+Assert(uncertainQuoteBatch.State == CheckoutCommitState.Ready &&
+    uncertainQuoteBatch.SnapshotLines().Single() == new CheckoutBatchLine("21", 2) &&
+    uncertainQuotePort.Calls.Count == 1,
+    "confirmed absent outcome restores trusted quote without automatic repost");
+
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
 {
     public List<(string, int)> Calls { get; } = new();
