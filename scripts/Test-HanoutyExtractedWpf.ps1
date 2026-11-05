@@ -19,8 +19,8 @@ foreach ($name in $required) {
     }
 }
 $runtime = Get-Content -LiteralPath (Join-Path $ExtractedDirectory 'Hanouty.Desktop.Bootstrap.runtimeconfig.json') -Raw | ConvertFrom-Json
-if ($null -eq $runtime.runtimeOptions -or $runtime.runtimeOptions.tfm -ne 'net10.0-windows') {
-    throw 'Extracted WPF package is not a net10.0-windows build.'
+if ($null -eq $runtime.runtimeOptions -or $runtime.runtimeOptions.tfm -notin @('net10.0', 'net10.0-windows')) {
+    throw 'Extracted WPF package is not a .NET 10 build.'
 }
 $root = Join-Path ([IO.Path]::GetFullPath($EvidenceDirectory)) 'disposable-mariadb'
 New-Item -ItemType Directory -Path $root -Force | Out-Null
