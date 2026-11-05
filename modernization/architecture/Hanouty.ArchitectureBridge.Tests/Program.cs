@@ -243,14 +243,21 @@ Assert(session.SelectImage(new ProductSummary("11", "123", "No photo", "fake/pat
 var duplicatePhotoPort = new RecordingAtomicBatchPort();
 var duplicatePhotoSession = new CheckoutComposition(new DuplicatePhotoCatalogue(),
     new RecordingPrompt(), duplicatePhotoPort, new CompositionJournal()).CreateSession();
-Assert(duplicatePhotoSession.SelectImage(duplicatePhotoSession.ImageProducts[0]).Outcome ==
-       SelectionOutcome.InvalidCandidates && duplicatePhotoSession.PendingCount == 0 &&
-       duplicatePhotoPort.Calls.Count == 0,
-       "duplicate photo article identity cannot stage or post");
-Assert(duplicatePhotoSession.SelectArticle(duplicatePhotoSession.Products[0]).Outcome ==
-       SelectionOutcome.InvalidCandidates && duplicatePhotoSession.PendingCount == 0 &&
-       duplicatePhotoPort.Calls.Count == 0,
-       "duplicate list article identity cannot stage or post");
+try { _ = duplicatePhotoSession.Products; throw new Exception("duplicate catalogue accepted"); }
+catch (InvalidOperationException ex) when (ex.Message.Contains("duplicate article identity"))
+{
+    Assert(duplicatePhotoSession.PendingCount == 0 && duplicatePhotoPort.Calls.Count == 0,
+        "duplicate catalogue identity rejected before any selection or posting");
+}
+var immutableCatalogue = sessionComposition.AllProducts();
+Assert(immutableCatalogue is System.Collections.Generic.IList<ProductSummary>,
+    "catalogue exposes a guarded collection contract");
+try {
+    ((System.Collections.Generic.IList<ProductSummary>)immutableCatalogue)[0] =
+        new ProductSummary("forged", "", "Forged", null);
+    throw new Exception("catalogue snapshot was mutable");
+}
+catch (NotSupportedException) { Assert(true, "catalogue snapshot rejects mutation"); }
 session.RefreshCatalogue();
 Assert(session.Products.Count == 3 && session.ImageProducts.Count == 1,
        "explicit catalogue refresh preserves list/photo membership");
