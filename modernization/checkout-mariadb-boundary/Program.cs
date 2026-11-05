@@ -594,6 +594,27 @@ namespace LOGICA.Infrastructure.Checkout
                             catch (InvalidOperationException) { missingOriginalRejected = true; }
                             Require(missingOriginalRejected,
                                 "Missing original sale must not qualify for cash refund.");
+                            // A wrong settlement must fail closed even when its
+                            // header is valid. Mutate only inside the disposable
+                            // transaction and roll it back before the next case.
+                            using (var tamper = evidenceDb.CreateCommand())
+                            {
+                                tamper.Transaction = evidenceTx;
+                                tamper.CommandText =
+                                    "UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=MONTANT-0.01 " +
+                                    "WHERE ID_TICKET=@id";
+                                tamper.Parameters.AddWithValue("@id", operation);
+                                Require(tamper.ExecuteNonQuery() == 1,
+                                    "Expected exactly one original cash payment.");
+                            }
+                            bool mismatchedSettlementRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                    evidenceDb, evidenceTx, operation);
+                            }
+                            catch (InvalidOperationException) { mismatchedSettlementRejected = true; }
+                            Require(mismatchedSettlementRejected,
+                                "Original header/payment mismatch must reject refund evidence.");
                             evidenceTx.Rollback();
                         }
                     }
