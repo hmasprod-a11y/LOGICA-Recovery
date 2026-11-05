@@ -57,10 +57,13 @@ var logoutVm = new CatalogueViewModel(new Reader(new[] { new ProductSummary("log
 logoutVm.SelectedProduct = logoutVm.VisibleProducts[0];
 logoutVm.FinancialSessionActive = false;
 logoutVm.SelectCommand.Execute(null);
+logoutVm.SelectCommand.Execute(logoutVm.VisibleProducts[0]);
+Check(logoutVm.SelectedProduct is null, "logged-out touch command must not stage a product for later reauthorization");
 logoutVm.SelectCurrent();
 Check(logoutSelection.Selected.Count == 0 && logoutVm.ScanFeedback == "Cashier session required",
     "logged-out direct and keyboard selection commands must not stage an article");
 logoutVm.FinancialSessionActive = true;
+logoutVm.SelectedProduct = logoutVm.VisibleProducts[0];
 logoutVm.SelectCommand.Execute(null);
 Check(logoutSelection.Selected.Count == 1,
     "authorized fresh session restores direct selection without stale action replay");
