@@ -163,6 +163,17 @@ var composition = new CheckoutComposition(sharedReader, new RecordingPrompt { Ch
 Assert(composition.AllProducts().Count == 3, "composition lists all catalogue articles");
 Assert(composition.ImageProducts().Count == 1 &&
        composition.ImageProducts()[0].ArticleId == "21", "photo grid excludes products without actual image path");
+var detachedPhotos = composition.ImageProducts();
+Assert(detachedPhotos is not IList<ProductSummary> writablePhotos || writablePhotos.IsReadOnly,
+       "photo grid cannot be modified through IList");
+if (detachedPhotos is IList<ProductSummary> immutablePhotos)
+{
+    try { immutablePhotos[0] = new ProductSummary("forged", "", "Forged", "images/forged.png");
+          throw new Exception("photo grid mutation accepted"); }
+    catch (NotSupportedException) { Assert(composition.ImageProducts()[0].ArticleId == "21",
+        "photo grid mutation rejected without changing catalogue"); }
+}
+
 var composedBatch = composition.CreateCheckoutBatch();
 Assert(composedBatch.StageBarcode("123", 2).Article?.ArticleId == "12", "composition selects explicit duplicate barcode");
 Assert(composedBatch.StageImage(A("21", ""), 1).Outcome == SelectionOutcome.Selected,
