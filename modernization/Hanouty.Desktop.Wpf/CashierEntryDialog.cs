@@ -11,12 +11,14 @@ public sealed class CashierEntryDialog : Window
 {
     private readonly TextBox _cashier = new() { MaxLength = 64, MinWidth = 240 };
     private readonly TextBox _register = new() { MaxLength = 64 };
-    private readonly TextBox _tender = new() { MaxLength = 32, Text = "0.00" };
+    private readonly TextBox _tender = new() { MaxLength = 32, Text = "" };
     private readonly TextBlock _error = new() { TextWrapping = TextWrapping.Wrap };
 
     public (string Cashier, string Register, decimal CashMad)? Draft { get; private set; }
 
-    public CashierEntryDialog()
+    // The displayed amount is supplied by Application; this dialog never calculates totals.
+    // Fresh tender is required on every dialog invocation, including a second operation.
+    public CashierEntryDialog(decimal? authoritativeTotalMad = null)
     {
         Title = "Cashier session and cash tender";
         Width = 420;
@@ -25,6 +27,11 @@ public sealed class CashierEntryDialog : Window
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
         var panel = new StackPanel { Margin = new Thickness(20) };
+        if (authoritativeTotalMad is decimal total)
+            panel.Children.Add(new TextBlock {
+                Text = $"Application total (MAD): {total.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}",
+                FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap
+            });
         AddField(panel, "Cashier identity", _cashier);
         AddField(panel, "Register identity", _register);
         AddField(panel, "Cash MAD (decimal, no thousands separator)", _tender);
@@ -33,6 +40,9 @@ public sealed class CashierEntryDialog : Window
         var confirm = new Button { Content = "Review cash tender", MinHeight = 40, MinWidth = 160, IsDefault = true };
         var cancel = new Button { Content = "Cancel", MinHeight = 40, MinWidth = 90, IsCancel = true, Margin = new Thickness(8, 0, 0, 0) };
         confirm.Click += (_, _) => TryConfirm();
+        _tender.TextChanged += (_, _) => _error.Text = "";
+        _cashier.TextChanged += (_, _) => _error.Text = "";
+        _register.TextChanged += (_, _) => _error.Text = "";
         actions.Children.Add(confirm);
         actions.Children.Add(cancel);
         panel.Children.Add(actions);
