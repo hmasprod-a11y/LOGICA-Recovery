@@ -44,11 +44,11 @@ jobs:
             status=$?
             set -e
             test "$status" = 2
-            rg 'Fixture requires explicit disposable' guard.log
+            grep -F 'Fixture requires explicit disposable' guard.log
           done
       - name: Execute real competing transactions and rollback
         env:
-          HANOUTY_DISPOSABLE_DB_ONLY: YES
+          HANOUTY_DISPOSABLE_DB_ONLY: 'YES'
           MYSQL_HOST: 127.0.0.1
           MYSQL_PORT: '3306'
           MYSQL_DATABASE: checkout_disposable
