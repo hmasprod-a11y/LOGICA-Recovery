@@ -239,6 +239,25 @@ Assert(session.SelectImage(new ProductSummary("21", "", "Forged", "fake/path.png
 Assert(session.SelectImage(new ProductSummary("11", "123", "No photo", "fake/path.png")).Outcome ==
        SelectionOutcome.InvalidCandidates && session.PendingCount == 0,
        "non-image list product cannot bypass image grid");
+// Ambiguous duplicate photo identities must not silently choose the first tile.
+var duplicatePhotoPort = new RecordingAtomicBatchPort();
+var duplicatePhotoSession = new CheckoutComposition(new DuplicatePhotoCatalogue(),
+    new RecordingPrompt(), duplicatePhotoPort, new CompositionJournal()).CreateSession();
+try { _ = duplicatePhotoSession.Products; throw new Exception("duplicate catalogue accepted"); }
+catch (InvalidOperationException ex) when (ex.Message.Contains("duplicate article identity"))
+{
+    Assert(duplicatePhotoSession.PendingCount == 0 && duplicatePhotoPort.Calls.Count == 0,
+        "duplicate catalogue identity rejected before any selection or posting");
+}
+var immutableCatalogue = sessionComposition.AllProducts();
+Assert(immutableCatalogue is System.Collections.Generic.IList<ProductSummary>,
+    "catalogue exposes a guarded collection contract");
+try {
+    ((System.Collections.Generic.IList<ProductSummary>)immutableCatalogue)[0] =
+        new ProductSummary("forged", "", "Forged", null);
+    throw new Exception("catalogue snapshot was mutable");
+}
+catch (NotSupportedException) { Assert(true, "catalogue snapshot rejects mutation"); }
 session.RefreshCatalogue();
 Assert(session.Products.Count == 3 && session.ImageProducts.Count == 1,
        "explicit catalogue refresh preserves list/photo membership");
@@ -787,6 +806,14 @@ sealed class CompositionCatalogue : ICatalogueReader
     public IReadOnlyList<ProductSummary> RefreshBarcode(string barcode) => FindBarcode(barcode);
     public IReadOnlyList<ProductSummary> RefreshArticle(string articleId) =>
         Products.Where(p => p.ArticleId == articleId).ToArray();
+}
+sealed class DuplicatePhotoCatalogue : ICatalogueReader
+{
+    private static readonly ProductSummary Tile = new("photo-duplicate", "", "Same", "images/duplicate.png");
+    public IReadOnlyList<ProductSummary> ListAll() => new[] { Tile, Tile };
+    public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => Array.Empty<ProductSummary>();
+    public IReadOnlyList<ProductSummary> RefreshBarcode(string barcode) => Array.Empty<ProductSummary>();
+    public IReadOnlyList<ProductSummary> RefreshArticle(string articleId) => new[] { Tile, Tile };
 }
 sealed class CompositionJournal : ICheckoutOperationJournal
 {
