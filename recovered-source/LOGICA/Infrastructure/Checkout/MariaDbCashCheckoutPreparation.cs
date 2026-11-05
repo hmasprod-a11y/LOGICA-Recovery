@@ -14,7 +14,7 @@ namespace LOGICA.Infrastructure.Checkout
     // validates an existing workstation basket against locked authoritative rows,
     // and reuses the established posting writers. No schema mutation or default
     // credential, no UI price, no privilege inferred from a supplied UserId.
-    // Returns/discounts/tier prices/change remain on the characterized legacy
+    // Returns/discounts/tier prices remain on the characterized legacy
     // path until their complete monetary policy is accepted for this new port.
     internal sealed class MariaDbCashCheckoutPreparation : ITrustedCheckoutPostingPreparation
     {
@@ -43,7 +43,7 @@ namespace LOGICA.Infrastructure.Checkout
                 throw new InvalidOperationException("Trusted preparation requires the active checkout transaction.");
             if (request.IsReturn || request.Currency != "MAD" || request.Payments.Count != 1 ||
                 request.Payments[0].Kind != CheckoutPaymentKind.Cash || request.OperationId.Length > 64)
-                throw new NotSupportedException("Only exact-cash MAD sales are accepted by this preparation.");
+                throw new NotSupportedException("Only single-tender cash MAD sales are accepted by this preparation.");
 
             // Refuse nontransactional legacy tables instead of silently claiming
             // that stock, receipt and operation rollback is atomic.
@@ -157,8 +157,13 @@ namespace LOGICA.Infrastructure.Checkout
                 stock.Add(new CheckoutStockLine { TicketNumber = ticket, ArticleId = id,
                     ArticleCode = row["Code"], ArticleName = row["Article"], BasketQuantity = (decimal)quantity });
             }
-            if (total <= 0m || request.ExpectedTotal != total || request.Payments[0].Amount != total)
-                throw new InvalidOperationException("Cash tender and expected total must match the authoritative basket exactly.");
+            decimal tendered = request.Payments[0].Amount;
+            if (total <= 0m || request.ExpectedTotal != total || tendered < total ||
+                decimal.Round(tendered, 2, MidpointRounding.AwayFromZero) != tendered)
+                throw new InvalidOperationException("Cash tender must cover the authoritative total in whole cents.");
+            // V1 FormDialog_calc: FLOUSS(total - paid), persisted as a negative
+            // ESPECES change row. Never store both net cash and gross tender.
+            decimal change = decimal.Round(checked(total - tendered), 2, MidpointRounding.AwayFromZero);
 
             var date = DateTime.Now;
             var idTicket = request.OperationId;
@@ -177,8 +182,15 @@ namespace LOGICA.Infrastructure.Checkout
                 ReadJournal = () => new TicketJournalRecord { TicketId = idTicket, TicketNumber = ticket,
                     SaleDate = date, Cashier = cashier, Seller = "", ClientId = "0", ClientCode = "0", ClientName = "",
                     Workstation = workstation, Operation = "VENTE", PriceType = "PRIX 1", PaymentModes = "ESPECES" },
-                ReadPayments = () => new[] { new TicketPaymentWrite {
-                    Kind = TicketPaymentKind.Cash, Context = paymentContext, AmountText = amount } },
+                ReadPayments = () => change == 0m
+                    ? new[] { new TicketPaymentWrite {
+                        Kind = TicketPaymentKind.Cash, Context = paymentContext, AmountText = amount } }
+                    : new[] {
+                        new TicketPaymentWrite { Kind = TicketPaymentKind.Tendered,
+                            Context = paymentContext, Amount = tendered, Mode = "ESPECES" },
+                        new TicketPaymentWrite { Kind = TicketPaymentKind.Change,
+                            Context = paymentContext, AmountText = change.ToString(CultureInfo.CurrentCulture) }
+                    },
                 // Stage a verifiable persisted receipt within this transaction.
                 // Physical printing is a separate post-commit/peripheral gate.
                 Print = () => {
@@ -189,7 +201,10 @@ namespace LOGICA.Infrastructure.Checkout
                     var detail = Read(connection, transaction,
                         "SELECT ID_ARTICLE FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET=@id", ("@id", idTicket));
                     if (receipt.Rows.Count != 1 || Number(receipt.Rows[0], "Total_NET") != total ||
-                        payments.Rows.Count != 1 || Number(payments.Rows[0], "MONTANT") != total ||
+                        payments.Rows.Count != (change == 0m ? 1 : 2) ||
+                        payments.Rows.Cast<DataRow>().Sum(row => Number(row, "MONTANT")) != total ||
+                        (change < 0m && (!payments.Rows.Cast<DataRow>().Any(row => Number(row, "MONTANT") == tendered) ||
+                            !payments.Rows.Cast<DataRow>().Any(row => Number(row, "MONTANT") == change))) ||
                         detail.Rows.Count != stock.Count)
                         throw new InvalidOperationException("Persisted receipt staging failed.");
                 },
