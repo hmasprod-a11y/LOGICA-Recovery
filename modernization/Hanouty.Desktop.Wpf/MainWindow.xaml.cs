@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     private Func<string>? _readBasketIdentity;
     private OriginalSaleSelection? _originalSaleSelection;
     private IReadOnlyList<OriginalSaleCandidate> _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
+    private bool _originalSaleLookupBusy;
     public void ConfigureOriginalSaleLookup(IOriginalSaleLookup lookup)
     {
         ArgumentNullException.ThrowIfNull(lookup);
@@ -27,16 +28,29 @@ public partial class MainWindow : Window
 
     public bool SearchOriginalSales(string receipt)
     {
+        if (_originalSaleLookupBusy) return false;
         OriginalSaleResults.ItemsSource = null;
         _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
         _originalSaleSelection?.Clear();
         OriginalSaleStatus.Text = "No original sale selected — refunds unavailable";
-        if (_originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
+        if (_originalSaleLookupBusy || _originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
             !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
             vm.PendingOperationId is not null) return false;
+        _originalSaleLookupBusy = true;
         try
         {
-            _originalSaleResults = _originalSaleSelection.Search(receipt);
+            var cashier = vm.PaymentContext?.CashierId;
+            var results = _originalSaleSelection.Search(receipt);
+            // A Host lookup may pump the dispatcher, revoke the session, or
+            // initiate Unknown. Never publish rows obtained under stale authority.
+            if (!vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
+                vm.PendingOperationId is not null || vm.PaymentContext?.CashierId != cashier)
+            {
+                _originalSaleSelection.Clear();
+                OriginalSaleStatus.Text = "Cashier context changed — search again";
+                return false;
+            }
+            _originalSaleResults = results;
             OriginalSaleResults.ItemsSource = _originalSaleResults;
             OriginalSaleStatus.Text = _originalSaleResults.Count == 0 ? "No persisted sale found" :
                 "Select a persisted sale for review; refund posting is not enabled";
@@ -47,6 +61,7 @@ public partial class MainWindow : Window
             OriginalSaleStatus.Text = "Original-sale evidence unavailable";
             return false;
         }
+        finally { _originalSaleLookupBusy = false; }
     }
 
     public bool SelectOriginalSale(OriginalSaleCandidate candidate)
