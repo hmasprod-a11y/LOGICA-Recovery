@@ -6,6 +6,45 @@ namespace Hanouty.Desktop.Wpf;
 
 public partial class MainWindow : Window
 {
+    // Existing Host owns context authorization and trusted price readback.
+    // The UI only collects a draft and never grants financial authority.
+    private Func<string, string, decimal, bool>? _setFinancialContext;
+    private Func<decimal?>? _readTrustedCashTotal;
+
+    public void ConfigureCashierEntry(Func<string, string, decimal, bool> setFinancialContext,
+        Func<decimal?> readTrustedCashTotal)
+    {
+        ArgumentNullException.ThrowIfNull(setFinancialContext);
+        ArgumentNullException.ThrowIfNull(readTrustedCashTotal);
+        if (_setFinancialContext is not null) throw new InvalidOperationException("Cashier entry already configured.");
+        _setFinancialContext = setFinancialContext;
+        _readTrustedCashTotal = readTrustedCashTotal;
+    }
+
+    public bool ShowCashierEntry()
+    {
+        if (DataContext is not CatalogueViewModel vm || vm.CheckoutBusy || vm.CheckoutUncertain ||
+            !vm.FinancialSessionActive || _setFinancialContext is null || _readTrustedCashTotal is null)
+            return false;
+        decimal? trustedTotal;
+        try { trustedTotal = _readTrustedCashTotal(); }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException) { return false; }
+        if (trustedTotal is null || trustedTotal < 0m) return false;
+        var dialog = new CashierEntryDialog(trustedTotal) { Owner = this };
+        if (dialog.ShowDialog() != true || dialog.Draft is not { } draft) return false;
+        // Recheck after the modal interaction; Host independently rejects busy/unknown.
+        if (vm.CheckoutBusy || vm.CheckoutUncertain || !vm.FinancialSessionActive) return false;
+        try
+        {
+            if (!_setFinancialContext(draft.Cashier, draft.Register, draft.CashMad)) return false;
+            vm.PaymentContext = new CashierPaymentContext(draft.Cashier, draft.Register, "MAD", "Cash", draft.CashMad);
+            return true;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException) { return false; }
+    }
+
+    private void CashierEntry_Click(object sender, RoutedEventArgs e) => ShowCashierEntry();
+
     private Func<string, CheckoutResolution, Func<string>, bool>? _review;
     public void ConfigureReviewedCheckout(Func<string, CheckoutResolution, Func<string>, bool> review)
     {
