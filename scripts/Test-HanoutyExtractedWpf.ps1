@@ -73,14 +73,21 @@ try {
     }
     # Persist exact package identity next to the runtime acceptance evidence.
     # This is W1 provenance only: no financial W2 acceptance is implied.
-    $packageFiles = @('Hanouty.Desktop.Bootstrap.exe') + $required
+    # Record every extracted payload file, not only the bootstrap assembly.
+    # A dependency DLL must not be replaceable without changing the manifest.
+    $packageRoot = [IO.Path]::GetFullPath($ExtractedDirectory).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    $packageFiles = @(Get-ChildItem -LiteralPath $ExtractedDirectory -File -Recurse | Sort-Object FullName)
+    if ($packageFiles.Count -lt 4) { throw 'Extracted WPF package has an incomplete payload.' }
     $hashes = @()
-    foreach ($name in $packageFiles) {
-        $item = Join-Path ([IO.Path]::GetFullPath($ExtractedDirectory)) $name
+    foreach ($item in $packageFiles) {
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Extracted WPF package contains a linked file: $($item.FullName)"
+        }
+        $relative = $item.FullName.Substring($packageRoot.Length).Replace('\', '/')
         $hashes += [ordered]@{
-            file = $name
-            sha256 = (Get-FileHash -LiteralPath $item -Algorithm SHA256).Hash.ToLowerInvariant()
-            bytes = (Get-Item -LiteralPath $item).Length
+            file = $relative
+            sha256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            bytes = $item.Length
         }
     }
     $provenance = [ordered]@{
