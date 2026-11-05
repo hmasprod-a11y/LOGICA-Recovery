@@ -12,9 +12,9 @@ $archive = 'mariadb-10.11.14-winx64.zip'
 $url = 'https://archive.mariadb.org/mariadb-10.11.14/winx64-packages'
 Invoke-WebRequest "$url/$archive" -OutFile (Join-Path $root $archive)
 $checks = (Invoke-WebRequest "$url/sha256sums.txt").Content
-$matching = @($checks -split "`n" | Where-Object { $_ -match ('\\s' + [regex]::Escape($archive) + '\\s*$') })
+$matching = @($checks -split "`n" | Where-Object { $_ -match ('\s' + [regex]::Escape($archive) + '\s*$') })
 if ($matching.Count -ne 1) { throw 'MariaDB archive checksum entry missing or ambiguous.' }
-$expected = ($matching[0].Trim() -split '\\s+')[0].ToLowerInvariant()
+$expected = ($matching[0].Trim() -split '\s+')[0].ToLowerInvariant()
 if ((Get-FileHash (Join-Path $root $archive) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) {
     throw 'Disposable MariaDB archive integrity check failed.'
 }
