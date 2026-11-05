@@ -34,6 +34,14 @@ public sealed class CheckoutSession
         _snapshot = _composition.AllProducts();
     }
     public int PendingCount => _batch.PendingCount;
+
+    // A detached, read-only identity/quantity snapshot of THIS staged session.
+    // The Host passes these existing contract lines to Checkout's real price
+    // reader; UI text never becomes a price or an authorization grant.
+    public IReadOnlyList<CheckoutBatchLine> PendingLines
+    {
+        get { return _batch.SnapshotLines(); }
+    }
     public CheckoutCommitState State => _batch.State;
     public string? OperationId => _operationId ?? _batch.UncertainOperationId;
 

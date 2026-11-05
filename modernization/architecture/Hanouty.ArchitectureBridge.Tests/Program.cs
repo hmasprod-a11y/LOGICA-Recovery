@@ -506,6 +506,46 @@ try { unknownBatch.AddBatch(new[] { new CheckoutBatchLine("article-01", 1) }, "u
 catch (InvalidOperationException ex) when (ex.Message.Contains("Financial outcome unknown")) { }
 Assert(unknownPort.Calls == 0, "unknown journal cannot trigger financial write");
 
+
+var snapshotPort = new RecordingAtomicBatchPort();
+var snapshotSession = new CheckoutComposition(new CompositionCatalogue(),
+    new RecordingPrompt { Choice = 0 }, snapshotPort, new CompositionJournal()).CreateSession();
+Assert(snapshotSession.PendingLines.Count == 0, "empty session snapshot has no lines");
+snapshotSession.Scan("123", 2);
+snapshotSession.Scan("123", 3);
+var capturedLines = snapshotSession.PendingLines;
+Assert(capturedLines.Count == 1 && capturedLines[0] == new CheckoutBatchLine("11", 5) &&
+    snapshotPort.Calls.Count == 0, "pending lines aggregate repeated scans without posting");
+try { ((IList<CheckoutBatchLine>)capturedLines)[0] = new CheckoutBatchLine("forged", 99);
+    throw new Exception("mutable pending snapshot"); }
+catch (NotSupportedException) { }
+snapshotSession.Scan("123", 1);
+Assert(capturedLines[0].Quantity == 5 && snapshotSession.PendingLines[0].Quantity == 6,
+    "pending lines are detached from later session edits");
+snapshotPort.OnAdd = () => Assert(snapshotSession.PendingLines.Single() ==
+    new CheckoutBatchLine("11", 6), "context provider reads same frozen cart during commit");
+Assert(snapshotSession.Submit("snapshot-live-commit") == CheckoutBatchStatus.Committed &&
+    snapshotPort.Calls.Single().Lines.Single() == new CheckoutBatchLine("11", 6) &&
+    snapshotSession.PendingLines.Count == 0,
+    "production commit shares snapshot aggregation and clears committed lines");
+var unknownSnapshotPort = new ThrowingAtomicBatchPort();
+var unknownSnapshot = new CheckoutComposition(new CompositionCatalogue(),
+    new RecordingPrompt { Choice = 0 }, unknownSnapshotPort, new CompositionJournal()).CreateSession();
+unknownSnapshot.Scan("123");
+try { unknownSnapshot.Submit("snapshot-unknown"); }
+catch (ApplicationException) { }
+try { _ = unknownSnapshot.PendingLines; throw new Exception("unknown snapshot exposed"); }
+catch (InvalidOperationException) { }
+Assert(unknownSnapshotPort.Attempts == 1, "unknown session snapshot cannot authorize retry");
+var overflowSnapshotPort = new RecordingAtomicBatchPort();
+var overflowSnapshot = new CheckoutComposition(new CompositionCatalogue(),
+    new RecordingPrompt { Choice = 0 }, overflowSnapshotPort, new CompositionJournal()).CreateSession();
+overflowSnapshot.Scan("123", int.MaxValue);
+overflowSnapshot.Scan("123", 1);
+try { _ = overflowSnapshot.PendingLines; throw new Exception("overflow snapshot accepted"); }
+catch (OverflowException) { }
+Assert(overflowSnapshotPort.Calls.Count == 0, "quantity overflow cannot reach posting from preview");
+
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
 {
     public List<(string, int)> Calls { get; } = new();
@@ -559,8 +599,12 @@ sealed class RecordingPrompt : ICheckoutVariantPrompt
 sealed class RecordingAtomicBatchPort : IAtomicCheckoutBatchPort
 {
     public List<(List<CheckoutBatchLine> Lines, string OperationId)> Calls { get; } = new();
+    public Action? OnAdd { get; set; }
     public void AddBatch(IReadOnlyList<CheckoutBatchLine> lines, string operationId)
-        => Calls.Add((lines.ToList(), operationId));
+    {
+        Calls.Add((lines.ToList(), operationId));
+        OnAdd?.Invoke();
+    }
 }
 sealed class ThrowingAtomicBatchPort : IAtomicCheckoutBatchPort
 {

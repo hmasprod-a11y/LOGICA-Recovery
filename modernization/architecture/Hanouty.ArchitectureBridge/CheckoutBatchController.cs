@@ -69,6 +69,35 @@ public sealed class CheckoutBatchController
         return result;
     }
 
+    // Immutable identity/quantity input for the Host's authoritative price read.
+    // This never authorizes a sale, calculates prices or touches persistence.
+    public IReadOnlyList<CheckoutBatchLine> SnapshotLines()
+    {
+        if (_uncertainOperationId is not null)
+            throw new InvalidOperationException("Resolve uncertain operation before requesting a fresh cart preview.");
+        // Reads are safe during synchronous commit: mutation is already locked.
+        var lines = new List<CheckoutBatchLine>(_pending.Count);
+        var positions = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var pending in _pending)
+            AppendLine(lines, positions, pending.Candidate.ArticleId, pending.Quantity);
+        return lines.AsReadOnly();
+    }
+
+    private static void AppendLine(List<CheckoutBatchLine> lines,
+        Dictionary<string, int> positions, string articleId, int quantity)
+    {
+        if (positions.TryGetValue(articleId, out var position))
+        {
+            var existing = lines[position];
+            lines[position] = existing with { Quantity = checked(existing.Quantity + quantity) };
+        }
+        else
+        {
+            positions.Add(articleId, lines.Count);
+            lines.Add(new CheckoutBatchLine(articleId, quantity));
+        }
+    }
+
     public void Clear()
     {
         EnsureMutable();
@@ -99,16 +128,7 @@ public sealed class CheckoutBatchController
                     live.Article?.ArticleId != pending.Candidate.ArticleId ||
                     live.Article.Barcode != pending.Candidate.Barcode)
                     return CheckoutBatchStatus.Invalidated;
-                if (positions.TryGetValue(pending.Candidate.ArticleId, out var position))
-                {
-                    var existing = lines[position];
-                    lines[position] = existing with { Quantity = checked(existing.Quantity + pending.Quantity) };
-                }
-                else
-                {
-                    positions.Add(pending.Candidate.ArticleId, lines.Count);
-                    lines.Add(new CheckoutBatchLine(pending.Candidate.ArticleId, pending.Quantity));
-                }
+                AppendLine(lines, positions, pending.Candidate.ArticleId, pending.Quantity);
             }
             try { _cart.AddBatch(lines.AsReadOnly(), operationId); }
             catch
