@@ -22,6 +22,26 @@ namespace LOGICA.Infrastructure.Inventory
                 "Manual stock adjustment is disabled until verified actor-scoped authorization is configured.");
         }
 
+        // Approved adapters must be wired by the trusted application composition root.
+        // Never accept a grant supplied by a WPF command or from plan.UserId.
+        // This gate is intentionally non-writing until a persisted actor-scoped
+        // permission implementation is reviewed and configured.
+        internal static void ValidateAuthorizationContext(MySqlConnection connection,
+            MySqlTransaction transaction, StockAdjustmentPlan plan,
+            IManualStockAuthorization authorization, string authenticatedSessionId)
+        {
+            if (connection == null || transaction == null || plan == null || authorization == null ||
+                String.IsNullOrWhiteSpace(authenticatedSessionId))
+                throw new UnauthorizedAccessException("Verified manual stock authorization context is required.");
+            if (connection.State != ConnectionState.Open ||
+                !Object.ReferenceEquals(transaction.Connection, connection))
+                throw new UnauthorizedAccessException("Authorization must use the active stock transaction.");
+            VerifiedManualStockActor actor = authorization.VerifyForWrite(
+                connection, transaction, authenticatedSessionId, plan.UserId);
+            if (actor == null || !String.Equals(actor.UserId, plan.UserId, StringComparison.Ordinal))
+                throw new UnauthorizedAccessException("Manual stock actor does not match the verified session.");
+        }
+
         // Transaction-owning entry point for the new Application/WPF workflow.
         // The existing Apply overload remains available to an explicitly coordinated
         // caller-owned transaction; this method never shares a checkout transaction.
