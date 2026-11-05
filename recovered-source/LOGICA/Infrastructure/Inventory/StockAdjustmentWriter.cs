@@ -118,10 +118,26 @@ namespace LOGICA.Infrastructure.Inventory
             }
         }
 
+        // Explicit integration entry point: the trusted composition root must
+        // supply the authenticated session and persisted-grant adapter. Checkout
+        // must pass its existing transaction; this method never starts one.
+        internal static void ApplyAuthorized(MySqlConnection connection, MySqlTransaction transaction,
+            StockAdjustmentPlan plan, IManualStockAuthorization authorization,
+            string authenticatedSessionId)
+        {
+            ValidateAuthorizationContext(connection, transaction, plan, authorization, authenticatedSessionId);
+            ApplyCore(connection, transaction, plan);
+        }
+
         internal static void Apply(MySqlConnection connection, MySqlTransaction transaction,
             StockAdjustmentPlan plan)
         {
             RequireVerifiedActorAuthorization();
+        }
+
+        private static void ApplyCore(MySqlConnection connection, MySqlTransaction transaction,
+            StockAdjustmentPlan plan)
+        {
             if (connection == null) throw new ArgumentNullException("connection");
             if (transaction == null) throw new ArgumentNullException("transaction");
             if (plan == null) throw new ArgumentNullException("plan");
