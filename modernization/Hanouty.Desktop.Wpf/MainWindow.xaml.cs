@@ -88,13 +88,13 @@ public partial class MainWindow : Window
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _endFinancialSession is null) return false;
         _logoutOpen = true;
-        _originalSaleSelection?.Clear();
-        OriginalSaleResults.ItemsSource = null;
-        _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
-        OriginalSaleStatus.Text = "No original sale selected — refunds unavailable";
         try
         {
             if (!_endFinancialSession()) return false;
+            _originalSaleSelection?.Clear();
+            OriginalSaleResults.ItemsSource = null;
+            _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
+            OriginalSaleStatus.Text = "No original sale selected — refunds unavailable";
             // The Host has confirmed logout. Revoke the WPF session locally even
             // when a Host callback does not mutate the ViewModel itself.
             // This also invalidates stale product/scanner and cash context.
