@@ -48,7 +48,7 @@ internal static class StockAdjustmentMariaDbSmoke {
             Require(Number(db,"SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('TABLE_ARTICLES','TABLE_PARAMETRES','TABLE_MOUVEMENTS_STOCK')")==0m,"Refusing existing fixture tables");
             Sql(db,"CREATE TABLE TABLE_ARTICLES (ID_ARTICLE VARCHAR(128) PRIMARY KEY,STOCK DECIMAL(18,3),Code TEXT,Article TEXT) ENGINE=InnoDB");
             Sql(db,"CREATE TABLE TABLE_PARAMETRES (OBJET VARCHAR(128),VALEUR VARCHAR(32)) ENGINE=InnoDB");
-            Sql(db,"CREATE TABLE TABLE_MOUVEMENTS_STOCK (LIBELLE VARCHAR(255),QUANTITE DECIMAL(18,3)) ENGINE=InnoDB");
+            Sql(db,"CREATE TABLE TABLE_MOUVEMENTS_STOCK (DATES DATETIME,HEURE VARCHAR(16),LIBELLE VARCHAR(255),ID_ARTICLE VARCHAR(128),CODE_ARTICLE TEXT,ARTICLE TEXT,QUANTITE DECIMAL(18,3)) ENGINE=InnoDB");
             try {
                 Sql(db,"INSERT INTO TABLE_ARTICLES VALUES ('CI-ARTICLE',10,'CI','Fixture'); INSERT INTO TABLE_PARAMETRES VALUES ('MODIF_STOCK_MANUEL','True')");
                 foreach(string actor in new[]{"FORGED","ADMIN","CI-USER"}) {
@@ -96,7 +96,30 @@ internal static class StockAdjustmentMariaDbSmoke {
                     }
                 }
                 Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==10m && Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==0m,"Denied actor changed stock/audit");
-                Console.WriteLine("PASS actual LOGICA Execute/Apply reject unverified actors with feature enabled; stock/audit unchanged. Manual adjustment remains DISABLED.");
+                // Explicit disposable-only persisted grant fixture. No migration
+                // or automatic table creation occurs in production writer code.
+                Sql(db,"CREATE TABLE HANOUTY_AUTH_SESSIONS (SESSION_TOKEN VARCHAR(128) PRIMARY KEY,ACTOR_ID VARCHAR(128) NOT NULL,EXPIRES_AT DATETIME NOT NULL,REVOKED_AT DATETIME NULL) ENGINE=InnoDB");
+                Sql(db,"CREATE TABLE HANOUTY_ACTOR_GRANTS (ACTOR_ID VARCHAR(128) NOT NULL,PERMISSION_CODE VARCHAR(80) NOT NULL,EXPIRES_AT DATETIME NULL,REVOKED_AT DATETIME NULL,PRIMARY KEY(ACTOR_ID,PERMISSION_CODE)) ENGINE=InnoDB");
+                try {
+                    Sql(db,"INSERT INTO HANOUTY_AUTH_SESSIONS VALUES ('CI-SECRET-SESSION','CI-USER',DATE_ADD(UTC_TIMESTAMP(),INTERVAL 1 HOUR),NULL)");
+                    Sql(db,"INSERT INTO HANOUTY_ACTOR_GRANTS VALUES ('CI-USER','ManualStockAdjustment',NULL,NULL)");
+                    var providerType=assembly.GetType("LOGICA.Infrastructure.Inventory.MariaDbManualStockAuthorization",true);
+                    var provider=Activator.CreateInstance(providerType,true);
+                    Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,scopedPlan,provider,"FORGED-SESSION"}));
+                    Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==10m,"Forged session changed stock");
+                    executeAuthorized.Invoke(null,new object[]{cs,scopedPlan,provider,"CI-SECRET-SESSION"});
+                    Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m,"Authorized stock not persisted");
+                    Require(Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,"Authorized movement audit missing");
+                    Require(Number(db,"SELECT QUANTITE FROM TABLE_MOUVEMENTS_STOCK")==2m,"Incorrect audited movement delta");
+                    Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,scopedPlan,provider,"FORGED-SESSION"}));
+                    Sql(db,"UPDATE HANOUTY_ACTOR_GRANTS SET REVOKED_AT=UTC_TIMESTAMP() WHERE ACTOR_ID='CI-USER'");
+                    object nextPlan=create.Invoke(null,new object[]{"CI-ARTICLE",12m,13m,"revoked grant","CI-USER"});
+                    Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,nextPlan,provider,"CI-SECRET-SESSION"}));
+                    Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m && Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,"Revoked grant changed stock or audit");
+                } finally {
+                    Sql(db,"DROP TABLE HANOUTY_ACTOR_GRANTS; DROP TABLE HANOUTY_AUTH_SESSIONS");
+                }
+                Console.WriteLine("PASS persisted actor-scoped authorized adjustment, audit and revoked/forged denial on disposable MariaDB.");
             } finally {
                 Sql(db,"DROP TABLE TABLE_MOUVEMENTS_STOCK; DROP TABLE TABLE_PARAMETRES; DROP TABLE TABLE_ARTICLES");
             }
