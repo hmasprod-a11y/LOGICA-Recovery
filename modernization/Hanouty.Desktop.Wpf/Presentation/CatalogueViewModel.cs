@@ -42,7 +42,19 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             _financialSessionActive = value;
             // A fresh-session host must reissue the authorized payment context.
             // Logging out must not leave a previously authorized tender reusable on login.
-            if (!value) ClearConsumedPaymentContext();
+            if (!value)
+            {
+                ClearConsumedPaymentContext();
+                // Logout invalidates the selection/variant choice from the old cashier.
+                // Never allow a re-login to submit a previously staged article.
+                _selectedProduct = null;
+                OnPropertyChanged(nameof(SelectedProduct));
+                BarcodeCandidates = Array.Empty<ProductSummary>();
+                OnPropertyChanged(nameof(BarcodeCandidates));
+                OnPropertyChanged(nameof(HasBarcodeAmbiguity));
+                _scannerText = "";
+                OnPropertyChanged(nameof(ScannerText));
+            }
             OnPropertyChanged();
             OnPropertyChanged(nameof(CanCommit));
             OnPropertyChanged(nameof(CanSelectProduct));
