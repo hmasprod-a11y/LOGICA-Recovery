@@ -64,6 +64,21 @@ namespace LOGICA.Infrastructure.Inventory
                 connection, transaction, authenticatedSessionId, plan.UserId);
             if (actor == null || !String.Equals(actor.UserId, plan.UserId, StringComparison.Ordinal))
                 throw new UnauthorizedAccessException("Manual stock actor does not match the verified session.");
+            // A provider must not commit or end the transaction while checking
+            // the grant. The stock update and its audit require that same live
+            // transaction, including any concurrent revocation locks.
+            try
+            {
+                using (var activeAfterGrant = new MySqlCommand("SELECT @@in_transaction", connection, transaction))
+                {
+                    if (Convert.ToInt32(activeAfterGrant.ExecuteScalar(), CultureInfo.InvariantCulture) != 1)
+                        throw new UnauthorizedAccessException("Authorization provider ended the stock transaction.");
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                throw new UnauthorizedAccessException("Authorization provider ended the stock transaction.");
+            }
         }
 
         // Transaction-owning entry point for the new Application/WPF workflow.
