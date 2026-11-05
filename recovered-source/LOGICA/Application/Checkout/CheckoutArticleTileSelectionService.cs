@@ -38,9 +38,12 @@ namespace LOGICA.ApplicationLayer.Checkout
                 article.IsNull("ID_ARTICLE") ||
                 String.IsNullOrWhiteSpace(Convert.ToString(article["ID_ARTICLE"])))
                 throw new InvalidOperationException("Image tile article identity is incomplete.");
+            string articleId = Convert.ToString(article["ID_ARTICLE"]);
+            if (String.IsNullOrWhiteSpace(articleId))
+                throw new InvalidOperationException("Image tile article identity is incomplete.");
             return new CheckoutArticleTileReference(
                 article.IsNull("Code") ? "" : (Convert.ToString(article["Code"]) ?? ""),
-                Convert.ToString(article["ID_ARTICLE"]) ?? throw new InvalidOperationException("Image tile article identity is incomplete."));
+                articleId);
         }
 
         // Typed result for a future UI: distinguish missing, ambiguous and
