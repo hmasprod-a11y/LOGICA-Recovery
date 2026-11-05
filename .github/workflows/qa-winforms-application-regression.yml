@@ -22,19 +22,11 @@ jobs:
           $issues = @()
           foreach ($file in $files) {
             $source = [IO.File]::ReadAllText($file.FullName)
-            # Check only callsites where LOGICA.Application is imported and
-            # Application is used as a WinForms static class without a binding.
-            if ($source -match '(?m)^using\s+LOGICA\.Application\s*;' -and
-                $source -match '(?<![\w.])Application\.(StartupPath|DoEvents|Exit|ExitThread|ExecutablePath|OpenForms|ProductName|Restart|Run|SetHighDpiMode|SetCompatibleTextRenderingDefault|EnableVisualStyles)\b' -and
-                $source -notmatch '(?m)^using\s+Application\s*=\s*System\.Windows\.Forms\.Application\s*;') {
+            # In LOGICA namespace, unqualified Application resolves to LOGICA.Application.
+            # Alias alone does not prevent CS0234; require global qualification.
+            if ($source -match '(?m)^namespace\s+LOGICA\s*[;{]' -and
+                $source -match '(?<![\w.])Application\.(StartupPath|DoEvents|Exit|ExitThread|ExecutablePath|OpenForms|ProductName|Restart|Run|SetHighDpiMode|SetCompatibleTextRenderingDefault|EnableVisualStyles)\b') {
               $issues += $file.FullName
-            }
-          }
-          foreach ($name in @('Form_1_LOGIN.cs','Form_2_ARTICLES.cs')) {
-            $path = Join-Path 'recovered-source/LOGICA' $name
-            if (!(Test-Path $path) -or
-                (Get-Content $path -Raw) -notmatch '(?m)^using Application = System\.Windows\.Forms\.Application;') {
-              $issues += $path
             }
           }
           Write-Host "Inspected $($files.Count) recovered C# files."
