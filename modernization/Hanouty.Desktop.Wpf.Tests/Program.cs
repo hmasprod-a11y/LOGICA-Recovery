@@ -379,6 +379,21 @@ Check(reconciliationVm.CheckoutUncertain && reconciliationPort.Ids.Count == 1,
 reconciliationVm.PaymentContext = new CashierPaymentContext("different", "register", "MAD", "cash", 10m);
 Check(reconciliationVm.PaymentContext?.CashierId == "cashier",
     "uncertain checkout must freeze cashier identity");
+// A disabled WPF button is not a transaction authorization boundary.
+// Direct keyboard/programmatic commit after logout must not reach the production port.
+var loggedOutCommitPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Committed };
+var loggedOutCommitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(),
+    submission: loggedOutCommitPort) { PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m) };
+loggedOutCommitVm.FinancialSessionActive = false;
+loggedOutCommitVm.CommitCommand.Execute(null);
+loggedOutCommitVm.CommitCheckout();
+Check(loggedOutCommitPort.Ids.Count == 0 && loggedOutCommitVm.PendingOperationId is null &&
+    loggedOutCommitVm.CommitFeedback == "Cashier session required",
+    "logged-out direct commit must not allocate an operation or call the checkout port");
+loggedOutCommitVm.FinancialSessionActive = true;
+loggedOutCommitVm.CommitCommand.Execute(null);
+Check(loggedOutCommitPort.Ids.Count == 1 && loggedOutCommitVm.PendingOperationId is null,
+    "fresh active cashier session permits a new acknowledged operation");
 var committedPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Committed };
 var committedVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: committedPort) { PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m) };
 committedVm.CommitCheckout();
