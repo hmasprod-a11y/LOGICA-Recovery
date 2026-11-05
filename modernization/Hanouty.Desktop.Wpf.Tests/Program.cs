@@ -688,6 +688,38 @@ var reviewThread = new System.Threading.Thread(() =>
             "resolved operation cannot be reviewed a second time");
         window.Close();
 
+        // Persisted result: Host denial must preserve the durable identity and
+        // prevent any financial replay. Fresh authorization may then resolve it.
+        var persistedPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
+        var persistedJournal = new RecordingReconciliation { Result = CheckoutResolution.Persisted };
+        var persistedWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new RecordingSelection(), new ReconciledSubmission(persistedPort, persistedJournal),
+            financialContext, requireFreshPaymentContext: true);
+        var persistedVm = (CatalogueViewModel)persistedWindow.DataContext;
+        persistedVm.CommitCheckout();
+        var persistedId = persistedVm.PendingOperationId;
+        persistedVm.ReconcileCheckout();
+        int persistedAuthority = 0;
+        int persistedPinReads = 0;
+        persistedWindow.ConfigureReviewedCheckout((id, result, readPin) =>
+        {
+            persistedAuthority++;
+            Check(id == persistedId && result == CheckoutResolution.Persisted,
+                "Host review must receive exact persisted identity");
+            if (persistedAuthority == 1) return false;
+            return readPin() == "fresh-session";
+        });
+        Check(!persistedWindow.ReviewResolvedCheckout(() => { persistedPinReads++; return "unused"; }) &&
+            persistedPinReads == 0 && persistedVm.CheckoutUncertain &&
+            persistedVm.PendingOperationId == persistedId && persistedPort.Ids.Count == 1,
+            "denied persisted review must not read PIN, unlock or replay");
+        Check(persistedWindow.ReviewResolvedCheckout(() => { persistedPinReads++; return "fresh-session"; }) &&
+            persistedAuthority == 2 && persistedPinReads == 1 &&
+            !persistedVm.CheckoutUncertain && persistedVm.PendingOperationId is null &&
+            persistedVm.PaymentContext is null && persistedPort.Ids.Count == 1,
+            "authorized persisted review resets only UI and expires stale tender");
+        persistedWindow.Close();
+
         // Actual WPF window: an unresolved journal must never invoke the Host
         // review authority or read a transient PIN, and cannot release the operation.
         var unresolvedPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
