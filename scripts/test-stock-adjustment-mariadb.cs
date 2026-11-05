@@ -116,6 +116,15 @@ internal static class StockAdjustmentMariaDbSmoke {
                     object nextPlan=create.Invoke(null,new object[]{"CI-ARTICLE",12m,13m,"revoked grant","CI-USER"});
                     Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,nextPlan,provider,"CI-SECRET-SESSION"}));
                     Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m && Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,"Revoked grant changed stock or audit");
+                    Sql(db,"UPDATE HANOUTY_ACTOR_GRANTS SET REVOKED_AT=NULL WHERE ACTOR_ID='CI-USER'");
+                    Sql(db,"UPDATE HANOUTY_AUTH_SESSIONS SET REVOKED_AT=UTC_TIMESTAMP() WHERE SESSION_TOKEN='CI-SECRET-SESSION'");
+                    Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,nextPlan,provider,"CI-SECRET-SESSION"}));
+                    Sql(db,"UPDATE HANOUTY_AUTH_SESSIONS SET REVOKED_AT=NULL,EXPIRES_AT=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 SECOND) WHERE SESSION_TOKEN='CI-SECRET-SESSION'");
+                    Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,nextPlan,provider,"CI-SECRET-SESSION"}));
+                    Sql(db,"UPDATE HANOUTY_AUTH_SESSIONS SET EXPIRES_AT=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 1 HOUR) WHERE SESSION_TOKEN='CI-SECRET-SESSION'");
+                    Sql(db,"UPDATE HANOUTY_ACTOR_GRANTS SET EXPIRES_AT=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 SECOND) WHERE ACTOR_ID='CI-USER'");
+                    Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,nextPlan,provider,"CI-SECRET-SESSION"}));
+                    Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m && Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,"Revoked or expired session/grant changed stock or audit");
                 } finally {
                     Sql(db,"DROP TABLE HANOUTY_ACTOR_GRANTS; DROP TABLE HANOUTY_AUTH_SESSIONS");
                 }
