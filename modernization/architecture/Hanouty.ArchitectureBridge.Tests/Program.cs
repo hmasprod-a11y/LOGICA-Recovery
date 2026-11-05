@@ -673,16 +673,30 @@ catch (UnauthorizedAccessException) { anonymousDenied = true; }
 Assert(unauthorizedDenied && anonymousDenied && verifiedPermissions.Calls == 2,
     "manual stock authorization denies missing actor and explicit permission denial");
 
+var failingPermissionSource = new StubManualStockPermissionReader { ThrowOnRead = true };
+verifiedActorSource.Actor = trustedActor;
+var permissionBackendDenied = false;
+try { ManualStockAuthorizationBoundary.RequireAuthorized(verifiedActorSource, failingPermissionSource); }
+catch (UnauthorizedAccessException) { permissionBackendDenied = true; }
+verifiedActorSource.ThrowOnRead = true;
+var identityBackendDenied = false;
+try { ManualStockAuthorizationBoundary.RequireAuthorized(verifiedActorSource, verifiedPermissions); }
+catch (UnauthorizedAccessException) { identityBackendDenied = true; }
+Assert(permissionBackendDenied && identityBackendDenied,
+    "manual stock authorization fails closed on identity and permission backend exceptions");
+
 sealed class StubVerifiedStockActorSource : IVerifiedStockActorSource
 {
     public VerifiedStockActor? Actor { get; set; }
-    public VerifiedStockActor? CurrentVerifiedActor() => Actor;
+    public bool ThrowOnRead { get; set; }
+    public VerifiedStockActor? CurrentVerifiedActor() => ThrowOnRead ? throw new InvalidOperationException("identity backend unavailable") : Actor;
 }
 sealed class StubManualStockPermissionReader : IManualStockPermissionReader
 {
     public bool Allowed { get; set; }
+    public bool ThrowOnRead { get; set; }
     public int Calls { get; private set; }
-    public bool CanAdjustStock(VerifiedStockActor actor) { Calls++; return Allowed; }
+    public bool CanAdjustStock(VerifiedStockActor actor) { Calls++; if (ThrowOnRead) throw new InvalidOperationException("permission backend unavailable"); return Allowed; }
 }
 
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
