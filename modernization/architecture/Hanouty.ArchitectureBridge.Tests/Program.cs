@@ -558,6 +558,28 @@ Assert(snapshotSession.Submit("snapshot-live-commit") == CheckoutBatchStatus.Com
     lineSnapshotPort.Calls.Single().Lines.Single() == new CheckoutBatchLine("11", 6) &&
     snapshotSession.PendingLines.Count == 0,
     "production commit shares snapshot aggregation and clears committed lines");
+// The trusted cash quote must read the SAME Application session as WPF selection,
+// not reconstruct quantities from UI rows or a second catalogue instance.
+var quotePort = new RecordingAtomicBatchPort();
+var quoteSession = new CheckoutComposition(new CompositionCatalogue(),
+    new RecordingPrompt { Choice = 0 }, quotePort, new CompositionJournal()).CreateSession();
+var quoteProduct = quoteSession.Products.Single(p => p.ArticleId == "21");
+Assert(quoteSession.SelectArticle(quoteProduct, 2).Outcome == SelectionOutcome.Selected,
+    "barcode-free list article stages through the production Application session");
+Assert(quoteSession.SelectArticle(quoteProduct, 1).Outcome == SelectionOutcome.Selected,
+    "second selection uses the same staged basket");
+var trustedQuoteLines = quoteSession.PendingLines;
+Assert(trustedQuoteLines.Count == 1 && trustedQuoteLines[0] ==
+    new CheckoutBatchLine("21", 3),
+    "authoritative quote input aggregates selected list quantities, not WPF display values");
+try { ((IList<CheckoutBatchLine>)trustedQuoteLines)[0] = new CheckoutBatchLine("21", 99);
+    throw new Exception("trusted quote input was mutable"); }
+catch (NotSupportedException) { }
+Assert(quoteSession.Submit("quote-session-001") == CheckoutBatchStatus.Committed &&
+    quotePort.Calls.Single().Lines.Single() == trustedQuoteLines.Single() &&
+    quoteSession.PendingLines.Count == 0,
+    "quote input and committed batch have identical identities and quantities; next operation starts empty");
+
 var unknownSnapshotPort = new ThrowingAtomicBatchPort();
 var unknownSnapshot = new CheckoutComposition(new CompositionCatalogue(),
     new RecordingPrompt { Choice = 0 }, unknownSnapshotPort, new CompositionJournal()).CreateSession();
