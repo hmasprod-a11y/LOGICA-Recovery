@@ -556,7 +556,7 @@ foreach (var outcome in new[] { CheckoutResolution.Persisted, CheckoutResolution
     reviewed.ReconcileCheckout();
     Check(!reviewed.TryReviewResolvedCheckout((_, _) => false) && reviewed.CheckoutUncertain &&
         reviewed.PendingOperationId == oldId, "cancel or rejected PIN must retain review lock and identity");
-    Check(!reviewed.TryReviewResolvedCheckout((_, _) => throw new IOException()) &&
+    Check(!reviewed.TryReviewResolvedCheckout((_, _) => throw new System.IO.IOException()) &&
         reviewed.CheckoutUncertain, "review exception must fail closed");
     Check(reviewed.TryReviewResolvedCheckout((id, result) => {
         Check(id == oldId && result == outcome, "review must authorize the exact durable result");
