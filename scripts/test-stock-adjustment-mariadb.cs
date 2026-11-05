@@ -30,6 +30,8 @@ internal static class StockAdjustmentMariaDbSmoke {
         var create=planType.GetMethod("Create",BindingFlags.Static|BindingFlags.NonPublic);
         var apply=writerType.GetMethod("Apply",BindingFlags.Static|BindingFlags.NonPublic);
         var execute=writerType.GetMethod("Execute",BindingFlags.Static|BindingFlags.NonPublic);
+        var validate=writerType.GetMethod("ValidateAuthorizationContext",BindingFlags.Static|BindingFlags.NonPublic);
+        Require(validate!=null,"Missing writer-side actor authorization boundary");
         using(var db=new MySqlConnection(cs)) {
             db.Open();
             Require(Number(db,"SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('TABLE_ARTICLES','TABLE_PARAMETRES','TABLE_MOUVEMENTS_STOCK')")==0m,"Refusing existing fixture tables");
@@ -45,6 +47,13 @@ internal static class StockAdjustmentMariaDbSmoke {
                         Denied(()=>apply.Invoke(null,new object[]{db,tx,plan}));
                         tx.Commit();
                     }
+                }
+                object scopedPlan=create.Invoke(null,new object[]{"CI-ARTICLE",10m,12m,"scoped authorization check","CI-USER"});
+                using(var tx=db.BeginTransaction()) {
+                    Denied(()=>validate.Invoke(null,new object[]{db,tx,scopedPlan,null,"CI-SESSION"}));
+                    Denied(()=>validate.Invoke(null,new object[]{db,tx,scopedPlan,deny,""}));
+                    Denied(()=>validate.Invoke(null,new object[]{db,tx,scopedPlan,deny,"FORGED-SESSION"}));
+                    tx.Commit();
                 }
                 Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==10m && Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==0m,"Denied actor changed stock/audit");
                 Console.WriteLine("PASS actual LOGICA Execute/Apply reject unverified actors with feature enabled; stock/audit unchanged. Manual adjustment remains DISABLED.");
