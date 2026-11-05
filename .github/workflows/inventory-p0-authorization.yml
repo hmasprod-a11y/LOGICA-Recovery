@@ -1,0 +1,46 @@
+name: Inventory P0 unverified actor denial
+on:
+  push:
+    branches: [fix/inventory-catalogue-parameterized-lookup-20261102]
+    paths: ['recovered-source/LOGICA/Infrastructure/Inventory/StockAdjustmentWriter.cs', 'modernization/stock-authorization-acceptance/**', '.github/workflows/inventory-p0-authorization.yml']
+  pull_request:
+    paths: ['recovered-source/LOGICA/Infrastructure/Inventory/StockAdjustmentWriter.cs', 'modernization/stock-authorization-acceptance/**', '.github/workflows/inventory-p0-authorization.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-production-source:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compile and execute actual writer entry-point denial on Windows
+        run: dotnet run --project modernization/stock-authorization-acceptance/StockAuthorizationAcceptance.csproj -c Release -- --no-database
+  real-mariadb-denial:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: p0-disposable-root
+          MARIADB_DATABASE: logica_ci
+          MARIADB_USER: p0_test
+          MARIADB_PASSWORD: p0-disposable-only
+        ports: ['3307:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Reject forged/unverified/concurrent actors with global feature enabled
+        env:
+          HANOUTY_P0_DISPOSABLE: 'YES'
+          HANOUTY_P0_TEST_CONNECTION: Server=127.0.0.1;Port=3307;Database=logica_ci;Uid=p0_test;Pwd=p0-disposable-only;SslMode=Disabled;
+        run: dotnet run --project modernization/stock-authorization-acceptance/StockAuthorizationAcceptance.csproj -c Release
+      - name: Retained transaction and authorization source contract
+        run: python3 scripts/test-stock-adjustment-writer-contract.py

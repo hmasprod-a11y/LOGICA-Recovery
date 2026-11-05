@@ -12,7 +12,7 @@ required = {
     "transactional engine": '"InnoDB"',
     "persisted permission": "MODIF_STOCK_MANUEL",
     "permission row lock": "TABLE_PARAMETRES WHERE OBJET = 'MODIF_STOCK_MANUEL' FOR UPDATE",
-    "article row lock": "WHERE ID_ARTICLE = @id FOR UPDATE",
+    "article row lock": "WHERE BINARY ID_ARTICLE = BINARY @id FOR UPDATE",
     "duplicate identity guard": "Duplicate article identity.",
     "stale stock guard": "Stale stock snapshot",
     "optimistic update": "AND STOCK = @before",
@@ -82,7 +82,7 @@ assert readback in source
 assert source.index('UPDATE TABLE_ARTICLES SET STOCK') < source.index(readback)
 assert source.index(readback) < source.index('INSERT INTO TABLE_MOUVEMENTS_STOCK')
 assert 'Convert.ToDecimal(reader.GetValue(0), CultureInfo.InvariantCulture) != plan.AfterStock' in source
-assert source.count('WHERE ID_ARTICLE = @id FOR UPDATE') >= 2
+assert source.count('WHERE BINARY ID_ARTICLE = BINARY @id FOR UPDATE') >= 2
 print('PASS: exact persisted stock checked before audit insert; rollback on rounding')
 
 # MariaDB ROLLBACK TO SAVEPOINT keeps the savepoint allocated. A recoverable
@@ -91,3 +91,10 @@ catch_block = source[source.index('            catch\n            {', source.ind
 assert catch_block.index('"ROLLBACK TO SAVEPOINT " + savepointName') < catch_block.index('"RELEASE SAVEPOINT " + savepointName')
 assert source.count('"RELEASE SAVEPOINT " + savepointName') == 2, 'release on success and failure'
 print('PASS: failed adjustment releases local savepoint after rollback')
+
+# Both entry points deny an unverified actor before connection/stock/audit work.
+for signature in ("internal static void Execute(", "internal static void Apply("):
+    body = source.split(signature, 1)[1].split("{", 1)[1]
+    assert body.lstrip().startswith("RequireVerifiedActorAuthorization();"), signature
+assert 'throw new UnauthorizedAccessException(' in source
+print("PASS: actor authorization is fail-closed at Execute and Apply; feature remains disabled")

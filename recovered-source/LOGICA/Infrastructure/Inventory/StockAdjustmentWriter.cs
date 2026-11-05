@@ -11,11 +11,23 @@ namespace LOGICA.Infrastructure.Inventory
     // Legacy WinForms is not yet wired to this entry point.
     internal static class StockAdjustmentWriter
     {
+        // Fail closed at BOTH write entry points. No existing actor-scoped
+        // ManualStockAdjustment grant has been wired/accepted. A user label,
+        // ADMIN category or MODIF_QTE/global setting cannot mint that grant.
+        // Keep the transaction implementation below for the future reviewed
+        // integration, but it is deliberately unreachable through this API.
+        private static void RequireVerifiedActorAuthorization()
+        {
+            throw new UnauthorizedAccessException(
+                "Manual stock adjustment is disabled until verified actor-scoped authorization is configured.");
+        }
+
         // Transaction-owning entry point for the new Application/WPF workflow.
         // The existing Apply overload remains available to an explicitly coordinated
         // caller-owned transaction; this method never shares a checkout transaction.
         internal static void Execute(string connectionString, StockAdjustmentPlan plan)
         {
+            RequireVerifiedActorAuthorization();
             if (String.IsNullOrWhiteSpace(connectionString))
                 throw new ArgumentException("A local database connection is required.", "connectionString");
             if (plan == null) throw new ArgumentNullException("plan");
@@ -50,6 +62,7 @@ namespace LOGICA.Infrastructure.Inventory
         internal static void Apply(MySqlConnection connection, MySqlTransaction transaction,
             StockAdjustmentPlan plan)
         {
+            RequireVerifiedActorAuthorization();
             if (connection == null) throw new ArgumentNullException("connection");
             if (transaction == null) throw new ArgumentNullException("transaction");
             if (plan == null) throw new ArgumentNullException("plan");
