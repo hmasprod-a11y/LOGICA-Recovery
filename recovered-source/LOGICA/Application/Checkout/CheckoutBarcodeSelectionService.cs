@@ -20,7 +20,7 @@ namespace LOGICA.ApplicationLayer.Checkout
                    legacyEquals(basketLine["ID_ARTICLE"], selectedArticleId);
         }
 
-        internal static DataRow Select(DataTable matches, Func<DataTable, int> chooseDuplicate)
+        internal static DataRow? Select(DataTable matches, Func<DataTable, int> chooseDuplicate)
         {
             if (matches == null) throw new ArgumentNullException("matches");
             if (matches.Rows.Count == 0) return null;
