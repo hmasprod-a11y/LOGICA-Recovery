@@ -32,24 +32,41 @@ namespace LOGICA.Infrastructure.Inventory
             foreach (char c in requestedUserId)
                 if (Char.IsControl(c))
                     throw new UnauthorizedAccessException("Invalid inventory actor identity.");
-            // Bound bearer-token and actor inputs before querying the grant tables.
-            // Never normalize a secret or let a truncated database comparison
-            // accidentally authorize a different persisted identity.
-            if (authenticatedSessionId.Length > 128 || requestedUserId.Length > 128 ||
-                authenticatedSessionId != authenticatedSessionId.Trim() ||
-                requestedUserId != requestedUserId.Trim())
-                throw new UnauthorizedAccessException("Invalid manual stock session or actor identity.");
-            foreach (char value in authenticatedSessionId)
-                if (Char.IsControl(value))
-                    throw new UnauthorizedAccessException("Invalid manual stock session token.");
-            foreach (char value in requestedUserId)
-                if (Char.IsControl(value))
-                    throw new UnauthorizedAccessException("Invalid manual stock actor identity.");
+            if (db.State != ConnectionState.Open || !Object.ReferenceEquals(tx.Connection, db))
+                throw new UnauthorizedAccessException("Authorization requires the same open transaction.");
+            if (!String.Equals(db.DataSource, "127.0.0.1", StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(db.DataSource, "localhost", StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(db.DataSource, "::1", StringComparison.OrdinalIgnoreCase))
+                throw new UnauthorizedAccessException("Authorization requires local MariaDB.");
+            using (var active = new MySqlCommand("SELECT @@in_transaction", db, tx))
+            {
+                if (Convert.ToInt32(active.ExecuteScalar(), CultureInfo.InvariantCulture) != 1)
+                    throw new UnauthorizedAccessException("Authorization requires an active transaction.");
+            }
+            // FOR UPDATE must hold session/grant locks until stock+audit finish.
+            // Nontransactional grant tables cannot provide that guarantee.
+            using (var schema = new MySqlCommand(
+                "SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN " +
+                "('HANOUTY_AUTH_SESSIONS','HANOUTY_ACTOR_GRANTS')", db, tx))
+            using (var reader = schema.ExecuteReader())
+            {
+                int count = 0;
+                while (reader.Read())
+                {
+                    if (!String.Equals(Convert.ToString(reader.GetValue(1)), "InnoDB",
+                        StringComparison.OrdinalIgnoreCase))
+                        throw new UnauthorizedAccessException("Authorization storage requires InnoDB.");
+                    count++;
+                }
+                if (count != 2)
+                    throw new UnauthorizedAccessException("Authorization storage is not configured.");
+            }
             // Both rows are locked in the caller's stock transaction. Revocation
             // and expiry are checked on the database clock, never on WPF state.
             using (var command = new MySqlCommand(
                 "SELECT s.ACTOR_ID FROM HANOUTY_AUTH_SESSIONS s " +
-                "INNER JOIN HANOUTY_ACTOR_GRANTS g ON g.ACTOR_ID=s.ACTOR_ID " +
+                "INNER JOIN HANOUTY_ACTOR_GRANTS g ON BINARY g.ACTOR_ID=BINARY s.ACTOR_ID " +
                 "WHERE BINARY s.SESSION_TOKEN=BINARY @token " +
                 "AND BINARY s.ACTOR_ID=BINARY @actor " +
                 "AND s.REVOKED_AT IS NULL AND s.EXPIRES_AT>UTC_TIMESTAMP() " +
@@ -188,10 +205,10 @@ namespace LOGICA.Infrastructure.Inventory
         }
 
         // Explicit integration entry point: the trusted composition root must
-        // supply the authenticated session and persisted-grant adapter. Checkout
-        // must pass its existing transaction; this method never starts one.
-        // For standalone inventory workflows only. Checkout must call
-        // ApplyAuthorized with its own transaction, never this method.
+        // supply the authenticated session and persisted-grant adapter.
+        // This owns a standalone MANUAL adjustment transaction. Sale/return
+        // stock posting remains exclusively owned by Checkout and must use
+        // neither this method nor ApplyAuthorized.
         internal static void ExecuteAuthorized(string connectionString, StockAdjustmentPlan plan,
             IManualStockAuthorization authorization, string authenticatedSessionId)
         {

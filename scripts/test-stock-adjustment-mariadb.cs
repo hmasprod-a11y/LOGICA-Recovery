@@ -132,6 +132,14 @@ internal static class StockAdjustmentMariaDbSmoke {
                         Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==0m,
                         "Case-folded permission modified stock or audit");
                     Sql(db,"UPDATE HANOUTY_ACTOR_GRANTS SET PERMISSION_CODE='ManualStockAdjustment' WHERE ACTOR_ID='CI-USER'");
+                    // Collation must not lend a differently cased actor's grant
+                    // to the authenticated session actor.
+                    Sql(db,"UPDATE HANOUTY_ACTOR_GRANTS SET ACTOR_ID='ci-user'");
+                    Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,scopedPlan,provider,"CI-SECRET-SESSION"}));
+                    Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==10m &&
+                        Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==0m,
+                        "Case-folded grant actor changed stock or audit");
+                    Sql(db,"UPDATE HANOUTY_ACTOR_GRANTS SET ACTOR_ID='CI-USER'");
                     Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,scopedPlan,provider,"FORGED-SESSION"}));
                     Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==10m,"Forged session changed stock");
                     executeAuthorized.Invoke(null,new object[]{cs,scopedPlan,provider,"CI-SECRET-SESSION"});
@@ -255,6 +263,20 @@ internal static class StockAdjustmentMariaDbSmoke {
                         Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m &&
                             Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,
                             "Audit SQL failure did not roll back stock and movement atomically");
+                        // Savepoint must preserve the pair even if an outer owner
+                        // catches the SQL error and commits the surrounding work.
+                        using(var outer=db.BeginTransaction()) {
+                            try {
+                                applyAuthorized.Invoke(null,new object[]{db,outer,failingPlan,provider,"CI-SECRET-SESSION"});
+                                throw new Exception("Injected audit failure was accepted by ApplyAuthorized");
+                            } catch(TargetInvocationException ex) {
+                                if(!(ex.InnerException is MySqlException)) throw;
+                            }
+                            outer.Commit();
+                        }
+                        Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m &&
+                            Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,
+                            "Catch-and-commit retained a partial stock update after audit failure");
                     } finally {
                         Sql(db,"DROP TRIGGER CI_REJECT_STOCK_AUDIT");
                     }
