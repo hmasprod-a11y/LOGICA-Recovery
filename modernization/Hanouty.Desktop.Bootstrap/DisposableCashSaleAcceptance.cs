@@ -53,10 +53,10 @@ internal static class DisposableCashSaleAcceptance
         "SELECT CL FROM TABLE_NUM", "SELECT COUNT(*) FROM TABLE_01"
     }.Select(q => Number(settings, q).ToString(CultureInfo.InvariantCulture)));
 
-    private static CatalogueHost Host(CatalogueSettings settings, string pin, decimal amount = 5.25m) =>
+    private static CatalogueHost Host(CatalogueSettings settings, string pin, decimal amount = 5.25m, decimal? expectedTotal = null) =>
         CatalogueHost.CreateFinancial(settings, "01", () => pin,
             new AuthorizedCheckoutPaymentContext("O'Neil", "MAD", false,
-                new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, amount) }, amount), null,
+                new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, amount) }, expectedTotal ?? amount), null,
             ex => File.AppendAllText(Path.Combine(EvidenceDirectory, "posting-failures.txt"), ex + Environment.NewLine));
 
     private static void Select(CatalogueHost host)
@@ -200,14 +200,18 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                     denied.Session.PendingCount == 1 && Snapshot(settings) == before &&
                     denied.ViewModel.CheckoutUncertain,
                     "Wrong review PIN cleared draft or changed SQL.");
-                Require(denied.TryReviewResolvedCheckout(reviewId, CheckoutResolution.Absent,
-                    () => { pinReads++; return pin; }) && pinReads == 2 &&
-                    denied.Session.PendingCount == 0 && Snapshot(settings) == before &&
-                    denied.ViewModel.CheckoutUncertain,
-                    "Verified explicit review must clear only Application draft, leaving UI reset to its owner.");
-                Require(!denied.TryReviewResolvedCheckout(reviewId, CheckoutResolution.Absent,
-                    () => { pinReads++; return pin; }) && pinReads == 2,
-                    "Reviewed operation was authorized twice.");
+                Require(!denied.Window.ReviewResolvedCheckout(() => "") &&
+                    denied.ViewModel.CheckoutUncertain && Snapshot(settings) == before,
+                    "Cancelled PIN review must retain UI lock.");
+                Require(denied.Window.ReviewResolvedCheckout(() => { pinReads++; return pin; }) &&
+                    pinReads == 2 && denied.Session.PendingCount == 0 && Snapshot(settings) == before &&
+                    !denied.ViewModel.CheckoutUncertain && denied.ViewModel.PendingOperationId is null,
+                    "Verified UI review must clear only the old draft and operation identity.");
+                Require(!denied.Window.ReviewResolvedCheckout(() => { pinReads++; return pin; }) &&
+                    pinReads == 2, "Reviewed UI operation was authorized twice.");
+                denied.ViewModel.CommitCommand.Execute(null);
+                Require(Snapshot(settings) == before && denied.ViewModel.PendingOperationId is null,
+                    "Reset UI replayed the discarded basket.");
 
             }
             finally { denied.Window.Close(); }
@@ -273,21 +277,68 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 lostAck.Session.State == CheckoutCommitState.Ready && lostAck.ViewModel.CheckoutUncertain &&
                 Snapshot(settings) == committed,
                 "Lost acknowledgement failed persisted reconciliation or bypassed cashier review.");
-            Require(lostAck.TryReviewResolvedCheckout(lostAck.ViewModel.PendingOperationId!,
-                CheckoutResolution.Persisted, () => pin) &&
-                Snapshot(settings) == committed && lostAck.ViewModel.CheckoutUncertain,
-                "Persisted explicit review repeated financial writes or unlocked UI automatically.");
+            Require(!lostAck.Window.ReviewResolvedCheckout(() => "incorrect") &&
+                lostAck.ViewModel.CheckoutUncertain && Snapshot(settings) == committed,
+                "Wrong PIN unlocked persisted review.");
+            Require(lostAck.Window.ReviewResolvedCheckout(() => pin) &&
+                Snapshot(settings) == committed && !lostAck.ViewModel.CheckoutUncertain &&
+                lostAck.ViewModel.PendingOperationId is null && lostAck.Session.PendingCount == 0,
+                "Explicit persisted UI review must unlock only after authorization without financial replay.");
+            lostAck.ViewModel.CommitCommand.Execute(null);
+            Require(Snapshot(settings) == committed,
+                "Reviewed persisted sale was repeated from the cleared UI.");
 
         }
         finally { lostAck.Window.Close(); }
+
+        // V1 cash-change convention: gross positive tender + negative ESPECES
+        // change, net equals the authoritative ticket. Fault on the second row
+        // proves all writers share the same transaction.
+        var beforeChange = Snapshot(settings);
+        Sql(settings, "CREATE TRIGGER w2_change_failure AFTER INSERT ON TABLE_VENTES_REGLEMENTS FOR EACH ROW BEGIN IF NEW.MONTANT < 0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='w2-second-payment-row'; END IF; END");
+        var failedChange = Host(settings, pin, 10m, 5.25m);
+        try
+        {
+            Select(failedChange);
+            failedChange.ViewModel.CommitCommand.Execute(null);
+            Require(failedChange.ViewModel.CheckoutUncertain && Snapshot(settings) == beforeChange,
+                "Second change-row failure did not roll back the whole financial transaction.");
+        }
+        finally { failedChange.Window.Close(); Sql(settings, "DROP TRIGGER w2_change_failure"); }
+
+        var changeHost = Host(settings, pin, 10m, 5.25m);
+        try
+        {
+            Select(changeHost);
+            changeHost.ViewModel.CommitCommand.Execute(null);
+            Require(changeHost.ViewModel.CommitFeedback == "Checkout committed",
+                "Cash tender with change did not commit.");
+            var changeOperation = Convert.ToString(Value(settings,
+                "SELECT ID_TICKET FROM TABLE_VENTES_REGLEMENTS WHERE MONTANT=-4.75"))!;
+            Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id", changeOperation) == 2 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MONTANT=10 AND MODE_P='ESPECES'", changeOperation) == 1 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MONTANT=-4.75 AND MODE_P='ESPECES'", changeOperation) == 1 &&
+                Number(settings, "SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id", changeOperation) == 5.25m &&
+                Number(settings, "SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id", changeOperation) == 5.25m &&
+                Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == 97m,
+                "V1 tender/change sign, net ticket or stock mismatch.");
+            var afterChange = Snapshot(settings);
+            var port = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(
+                () => new MySqlConnection(settings.ConnectionString), "01", () => pin);
+            port.Commit(new AuthorizedCheckoutRequest(changeOperation, "O'Neil", "MAD", false,
+                new[] { new CheckoutBatchLine("W2-Article", 1) },
+                new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 10m) }, 5.25m));
+            Require(Snapshot(settings) == afterChange, "Cash-change duplicate repeated financial writes.");
+        }
+        finally { changeHost.Window.Close(); }
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF exact-cash slice", Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
             ReviewCallbackAuthenticated = true, WrongReviewPinRejected = true,
-            UnknownReviewBlocked = true, NoFinancialReplayOnReview = true,
+            UnknownReviewBlocked = true, NoFinancialReplayOnReview = true, ExplicitReviewedUiReset = true, CashChangeSql = true, ChangeRowRollback = true,
             EmptyBasket = true, TicketPaymentStockSql = true, Duplicate = true, ProcessRestart = true,
             WrongPinRejected = true, WrongTotalRejected = true, StalePriceRejected = true,
             AfterPaymentRollback = true, UnknownJournalLocked = true, LostAcknowledgementPersisted = true, Reconciliation = true,
-            W2Accepted = false, Remaining = "Cashier PIN/session UI, explicit reviewed UI reset and broader V1/device parity"
+            W2Accepted = false, Remaining = "Initial cashier session entry and broader V1/device parity"
         }));
     }
 

@@ -29,7 +29,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: 409edc0ae834633a9fb8d70aba73e9160cf846d4
+          ref: 6c0f68f0a2372da58ba6d307d756e936da55816b
           path: checkout
           persist-credentials: false
       - uses: actions/checkout@v4
@@ -56,7 +56,7 @@ jobs:
           CHECKOUT_TEST_CONNECTION: Server=127.0.0.1;Port=3306;Database=checkout_disposable;Uid=checkout_test;Pwd=checkout-test-only;SslMode=Disabled;
         run: |
           set -euo pipefail
-          test "$(git -C checkout rev-parse HEAD)" = 409edc0ae834633a9fb8d70aba73e9160cf846d4
+          test "$(git -C checkout rev-parse HEAD)" = 6c0f68f0a2372da58ba6d307d756e936da55816b
           cp -a architecture/modernization/architecture/. qa/modernization/architecture/
           cp -a architecture/recovered-source/. qa/recovered-source/
           test -f qa/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj
@@ -72,7 +72,7 @@ jobs:
           path: qa
       - uses: actions/checkout@v4
         with:
-          ref: 409edc0ae834633a9fb8d70aba73e9160cf846d4
+          ref: 6c0f68f0a2372da58ba6d307d756e936da55816b
           path: checkout
       - uses: actions/checkout@v4
         with:
@@ -80,7 +80,7 @@ jobs:
           path: architecture
       - uses: actions/checkout@v4
         with:
-          ref: 88c33f5fb5d322f0a4ff1875085bf1cf539a4aeb
+          ref: 5ba352c6966874e29c436ba2bb521c1aa32e5f74
           path: wpf
       - uses: actions/setup-dotnet@v4
         with:
@@ -175,7 +175,7 @@ jobs:
         shell: pwsh
         run: |
           $report = Get-Content evidence/w2/w2-cash-sale.json -Raw | ConvertFrom-Json
-          foreach ($field in @('WindowLoaded','EditedContextRejected','SingleSessionBinding','ReviewCallbackAuthenticated','WrongReviewPinRejected','UnknownReviewBlocked','NoFinancialReplayOnReview','EmptyBasket','TicketPaymentStockSql','Duplicate','ProcessRestart','WrongPinRejected','WrongTotalRejected','StalePriceRejected','AfterPaymentRollback','UnknownJournalLocked','LostAcknowledgementPersisted','Reconciliation')) {
+          foreach ($field in @('WindowLoaded','EditedContextRejected','SingleSessionBinding','ReviewCallbackAuthenticated','WrongReviewPinRejected','UnknownReviewBlocked','NoFinancialReplayOnReview','ExplicitReviewedUiReset','CashChangeSql','ChangeRowRollback','EmptyBasket','TicketPaymentStockSql','Duplicate','ProcessRestart','WrongPinRejected','WrongTotalRejected','StalePriceRejected','AfterPaymentRollback','UnknownJournalLocked','LostAcknowledgementPersisted','Reconciliation')) {
             if ($report.$field -ne $true) { throw "Missing executed acceptance assertion: $field" }
           }
           if ($report.W2Accepted -ne $false) { throw 'Cash-slice evidence must not promote full W2 or commercial payment readiness' }

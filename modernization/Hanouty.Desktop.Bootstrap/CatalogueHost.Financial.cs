@@ -40,8 +40,9 @@ public sealed partial record CatalogueHost
             paymentContext.Currency != "MAD" || paymentContext.IsReturn ||
             paymentContext.Payments is null || paymentContext.Payments.Count != 1 ||
             paymentContext.Payments[0] is not { Kind: CheckoutPaymentKind.Cash, Amount: > 0m } ||
-            paymentContext.ExpectedTotal != paymentContext.Payments[0].Amount)
-            throw new ArgumentException("Explicit MAD exact-cash session context required.", nameof(paymentContext));
+            paymentContext.ExpectedTotal <= 0m ||
+            paymentContext.ExpectedTotal > paymentContext.Payments[0].Amount)
+            throw new ArgumentException("Explicit MAD cash session context required.", nameof(paymentContext));
         var captured = paymentContext with {
             Payments = Array.AsReadOnly(paymentContext.Payments.ToArray())
         };
@@ -100,6 +101,7 @@ public sealed partial record CatalogueHost
             }
             finally { reviewing = false; }
         };
+        window.ConfigureReviewedCheckout(result.TryReviewResolvedCheckout);
         return result;
     }
 
