@@ -589,6 +589,36 @@ namespace LOGICA.Infrastructure.Checkout
                             Require(CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
                                 evidenceDb, evidenceTx, operation, "CSharp-Stock", 2m) == 10.50m,
                                 "Original full-quantity line must use persisted paid price.");
+                            // Price integrity must come from the persisted
+                            // original journal, not from the current catalogue.
+                            using (var originalPriceTamper = evidenceDb.CreateCommand())
+                            {
+                                originalPriceTamper.Transaction = evidenceTx;
+                                originalPriceTamper.CommandText =
+                                    "UPDATE TABLE_VENTES_JOURNAL SET PRIX_V=PRIX_V+0.01 " +
+                                    "WHERE ID_TICKET=@id AND ID_ARTICLE='CSharp-Stock'";
+                                originalPriceTamper.Parameters.AddWithValue("@id", operation);
+                                Require(originalPriceTamper.ExecuteNonQuery() == 1,
+                                    "Expected one original journal price to tamper.");
+                            }
+                            bool mismatchedOriginalPriceRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
+                                    evidenceDb, evidenceTx, operation, "CSharp-Stock", 2m);
+                            }
+                            catch (InvalidOperationException) { mismatchedOriginalPriceRejected = true; }
+                            Require(mismatchedOriginalPriceRejected,
+                                "Original unit-price mismatch must reject cash refund evidence.");
+                            using (var restoreOriginalPrice = evidenceDb.CreateCommand())
+                            {
+                                restoreOriginalPrice.Transaction = evidenceTx;
+                                restoreOriginalPrice.CommandText =
+                                    "UPDATE TABLE_VENTES_JOURNAL SET PRIX_V=PRIX_V-0.01 " +
+                                    "WHERE ID_TICKET=@id AND ID_ARTICLE='CSharp-Stock'";
+                                restoreOriginalPrice.Parameters.AddWithValue("@id", operation);
+                                Require(restoreOriginalPrice.ExecuteNonQuery() == 1,
+                                    "Expected original journal price restoration.");
+                            }
                             bool zeroQuantityRejected = false;
                             try {
                                 CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
