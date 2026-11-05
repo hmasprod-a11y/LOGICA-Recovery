@@ -688,6 +688,34 @@ namespace LOGICA.Infrastructure.Checkout
                                     evidenceDb, evidenceTx, operation), 2,
                                 MidpointRounding.AwayFromZero) == 10.50m,
                                 "Original cash refund evidence must be whole-cent MAD.");
+                            // Negative/corrupted original header must never qualify
+                            // as a refundable sale even if the payment is intact.
+                            using (var corruptHeader = evidenceDb.CreateCommand())
+                            {
+                                corruptHeader.Transaction = evidenceTx;
+                                corruptHeader.CommandText =
+                                    "UPDATE TABLE_VENTES_ENTETE SET Total_NET=-10.50 WHERE ID_TICKET=@id";
+                                corruptHeader.Parameters.AddWithValue("@id", operation);
+                                Require(corruptHeader.ExecuteNonQuery() == 1,
+                                    "Expected one disposable original header to corrupt.");
+                            }
+                            bool invalidHeaderRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                    evidenceDb, evidenceTx, operation);
+                            }
+                            catch (InvalidOperationException) { invalidHeaderRejected = true; }
+                            Require(invalidHeaderRejected,
+                                "Negative original header must not qualify for cash refund.");
+                            using (var restoreHeader = evidenceDb.CreateCommand())
+                            {
+                                restoreHeader.Transaction = evidenceTx;
+                                restoreHeader.CommandText =
+                                    "UPDATE TABLE_VENTES_ENTETE SET Total_NET=10.50 WHERE ID_TICKET=@id";
+                                restoreHeader.Parameters.AddWithValue("@id", operation);
+                                Require(restoreHeader.ExecuteNonQuery() == 1,
+                                    "Expected one disposable original header to restore.");
+                            }
                             bool missingOriginalRejected = false;
                             try {
                                 CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
