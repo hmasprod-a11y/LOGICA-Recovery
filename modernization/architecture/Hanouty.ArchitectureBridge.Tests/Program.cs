@@ -598,6 +598,21 @@ try { _ = overflowSnapshot.PendingLines; throw new Exception("overflow snapshot 
 catch (OverflowException) { }
 Assert(overflowSnapshotPort.Calls.Count == 0, "quantity overflow cannot reach posting from preview");
 
+// A reentrant WPF quote must not observe a basket during posting.
+var reentrantQuotePort = new RecordingAtomicBatchPort();
+var reentrantQuoteBatch = new CheckoutBatchController(new RecordingCatalogue(),
+    new RecordingPrompt { Choice = 0 }, reentrantQuotePort);
+Assert(reentrantQuoteBatch.StageImage(A("21", ""), 1).Outcome == SelectionOutcome.Selected,
+    "reentrant quote stages article");
+var quoteBlocked = false;
+reentrantQuotePort.OnAdd = () => {
+    try { _ = reentrantQuoteBatch.SnapshotLines(); }
+    catch (InvalidOperationException) { quoteBlocked = true; }
+};
+Assert(reentrantQuoteBatch.Commit("reentrant-quote-001") == CheckoutBatchStatus.Committed &&
+    quoteBlocked && reentrantQuoteBatch.SnapshotLines().Count == 0,
+    "reentrant quote blocked during commit and cleared after posting");
+
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
 {
     public List<(string, int)> Calls { get; } = new();
