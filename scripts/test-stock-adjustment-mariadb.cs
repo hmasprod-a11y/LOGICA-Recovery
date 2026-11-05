@@ -135,6 +135,39 @@ internal static class StockAdjustmentMariaDbSmoke {
                     Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m &&
                         Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,
                         "Stale stock attempt changed stock or audit");
+                    // Two independent InnoDB connections: a held row lock must never
+                    // allow a second manual adjustment to overwrite a newer balance.
+                    // Keep the fixture bounded to avoid hanging the CI runner.
+                    using(var competing=new MySqlConnection(cs)) {
+                        competing.Open();
+                        using(var hold=db.BeginTransaction()) {
+                            using(var lockRow=new MySqlCommand(
+                                "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CI-ARTICLE' FOR UPDATE",db,hold))
+                                Require(Convert.ToDecimal(lockRow.ExecuteScalar(),CultureInfo.InvariantCulture)==12m,
+                                    "Unexpected stock before contention");
+                            using(var contenderTx=competing.BeginTransaction()) {
+                                using(var timeout=new MySqlCommand("SET innodb_lock_wait_timeout=1",competing,contenderTx))
+                                    timeout.ExecuteNonQuery();
+                                object competingPlan=create.Invoke(null,new object[]{
+                                    "CI-ARTICLE",12m,13m,"concurrent stock attempt","CI-USER"});
+                                try {
+                                    applyAuthorized.Invoke(null,new object[]{
+                                        competing,contenderTx,competingPlan,provider,"CI-SECRET-SESSION"});
+                                    throw new Exception("Concurrent writer bypassed held InnoDB row lock");
+                                } catch(TargetInvocationException ex) {
+                                    if(!(ex.InnerException is MySqlException)) throw;
+                                    var mysql=(MySqlException)ex.InnerException;
+                                    Require(mysql.Number==1205 || mysql.Number==1213,
+                                        "Unexpected concurrent adjustment failure: "+mysql.Number);
+                                }
+                                contenderTx.Rollback();
+                            }
+                            hold.Rollback();
+                        }
+                    }
+                    Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m &&
+                        Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,
+                        "Concurrent denied write changed stock or movement");
                     // Inject a genuine SQL failure after the guarded stock UPDATE.
                     // The transaction owner must roll back both the stock change
                     // and the audit attempt; this is not a mocked writer.
