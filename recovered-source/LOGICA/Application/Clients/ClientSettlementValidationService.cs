@@ -1,3 +1,4 @@
+#nullable enable
 using LOGICA.Domain;
 
 namespace LOGICA.ApplicationLayer.Clients
