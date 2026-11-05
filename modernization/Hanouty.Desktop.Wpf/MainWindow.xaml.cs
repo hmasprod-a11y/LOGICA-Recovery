@@ -54,6 +54,10 @@ public partial class MainWindow : Window
         if (_originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
             !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
             vm.PendingOperationId is not null) return false;
+        // The candidate must still belong to the current, visible Host snapshot.
+        // A stale selection event after a new search cannot authorize a return.
+        if (!ReferenceEquals(OriginalSaleResults.ItemsSource, _originalSaleResults) ||
+            !ReferenceEquals(OriginalSaleResults.SelectedItem, candidate)) return false;
         var accepted = _originalSaleSelection.Select(candidate, _originalSaleResults);
         OriginalSaleStatus.Text = accepted ?
             $"Original sale: {candidate.SaleId} — read-only, refund not authorized" :
