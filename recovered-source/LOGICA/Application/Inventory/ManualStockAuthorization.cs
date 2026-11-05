@@ -1,9 +1,10 @@
 using System;
-using MySql.Data.MySqlClient;
 
 namespace LOGICA.Application.Inventory
 {
-    // Authorization boundary for the future V1-compatible manual stock workflow.
+    // Portable authorization boundary; no provider dependency in Application.
+    // Infrastructure must validate connection/transaction types and ownership.
+    // Authorization remains disabled until an approved persistent grant mapping exists.
     // The session identity and permission must be verified against a trusted,
     // persisted source; neither a UI user label nor a role name is a grant.
     internal interface IManualStockAuthorization
@@ -11,8 +12,8 @@ namespace LOGICA.Application.Inventory
         // Must fail closed on missing/expired sessions, missing/ambiguous grants,
         // connectivity failures and any identity mismatch. Implementations must
         // verify permission in the SAME database transaction as the stock write.
-        VerifiedManualStockActor VerifyForWrite(MySqlConnection connection,
-            MySqlTransaction transaction, string authenticatedSessionId,
+        VerifiedManualStockActor VerifyForWrite(object connection,
+            object transaction, string authenticatedSessionId,
             string requestedUserId);
     }
 
@@ -20,8 +21,8 @@ namespace LOGICA.Application.Inventory
     // This is deliberately NOT a fake or hard-coded permission implementation.
     internal sealed class DenyAllManualStockAuthorization : IManualStockAuthorization
     {
-        public VerifiedManualStockActor VerifyForWrite(MySqlConnection connection,
-            MySqlTransaction transaction, string authenticatedSessionId,
+        public VerifiedManualStockActor VerifyForWrite(object connection,
+            object transaction, string authenticatedSessionId,
             string requestedUserId)
         {
             throw new UnauthorizedAccessException(
