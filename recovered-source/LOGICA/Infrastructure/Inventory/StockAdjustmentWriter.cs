@@ -121,6 +121,39 @@ namespace LOGICA.Infrastructure.Inventory
         // Explicit integration entry point: the trusted composition root must
         // supply the authenticated session and persisted-grant adapter. Checkout
         // must pass its existing transaction; this method never starts one.
+        // For standalone inventory workflows only. Checkout must call
+        // ApplyAuthorized with its own transaction, never this method.
+        internal static void ExecuteAuthorized(string connectionString, StockAdjustmentPlan plan,
+            IManualStockAuthorization authorization, string authenticatedSessionId)
+        {
+            if (String.IsNullOrWhiteSpace(connectionString))
+                throw new ArgumentException("A local database connection is required.", "connectionString");
+            if (plan == null || authorization == null || String.IsNullOrWhiteSpace(authenticatedSessionId))
+                throw new UnauthorizedAccessException("Verified manual stock authorization context is required.");
+            var endpoint = new MySqlConnectionStringBuilder(connectionString);
+            if (!String.Equals(endpoint.Server, "127.0.0.1", StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(endpoint.Server, "localhost", StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(endpoint.Server, "::1", StringComparison.OrdinalIgnoreCase))
+                throw new UnauthorizedAccessException("Manual stock adjustment requires local MariaDB.");
+            using (var connection = new MySqlConnection(connectionString))
+            {
+                connection.Open();
+                using (var transaction = connection.BeginTransaction(IsolationLevel.ReadCommitted))
+                {
+                    try
+                    {
+                        ApplyAuthorized(connection, transaction, plan, authorization, authenticatedSessionId);
+                        transaction.Commit();
+                    }
+                    catch
+                    {
+                        try { transaction.Rollback(); } catch { }
+                        throw;
+                    }
+                }
+            }
+        }
+
         internal static void ApplyAuthorized(MySqlConnection connection, MySqlTransaction transaction,
             StockAdjustmentPlan plan, IManualStockAuthorization authorization,
             string authenticatedSessionId)
