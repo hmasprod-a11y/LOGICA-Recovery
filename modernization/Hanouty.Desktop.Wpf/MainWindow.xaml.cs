@@ -60,27 +60,25 @@ public partial class MainWindow : Window
         if (_cashierEntryOpen || _reviewOpen || _logoutOpen || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _setFinancialContext is null || _readTrustedCashTotal is null) return false;
+        // Lock BEFORE calling Host-provided delegates: those may pump the WPF
+        // dispatcher and otherwise reenter login, logout or financial review.
+        _cashierEntryOpen = true;
         try
         {
             var total = _readTrustedCashTotal();
             if (total is null || total < 0m) return false;
             var identity = _readBasketIdentity?.Invoke();
-            _cashierEntryOpen = true;
-            try
-            {
-                var dialog = new CashierEntryDialog(total) { Owner = this };
-                if (dialog.ShowDialog() != true || dialog.Draft is not { } draft) return false;
-                if (vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
-                    _readTrustedCashTotal() != total || _readBasketIdentity?.Invoke() != identity)
-                    return false;
-                // Host authenticates an empty session or installs a trusted quote
-                // for its own basket. UI text never grants identity or prices.
-                return _setFinancialContext(draft.Cashier, draft.Register, draft.CashMad);
-            }
-            finally { _cashierEntryOpen = false; }
+            var dialog = new CashierEntryDialog(total) { Owner = this };
+            if (dialog.ShowDialog() != true || dialog.Draft is not { } draft) return false;
+            if (vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
+                _readTrustedCashTotal() != total || _readBasketIdentity?.Invoke() != identity)
+                return false;
+            // Host authenticates the cashier and checks the trusted quote.
+            return _setFinancialContext(draft.Cashier, draft.Register, draft.CashMad);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         { return false; }
+        finally { _cashierEntryOpen = false; }
     }
 
     // Double-click on the real catalogue stages the selected article through the
