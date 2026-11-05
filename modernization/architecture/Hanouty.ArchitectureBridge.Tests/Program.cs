@@ -639,6 +639,52 @@ Assert(uncertainQuoteBatch.State == CheckoutCommitState.Ready &&
     uncertainQuotePort.Calls.Count == 1,
     "confirmed absent outcome restores trusted quote without automatic repost");
 
+// Contract acceptance: a return is bounded by the durable original line,
+// not by a cashier-supplied number or a second independent return engine.
+var originalLine = new OriginalSaleLineReference("sale-100", "line-1");
+var originalEvidence = new OriginalSaleReturnEvidence(originalLine, "21", 3, 2);
+OriginalSaleReturnGuard.RequireAvailable(originalLine, originalEvidence, "21", 1);
+var excessReturnDenied = false;
+try { OriginalSaleReturnGuard.RequireAvailable(originalLine, originalEvidence, "21", 2); }
+catch (InvalidOperationException) { excessReturnDenied = true; }
+var mismatchedOriginalDenied = false;
+try { OriginalSaleReturnGuard.RequireAvailable(new OriginalSaleLineReference("sale-101", "line-1"), originalEvidence, "21", 1); }
+catch (InvalidOperationException) { mismatchedOriginalDenied = true; }
+var missingEvidenceDenied = false;
+try { OriginalSaleReturnGuard.RequireAvailable(originalLine, null, "21", 1); }
+catch (InvalidOperationException) { missingEvidenceDenied = true; }
+Assert(excessReturnDenied && mismatchedOriginalDenied && missingEvidenceDenied,
+    "original-sale evidence fails closed on over-return, mismatch and missing data");
+
+var trustedActor = new VerifiedStockActor("session-1", "actor-1");
+var verifiedActorSource = new StubVerifiedStockActorSource { Actor = trustedActor };
+var verifiedPermissions = new StubManualStockPermissionReader { Allowed = true };
+Assert(ManualStockAuthorizationBoundary.RequireAuthorized(verifiedActorSource, verifiedPermissions) == trustedActor,
+    "manual stock authorization accepts explicit verified actor and permission");
+verifiedPermissions.Allowed = false;
+var unauthorizedDenied = false;
+try { ManualStockAuthorizationBoundary.RequireAuthorized(verifiedActorSource, verifiedPermissions); }
+catch (UnauthorizedAccessException) { unauthorizedDenied = true; }
+verifiedPermissions.Allowed = true;
+verifiedActorSource.Actor = null;
+var anonymousDenied = false;
+try { ManualStockAuthorizationBoundary.RequireAuthorized(verifiedActorSource, verifiedPermissions); }
+catch (UnauthorizedAccessException) { anonymousDenied = true; }
+Assert(unauthorizedDenied && anonymousDenied && verifiedPermissions.Calls == 2,
+    "manual stock authorization denies missing actor and explicit permission denial");
+
+sealed class StubVerifiedStockActorSource : IVerifiedStockActorSource
+{
+    public VerifiedStockActor? Actor { get; set; }
+    public VerifiedStockActor? CurrentVerifiedActor() => Actor;
+}
+sealed class StubManualStockPermissionReader : IManualStockPermissionReader
+{
+    public bool Allowed { get; set; }
+    public int Calls { get; private set; }
+    public bool CanAdjustStock(VerifiedStockActor actor) { Calls++; return Allowed; }
+}
+
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
 {
     public List<(string, int)> Calls { get; } = new();
