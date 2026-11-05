@@ -28,6 +28,14 @@ internal static class StockAdjustmentMariaDbSmoke {
         Denied(()=>verify.Invoke(deny,new object[]{null,null,"FORGED-SESSION","ADMIN"}));
         Denied(()=>verify.Invoke(deny,new object[]{null,null,"","CI-USER"}));
         var create=planType.GetMethod("Create",BindingFlags.Static|BindingFlags.NonPublic);
+        // The V1 inventory rule forbids negative on-hand stock and no-op
+        // adjustments. Reject these before opening any database transaction.
+        foreach(decimal negative in new[]{-1m,-0.001m}) {
+            try { create.Invoke(null,new object[]{"CI-ARTICLE",10m,negative,"invalid negative stock","CI-USER"}); throw new Exception("Negative stock accepted"); }
+            catch(TargetInvocationException ex) { if(!(ex.InnerException is ArgumentOutOfRangeException)) throw; }
+        }
+        try { create.Invoke(null,new object[]{"CI-ARTICLE",10m,10m,"no-op","CI-USER"}); throw new Exception("No-op movement accepted"); }
+        catch(TargetInvocationException ex) { if(!(ex.InnerException is ArgumentException)) throw; }
         var apply=writerType.GetMethod("Apply",BindingFlags.Static|BindingFlags.NonPublic);
         var execute=writerType.GetMethod("Execute",BindingFlags.Static|BindingFlags.NonPublic);
         var validate=writerType.GetMethod("ValidateAuthorizationContext",BindingFlags.Static|BindingFlags.NonPublic);
