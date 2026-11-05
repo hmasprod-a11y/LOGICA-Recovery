@@ -58,7 +58,8 @@ public sealed class CheckoutSession
         // Reject forged/stale tiles that were never in the visible image grid.
         var visible = System.Linq.Enumerable.FirstOrDefault(ImageProducts,
             p => string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal));
-        if (visible is null || !string.Equals(visible.Barcode, product.Barcode, StringComparison.Ordinal) ||
+        if (visible is null || visible != product ||
+            !string.Equals(visible.Barcode, product.Barcode, StringComparison.Ordinal) ||
             !string.Equals(visible.ImagePath, product.ImagePath, StringComparison.Ordinal) ||
             !string.Equals(visible.VariantId, product.VariantId, StringComparison.Ordinal) ||
             !_composition.IsCurrentImage(product))
