@@ -75,6 +75,8 @@ public sealed class CheckoutSession
         EnsureNoSubmission();
         ArgumentNullException.ThrowIfNull(product);
         if (string.IsNullOrWhiteSpace(product.Barcode) ||
+            System.Linq.Enumerable.Count(Products, p =>
+                string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal)) != 1 ||
             !System.Linq.Enumerable.Any(Products, p =>
                 string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal) &&
                 p == product) ||
@@ -96,6 +98,8 @@ public sealed class CheckoutSession
         EnsureNoSubmission();
         ArgumentNullException.ThrowIfNull(product);
         if (string.IsNullOrWhiteSpace(product.ArticleId) ||
+            System.Linq.Enumerable.Count(Products, p =>
+                string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal)) != 1 ||
             !System.Linq.Enumerable.Any(Products, p =>
                 string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal) && p == product) ||
             !_composition.IsCurrentArticle(product))
