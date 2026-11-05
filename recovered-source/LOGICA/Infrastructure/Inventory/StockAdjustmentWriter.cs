@@ -32,6 +32,19 @@ namespace LOGICA.Infrastructure.Inventory
             foreach (char c in requestedUserId)
                 if (Char.IsControl(c))
                     throw new UnauthorizedAccessException("Invalid inventory actor identity.");
+            // Bound bearer-token and actor inputs before querying the grant tables.
+            // Never normalize a secret or let a truncated database comparison
+            // accidentally authorize a different persisted identity.
+            if (authenticatedSessionId.Length > 128 || requestedUserId.Length > 128 ||
+                authenticatedSessionId != authenticatedSessionId.Trim() ||
+                requestedUserId != requestedUserId.Trim())
+                throw new UnauthorizedAccessException("Invalid manual stock session or actor identity.");
+            foreach (char value in authenticatedSessionId)
+                if (Char.IsControl(value))
+                    throw new UnauthorizedAccessException("Invalid manual stock session token.");
+            foreach (char value in requestedUserId)
+                if (Char.IsControl(value))
+                    throw new UnauthorizedAccessException("Invalid manual stock actor identity.");
             // Both rows are locked in the caller's stock transaction. Revocation
             // and expiry are checked on the database clock, never on WPF state.
             using (var command = new MySqlCommand(
