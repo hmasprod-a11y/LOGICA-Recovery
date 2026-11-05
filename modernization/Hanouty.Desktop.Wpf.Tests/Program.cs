@@ -50,6 +50,20 @@ caseVm.ScannerText = "abc123";
 caseVm.ScanBarcode();
 Check(caseSelection.Selected.Count == 2 && caseSelection.Selected[1].Id == "case-b",
     "case-distinct barcode must resolve independently");
+// A disabled visual button is not a security boundary: keyboard/programmatic
+// SelectCommand must also reject selection after logout, then allow a fresh session.
+var logoutSelection = new RecordingSelection();
+var logoutVm = new CatalogueViewModel(new Reader(new[] { new ProductSummary("logout-item", "Logout item", "900") }), logoutSelection);
+logoutVm.SelectedProduct = logoutVm.VisibleProducts[0];
+logoutVm.FinancialSessionActive = false;
+logoutVm.SelectCommand.Execute(null);
+logoutVm.SelectCurrent();
+Check(logoutSelection.Selected.Count == 0 && logoutVm.ScanFeedback == "Cashier session required",
+    "logged-out direct and keyboard selection commands must not stage an article");
+logoutVm.FinancialSessionActive = true;
+logoutVm.SelectCommand.Execute(null);
+Check(logoutSelection.Selected.Count == 1,
+    "authorized fresh session restores direct selection without stale action replay");
 var selection = new RecordingSelection();
 var vm = new CatalogueViewModel(new Reader(items), selection, new ImageFixture());
 Check(vm.VisibleProducts.Count == 5, "all catalogue products must appear, including barcode-free");
