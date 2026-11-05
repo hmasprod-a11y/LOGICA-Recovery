@@ -56,6 +56,7 @@ var logoutSelection = new RecordingSelection();
 var logoutVm = new CatalogueViewModel(new Reader(new[] { new ProductSummary("logout-item", "Logout item", "900") }), logoutSelection);
 logoutVm.SelectedProduct = logoutVm.VisibleProducts[0];
 logoutVm.FinancialSessionActive = false;
+logoutVm.SelectedProduct = null;
 logoutVm.SelectCommand.Execute(null);
 logoutVm.SelectCommand.Execute(logoutVm.VisibleProducts[0]);
 Check(logoutVm.SelectedProduct is null, "logged-out touch command must not stage a product for later reauthorization");
