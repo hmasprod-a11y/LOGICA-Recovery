@@ -805,6 +805,19 @@ var reviewThread = new System.Threading.Thread(() =>
             listSelection, new RecordingSubmission(), financialContext,
             requireFreshPaymentContext: true);
         var listVm = (CatalogueViewModel)listWindow.DataContext;
+        // Same real STA MainWindow VM used by cashier entry: Host returning true
+        // cannot authorize a mismatched cashier, tender or expired session.
+        var authorizedEntry = typeof(Hanouty.Desktop.Wpf.MainWindow).GetMethod(
+            "IsAuthorizedEntry", System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.Static);
+        Check(authorizedEntry is not null, "cashier entry post-Host authorization guard exists");
+        bool EntryAuthorized(string cashier, decimal tender) => (bool)authorizedEntry!.Invoke(null,
+            new object[] { listVm, cashier, tender })!;
+        Check(EntryAuthorized(financialContext.CashierId, financialContext.TenderedAmount),
+            "real WPF window accepts exact live authorized cashier context");
+        Check(!EntryAuthorized("other-cashier", financialContext.TenderedAmount) &&
+            !EntryAuthorized(financialContext.CashierId, financialContext.TenderedAmount + 1m),
+            "cashier entry rejects Host-claimed success with mismatched identity or tender");
         Check(!listWindow.SelectHighlightedProduct() && listSelection.Selected.Count == 0,
             "empty catalogue highlight cannot stage an article");
         listVm.SelectedProduct = items[0];
