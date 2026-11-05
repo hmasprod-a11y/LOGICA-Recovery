@@ -687,6 +687,54 @@ var reviewThread = new System.Threading.Thread(() =>
         Check(!window.ReviewResolvedCheckout(() => "again") && authorityCalls == 1,
             "resolved operation cannot be reviewed a second time");
         window.Close();
+
+        // Actual WPF window: an unresolved journal must never invoke the Host
+        // review authority or read a transient PIN, and cannot release the operation.
+        var unresolvedPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
+        var unresolvedJournal = new RecordingReconciliation { Result = CheckoutResolution.Unknown };
+        var unresolvedWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new RecordingSelection(), new ReconciledSubmission(unresolvedPort, unresolvedJournal), financialContext);
+        var unresolvedVm = (CatalogueViewModel)unresolvedWindow.DataContext;
+        unresolvedVm.CommitCheckout();
+        var unresolvedId = unresolvedVm.PendingOperationId;
+        unresolvedVm.ReconcileCheckout();
+        int unresolvedAuthority = 0;
+        int unresolvedPinReads = 0;
+        unresolvedWindow.ConfigureReviewedCheckout((_, _, _) => { unresolvedAuthority++; return true; });
+        Check(!unresolvedWindow.ReviewResolvedCheckout(() => { unresolvedPinReads++; return "PIN"; }) &&
+            unresolvedAuthority == 0 && unresolvedPinReads == 0 && unresolvedVm.CheckoutUncertain &&
+            unresolvedVm.PendingOperationId == unresolvedId && unresolvedPort.Ids.Count == 1,
+            "real window must not authorize Unknown outcome, read PIN, reset or repost");
+        unresolvedWindow.Close();
+
+        // Durable Absent is reviewable only after explicit fresh Host authorization.
+        var absentPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
+        var absentJournal = new RecordingReconciliation { Result = CheckoutResolution.Absent };
+        var absentWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new RecordingSelection(), new ReconciledSubmission(absentPort, absentJournal), financialContext,
+            requireFreshPaymentContext: true);
+        var absentVm = (CatalogueViewModel)absentWindow.DataContext;
+        absentVm.CommitCheckout();
+        var absentId = absentVm.PendingOperationId;
+        absentVm.ReconcileCheckout();
+        int absentAuthority = 0;
+        absentWindow.ConfigureReviewedCheckout((id, outcome, readPin) =>
+        {
+            absentAuthority++;
+            Check(id == absentId && outcome == CheckoutResolution.Absent,
+                "Host must receive exact Absent journal identity");
+            return absentAuthority > 1 && readPin() == "fresh";
+        });
+        Check(!absentWindow.ReviewResolvedCheckout(() => "cancel") && absentVm.CheckoutUncertain &&
+            absentVm.PendingOperationId == absentId && absentPort.Ids.Count == 1,
+            "denied Absent review must retain lock and original operation");
+        Check(absentWindow.ReviewResolvedCheckout(() => "fresh") && absentAuthority == 2 &&
+            !absentVm.CheckoutUncertain && absentVm.PendingOperationId is null &&
+            absentVm.PaymentContext is null && absentPort.Ids.Count == 1 && !absentVm.CanCommit,
+            "authorized Absent reset must expire old tender without posting or enabling checkout");
+        absentVm.PaymentContext = financialContext;
+        Check(absentVm.CanCommit, "fresh host-issued context is required for next checkout");
+        absentWindow.Close();
     }
     catch (Exception ex) { windowReviewError = ex; }
 });
@@ -817,6 +865,17 @@ sealed class UnexpectedSubmission : IContextualCheckoutSubmission
     public CheckoutSubmissionResult Submit(string stableOperationId) => throw new InvalidOperationException("legacy submission forbidden");
     public CheckoutSubmissionResult Submit(string stableOperationId, CashierPaymentContext context) =>
         throw new System.FormatException("unexpected checkout adapter failure");
+}
+
+// Real MainWindow constructor receives one production-style port implementing both
+// submission and durable reconciliation; the same object must serve both paths.
+sealed class ReconciledSubmission(RecordingSubmission submission, RecordingReconciliation journal)
+    : IContextualCheckoutSubmission, ICheckoutOutcomeReconciliation
+{
+    public CheckoutSubmissionResult Submit(string operationId) => throw new InvalidOperationException("legacy submission forbidden");
+    public CheckoutSubmissionResult Submit(string operationId, CashierPaymentContext context) =>
+        submission.Submit(operationId, context);
+    public CheckoutResolution Reconcile(string operationId) => journal.Reconcile(operationId);
 }
 
 sealed class RecordingReconciliation : ICheckoutOutcomeReconciliation
