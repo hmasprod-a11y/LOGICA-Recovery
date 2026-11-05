@@ -63,6 +63,15 @@ internal static class StockAdjustmentMariaDbSmoke {
                 completed.Commit();
                 Denied(()=>validate.Invoke(null,new object[]{db,completed,scopedPlan,deny,"CI-SESSION"}));
                 completed.Dispose();
+                // Reject a transaction belonging to a different live connection:
+                // authorization and stock must be checked atomically on one DB session.
+                using(var second=new MySqlConnection(cs)) {
+                    second.Open();
+                    using(var otherTx=second.BeginTransaction()) {
+                        Denied(()=>validate.Invoke(null,new object[]{db,otherTx,scopedPlan,deny,"CI-SESSION"}));
+                        otherTx.Rollback();
+                    }
+                }
                 Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==10m && Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==0m,"Denied actor changed stock/audit");
                 Console.WriteLine("PASS actual LOGICA Execute/Apply reject unverified actors with feature enabled; stock/audit unchanged. Manual adjustment remains DISABLED.");
             } finally {
