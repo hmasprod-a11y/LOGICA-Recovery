@@ -322,6 +322,14 @@ Check(commitPort.Ids.Count == 2 && commitPort.Ids[0] == commitPort.Ids[1] &&
     "unknown result retains stable operation ID and blocks retry");
 commitVm.CommitCheckout();
 Check(commitPort.Ids.Count == 2, "unknown checkout must never auto-retry");
+Check(CashierEntryDraft.TryParse("cashier01", "register02", "10.25", out var enteredCashier, out var enteredRegister, out var enteredTender) &&
+    enteredCashier == "cashier01" && enteredRegister == "register02" && enteredTender == 10.25m,
+    "cashier/register and invariant MAD tender parse without authorization");
+Check(!CashierEntryDraft.TryParse("cashier01", "register02", "10,25", out _, out _, out _) &&
+    !CashierEntryDraft.TryParse("cashier01", "register02", "10.251", out _, out _, out _) &&
+    !CashierEntryDraft.TryParse("cashier01", "register02", "-1", out _, out _, out _) &&
+    !CashierEntryDraft.TryParse("", "register02", "10", out _, out _, out _),
+    "invalid decimal, excess precision, negative tender and absent cashier fail closed");
 var reconciliation = new RecordingReconciliation { Result = CheckoutResolution.Persisted };
 var reconciliationPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
 var reconciliationVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(),
