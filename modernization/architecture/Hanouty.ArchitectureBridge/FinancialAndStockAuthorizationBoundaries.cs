@@ -57,10 +57,19 @@ public static class ManualStockAuthorizationBoundary
     {
         ArgumentNullException.ThrowIfNull(actors);
         ArgumentNullException.ThrowIfNull(permissions);
-        var actor = actors.CurrentVerifiedActor();
-        if (actor is null || string.IsNullOrWhiteSpace(actor.SessionId) ||
-            string.IsNullOrWhiteSpace(actor.ActorId) || !permissions.CanAdjustStock(actor))
-            throw new UnauthorizedAccessException("Verified manual stock adjustment permission required.");
-        return actor;
+        try
+        {
+            var actor = actors.CurrentVerifiedActor();
+            if (actor is null || string.IsNullOrWhiteSpace(actor.SessionId) ||
+                string.IsNullOrWhiteSpace(actor.ActorId) || !permissions.CanAdjustStock(actor))
+                throw new UnauthorizedAccessException("Verified manual stock adjustment permission required.");
+            return actor;
+        }
+        catch (UnauthorizedAccessException) { throw; }
+        catch (Exception)
+        {
+            // A broken identity/permission backend never authorizes a stock write.
+            throw new UnauthorizedAccessException("Manual stock authorization unavailable.");
+        }
     }
 }
