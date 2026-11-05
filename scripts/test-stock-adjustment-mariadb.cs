@@ -123,6 +123,15 @@ internal static class StockAdjustmentMariaDbSmoke {
                         }
                         invalidTx.Rollback();
                     }
+                    // A case-insensitive MariaDB collation must not turn a
+                    // similarly named permission into the authoritative grant.
+                    Sql(db,"UPDATE HANOUTY_ACTOR_GRANTS SET PERMISSION_CODE='manualstockadjustment' WHERE ACTOR_ID='CI-USER'");
+                    Denied(()=>executeAuthorized.Invoke(null,new object[]{
+                        cs,scopedPlan,provider,"CI-SECRET-SESSION"}));
+                    Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==10m &&
+                        Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==0m,
+                        "Case-folded permission modified stock or audit");
+                    Sql(db,"UPDATE HANOUTY_ACTOR_GRANTS SET PERMISSION_CODE='ManualStockAdjustment' WHERE ACTOR_ID='CI-USER'");
                     Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,scopedPlan,provider,"FORGED-SESSION"}));
                     Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==10m,"Forged session changed stock");
                     executeAuthorized.Invoke(null,new object[]{cs,scopedPlan,provider,"CI-SECRET-SESSION"});
