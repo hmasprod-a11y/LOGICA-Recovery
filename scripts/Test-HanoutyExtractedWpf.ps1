@@ -71,7 +71,29 @@ try {
     if ($report.W2Accepted -or -not $report.WindowLoaded -or $report.StagedSelections -ne 3) {
         throw 'Unacceptable extracted WPF runtime evidence.'
     }
-    Write-Host 'PASS extracted self-contained HANOUTY WPF exe on disposable MariaDB, real window and scanner.'
+    # Persist exact package identity next to the runtime acceptance evidence.
+    # This is W1 provenance only: no financial W2 acceptance is implied.
+    $packageFiles = @('Hanouty.Desktop.Bootstrap.exe') + $required
+    $hashes = @()
+    foreach ($name in $packageFiles) {
+        $item = Join-Path ([IO.Path]::GetFullPath($ExtractedDirectory)) $name
+        $hashes += [ordered]@{
+            file = $name
+            sha256 = (Get-FileHash -LiteralPath $item -Algorithm SHA256).Hash.ToLowerInvariant()
+            bytes = (Get-Item -LiteralPath $item).Length
+        }
+    }
+    $provenance = [ordered]@{
+        schema = 'hanouty-extracted-wpf-w1-provenance-v1'
+        targetFramework = $runtime.runtimeOptions.tfm
+        w1WindowLoaded = [bool]$report.WindowLoaded
+        w1StagedSelections = [int]$report.StagedSelections
+        w2Accepted = $false
+        files = $hashes
+    }
+    $provenancePath = Join-Path $evidence 'package-provenance.json'
+    $provenance | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $provenancePath -Encoding UTF8
+    Write-Host 'PASS extracted HANOUTY WPF W1 runtime on disposable MariaDB; package SHA256 provenance recorded (W2 not accepted).'
 } finally {
     if ($null -ne $server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
 }
