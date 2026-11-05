@@ -1131,6 +1131,25 @@ Check(!originalWindow.SearchOriginalSales("receipt-1"),
     "logged-out cashier cannot query original sale");
 originalWindow.Close();
 
+// Host read can reenter the WPF dispatcher: a nested lookup must be denied,
+// and results must be discarded if the cashier logs out during the callback.
+var reentrantWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+    new RecordingSelection(), new RecordingSubmission(), financialContext,
+    requireFreshPaymentContext: true);
+var reentrantVm = (CatalogueViewModel)reentrantWindow.DataContext;
+var nestedBlocked = false;
+var reentrantReader = new CallbackOriginalSaleLookup(() =>
+{
+    nestedBlocked = !reentrantWindow.SearchOriginalSales("nested");
+    reentrantVm.FinancialSessionActive = false;
+});
+reentrantWindow.ConfigureOriginalSaleLookup(reentrantReader);
+Check(!reentrantWindow.SearchOriginalSales("receipt-1") && nestedBlocked &&
+    reentrantReader.Calls == 1 &&
+    reentrantWindow.OriginalSaleResults.Items.Count == 0,
+    "reentrant Host read must not expose stale original sale after logout");
+reentrantWindow.Close();
+
 // Read-only original sale selection: authoritative Host lookup only, no financial
 // command, duplicate persisted IDs fail closed and stale candidates cannot be reused.
 var originalLookup = new OriginalSaleLookupFixture();
@@ -1360,5 +1379,16 @@ sealed class OriginalSaleLookupFixture : IOriginalSaleLookup
         LastQuery = receiptSearch;
         var row = new OriginalSaleCandidate("sale-1", "receipt-1", 10m);
         return Duplicate ? new[] { row, row } : new[] { row };
+    }
+}
+
+sealed class CallbackOriginalSaleLookup(Action callback) : IOriginalSaleLookup
+{
+    public int Calls { get; private set; }
+    public IReadOnlyList<OriginalSaleCandidate> FindPersistedSales(string receiptSearch)
+    {
+        Calls++;
+        callback();
+        return new[] { new OriginalSaleCandidate("persisted-1", receiptSearch, 25m) };
     }
 }
