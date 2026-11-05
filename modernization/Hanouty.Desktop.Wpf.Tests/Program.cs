@@ -771,6 +771,19 @@ var reviewThread = new System.Threading.Thread(() =>
             "trusted total callback cannot reenter cashier login or logout");
         reentrantEntryWindow.Close();
 
+        // WPF DataGrid cell templates may raise a double-click from a Run
+        // (FrameworkContentElement), which is not a Visual. Parent traversal
+        // must not throw and must reach its containing TextBlock.
+        var cellText = new System.Windows.Controls.TextBlock();
+        var cellRun = new System.Windows.Documents.Run("product");
+        cellText.Inlines.Add(cellRun);
+        var parentMethod = typeof(Hanouty.Desktop.Wpf.MainWindow).GetMethod(
+            "GetInteractionParent", System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.Static);
+        Check(parentMethod is not null && ReferenceEquals(parentMethod.Invoke(null,
+            new object[] { cellRun }), cellText),
+            "catalogue double-click must traverse WPF content-element parent safely");
+
         // Real catalogue list interaction uses the existing production selection
         // seam; double-click must not bypass cashier logout or select a stale row.
         var listSelection = new RecordingSelection();
