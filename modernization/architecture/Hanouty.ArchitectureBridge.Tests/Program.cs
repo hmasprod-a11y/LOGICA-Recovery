@@ -239,6 +239,7 @@ Assert(session.SelectImage(new ProductSummary("21", "", "Forged", "fake/path.png
 Assert(session.SelectImage(new ProductSummary("11", "123", "No photo", "fake/path.png")).Outcome ==
        SelectionOutcome.InvalidCandidates && session.PendingCount == 0,
        "non-image list product cannot bypass image grid");
+{
 // Invalid catalogues fail at the composition boundary, before a tile exists.
 // Preserve that fail-closed contract instead of indexing an invalid snapshot.
 var duplicatePhotoPort = new RecordingAtomicBatchPort();
@@ -292,6 +293,7 @@ Assert(snapshotSession.SelectImage(snapshotSession.ImageProducts[0]).Outcome == 
        snapshotSession.Submit("snapshot-recovered") == CheckoutBatchStatus.Committed &&
        snapshotPort.Calls.Count == 1,
     "repaired catalogue supports one real session submission without duplicate posting");
+}
 session.RefreshCatalogue();
 Assert(session.Products.Count == 3 && session.ImageProducts.Count == 1,
        "explicit catalogue refresh preserves list/photo membership");
