@@ -109,6 +109,17 @@ Assert(blockedBatch.Commit("sale-003") == CheckoutBatchStatus.Invalidated &&
        "changed article identity blocks entire atomic commit");
 blockedBatch.Clear();
 Assert(blockedBatch.PendingCount == 0, "explicit clear discards staged lines");
+var collapsingCatalogue = new RecordingCatalogue();
+var collapsingCart = new RecordingAtomicBatchPort();
+var collapsingBatch = new CheckoutBatchController(collapsingCatalogue,
+    new RecordingPrompt { Choice = 0 }, collapsingCart);
+Assert(collapsingBatch.StageBarcode("123").Outcome == SelectionOutcome.Selected,
+    "duplicate barcode explicitly staged before catalogue change");
+collapsingCatalogue.ChangeRefresh = true;
+Assert(collapsingBatch.Commit("collapsed-variant") == CheckoutBatchStatus.Invalidated &&
+       collapsingCart.Calls.Count == 0 && collapsingBatch.PendingCount == 1,
+    "duplicate variant collapse blocks commit without cart write");
+
 try { blockedBatch.Commit(" "); throw new Exception("blank operation ID accepted"); }
 catch (ArgumentException) { Assert(blockedCart.Calls.Count == 0, "blank operation ID fails closed"); }
 var failingBatchPort = new ThrowingAtomicBatchPort();
@@ -336,12 +347,126 @@ AuthorizedCheckoutRequest W2(string id = "sale-001", string cashier = "cashier-0
         payments ?? new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 25m) }, 25m);
 W2().Validate();
 Assert(true, "W2 authorized checkout envelope accepts explicit cashier/payment");
+var brokenJournal = new FailingFinancialJournal();
+var protectedPort = new RecordingFinancialPort();
+var protectedGate = new AuthorizedCheckoutCommitGate(protectedPort, brokenJournal);
+try { protectedGate.Commit(W2(id: "lookup-failed")); throw new Exception("must throw"); }
+catch (ApplicationException) { }
+Assert(protectedGate.UncertainOperationId == "lookup-failed" && protectedPort.Calls == 0,
+    "failed durable lookup blocks posting and records unknown operation");
+try { protectedGate.Commit(W2(id: "different-operation")); throw new Exception("must block"); }
+catch (InvalidOperationException) { }
+Assert(protectedPort.Calls == 0, "unknown lookup cannot authorize another financial write");
+brokenJournal.Outcome = CheckoutOperationOutcome.Absent;
+Assert(protectedGate.Reconcile("lookup-failed") == CheckoutOperationOutcome.Absent &&
+       protectedGate.UncertainOperationId is null,
+    "durable absent reconciliation unlocks after lookup outage");
+var invalidStateJournal = new CompositionJournal { Outcome = (CheckoutOperationOutcome)99 };
+var invalidStatePort = new RecordingFinancialPort();
+var invalidStateGate = new AuthorizedCheckoutCommitGate(invalidStatePort, invalidStateJournal);
+try { invalidStateGate.Commit(W2(id: "invalid-journal")); throw new Exception("invalid journal accepted"); }
+catch (InvalidOperationException ex) when (ex.Message.Contains("unsupported outcome")) { }
+Assert(invalidStatePort.Calls == 0 && invalidStateGate.UncertainOperationId == "invalid-journal",
+    "invalid durable state prevents posting and locks operation");
+try { invalidStateGate.Reconcile("invalid-journal"); throw new Exception("invalid reconciliation accepted"); }
+catch (InvalidOperationException ex) when (ex.Message.Contains("unsupported outcome")) { }
+Assert(invalidStateGate.UncertainOperationId == "invalid-journal",
+    "invalid reconciliation cannot unlock financial gate");
+invalidStateJournal.Outcome = CheckoutOperationOutcome.Absent;
+Assert(invalidStateGate.Reconcile("invalid-journal") == CheckoutOperationOutcome.Absent &&
+       invalidStateGate.UncertainOperationId is null, "valid durable reconciliation unlocks");
+var mutableFinancialLines = new[] { new CheckoutBatchLine("immutable-article", 1) };
+var mutableFinancialPayments = new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 25m) };
+var snapshotJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
+var snapshotPort = new RecordingFinancialPort();
+snapshotPort.OnCommit = () =>
+{
+    mutableFinancialLines[0] = new CheckoutBatchLine("forged-article", 99);
+    mutableFinancialPayments[0] = new CheckoutPayment(CheckoutPaymentKind.Credit, 1m);
+    snapshotJournal.Outcome = CheckoutOperationOutcome.Persisted;
+};
+var snapshotGate = new AuthorizedCheckoutCommitGate(snapshotPort, snapshotJournal);
+Assert(snapshotGate.Commit(W2(id: "snapshot-1", lines: mutableFinancialLines,
+       payments: mutableFinancialPayments)) == FinancialCommitOutcome.Committed &&
+       snapshotPort.LastRequest!.Lines[0].ArticleId == "immutable-article" &&
+       snapshotPort.LastRequest.Payments[0].Kind == CheckoutPaymentKind.Cash,
+    "financial posting uses immutable validated line/payment snapshot");
+
+var financialJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
+var financialPort = new RecordingFinancialPort();
+financialPort.OnCommit = () => financialJournal.Outcome = CheckoutOperationOutcome.Persisted;
+var financialGate = new AuthorizedCheckoutCommitGate(financialPort, financialJournal);
+var reentrantJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
+var reentrantPort = new ReentrantFinancialPort();
+reentrantPort.OnCommit = () => reentrantJournal.Outcome = CheckoutOperationOutcome.Persisted;
+var reentrantGate = new AuthorizedCheckoutCommitGate(reentrantPort, reentrantJournal);
+reentrantPort.OnCommit = () =>
+{
+    reentrantJournal.Outcome = CheckoutOperationOutcome.Persisted;
+    try { reentrantGate.Commit(W2(id: "financial-reentrant")); throw new Exception("nested commit accepted"); }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("already in progress")) { }
+    try { reentrantGate.Reconcile("financial-reentrant"); throw new Exception("reconcile during commit accepted"); }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("already in progress")) { }
+};
+Assert(reentrantGate.Commit(W2(id: "financial-outer")) == FinancialCommitOutcome.Committed &&
+       reentrantPort.Calls == 1, "reentrant financial posting and reconciliation cannot overlap");
+var absentJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
+var absentPort = new RecordingFinancialPort();
+var absentGate = new AuthorizedCheckoutCommitGate(absentPort, absentJournal);
+Assert(absentGate.Commit(W2(id: "unconfirmed-financial")) == FinancialCommitOutcome.Unknown &&
+       absentGate.UncertainOperationId == "unconfirmed-financial" && absentPort.Calls == 1,
+    "successful port acknowledgement without durable journal proof remains unknown");
+try { absentGate.Commit(W2(id: "different-financial")); throw new Exception("unconfirmed commit accepted"); }
+catch (InvalidOperationException) { }
+Assert(absentPort.Calls == 1, "unconfirmed financial operation cannot be blindly retried");
+Assert(absentGate.Reconcile("unconfirmed-financial") == CheckoutOperationOutcome.Absent &&
+       absentGate.UncertainOperationId is null,
+    "durable absent reconciliation unlocks without claiming persistence");
+var journalDown = new FailingFinancialJournal();
+var journalDownPort = new RecordingFinancialPort();
+var journalDownGate = new AuthorizedCheckoutCommitGate(journalDownPort, journalDown);
+try { journalDownGate.Commit(W2(id: "journal-down")); throw new Exception("journal failure accepted"); }
+catch (ApplicationException) { }
+Assert(journalDownGate.UncertainOperationId == "journal-down" && journalDownPort.Calls == 0,
+    "journal lookup failure locks operation before any posting");
+journalDown.Outcome = CheckoutOperationOutcome.Absent;
+Assert(journalDownGate.Reconcile("journal-down") == CheckoutOperationOutcome.Absent,
+    "journal recovery reconciles previously unknown operation");
+
+Assert(financialGate.Commit(W2(id: "financial-1")) == FinancialCommitOutcome.Committed &&
+       financialPort.Calls == 1, "financial gate delegates exactly one validated request");
+financialJournal.Outcome = CheckoutOperationOutcome.Persisted;
+Assert(financialGate.Commit(W2(id: "financial-1")) == FinancialCommitOutcome.AlreadyCommitted &&
+       financialPort.Calls == 1, "persisted financial operation never reposts");
+financialJournal.Outcome = CheckoutOperationOutcome.Absent;
+financialPort.ThrowOnCommit = true;
+try { financialGate.Commit(W2(id: "financial-unknown")); throw new Exception("must throw"); }
+catch (ApplicationException) { }
+Assert(financialGate.UncertainOperationId == "financial-unknown" && financialPort.Calls == 2,
+    "ambiguous financial write locks operation ID");
+try { financialGate.Commit(W2(id: "financial-2")); throw new Exception("must block"); }
+catch (InvalidOperationException) { }
+Assert(financialPort.Calls == 2, "unknown financial outcome blocks next write");
+financialJournal.Outcome = CheckoutOperationOutcome.Unknown;
+Assert(financialGate.Reconcile("financial-unknown") == CheckoutOperationOutcome.Unknown &&
+       financialGate.UncertainOperationId == "financial-unknown",
+    "unknown ledger lookup does not unlock");
+financialJournal.Outcome = CheckoutOperationOutcome.Persisted;
+Assert(financialGate.Reconcile("financial-unknown") == CheckoutOperationOutcome.Persisted &&
+       financialGate.UncertainOperationId is null, "durable persisted reconciliation unlocks");
+
 static bool InvalidW2(AuthorizedCheckoutRequest request)
 {
     try { request.Validate(); return false; }
     catch (ArgumentException) { return true; }
 }
 Assert(InvalidW2(W2(id: "")), "W2 rejects missing operation ID");
+Assert(InvalidW2(W2() with { Currency = " " }), "W2 rejects missing currency");
+Assert(InvalidW2(W2(lines: Array.Empty<CheckoutBatchLine>())), "W2 rejects empty sale lines");
+Assert(InvalidW2(W2(lines: new[] { new CheckoutBatchLine("article-1", 0) })), "W2 rejects zero quantity");
+Assert(InvalidW2(W2() with { ExpectedTotal = 0m }), "W2 rejects zero expected total");
+(W2() with { IsReturn = true }).Validate();
+Assert(true, "W2 allows non-credit return pending real Checkout policy");
 Assert(InvalidW2(W2(cashier: "")), "W2 rejects unauthenticated cashier");
 Assert(InvalidW2(W2(lines: new[] { new CheckoutBatchLine("A", 1), new CheckoutBatchLine("a", 2) })),
     "W2 rejects case-colliding article identities");
@@ -352,6 +477,232 @@ Assert(InvalidW2(W2(payments: new[] { new CheckoutPayment(CheckoutPaymentKind.Ca
 Assert(InvalidW2(W2() with { IsReturn = true, Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Credit, 25m) } }),
     "W2 rejects return credit without explicit checkout policy");
 
+
+
+var paymentJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
+var paymentPort = new RecordingFinancialPort { OnCommit = () => paymentJournal.Outcome = CheckoutOperationOutcome.Persisted };
+var paymentContextReads = 0;
+var financialBatch = new AuthorizedCheckoutBatchAdapter(
+    new AuthorizedCheckoutCommitGate(paymentPort, paymentJournal),
+    () => { paymentContextReads++; return new AuthorizedCheckoutPaymentContext(
+        "cashier-01", "MAD", false,
+        new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 25m) }, 25m); });
+financialBatch.AddBatch(new[] { new CheckoutBatchLine("article-01", 2) }, "financial-batch-001");
+Assert(paymentPort.Calls == 1 && paymentContextReads == 1 &&
+    paymentPort.LastRequest?.OperationId == "financial-batch-001" &&
+    paymentPort.LastRequest.CashierId == "cashier-01" &&
+    paymentPort.LastRequest.Lines[0].Quantity == 2 &&
+    paymentPort.LastRequest.Payments[0].Amount == 25m,
+    "explicit payment adapter sends cashier, tender, quantity and stable ID to existing financial gate");
+financialBatch.AddBatch(new[] { new CheckoutBatchLine("article-01", 2) }, "financial-batch-001");
+Assert(paymentPort.Calls == 1, "durable persisted operation is never posted twice");
+// One adapter and gate must read a fresh authorized context per distinct operation,
+// while each posted request retains the first operation's immutable tender snapshot.
+var sequentialJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
+var sequentialPort = new RecordingFinancialPort {
+    OnCommit = () => sequentialJournal.Outcome = CheckoutOperationOutcome.Persisted
+};
+var activeTender = new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 5.25m) };
+var activeCashier = "cashier-01";
+var activeTotal = 5.25m;
+var sequentialReads = 0;
+var sequentialBatch = new AuthorizedCheckoutBatchAdapter(
+    new AuthorizedCheckoutCommitGate(sequentialPort, sequentialJournal),
+    () => { sequentialReads++; return new AuthorizedCheckoutPaymentContext(
+        activeCashier, "MAD", false, activeTender, activeTotal); });
+sequentialBatch.AddBatch(new[] { new CheckoutBatchLine("article-01", 1) }, "sequential-001");
+var firstRequest = sequentialPort.LastRequest!;
+activeCashier = "cashier-02";
+activeTender[0] = new CheckoutPayment(CheckoutPaymentKind.Cash, 10m);
+activeTotal = 10m;
+sequentialJournal.Outcome = CheckoutOperationOutcome.Absent;
+sequentialBatch.AddBatch(new[] { new CheckoutBatchLine("article-02", 2) }, "sequential-002");
+Assert(sequentialPort.Calls == 2 && sequentialReads == 2 &&
+    firstRequest.OperationId == "sequential-001" && firstRequest.CashierId == "cashier-01" &&
+    firstRequest.Payments[0].Amount == 5.25m && firstRequest.ExpectedTotal == 5.25m &&
+    sequentialPort.LastRequest?.OperationId == "sequential-002" &&
+    sequentialPort.LastRequest.CashierId == "cashier-02" &&
+    sequentialPort.LastRequest.Payments[0].Amount == 10m &&
+    sequentialPort.LastRequest.ExpectedTotal == 10m,
+    "distinct operations use fresh cashier/payment context without mutating the prior request");
+
+var unknownJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Unknown };
+var unknownPort = new RecordingFinancialPort();
+var unknownBatch = new AuthorizedCheckoutBatchAdapter(
+    new AuthorizedCheckoutCommitGate(unknownPort, unknownJournal),
+    () => new AuthorizedCheckoutPaymentContext("cashier-01", "MAD", false,
+        new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 25m) }, 25m));
+try { unknownBatch.AddBatch(new[] { new CheckoutBatchLine("article-01", 1) }, "unknown-001"); throw new Exception("unknown accepted"); }
+catch (InvalidOperationException ex) when (ex.Message.Contains("Financial outcome unknown")) { }
+Assert(unknownPort.Calls == 0, "unknown journal cannot trigger financial write");
+
+
+var lineSnapshotPort = new RecordingAtomicBatchPort();
+var snapshotSession = new CheckoutComposition(new CompositionCatalogue(),
+    new RecordingPrompt { Choice = 0 }, lineSnapshotPort, new CompositionJournal()).CreateSession();
+Assert(snapshotSession.PendingLines.Count == 0, "empty session snapshot has no lines");
+snapshotSession.Scan("123", 2);
+snapshotSession.Scan("123", 3);
+var capturedLines = snapshotSession.PendingLines;
+Assert(capturedLines.Count == 1 && capturedLines[0] == new CheckoutBatchLine("11", 5) &&
+    lineSnapshotPort.Calls.Count == 0, "pending lines aggregate repeated scans without posting");
+try { ((IList<CheckoutBatchLine>)capturedLines)[0] = new CheckoutBatchLine("forged", 99);
+    throw new Exception("mutable pending snapshot"); }
+catch (NotSupportedException) { }
+snapshotSession.Scan("123", 1);
+Assert(capturedLines[0].Quantity == 5 && snapshotSession.PendingLines[0].Quantity == 6,
+    "pending lines are detached from later session edits");
+var reentrantSessionQuoteRejected = false;
+lineSnapshotPort.OnAdd = () =>
+{
+    try { _ = snapshotSession.PendingLines; }
+    catch (InvalidOperationException) { reentrantSessionQuoteRejected = true; }
+};
+Assert(snapshotSession.Submit("snapshot-live-commit") == CheckoutBatchStatus.Committed &&
+    reentrantSessionQuoteRejected &&
+    lineSnapshotPort.Calls.Single().Lines.Single() == new CheckoutBatchLine("11", 6) &&
+    snapshotSession.PendingLines.Count == 0,
+    "production commit freezes posted lines, rejects reentrant quote and clears committed stage");
+// The trusted cash quote must read the SAME Application session as WPF selection,
+// not reconstruct quantities from UI rows or a second catalogue instance.
+var quotePort = new RecordingAtomicBatchPort();
+var quoteSession = new CheckoutComposition(new CompositionCatalogue(),
+    new RecordingPrompt { Choice = 0 }, quotePort, new CompositionJournal()).CreateSession();
+var quoteProduct = quoteSession.Products.Single(p => p.ArticleId == "21");
+Assert(quoteSession.SelectArticle(quoteProduct, 2).Outcome == SelectionOutcome.Selected,
+    "barcode-free list article stages through the production Application session");
+Assert(quoteSession.SelectArticle(quoteProduct, 1).Outcome == SelectionOutcome.Selected,
+    "second selection uses the same staged basket");
+var trustedQuoteLines = quoteSession.PendingLines;
+Assert(trustedQuoteLines.Count == 1 && trustedQuoteLines[0] ==
+    new CheckoutBatchLine("21", 3),
+    "authoritative quote input aggregates selected list quantities, not WPF display values");
+try { ((IList<CheckoutBatchLine>)trustedQuoteLines)[0] = new CheckoutBatchLine("21", 99);
+    throw new Exception("trusted quote input was mutable"); }
+catch (NotSupportedException) { }
+Assert(quoteSession.Submit("quote-session-001") == CheckoutBatchStatus.Committed &&
+    quotePort.Calls.Single().Lines.Single() == trustedQuoteLines.Single() &&
+    quoteSession.PendingLines.Count == 0,
+    "quote input and committed batch have identical identities and quantities; next operation starts empty");
+
+var unknownSnapshotPort = new ThrowingAtomicBatchPort();
+var unknownSnapshot = new CheckoutComposition(new CompositionCatalogue(),
+    new RecordingPrompt { Choice = 0 }, unknownSnapshotPort, new CompositionJournal()).CreateSession();
+unknownSnapshot.Scan("123");
+try { unknownSnapshot.Submit("snapshot-unknown"); }
+catch (ApplicationException) { }
+try { _ = unknownSnapshot.PendingLines; throw new Exception("unknown snapshot exposed"); }
+catch (InvalidOperationException) { }
+Assert(unknownSnapshotPort.Attempts == 1, "unknown session snapshot cannot authorize retry");
+var overflowSnapshotPort = new RecordingAtomicBatchPort();
+var overflowSnapshot = new CheckoutComposition(new CompositionCatalogue(),
+    new RecordingPrompt { Choice = 0 }, overflowSnapshotPort, new CompositionJournal()).CreateSession();
+overflowSnapshot.Scan("123", int.MaxValue);
+overflowSnapshot.Scan("123", 1);
+try { _ = overflowSnapshot.PendingLines; throw new Exception("overflow snapshot accepted"); }
+catch (OverflowException) { }
+Assert(overflowSnapshotPort.Calls.Count == 0, "quantity overflow cannot reach posting from preview");
+
+// A reentrant WPF quote must not observe a basket during posting.
+var reentrantQuotePort = new RecordingAtomicBatchPort();
+var reentrantQuoteBatch = new CheckoutBatchController(new RecordingCatalogue(),
+    new RecordingPrompt { Choice = 0 }, reentrantQuotePort);
+Assert(reentrantQuoteBatch.StageImage(A("21", ""), 1).Outcome == SelectionOutcome.Selected,
+    "reentrant quote stages article");
+var quoteBlocked = false;
+reentrantQuotePort.OnAdd = () => {
+    try { _ = reentrantQuoteBatch.SnapshotLines(); }
+    catch (InvalidOperationException) { quoteBlocked = true; }
+};
+Assert(reentrantQuoteBatch.Commit("reentrant-quote-001") == CheckoutBatchStatus.Committed &&
+    quoteBlocked && reentrantQuoteBatch.SnapshotLines().Count == 0,
+    "reentrant quote blocked during commit and cleared after posting");
+
+// A lost acknowledgement must not reopen quote or permit implicit retry.
+var uncertainQuotePort = new RecordingAtomicBatchPort();
+var uncertainQuoteBatch = new CheckoutBatchController(new RecordingCatalogue(),
+    new RecordingPrompt { Choice = 0 }, uncertainQuotePort);
+uncertainQuoteBatch.StageImage(A("21", ""), 2);
+var quoteRejectedInsideFault = false;
+uncertainQuotePort.OnAdd = () => {
+    try { _ = uncertainQuoteBatch.SnapshotLines(); }
+    catch (InvalidOperationException) { quoteRejectedInsideFault = true; }
+    throw new ApplicationException("acknowledgement lost after posting");
+};
+try { uncertainQuoteBatch.Commit("uncertain-quote-001"); throw new Exception("lost acknowledgement swallowed"); }
+catch (ApplicationException) { }
+var quoteRejectedAfterFault = false;
+try { _ = uncertainQuoteBatch.SnapshotLines(); }
+catch (InvalidOperationException) { quoteRejectedAfterFault = true; }
+Assert(quoteRejectedInsideFault && quoteRejectedAfterFault &&
+    uncertainQuoteBatch.State == CheckoutCommitState.OutcomeUnknown &&
+    uncertainQuotePort.Calls.Count == 1 && uncertainQuoteBatch.PendingCount == 1,
+    "lost acknowledgement blocks quote during commit and until durable reconciliation");
+uncertainQuoteBatch.ReconcileUnknownOutcome("uncertain-quote-001", false);
+Assert(uncertainQuoteBatch.State == CheckoutCommitState.Ready &&
+    uncertainQuoteBatch.SnapshotLines().Single() == new CheckoutBatchLine("21", 2) &&
+    uncertainQuotePort.Calls.Count == 1,
+    "confirmed absent outcome restores trusted quote without automatic repost");
+
+// Contract acceptance: a return is bounded by the durable original line,
+// not by a cashier-supplied number or a second independent return engine.
+var originalLine = new OriginalSaleLineReference("sale-100", "line-1");
+var originalEvidence = new OriginalSaleReturnEvidence(originalLine, "21", 3, 2);
+OriginalSaleReturnGuard.RequireAvailable(originalLine, originalEvidence, "21", 1);
+var excessReturnDenied = false;
+try { OriginalSaleReturnGuard.RequireAvailable(originalLine, originalEvidence, "21", 2); }
+catch (InvalidOperationException) { excessReturnDenied = true; }
+var mismatchedOriginalDenied = false;
+try { OriginalSaleReturnGuard.RequireAvailable(new OriginalSaleLineReference("sale-101", "line-1"), originalEvidence, "21", 1); }
+catch (InvalidOperationException) { mismatchedOriginalDenied = true; }
+var missingEvidenceDenied = false;
+try { OriginalSaleReturnGuard.RequireAvailable(originalLine, null, "21", 1); }
+catch (InvalidOperationException) { missingEvidenceDenied = true; }
+Assert(excessReturnDenied && mismatchedOriginalDenied && missingEvidenceDenied,
+    "original-sale evidence fails closed on over-return, mismatch and missing data");
+
+var trustedActor = new VerifiedStockActor("session-1", "actor-1");
+var verifiedActorSource = new StubVerifiedStockActorSource { Actor = trustedActor };
+var verifiedPermissions = new StubManualStockPermissionReader { Allowed = true };
+Assert(ManualStockAuthorizationBoundary.RequireAuthorized(verifiedActorSource, verifiedPermissions) == trustedActor,
+    "manual stock authorization accepts explicit verified actor and permission");
+verifiedPermissions.Allowed = false;
+var unauthorizedDenied = false;
+try { ManualStockAuthorizationBoundary.RequireAuthorized(verifiedActorSource, verifiedPermissions); }
+catch (UnauthorizedAccessException) { unauthorizedDenied = true; }
+verifiedPermissions.Allowed = true;
+verifiedActorSource.Actor = null;
+var anonymousDenied = false;
+try { ManualStockAuthorizationBoundary.RequireAuthorized(verifiedActorSource, verifiedPermissions); }
+catch (UnauthorizedAccessException) { anonymousDenied = true; }
+Assert(unauthorizedDenied && anonymousDenied && verifiedPermissions.Calls == 2,
+    "manual stock authorization denies missing actor and explicit permission denial");
+
+var failingPermissionSource = new StubManualStockPermissionReader { ThrowOnRead = true };
+verifiedActorSource.Actor = trustedActor;
+var permissionBackendDenied = false;
+try { ManualStockAuthorizationBoundary.RequireAuthorized(verifiedActorSource, failingPermissionSource); }
+catch (UnauthorizedAccessException) { permissionBackendDenied = true; }
+verifiedActorSource.ThrowOnRead = true;
+var identityBackendDenied = false;
+try { ManualStockAuthorizationBoundary.RequireAuthorized(verifiedActorSource, verifiedPermissions); }
+catch (UnauthorizedAccessException) { identityBackendDenied = true; }
+Assert(permissionBackendDenied && identityBackendDenied,
+    "manual stock authorization fails closed on identity and permission backend exceptions");
+
+sealed class StubVerifiedStockActorSource : IVerifiedStockActorSource
+{
+    public VerifiedStockActor? Actor { get; set; }
+    public bool ThrowOnRead { get; set; }
+    public VerifiedStockActor? CurrentVerifiedActor() => ThrowOnRead ? throw new InvalidOperationException("identity backend unavailable") : Actor;
+}
+sealed class StubManualStockPermissionReader : IManualStockPermissionReader
+{
+    public bool Allowed { get; set; }
+    public bool ThrowOnRead { get; set; }
+    public int Calls { get; private set; }
+    public bool CanAdjustStock(VerifiedStockActor actor) { Calls++; if (ThrowOnRead) throw new InvalidOperationException("permission backend unavailable"); return Allowed; }
+}
 
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
 {
@@ -406,8 +757,12 @@ sealed class RecordingPrompt : ICheckoutVariantPrompt
 sealed class RecordingAtomicBatchPort : IAtomicCheckoutBatchPort
 {
     public List<(List<CheckoutBatchLine> Lines, string OperationId)> Calls { get; } = new();
+    public Action? OnAdd { get; set; }
     public void AddBatch(IReadOnlyList<CheckoutBatchLine> lines, string operationId)
-        => Calls.Add((lines.ToList(), operationId));
+    {
+        Calls.Add((lines.ToList(), operationId));
+        OnAdd?.Invoke();
+    }
 }
 sealed class ThrowingAtomicBatchPort : IAtomicCheckoutBatchPort
 {
@@ -477,3 +832,36 @@ sealed class FaultyCatalogue : ICatalogueReader
 }
 
 
+
+sealed class RecordingFinancialPort : IAuthorizedCheckoutPort
+{
+    public int Calls { get; private set; }
+    public bool ThrowOnCommit { get; set; }
+    public AuthorizedCheckoutRequest? LastRequest { get; private set; }
+    public Action? OnCommit { get; set; }
+    public void Commit(AuthorizedCheckoutRequest request)
+    {
+        Calls++;
+        LastRequest = request;
+        OnCommit?.Invoke();
+        if (ThrowOnCommit) throw new ApplicationException("acknowledgement lost");
+    }
+}
+
+sealed class FailingFinancialJournal : ICheckoutOperationJournal
+{
+    public CheckoutOperationOutcome? Outcome { get; set; }
+    public CheckoutOperationOutcome Lookup(string operationId) =>
+        Outcome ?? throw new ApplicationException("durable journal unavailable");
+}
+
+sealed class ReentrantFinancialPort : IAuthorizedCheckoutPort
+{
+    public Action? OnCommit { get; set; }
+    public int Calls { get; private set; }
+    public void Commit(AuthorizedCheckoutRequest request)
+    {
+        Calls++;
+        OnCommit?.Invoke();
+    }
+}

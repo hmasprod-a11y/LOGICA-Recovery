@@ -48,16 +48,18 @@ public sealed class ProductionWpfProductSelection : Wpf.IProductSelection
             !string.Equals(current.DisplayName, product.Name, StringComparison.Ordinal) ||
             !string.Equals(current.ImagePath, product.ImagePath, StringComparison.Ordinal))
             return false;
-        if (current.HasImage)
-            return _session.SelectImage(current).Outcome == SelectionOutcome.Selected;
-        if (string.IsNullOrWhiteSpace(current.Barcode)) return false;
-        // WPF's present selection API has no explicit duplicate-barcode variant
-        // command; don't silently select the first duplicate.
+        // An explicitly clicked tile carries a stable article ID. Duplicate
+        // barcodes MUST preserve that identity even when the tile has a photo;
+        // a barcode scan alone cannot silently choose a variant.
+        if (string.IsNullOrWhiteSpace(current.Barcode))
+            return _session.SelectArticle(current).Outcome == SelectionOutcome.Selected;
         var matching = _session.Products.Count(p =>
             string.Equals(p.Barcode, current.Barcode, StringComparison.Ordinal));
         if (matching > 1)
             return _session.SelectVariant(current).Outcome == SelectionOutcome.Selected;
         if (matching != 1) return false;
+        if (current.HasImage)
+            return _session.SelectImage(current).Outcome == SelectionOutcome.Selected;
         return _session.Scan(current.Barcode).Outcome == SelectionOutcome.Selected;
     }
 }
@@ -65,11 +67,33 @@ public sealed class ProductionWpfProductSelection : Wpf.IProductSelection
 // Application-owned submission adapter: WPF only supplies the stable operation ID.
 // No financial posting is authorized by this adapter without a configured
 // IAtomicCheckoutBatchPort and durable operation journal in CheckoutComposition.
-public sealed class ProductionWpfCheckoutSubmission : Wpf.ICheckoutSubmission
+public sealed class ProductionWpfCheckoutSubmission : Wpf.ICheckoutSubmission, Wpf.ICheckoutOutcomeReconciliation
 {
     private readonly CheckoutSession _session;
-    public ProductionWpfCheckoutSubmission(CheckoutSession session) =>
+    private readonly AuthorizedCheckoutCommitGate? _financialGate;
+    public ProductionWpfCheckoutSubmission(CheckoutSession session,
+        AuthorizedCheckoutCommitGate? financialGate = null)
+    {
         _session = session ?? throw new ArgumentNullException(nameof(session));
+        _financialGate = financialGate;
+    }
+
+    public Wpf.CheckoutResolution Reconcile(string stableOperationId)
+    {
+        if (_session.State != CheckoutCommitState.OutcomeUnknown ||
+            !string.Equals(_session.OperationId, stableOperationId, StringComparison.Ordinal))
+            return Wpf.CheckoutResolution.Unknown;
+        // Resolve the financial gate AND the staged session. A journal result
+        // must not leave a hidden second lock that poisons the next checkout.
+        if (_financialGate?.UncertainOperationId is not null &&
+            _financialGate.Reconcile(stableOperationId) == CheckoutOperationOutcome.Unknown)
+            return Wpf.CheckoutResolution.Unknown;
+        return _session.Reconcile() switch {
+            CheckoutOperationOutcome.Persisted => Wpf.CheckoutResolution.Persisted,
+            CheckoutOperationOutcome.Absent => Wpf.CheckoutResolution.Absent,
+            _ => Wpf.CheckoutResolution.Unknown
+        };
+    }
 
     public Wpf.CheckoutSubmissionResult Submit(string stableOperationId)
     {
@@ -91,15 +115,34 @@ public sealed record WpfProductionBinding(CheckoutSession Session,
 
 public static class ProductionWpfServices
 {
+    // Explicit payment-enabled composition. The host supplies Inventory's real
+    // catalogue, Checkout's MariaDbCashCheckoutServices posting/journal and
+    // authenticated cashier/tender context; this never runs on product selection.
+    public static WpfProductionBinding CreateFinancial(
+        ICatalogueReader catalogue, ICheckoutVariantPrompt variants,
+        IAuthorizedCheckoutPort posting, ICheckoutOperationJournal journal,
+        Func<AuthorizedCheckoutPaymentContext> paymentContext)
+    {
+        ArgumentNullException.ThrowIfNull(posting);
+        ArgumentNullException.ThrowIfNull(journal);
+        var gate = new AuthorizedCheckoutCommitGate(posting, journal);
+        var financialBatch = new AuthorizedCheckoutBatchAdapter(gate, paymentContext);
+        return CreateBinding(new CheckoutComposition(catalogue, variants, financialBatch, journal), gate);
+    }
+
     // Host invokes this at App.ResolveServices using concrete Inventory,
     // Checkout and cashier variant-prompt adapters. No empty fallback.
-    public static WpfProductionBinding Create(CheckoutComposition composition)
+    public static WpfProductionBinding Create(CheckoutComposition composition) =>
+        CreateBinding(composition, null);
+
+    private static WpfProductionBinding CreateBinding(CheckoutComposition composition,
+        AuthorizedCheckoutCommitGate? financialGate)
     {
         ArgumentNullException.ThrowIfNull(composition);
         var session = composition.CreateSession();
         return new WpfProductionBinding(session,
             new ProductionWpfCatalogueReader(session),
             new ProductionWpfProductSelection(session),
-            new ProductionWpfCheckoutSubmission(session));
+            new ProductionWpfCheckoutSubmission(session, financialGate));
     }
 }

@@ -60,6 +60,19 @@ Check(duplicate.Submission.Submit("duplicate-removed-001") == Wpf.CheckoutSubmis
 duplicate.Session.DiscardInvalidated();
 Check(duplicate.Session.SelectVariant(new ProductSummary("b", "111", "Apple variant", null, "v2")).Outcome == SelectionOutcome.InvalidCandidates,
     "explicit variant API rejects stale duplicate after competing barcode removed");
+// A photographed duplicate barcode must retain explicit variant identity,
+// not be staged through the generic photo path.
+var photoDuplicateReader = new TestCatalogue { PhotoVariantB = true };
+var photoDuplicatePort = new TestPort();
+var photoDuplicate = ProductionWpfServices.Create(new CheckoutComposition(
+    photoDuplicateReader, new TestPrompt(), photoDuplicatePort, new TestJournal()));
+var photoDuplicateProducts = photoDuplicate.Catalogue.ReadProducts();
+Check(photoDuplicate.Checkout.Select(photoDuplicateProducts[1]),
+    "photographed duplicate barcode stages explicit variant");
+photoDuplicateReader.RemoveCompetingBarcode = true;
+Check(photoDuplicate.Submission.Submit("photo-duplicate-001") == Wpf.CheckoutSubmissionResult.Invalidated &&
+    photoDuplicatePort.Writes == 0,
+    "photographed duplicate cannot bypass competing-barcode revalidation");
 var directReader = new TestCatalogue();
 var directBinding = ProductionWpfServices.Create(new CheckoutComposition(
     directReader, new TestPrompt(), new TestPort(), new TestJournal()));
@@ -71,7 +84,8 @@ Check(directBinding.Session.SelectVariant(new ProductSummary("b", "111", "Apple 
 reader.CaseCollision = true;
 try { binding.Catalogue.ReadProducts(); throw new Exception("case collision accepted"); }
 catch (InvalidOperationException ex) when (
-    ex.Message.Contains("duplicate WPF article") || ex.Message.Contains("duplicate article identity")) { }
+    ex.Message.Contains("duplicate WPF article", StringComparison.Ordinal) ||
+    ex.Message.Contains("Catalogue returned duplicate article identity", StringComparison.Ordinal)) { }
 var collisionReader = new TestCatalogue { CaseCollision = true };
 var collisionComposition = new CheckoutComposition(
     collisionReader, new TestPrompt(), new TestPort(), new TestJournal());
@@ -79,19 +93,51 @@ try { collisionComposition.AllProducts(); throw new Exception("case-colliding ca
 catch (InvalidOperationException ex) when (ex.Message.Contains("duplicate article identity")) { }
 try { collisionComposition.CreateSession().Scan("111"); throw new Exception("case-colliding barcode candidates accepted"); }
 catch (InvalidOperationException ex) when (ex.Message.Contains("duplicate article identity")) { }
+// Contract-level faults exercise the SAME production session/gate composition;
+// these are not SQL or W2 acceptance substitutes.
+foreach (var persisted in new[] { false, true })
+{
+    var journal = new FinancialTestJournal();
+    var financialPort = new LostAcknowledgementPort(journal, persisted);
+    var financial = ProductionWpfServices.CreateFinancial(new TestCatalogue(),
+        new TestPrompt(), financialPort, journal,
+        () => new AuthorizedCheckoutPaymentContext("cashier", "MAD", false,
+            new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 5m) }, 5m));
+    var visible = financial.Catalogue.ReadProducts();
+    Check(financial.Checkout.Select(visible[1]), "financial selection staged");
+    try { financial.Submission.Submit("lost-ack"); throw new Exception("lost acknowledgement accepted"); }
+    catch (InvalidOperationException ex) when (ex.Message == "lost acknowledgement") { }
+    var reconciliation = (Wpf.ICheckoutOutcomeReconciliation)financial.Submission;
+    Check(reconciliation.Reconcile("wrong-id") == Wpf.CheckoutResolution.Unknown,
+        "unrelated operation cannot reconcile session");
+    journal.Unavailable = true;
+    Check(reconciliation.Reconcile("lost-ack") == Wpf.CheckoutResolution.Unknown &&
+        financial.Session.State == CheckoutCommitState.OutcomeUnknown,
+        "unknown journal must preserve session and gate locks");
+    journal.Unavailable = false;
+    Check(reconciliation.Reconcile("lost-ack") ==
+        (persisted ? Wpf.CheckoutResolution.Persisted : Wpf.CheckoutResolution.Absent),
+        "journal resolves both financial gate and session");
+    if (!persisted) financial.Session.Clear();
+    Check(financial.Checkout.Select(visible[1]), "resolved session can stage after explicit review");
+    Check(financial.Submission.Submit("next-operation") == Wpf.CheckoutSubmissionResult.Committed &&
+        financialPort.Calls == 2,
+        "resolved financial gate must not poison next checkout");
+}
 Console.WriteLine("WPF adapter integration contract regression passed.");
 static void Check(bool ok, string reason) { if (!ok) throw new Exception(reason); }
 
 sealed class TestCatalogue : ICatalogueReader
 {
     public bool ChangeVariant { get; set; }
+    public bool PhotoVariantB { get; set; }
     public bool ChangeVariantB { get; set; }
     public bool ChangeBarcodeB { get; set; }
     public bool CaseCollision { get; set; }
     public bool RemoveCompetingBarcode { get; set; }
     public IReadOnlyList<ProductSummary> ListAll() => new[] {
         new ProductSummary("a", RemoveCompetingBarcode ? "333" : "111", "Apple", null, "v1"),
-        new ProductSummary(CaseCollision ? "A" : "b", ChangeBarcodeB ? "222" : "111", "Apple variant", null, ChangeVariantB ? "v3" : "v2"),
+        new ProductSummary(CaseCollision ? "A" : "b", ChangeBarcodeB ? "222" : "111", "Apple variant", PhotoVariantB ? "variant.png" : null, ChangeVariantB ? "v3" : "v2"),
         new ProductSummary("c", "", "Photo", "photo.png", ChangeVariant ? "v2" : "v1")
     };
     public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => ListAll().Where(x => x.Barcode == barcode).ToArray();
@@ -111,4 +157,23 @@ sealed class TestPort : IAtomicCheckoutBatchPort
 sealed class TestJournal : ICheckoutOperationJournal
 {
     public CheckoutOperationOutcome Lookup(string operationId) => CheckoutOperationOutcome.Absent;
+}
+
+sealed class FinancialTestJournal : ICheckoutOperationJournal
+{
+    public readonly HashSet<string> Persisted = new();
+    public bool Unavailable;
+    public CheckoutOperationOutcome Lookup(string operationId) => Unavailable
+        ? CheckoutOperationOutcome.Unknown
+        : Persisted.Contains(operationId) ? CheckoutOperationOutcome.Persisted : CheckoutOperationOutcome.Absent;
+}
+sealed class LostAcknowledgementPort(FinancialTestJournal journal, bool persisted) : IAuthorizedCheckoutPort
+{
+    public int Calls;
+    public void Commit(AuthorizedCheckoutRequest request)
+    {
+        Calls++;
+        if (persisted || Calls > 1) journal.Persisted.Add(request.OperationId);
+        if (Calls == 1) throw new InvalidOperationException("lost acknowledgement");
+    }
 }

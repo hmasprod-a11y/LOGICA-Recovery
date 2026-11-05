@@ -45,11 +45,13 @@ public sealed class CheckoutBatchController
         if (string.IsNullOrWhiteSpace(barcode))
             return new SelectionResponse(SelectionOutcome.Missing, null);
         var captured = barcode;
+        var candidates = _catalogue.FindBarcode(captured);
         var result = CheckoutSelectionGateway.ResolveBarcode(
-            _catalogue.FindBarcode(captured), _prompt.Choose,
+            candidates, _prompt.Choose,
             () => _catalogue.RefreshBarcode(captured));
         if (result.Outcome == SelectionOutcome.Selected)
-            _pending.Add(new PendingLine(result.Article!, captured, quantity, false));
+            _pending.Add(new PendingLine(result.Article!, captured, quantity, false,
+                candidates.Count > 1));
         return result;
     }
 
@@ -63,8 +65,39 @@ public sealed class CheckoutBatchController
         var result = CheckoutSelectionGateway.ResolveImage(tile,
             () => _catalogue.RefreshArticle(tile.ArticleId));
         if (result.Outcome == SelectionOutcome.Selected)
-            _pending.Add(new PendingLine(result.Article!, null, quantity, true));
+            _pending.Add(new PendingLine(result.Article!, null, quantity, true, false));
         return result;
+    }
+
+    // Immutable identity/quantity input for the Host's authoritative price read.
+    // This never authorizes a sale, calculates prices or touches persistence.
+    public IReadOnlyList<CheckoutBatchLine> SnapshotLines()
+    {
+        if (_committing)
+            throw new InvalidOperationException("Cannot quote a basket during financial commit.");
+        if (_uncertainOperationId is not null)
+            throw new InvalidOperationException("Resolve uncertain operation before requesting a fresh cart preview.");
+        // Reads are safe during synchronous commit: mutation is already locked.
+        var lines = new List<CheckoutBatchLine>(_pending.Count);
+        var positions = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var pending in _pending)
+            AppendLine(lines, positions, pending.Candidate.ArticleId, pending.Quantity);
+        return lines.AsReadOnly();
+    }
+
+    private static void AppendLine(List<CheckoutBatchLine> lines,
+        Dictionary<string, int> positions, string articleId, int quantity)
+    {
+        if (positions.TryGetValue(articleId, out var position))
+        {
+            var existing = lines[position];
+            lines[position] = existing with { Quantity = checked(existing.Quantity + quantity) };
+        }
+        else
+        {
+            positions.Add(articleId, lines.Count);
+            lines.Add(new CheckoutBatchLine(articleId, quantity));
+        }
     }
 
     public void Clear()
@@ -97,16 +130,7 @@ public sealed class CheckoutBatchController
                     live.Article?.ArticleId != pending.Candidate.ArticleId ||
                     live.Article.Barcode != pending.Candidate.Barcode)
                     return CheckoutBatchStatus.Invalidated;
-                if (positions.TryGetValue(pending.Candidate.ArticleId, out var position))
-                {
-                    var existing = lines[position];
-                    lines[position] = existing with { Quantity = checked(existing.Quantity + pending.Quantity) };
-                }
-                else
-                {
-                    positions.Add(pending.Candidate.ArticleId, lines.Count);
-                    lines.Add(new CheckoutBatchLine(pending.Candidate.ArticleId, pending.Quantity));
-                }
+                AppendLine(lines, positions, pending.Candidate.ArticleId, pending.Quantity);
             }
             try { _cart.AddBatch(lines.AsReadOnly(), operationId); }
             catch
@@ -139,6 +163,10 @@ public sealed class CheckoutBatchController
         // Use the complete live variant set. The original recovered selection
         // service still validates the chosen index and a second fresh snapshot.
         var live = _catalogue.RefreshBarcode(pending.Barcode!);
+        // An explicit variant choice cannot silently degrade to a unique
+        // barcode after another article is removed before commit.
+        if (pending.WasDuplicate && live.Count < 2)
+            return new SelectionResponse(SelectionOutcome.Missing, null);
         var index = -1;
         for (var i = 0; i < live.Count; i++)
         {
@@ -164,5 +192,5 @@ public sealed class CheckoutBatchController
         if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity));
     }
     private sealed record PendingLine(ArticleCandidate Candidate, string? Barcode,
-        int Quantity, bool IsImage);
+        int Quantity, bool IsImage, bool WasDuplicate);
 }
