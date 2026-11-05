@@ -11,49 +11,55 @@ public partial class MainWindow : Window
     private bool _cashierEntryOpen;
     private Func<string, string, decimal, bool>? _setFinancialContext;
     private Func<decimal?>? _readTrustedCashTotal;
+    private Func<bool>? _endFinancialSession;
+    private Func<string>? _readBasketIdentity;
 
     public void ConfigureCashierEntry(Func<string, string, decimal, bool> setFinancialContext,
-        Func<decimal?> readTrustedCashTotal)
+        Func<decimal?> readTrustedCashTotal, Func<bool>? endFinancialSession = null,
+        Func<string>? readBasketIdentity = null)
     {
         ArgumentNullException.ThrowIfNull(setFinancialContext);
         ArgumentNullException.ThrowIfNull(readTrustedCashTotal);
         if (_setFinancialContext is not null) throw new InvalidOperationException("Cashier entry already configured.");
         _setFinancialContext = setFinancialContext;
         _readTrustedCashTotal = readTrustedCashTotal;
+        _endFinancialSession = endFinancialSession;
+        _readBasketIdentity = readBasketIdentity;
     }
+
+    public bool EndFinancialSession() =>
+        !_cashierEntryOpen && DataContext is CatalogueViewModel vm &&
+        !vm.CheckoutBusy && !vm.CheckoutUncertain && vm.PendingOperationId is null &&
+        _endFinancialSession?.Invoke() == true;
+
+    private void EndFinancialSession_Click(object sender, RoutedEventArgs e) => EndFinancialSession();
 
     public bool ShowCashierEntry()
     {
-        if (_cashierEntryOpen || DataContext is not CatalogueViewModel vm || vm.CheckoutBusy || vm.CheckoutUncertain ||
-            vm.PendingOperationId is not null || _setFinancialContext is null || _readTrustedCashTotal is null)
-            return false;
-        decimal? trustedTotal;
-        try { trustedTotal = _readTrustedCashTotal(); }
-        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException) { return false; }
-        if (trustedTotal is null || trustedTotal < 0m) return false;
-        (string Cashier, string Register, decimal CashMad)? draft;
-        _cashierEntryOpen = true;
+        if (_cashierEntryOpen || DataContext is not CatalogueViewModel vm ||
+            vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
+            _setFinancialContext is null || _readTrustedCashTotal is null) return false;
         try
         {
-            var dialog = new CashierEntryDialog(trustedTotal) { Owner = this };
-            if (dialog.ShowDialog() != true) return false;
-            draft = dialog.Draft;
+            var total = _readTrustedCashTotal();
+            if (total is null || total < 0m) return false;
+            var identity = _readBasketIdentity?.Invoke();
+            _cashierEntryOpen = true;
+            try
+            {
+                var dialog = new CashierEntryDialog(total) { Owner = this };
+                if (dialog.ShowDialog() != true || dialog.Draft is not { } draft) return false;
+                if (vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
+                    _readTrustedCashTotal() != total || _readBasketIdentity?.Invoke() != identity)
+                    return false;
+                // Host authenticates an empty session or installs a trusted quote
+                // for its own basket. UI text never grants identity or prices.
+                return _setFinancialContext(draft.Cashier, draft.Register, draft.CashMad);
+            }
+            finally { _cashierEntryOpen = false; }
         }
-        finally { _cashierEntryOpen = false; }
-        if (draft is null) return false;
-        // Recheck after the modal interaction; Host independently rejects busy/unknown.
-        if (vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null) return false;
-        try
-        {
-            // The basket may have changed during a modal dialog. Never approve a stale quote.
-            if (_readTrustedCashTotal() != trustedTotal) return false;
-            if (!_setFinancialContext(draft.Value.Cashier, draft.Value.Register, draft.Value.CashMad)) return false;
-            // Host has authorized the new session; UI state follows, never leads.
-            vm.FinancialSessionActive = true;
-            vm.PaymentContext = new CashierPaymentContext(draft.Value.Cashier, draft.Value.Register, "MAD", "Cash", draft.Value.CashMad);
-            return true;
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException) { return false; }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        { return false; }
     }
 
     private void CashierEntry_Click(object sender, RoutedEventArgs e) => ShowCashierEntry();
@@ -74,8 +80,9 @@ public partial class MainWindow : Window
     private void ReviewResolvedCheckout_Click(object sender, RoutedEventArgs e) =>
         ReviewResolvedCheckout(ReadReviewPin);
 
-    public string PromptCashierPin() => ReadPin("Authorize cash checkout",
-        $"Cashier: {((CatalogueViewModel)DataContext).PaymentContext?.CashierId}\nConfirm this cashier session for the displayed cash payment.");
+    public string PromptCashierPin() => PromptCashierPin(((CatalogueViewModel)DataContext).PaymentContext?.CashierId ?? "");
+    public string PromptCashierPin(string cashier) => ReadPin("Authorize cash checkout",
+        $"Cashier: {cashier}\nConfirm this cashier session for the displayed cash payment.");
 
     private string ReadReviewPin()
     {

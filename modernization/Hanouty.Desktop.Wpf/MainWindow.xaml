@@ -90,6 +90,8 @@
                         AutomationProperties.Name="Select product" IsEnabled="{Binding CanSelectProduct}"/>
                 <TextBlock Text="Authorized cashier / payment context" FontWeight="SemiBold" Margin="0,16,0,4"/>
                 <Button Content="Enter cashier / register / cash tender" Click="CashierEntry_Click" MinHeight="44" Padding="12,8" Margin="0,8,0,8" AutomationProperties.Name="Enter cashier and fresh cash tender"/>
+                <Button Content="End cashier session" Click="EndFinancialSession_Click" MinHeight="40"
+                        AutomationProperties.Name="End cashier session"/>
                 <TextBlock Text="{Binding PaymentContext.CashierId, TargetNullValue=No authorized cashier}" AutomationProperties.Name="Cashier identity" TextWrapping="Wrap"/>
                 <TextBlock Text="{Binding PaymentContext.RegisterId, TargetNullValue=No register}" AutomationProperties.Name="Register identity" TextWrapping="Wrap"/>
                 <TextBlock Text="{Binding PaymentContext.TenderCode, TargetNullValue=No tender}" AutomationProperties.Name="Tender type"/>
