@@ -325,6 +325,10 @@ Check(commitPort.Ids.Count == 2, "unknown checkout must never auto-retry");
 Check(CashierEntryDraft.TryParse("cashier01", "register02", "10.25", out var enteredCashier, out var enteredRegister, out var enteredTender) &&
     enteredCashier == "cashier01" && enteredRegister == "register02" && enteredTender == 10.25m,
     "cashier/register and invariant MAD tender parse without authorization");
+Check(!CashierEntryDraft.TryParse("cashier\n02", "register02", "10.00", out _, out _, out _) &&
+    !CashierEntryDraft.TryParse("cashier01", "register\t02", "10.00", out _, out _, out _) &&
+    !CashierEntryDraft.TryParse("cashier01", "register\uD800", "10.00", out _, out _, out _),
+    "control and surrogate characters in cashier/register must fail closed");
 Check(!CashierEntryDraft.TryParse("cashier01", "register02", "10,25", out _, out _, out _) &&
     !CashierEntryDraft.TryParse("cashier01", "register02", "10.251", out _, out _, out _) &&
     !CashierEntryDraft.TryParse("cashier01", "register02", "-1", out _, out _, out _) &&
