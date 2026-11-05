@@ -161,6 +161,8 @@ var sharedCart = new RecordingAtomicBatchPort();
 var journal = new CompositionJournal();
 var composition = new CheckoutComposition(sharedReader, new RecordingPrompt { Choice = 1 }, sharedCart, journal);
 Assert(composition.AllProducts().Count == 3, "composition lists all catalogue articles");
+Assert(composition.AllProducts().Select(p => p.ArticleId).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 3,
+       "production catalogue snapshot preserves unique article identities");
 Assert(composition.ImageProducts().Count == 1 &&
        composition.ImageProducts()[0].ArticleId == "21", "photo grid excludes products without actual image path");
 var detachedPhotos = composition.ImageProducts();
