@@ -834,6 +834,26 @@ var reviewThread = new System.Threading.Thread(() =>
             "Host logout exception must not crash WPF or falsely expire the cashier session");
         failedLogoutWindow.Close();
 
+        // Production Host callback may only acknowledge revocation; the WPF
+        // window itself must invalidate the previous cashier's tender and row.
+        var acknowledgedLogoutSelection = new RecordingSelection();
+        var acknowledgedLogoutWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            acknowledgedLogoutSelection, new RecordingSubmission(), financialContext,
+            requireFreshPaymentContext: true);
+        var acknowledgedLogoutVm = (CatalogueViewModel)acknowledgedLogoutWindow.DataContext;
+        acknowledgedLogoutVm.SelectedProduct = items[0];
+        int acknowledgedLogoutCalls = 0;
+        acknowledgedLogoutWindow.ConfigureCashierEntry((_, _, _) => true, () => 10m,
+            () => { acknowledgedLogoutCalls++; return true; });
+        Check(acknowledgedLogoutWindow.EndFinancialSession() && acknowledgedLogoutCalls == 1 &&
+            !acknowledgedLogoutVm.FinancialSessionActive &&
+            acknowledgedLogoutVm.PaymentContext is null &&
+            acknowledgedLogoutVm.SelectedProduct is null &&
+            !acknowledgedLogoutWindow.SelectHighlightedProduct() &&
+            acknowledgedLogoutSelection.Selected.Count == 0 && !acknowledgedLogoutVm.CanCommit,
+            "Host-acknowledged logout must revoke WPF tender and stale selection without callback side effects");
+        acknowledgedLogoutWindow.Close();
+
         // A Host denial is not a successful logout, and an unresolved sale must
         // not even invoke the Host logout callback (including on direct calls).
         var deniedLogoutWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
