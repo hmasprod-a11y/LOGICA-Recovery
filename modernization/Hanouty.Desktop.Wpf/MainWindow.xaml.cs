@@ -81,15 +81,19 @@ public partial class MainWindow : Window
             // A successful callback is not sufficient if a reentrant Host call
             // moved this window into Unknown or an in-flight financial operation.
             if (!_setFinancialContext(draft.Cashier, draft.Register, draft.CashMad)) return false;
-            return vm.FinancialSessionActive && !vm.CheckoutBusy &&
-                !vm.CheckoutUncertain && vm.PendingOperationId is null &&
-                vm.PaymentContext is { } authorized &&
-                authorized.CashierId == draft.Cashier &&
-                authorized.TenderedAmount == draft.CashMad;
+            return IsAuthorizedEntry(vm, draft.Cashier, draft.CashMad);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         { return false; }
         finally { _cashierEntryOpen = false; }
+    }
+
+    internal static bool IsAuthorizedEntry(CatalogueViewModel vm, string cashier, decimal tender)
+    {
+        return vm.FinancialSessionActive && !vm.CheckoutBusy &&
+            !vm.CheckoutUncertain && vm.PendingOperationId is null &&
+            vm.PaymentContext is { } authorized &&
+            authorized.CashierId == cashier && authorized.TenderedAmount == tender;
     }
 
     // Double-click on the real catalogue stages the selected article through the
