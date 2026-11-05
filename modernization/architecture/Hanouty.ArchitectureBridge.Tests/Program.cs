@@ -552,12 +552,17 @@ catch (NotSupportedException) { }
 snapshotSession.Scan("123", 1);
 Assert(capturedLines[0].Quantity == 5 && snapshotSession.PendingLines[0].Quantity == 6,
     "pending lines are detached from later session edits");
-lineSnapshotPort.OnAdd = () => Assert(snapshotSession.PendingLines.Single() ==
-    new CheckoutBatchLine("11", 6), "context provider reads same frozen cart during commit");
+var reentrantSessionQuoteRejected = false;
+lineSnapshotPort.OnAdd = () =>
+{
+    try { _ = snapshotSession.PendingLines; }
+    catch (InvalidOperationException) { reentrantSessionQuoteRejected = true; }
+};
 Assert(snapshotSession.Submit("snapshot-live-commit") == CheckoutBatchStatus.Committed &&
+    reentrantSessionQuoteRejected &&
     lineSnapshotPort.Calls.Single().Lines.Single() == new CheckoutBatchLine("11", 6) &&
     snapshotSession.PendingLines.Count == 0,
-    "production commit shares snapshot aggregation and clears committed lines");
+    "production commit freezes posted lines, rejects reentrant quote and clears committed stage");
 // The trusted cash quote must read the SAME Application session as WPF selection,
 // not reconstruct quantities from UI rows or a second catalogue instance.
 var quotePort = new RecordingAtomicBatchPort();
