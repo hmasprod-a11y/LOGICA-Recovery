@@ -699,6 +699,12 @@ var reviewThread = new System.Threading.Thread(() =>
         persistedVm.CommitCheckout();
         var persistedId = persistedVm.PendingOperationId;
         persistedVm.ReconcileCheckout();
+        // A scanner/variant draft may be staged while the outcome is unresolved;
+        // it must never survive a cashier-reviewed reset into the next session.
+        persistedVm.ScannerText = "777";
+        persistedVm.ScanBarcode();
+        Check(persistedVm.CheckoutUncertain && persistedVm.PendingOperationId == persistedId,
+            "unresolved checkout must retain durable identity despite scanner input");
         int persistedAuthority = 0;
         int persistedPinReads = 0;
         persistedWindow.ConfigureReviewedCheckout((id, result, readPin) =>
@@ -716,8 +722,10 @@ var reviewThread = new System.Threading.Thread(() =>
         Check(persistedWindow.ReviewResolvedCheckout(() => { persistedPinReads++; return "fresh-session"; }) &&
             persistedAuthority == 2 && persistedPinReads == 1 &&
             !persistedVm.CheckoutUncertain && persistedVm.PendingOperationId is null &&
-            persistedVm.PaymentContext is null && persistedPort.Ids.Count == 1,
-            "authorized persisted review resets only UI and expires stale tender");
+            persistedVm.PaymentContext is null && persistedPort.Ids.Count == 1 &&
+            persistedVm.ScannerText == "" && persistedVm.BarcodeCandidates.Count == 0 &&
+            persistedVm.SelectedProduct is null,
+            "authorized persisted review resets scanner and variant draft without financial replay");
         persistedWindow.Close();
 
         // Actual WPF window: an unresolved journal must never invoke the Host
