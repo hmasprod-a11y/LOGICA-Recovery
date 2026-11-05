@@ -138,6 +138,12 @@ public partial class MainWindow : Window
             // No second PIN prompt, cashier entry or logout may overlap this review.
             return vm.TryReviewResolvedCheckout((id, outcome) => _review(id, outcome, transientPin));
         }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            // A Host/PIN-provider failure is NOT evidence of a reviewed result.
+            // Keep the durable operation locked for a fresh explicit review.
+            return false;
+        }
         finally { _reviewOpen = false; }
     }
 
