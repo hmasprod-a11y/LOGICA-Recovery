@@ -20,6 +20,18 @@ namespace LOGICA.Infrastructure.Inventory
             if (db == null || tx == null || String.IsNullOrWhiteSpace(authenticatedSessionId) ||
                 String.IsNullOrWhiteSpace(requestedUserId))
                 throw new UnauthorizedAccessException("Authenticated inventory session required.");
+            // Reject malformed bearer credentials before issuing a database query.
+            // A UI-supplied actor label is never a substitute for a session secret.
+            if (authenticatedSessionId.Length > 128 || requestedUserId.Length > 128 ||
+                authenticatedSessionId != authenticatedSessionId.Trim() ||
+                requestedUserId != requestedUserId.Trim())
+                throw new UnauthorizedAccessException("Invalid inventory session or actor identity.");
+            foreach (char c in authenticatedSessionId)
+                if (Char.IsControl(c))
+                    throw new UnauthorizedAccessException("Invalid inventory session credential.");
+            foreach (char c in requestedUserId)
+                if (Char.IsControl(c))
+                    throw new UnauthorizedAccessException("Invalid inventory actor identity.");
             // Both rows are locked in the caller's stock transaction. Revocation
             // and expiry are checked on the database clock, never on WPF state.
             using (var command = new MySqlCommand(
