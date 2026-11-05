@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Hanouty.ArchitectureBridge;
 using LOGICA.Infrastructure.Checkout;
 using MySql.Data.MySqlClient;
@@ -47,6 +49,34 @@ namespace Hanouty.Checkout.MariaDb
                     MariaDbCashCheckoutPreparation.AuthenticateCashier(
                         cashierId, connection, transaction, transientPinProvider);
                     transaction.Commit();
+                }
+            }
+        }
+
+        // Authoritative READ-ONLY standard-price MAD preview from the current
+        // Application session lines. No UI prices, basket/claim/stock writes,
+        // schema initialization or authorization grant. Commit revalidates SQL.
+        public static decimal ReadCashSaleTotal(Func<MySqlConnection> connections,
+            IReadOnlyList<CheckoutBatchLine> lines)
+        {
+            if (connections == null) throw new ArgumentNullException(nameof(connections));
+            if (lines == null) throw new ArgumentNullException(nameof(lines));
+            var snapshot = Array.AsReadOnly(lines.ToArray());
+            using (var connection = LocalConnection(connections))
+            {
+                connection.Open();
+                using (var transaction = connection.BeginTransaction())
+                {
+                    using (var command = new MySqlCommand(
+                        "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='TABLE_ARTICLES'",
+                        connection, transaction))
+                    {
+                        if (!string.Equals(Convert.ToString(command.ExecuteScalar()), "InnoDB", StringComparison.Ordinal))
+                            throw new InvalidOperationException("Price preview requires transactional article storage.");
+                    }
+                    decimal total = MariaDbCashCheckoutPreparation.ReadCashSaleTotal(snapshot, connection, transaction);
+                    transaction.Commit();
+                    return total;
                 }
             }
         }

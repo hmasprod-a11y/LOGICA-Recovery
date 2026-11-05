@@ -87,13 +87,8 @@ namespace LOGICA.Infrastructure.Checkout
                 if (authoritative.Rows.Count != 1)
                     throw new InvalidOperationException("Requested article is unavailable.");
                 var article = authoritative.Rows[0];
-                if (OptionalNumber(article, "PROMOTION") != 0m ||
-                    OptionalNumber(article, "PRIX_QTE") != 0m)
-                    throw new NotSupportedException("Promotions and tier pricing require V1 parity.");
                 decimal unit = Number(article, "PRIX_V_1");
-                decimal net = Math.Round(
-                    SalesLinePricing.CalculateNetAmount(unit, line.Quantity, 0m),
-                    2, MidpointRounding.ToEven);
+                decimal net = StandardCashLineTotal(article, line.Quantity);
                 using (var write = connection.CreateCommand())
                 {
                     write.Transaction = transaction;
@@ -144,7 +139,7 @@ namespace LOGICA.Infrastructure.Checkout
                     throw new InvalidOperationException("Authoritative article price or tax changed.");
                 // The existing domain rule supplies the decimal operation order.
                 // The standard legacy basket stores each line to two decimals.
-                decimal net = Math.Round(SalesLinePricing.CalculateNetAmount(price, quantity, 0m), 2, MidpointRounding.ToEven);
+                decimal net = StandardCashLineTotal(article, quantity);
                 if (Number(row, "TOTAL_NET") != net)
                     throw new InvalidOperationException("Authoritative line total changed.");
                 foreach (var field in new[] { "Code", "Article", "Famille", "GROUPE" })
@@ -232,6 +227,40 @@ namespace LOGICA.Infrastructure.Checkout
                 throw new UnauthorizedAccessException("Cashier authentication failed.");
             return Convert.ToString(users.Rows[0]["trusted_cashier"]);
 
+        }
+
+        // The price preview and actual staging share THIS policy and operation
+        // order. Preview never stages/claims/posts and is revalidated at Commit.
+        internal static decimal ReadCashSaleTotal(IReadOnlyList<CheckoutBatchLine> lines,
+            MySqlConnection connection, MySqlTransaction transaction)
+        {
+            if (lines == null || lines.Any(x => x == null ||
+                string.IsNullOrWhiteSpace(x.ArticleId) || x.Quantity <= 0) ||
+                lines.GroupBy(x => x.ArticleId, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
+                throw new InvalidOperationException("Valid aggregated checkout lines are required for price preview.");
+            decimal total = 0m;
+            foreach (var line in lines)
+            {
+                var article = Read(connection, transaction,
+                    "SELECT * FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE",
+                    ("@id", line.ArticleId));
+                if (article.Rows.Count != 1)
+                    throw new InvalidOperationException("Requested article is unavailable.");
+                total = checked(total + StandardCashLineTotal(article.Rows[0], line.Quantity));
+            }
+            return total;
+        }
+
+        private static decimal StandardCashLineTotal(DataRow article, int quantity)
+        {
+            if (OptionalNumber(article, "PROMOTION") != 0m ||
+                OptionalNumber(article, "PRIX_QTE") != 0m)
+                throw new NotSupportedException("Promotions and tier pricing require V1 parity.");
+            decimal unit = Number(article, "PRIX_V_1");
+            if (unit < 0m || quantity <= 0)
+                throw new InvalidOperationException("Authoritative price or quantity is invalid.");
+            return Math.Round(SalesLinePricing.CalculateNetAmount(unit, quantity, 0m),
+                2, MidpointRounding.ToEven);
         }
 
         private static decimal Number(DataRow row, string column)

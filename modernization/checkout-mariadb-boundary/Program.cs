@@ -497,6 +497,28 @@ namespace LOGICA.Infrastructure.Checkout
             rejected("review-wrong-identity", () =>
                 Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.VerifyCashierSession(
                     NewConnection, "other-cashier", () => "1234"));
+            Func<decimal> preview = () =>
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
+                    NewConnection, TrustedRequest("preview-only").Lines);
+            Require(preview() == 10.50m &&
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
+                    NewConnection, Array.Empty<Hanouty.ArchitectureBridge.CheckoutBatchLine>()) == 0m &&
+                Scalar("SELECT COUNT(*) FROM TABLE_01") == 0 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == headers &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == payments &&
+                Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movementCount &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stock &&
+                Scalar("SELECT CL FROM TABLE_NUM") == sequenceValue &&
+                !journal.IsPersisted("preview-only"),
+                "Read-only authoritative preview staged, claimed or wrote financial/stock state.");
+            rejected("preview-duplicate-lines", () =>
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
+                    NewConnection, new[] {
+                        new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 1),
+                        new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 1) }));
+            rejected("preview-missing-article", () =>
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
+                    NewConnection, new[] { new Hanouty.ArchitectureBridge.CheckoutBatchLine("not-present", 1) }));
             var badPin = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(NewConnection, "01", () => "x' OR 1=1 --");
             rejected("trusted-bad-pin", () => badPin.Commit(TrustedRequest("trusted-bad-pin")));
             rejected("trusted-wrong-user", () => correct.Commit(TrustedRequest("trusted-wrong-user", "different")));
@@ -507,10 +529,12 @@ namespace LOGICA.Infrastructure.Checkout
             rejected("trusted-denied-category", () => correct.Commit(TrustedRequest("trusted-denied-category")));
             Sql("UPDATE TABLE_PASS SET Catégorie='UTILISATEUR'");
             Sql("UPDATE TABLE_ARTICLES SET PRIX_V_1=6 WHERE ID_ARTICLE='CSharp-Stock'");
+            Require(preview() == 12m, "Price preview must read current authoritative DB prices, not the UI expectation.");
             rejected("trusted-stale-price", () => correct.Commit(TrustedRequest("trusted-stale-price")));
             Sql("UPDATE TABLE_ARTICLES SET PRIX_V_1=5.25 WHERE ID_ARTICLE='CSharp-Stock'");
             rejected("trusted-underpaid", () => correct.Commit(TrustedRequest("trusted-underpaid", amount:10m)));
             Sql("UPDATE TABLE_ARTICLES SET PROMOTION=10 WHERE ID_ARTICLE='CSharp-Stock'");
+            rejected("preview-unaccepted-policy", () => preview());
             rejected("trusted-unaccepted-policy", () => correct.Commit(TrustedRequest("trusted-unaccepted-policy")));
             Sql("UPDATE TABLE_ARTICLES SET PROMOTION=0 WHERE ID_ARTICLE='CSharp-Stock'");
 
@@ -577,6 +601,7 @@ namespace LOGICA.Infrastructure.Checkout
             }
             finally { Sql("ALTER TABLE hanouty_checkout_operations ENGINE=InnoDB"); }
             Require(!journal.IsPersisted("trusted-invalid-ledger"), "Rejected ledger left a durable claim.");
+            Console.WriteLine("PASS read-only authoritative price preview, shared posting rounding and no basket/claim/stock mutation.");
             Console.WriteLine("PASS REAL TABLE_PASS authentication + authoritative empty-basket staging; occupied basket preserved; denied PIN/category/stale price/underpayment roll back; quoted cashier/article and fr-FR/en-US exact cash persist once. WPF registration and broader V1 policy remain pending.");
         }
 
