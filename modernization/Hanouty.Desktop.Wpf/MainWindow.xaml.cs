@@ -22,27 +22,36 @@ public partial class MainWindow : Window
     private void ReviewResolvedCheckout_Click(object sender, RoutedEventArgs e) =>
         ReviewResolvedCheckout(ReadReviewPin);
 
+    public string PromptCashierPin() => ReadPin("Authorize cash checkout",
+        $"Cashier: {((CatalogueViewModel)DataContext).PaymentContext?.CashierId}\nConfirm this cashier session for the displayed cash payment.");
+
     private string ReadReviewPin()
+    {
+        var vm = (CatalogueViewModel)DataContext;
+        return ReadPin("Review checkout result",
+            $"Cashier: {vm.PaymentContext?.CashierId}\nOperation: {vm.PendingOperationId}\nResult: {vm.ReviewedResolution}\nConfirm this result to discard the old basket.");
+    }
+
+    private string ReadPin(string title, string message)
     {
         var pin = new System.Windows.Controls.PasswordBox {
             Margin = new Thickness(0, 12, 0, 12), MaxLength = 256
         };
         System.Windows.Automation.AutomationProperties.SetName(pin, "Cashier review PIN");
         var confirm = new System.Windows.Controls.Button {
-            Content = "Confirm reviewed result", IsDefault = true, MinHeight = 40
+            Content = "Confirm", IsDefault = true, MinHeight = 40
         };
         var cancel = new System.Windows.Controls.Button {
             Content = "Cancel", IsCancel = true, MinHeight = 40
         };
         var panel = new System.Windows.Controls.StackPanel { Margin = new Thickness(20) };
-        var vm = (CatalogueViewModel)DataContext;
         panel.Children.Add(new System.Windows.Controls.TextBlock {
-            Text = $"Cashier: {vm.PaymentContext?.CashierId}\nOperation: {vm.PendingOperationId}\nResult: {vm.ReviewedResolution}\nConfirm this result to discard the old basket.",
+            Text = message,
             TextWrapping = TextWrapping.Wrap
         });
         panel.Children.Add(pin); panel.Children.Add(confirm); panel.Children.Add(cancel);
         var dialog = new Window {
-            Title = "Review checkout result", Owner = this, Content = panel,
+            Title = title, Owner = this, Content = panel,
             Width = 420, SizeToContent = SizeToContent.Height,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false
