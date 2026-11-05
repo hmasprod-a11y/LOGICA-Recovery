@@ -43,7 +43,7 @@ public sealed class CashierEntryDialog : Window
     private static void AddField(Panel panel, string label, TextBox field)
     {
         panel.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 8, 0, 4) });
-        AutomationProperties.SetName(field, label);
+        System.Windows.Automation.AutomationProperties.SetName(field, label);
         panel.Children.Add(field);
     }
 

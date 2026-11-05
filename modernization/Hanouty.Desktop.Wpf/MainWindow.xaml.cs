@@ -72,7 +72,7 @@ public partial class MainWindow : Window
     // Architecture-owned CreateFinancial host supplies the authenticated, trusted
     // cash-session context. This constructor does not read PIN or calculate prices.
     public MainWindow(ICatalogueReader catalogue, IProductSelection checkout,
-        ICheckoutSubmission submission, CashierPaymentContext? paymentContext)
+        ICheckoutSubmission submission, CashierPaymentContext? paymentContext, bool requireFreshPaymentContext = false)
     {
         ArgumentNullException.ThrowIfNull(catalogue);
         ArgumentNullException.ThrowIfNull(checkout);
@@ -84,6 +84,7 @@ public partial class MainWindow : Window
             submission: submission,
             reconciliation: submission as ICheckoutOutcomeReconciliation)
         {
+            RequireFreshPaymentContext = requireFreshPaymentContext,
             PaymentContext = paymentContext
         };
     }

@@ -32,6 +32,26 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); OnPropertyChanged(nameof(CanCommit)); OnPropertyChanged(nameof(CanReviewResolvedCheckout)); } }
     private readonly IProductSelection _selection;
     private bool _selectionInFlight;
+    public bool CheckoutBusy => _selectionInFlight;
+    public bool RequireFreshPaymentContext { get; init; }
+    private bool _financialSessionActive = true;
+    public bool FinancialSessionActive {
+        get => _financialSessionActive;
+        set {
+            if (_selectionInFlight || CheckoutUncertain) return;
+            _financialSessionActive = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanCommit));
+            OnPropertyChanged(nameof(CanSelectProduct));
+        }
+    }
+    private void ClearConsumedPaymentContext()
+    {
+        if (!RequireFreshPaymentContext) return;
+        _paymentContext = null;
+        OnPropertyChanged(nameof(PaymentContext));
+        OnPropertyChanged(nameof(CanCommit));
+    }
     private readonly ICheckoutSubmission? _submission;
     private string? _pendingOperationId;
     private string _commitFeedback = "Checkout submission unavailable";
@@ -46,7 +66,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public System.Windows.Input.ICommand ReconcileCommand { get; }
     private readonly ICheckoutOutcomeReconciliation? _reconciliation;
     public string CommitFeedback { get => _commitFeedback; private set { _commitFeedback = value; OnPropertyChanged(); } }
-    public bool CanCommit => _submission is IContextualCheckoutSubmission && PaymentContext?.IsWellFormed == true && CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
+    public bool CanCommit => FinancialSessionActive && _submission is IContextualCheckoutSubmission && PaymentContext?.IsWellFormed == true && CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
     public System.Windows.Input.ICommand CommitCommand { get; }
     private readonly IProductImageAvailability _images;
 
@@ -99,7 +119,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public System.Windows.FlowDirection LayoutDirection => IsRightToLeft ? System.Windows.FlowDirection.RightToLeft : System.Windows.FlowDirection.LeftToRight;
     public IReadOnlyList<ProductSummary> BarcodeCandidates { get; private set; } = Array.Empty<ProductSummary>();
     public bool HasBarcodeAmbiguity => BarcodeCandidates.Count > 1;
-    public bool CanSelectProduct => CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
+    public bool CanSelectProduct => FinancialSessionActive && CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
 
     public void ReloadCatalogue()
     {
@@ -268,6 +288,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(BarcodeCandidates));
             OnPropertyChanged(nameof(HasBarcodeAmbiguity));
             ReviewedResolution = CheckoutResolution.Unknown;
+            ClearConsumedPaymentContext();
             CheckoutUncertain = false;
             CommitFeedback = resolution == CheckoutResolution.Persisted
                 ? "Persisted sale reviewed — select products for a new checkout"
@@ -311,7 +332,11 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
                 _ => "Checkout status unknown — reconcile before retry"
             };
             if (result is CheckoutSubmissionResult.Committed or CheckoutSubmissionResult.Empty)
+            {
                 _pendingOperationId = null;
+                OnPropertyChanged(nameof(PendingOperationId));
+                ClearConsumedPaymentContext();
+            }
             // Unknown and future/unrecognized result values are both indeterminate.
             // Never silently leave the checkout button enabled after a protocol mismatch.
             if (result is not (CheckoutSubmissionResult.Committed or CheckoutSubmissionResult.Empty or CheckoutSubmissionResult.Invalidated))
