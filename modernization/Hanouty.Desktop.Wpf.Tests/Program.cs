@@ -650,6 +650,51 @@ foreach (var outcome in new[] { CheckoutResolution.Persisted, CheckoutResolution
         "next checkout must receive a fresh durable operation identity");
 }
 
+// Exercise the actual MainWindow review seam on an STA, not a mock ViewModel-only path.
+// Host callback must not permit overlapping cashier entry, logout or nested review.
+Exception? windowReviewError = null;
+var reviewThread = new System.Threading.Thread(() =>
+{
+    try
+    {
+        var submit = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
+        var journal = new RecordingReconciliation { Result = CheckoutResolution.Persisted };
+        var window = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items), new RecordingSelection(), submit,
+            new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m));
+        var viewModel = (CatalogueViewModel)window.DataContext;
+        viewModel.CommitCheckout();
+        viewModel.ReconcileCheckout();
+        Check(viewModel.CanReviewResolvedCheckout, "durable persisted result permits explicit review request");
+        int authorityCalls = 0;
+        int sessionEndCalls = 0;
+        int entryCalls = 0;
+        window.ConfigureCashierEntry((_, _, _) => { entryCalls++; return true; }, () => 10m,
+            () => { sessionEndCalls++; return true; });
+        window.ConfigureReviewedCheckout((id, outcome, readPin) =>
+        {
+            authorityCalls++;
+            Check(!window.EndFinancialSession() && !window.ShowCashierEntry() &&
+                !window.ReviewResolvedCheckout(() => "nested"),
+                "review must serialize against logout, cashier entry and nested review");
+            Check(id == viewModel.PendingOperationId && outcome == CheckoutResolution.Persisted &&
+                readPin() == "transient", "host receives exact durable operation and transient PIN callback");
+            return true;
+        });
+        Check(window.ReviewResolvedCheckout(() => "transient") && authorityCalls == 1 &&
+            sessionEndCalls == 0 && entryCalls == 0 && !viewModel.CheckoutUncertain &&
+            viewModel.PendingOperationId is null && submit.Ids.Count == 1,
+            "review unlocks only after host authorization, without posting again");
+        Check(!window.ReviewResolvedCheckout(() => "again") && authorityCalls == 1,
+            "resolved operation cannot be reviewed a second time");
+        window.Close();
+    }
+    catch (Exception ex) { windowReviewError = ex; }
+});
+reviewThread.SetApartmentState(System.Threading.ApartmentState.STA);
+reviewThread.Start();
+reviewThread.Join();
+if (windowReviewError is not null) throw new Exception("MainWindow reviewed reset regression", windowReviewError);
+
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
