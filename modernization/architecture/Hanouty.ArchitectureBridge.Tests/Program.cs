@@ -204,6 +204,14 @@ catch (ApplicationException) { }
 Assert(uncertainComposition.Reconcile(uncertainBatch) == CheckoutOperationOutcome.Unknown &&
        uncertainBatch.State == CheckoutCommitState.OutcomeUnknown,
        "unknown durable journal outcome leaves cart blocked");
+journal.Outcome = (CheckoutOperationOutcome)999;
+try { uncertainComposition.Reconcile(uncertainBatch); throw new Exception("invalid journal outcome accepted"); }
+catch (InvalidOperationException ex) when (ex.Message.Contains("unsupported durable outcome")) {
+    Assert(uncertainBatch.State == CheckoutCommitState.OutcomeUnknown &&
+           uncertainBatch.UncertainOperationId == "composed-002" &&
+           uncertainBatch.PendingCount == 1 && uncertainCart.Attempts == 1,
+           "invalid durable journal outcome preserves unknown lock and never reposts");
+}
 journal.Outcome = CheckoutOperationOutcome.Persisted;
 Assert(uncertainComposition.Reconcile(uncertainBatch) == CheckoutOperationOutcome.Persisted &&
        uncertainBatch.PendingCount == 0 && uncertainBatch.State == CheckoutCommitState.Ready,
