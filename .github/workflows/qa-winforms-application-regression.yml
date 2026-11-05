@@ -24,7 +24,7 @@ jobs:
             $source = [IO.File]::ReadAllText($file.FullName)
             # In LOGICA namespace, unqualified Application resolves to LOGICA.Application.
             # Alias alone does not prevent CS0234; require global qualification.
-            if ($source -match '(?m)^namespace\s+LOGICA\s*[;{]' -and
+            if ($source -match '(?m)^namespace\s+LOGICA(?:\.[\w.]+)?\s*[;{]' -and
                 $source -match '(?<![\w.])Application\.(StartupPath|DoEvents|Exit|ExitThread|ExecutablePath|OpenForms|ProductName|Restart|Run|SetHighDpiMode|SetCompatibleTextRenderingDefault|EnableVisualStyles)\b') {
               $issues += $file.FullName
             }
