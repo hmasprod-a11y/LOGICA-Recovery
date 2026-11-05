@@ -105,6 +105,24 @@ internal static class StockAdjustmentMariaDbSmoke {
                     Sql(db,"INSERT INTO HANOUTY_ACTOR_GRANTS VALUES ('CI-USER','ManualStockAdjustment',NULL,NULL)");
                     var providerType=assembly.GetType("LOGICA.Infrastructure.Inventory.MariaDbManualStockAuthorization",true);
                     var provider=Activator.CreateInstance(providerType,true);
+                    // Validate actual production provider input handling, not a
+                    // test double: malformed bearer secrets/actors fail closed.
+                    var verifyPersisted=providerType.GetMethod("VerifyForWrite",
+                        BindingFlags.Public|BindingFlags.Instance);
+                    Require(verifyPersisted!=null,"Missing persisted authorization method");
+                    using(var invalidTx=db.BeginTransaction()) {
+                        foreach(string badToken in new[]{" CI-SECRET-SESSION",
+                            "CI-SECRET-SESSION ",new string('X',129),"CI-SECRET-SESSION\\n"}) {
+                            Denied(()=>verifyPersisted.Invoke(provider,new object[]{
+                                db,invalidTx,badToken,"CI-USER"}));
+                        }
+                        foreach(string badActor in new[]{" CI-USER","CI-USER ",
+                            new string('X',129),"CI-USER\\n"}) {
+                            Denied(()=>verifyPersisted.Invoke(provider,new object[]{
+                                db,invalidTx,"CI-SECRET-SESSION",badActor}));
+                        }
+                        invalidTx.Rollback();
+                    }
                     Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,scopedPlan,provider,"FORGED-SESSION"}));
                     Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==10m,"Forged session changed stock");
                     executeAuthorized.Invoke(null,new object[]{cs,scopedPlan,provider,"CI-SECRET-SESSION"});
