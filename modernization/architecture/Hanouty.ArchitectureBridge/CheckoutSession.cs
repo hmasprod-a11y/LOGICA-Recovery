@@ -56,9 +56,11 @@ public sealed class CheckoutSession
         EnsureNoSubmission();
         ArgumentNullException.ThrowIfNull(product);
         // Reject forged/stale tiles that were never in the visible image grid.
-        var visible = System.Linq.Enumerable.FirstOrDefault(ImageProducts,
-            p => string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal));
-        if (visible is null || visible != product ||
+        // A duplicated article identity is ambiguous even when one tile matches.
+        // Never stage the first match from an inconsistent catalogue snapshot.
+        var matching = System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Where(ImageProducts,
+            p => string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal)));
+        if (matching.Length != 1 || matching[0] != product ||
             !string.Equals(visible.Barcode, product.Barcode, StringComparison.Ordinal) ||
             !string.Equals(visible.ImagePath, product.ImagePath, StringComparison.Ordinal) ||
             !string.Equals(visible.VariantId, product.VariantId, StringComparison.Ordinal) ||
