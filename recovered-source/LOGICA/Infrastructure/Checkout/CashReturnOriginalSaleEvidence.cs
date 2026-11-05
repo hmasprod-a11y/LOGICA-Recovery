@@ -9,6 +9,42 @@ namespace LOGICA.Infrastructure.Checkout
     // reference and consumed-quantity lock must be proven before IsReturn opens.
     internal static class CashReturnOriginalSaleEvidence
     {
+        // Validate the original payment evidence using the same locked transaction.
+        // A positive header alone cannot establish eligibility for a cash refund.
+        internal static decimal ReadExactCashTenderAmount(
+            MySqlConnection connection, MySqlTransaction transaction, string originalTicketId)
+        {
+            decimal originalTotal = ReadExactCashSaleAmount(connection, transaction, originalTicketId);
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText =
+                    "SELECT MONTANT,MODE_P,OPERATION FROM TABLE_VENTES_REGLEMENTS " +
+                    "WHERE BINARY ID_TICKET=BINARY @original FOR UPDATE";
+                command.Parameters.AddWithValue("@original", originalTicketId);
+                using (var reader = command.ExecuteReader())
+                {
+                    decimal sum = 0m;
+                    int count = 0;
+                    while (reader.Read())
+                    {
+                        if (reader.IsDBNull(0) || reader.IsDBNull(1) || reader.IsDBNull(2) ||
+                            !string.Equals(Convert.ToString(reader.GetValue(1)), "ESPECES", StringComparison.Ordinal) ||
+                            !string.Equals(Convert.ToString(reader.GetValue(2)), "VENTE", StringComparison.Ordinal))
+                            throw new InvalidOperationException("Original payment is not an exact cash sale.");
+                        decimal amount = Convert.ToDecimal(reader.GetValue(0));
+                        if (amount <= 0m)
+                            throw new InvalidOperationException("Original cash payment must be positive.");
+                        sum = checked(sum + amount);
+                        count++;
+                    }
+                    if (count != 1 || sum != originalTotal)
+                        throw new InvalidOperationException("Original sale has no unique exact cash settlement.");
+                    return sum;
+                }
+            }
+        }
+
         internal static decimal ReadExactCashSaleAmount(
             MySqlConnection connection, MySqlTransaction transaction, string originalTicketId)
         {
