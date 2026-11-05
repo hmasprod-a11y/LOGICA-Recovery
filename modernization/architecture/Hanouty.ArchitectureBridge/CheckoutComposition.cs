@@ -71,7 +71,7 @@ public sealed class CheckoutComposition
         if (string.IsNullOrWhiteSpace(selected.Barcode) || !IsCurrentArticle(selected))
             return false;
         var candidates = Validate(_reader.RefreshBarcode(selected.Barcode));
-        return candidates.Count >= 2 && candidates.Any(p => p == selected) &&
+        return candidates.Count >= 2 && candidates.Count(p => p == selected) == 1 &&
             candidates.All(p => string.Equals(p.Barcode, selected.Barcode, StringComparison.Ordinal));
     }
 
