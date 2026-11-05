@@ -214,7 +214,11 @@ public partial class MainWindow : Window
             reconciliation: submission as ICheckoutOutcomeReconciliation)
         {
             RequireFreshPaymentContext = requireFreshPaymentContext,
-            PaymentContext = paymentContext
+            PaymentContext = paymentContext,
+            // A production window with no authenticated cashier must start locked.
+            // Catalogue remains visible, but scanning and basket staging wait for
+            // the Host to authorize a new cashier session explicitly.
+            FinancialSessionActive = !requireFreshPaymentContext || paymentContext is not null
         };
     }
 }
