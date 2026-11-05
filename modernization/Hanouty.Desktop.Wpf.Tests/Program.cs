@@ -766,6 +766,25 @@ var reviewThread = new System.Threading.Thread(() =>
             "lost selection acknowledgement must lock WPF and forbid blind replay");
         lostAckWindow.Close();
 
+        // A production Host can fail during durable review. The real WPF
+        // window must not crash, unlock Unknown, or discard the operation ID.
+        var throwingReviewPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
+        var throwingReviewJournal = new RecordingReconciliation { Result = CheckoutResolution.Persisted };
+        var throwingReviewWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new RecordingSelection(), new ReconciledSubmission(throwingReviewPort, throwingReviewJournal),
+            financialContext, requireFreshPaymentContext: true);
+        var throwingReviewVm = (CatalogueViewModel)throwingReviewWindow.DataContext;
+        throwingReviewVm.CommitCheckout();
+        var throwingReviewId = throwingReviewVm.PendingOperationId;
+        throwingReviewVm.ReconcileCheckout();
+        throwingReviewWindow.ConfigureReviewedCheckout((_, _, _) =>
+            throw new System.IO.IOException("durable journal temporarily unavailable"));
+        Check(!throwingReviewWindow.ReviewResolvedCheckout(() => "transient") &&
+            throwingReviewVm.CheckoutUncertain && throwingReviewVm.PendingOperationId == throwingReviewId &&
+            !throwingReviewVm.CanCommit && throwingReviewPort.Ids.Count == 1,
+            "Host review exception must retain durable lock and prevent duplicate cash sale");
+        throwingReviewWindow.Close();
+
         // Actual WPF window: an unresolved journal must never invoke the Host
         // review authority or read a transient PIN, and cannot release the operation.
         var unresolvedPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
