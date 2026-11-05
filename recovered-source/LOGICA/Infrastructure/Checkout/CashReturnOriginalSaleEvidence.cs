@@ -85,8 +85,13 @@ namespace LOGICA.Infrastructure.Checkout
                     decimal discount = Convert.ToDecimal(reader.GetValue(2));
                     decimal lineTotal = Convert.ToDecimal(reader.GetValue(3));
                     string operation = Convert.ToString(reader.GetValue(4));
+                    // Detect a corrupted or mismatched original unit price rather
+                    // than treating the paid total alone as price evidence.
+                    decimal expectedNet = Math.Round(checked(price * quantity), 2,
+                        MidpointRounding.ToEven);
                     if (reader.Read() || quantity != originalQuantity || price < 0m ||
                         discount != 0m || lineTotal <= 0m || lineTotal != paid ||
+                        expectedNet != lineTotal ||
                         operation != "VENTE")
                         throw new InvalidOperationException("Original line is not an eligible full-quantity exact-cash sale.");
                     return lineTotal;
