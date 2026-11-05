@@ -8,6 +8,7 @@ public partial class MainWindow : Window
 {
     // Existing Host owns context authorization and trusted price readback.
     // The UI only collects a draft and never grants financial authority.
+    private bool _cashierEntryOpen;
     private Func<string, string, decimal, bool>? _setFinancialContext;
     private Func<decimal?>? _readTrustedCashTotal;
 
@@ -23,21 +24,31 @@ public partial class MainWindow : Window
 
     public bool ShowCashierEntry()
     {
-        if (DataContext is not CatalogueViewModel vm || vm.CheckoutBusy || vm.CheckoutUncertain ||
+        if (_cashierEntryOpen || DataContext is not CatalogueViewModel vm || vm.CheckoutBusy || vm.CheckoutUncertain ||
             !vm.FinancialSessionActive || _setFinancialContext is null || _readTrustedCashTotal is null)
             return false;
         decimal? trustedTotal;
         try { trustedTotal = _readTrustedCashTotal(); }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException) { return false; }
         if (trustedTotal is null || trustedTotal < 0m) return false;
-        var dialog = new CashierEntryDialog(trustedTotal) { Owner = this };
-        if (dialog.ShowDialog() != true || dialog.Draft is not { } draft) return false;
+        (string Cashier, string Register, decimal CashMad)? draft;
+        _cashierEntryOpen = true;
+        try
+        {
+            var dialog = new CashierEntryDialog(trustedTotal) { Owner = this };
+            if (dialog.ShowDialog() != true) return false;
+            draft = dialog.Draft;
+        }
+        finally { _cashierEntryOpen = false; }
+        if (draft is null) return false;
         // Recheck after the modal interaction; Host independently rejects busy/unknown.
         if (vm.CheckoutBusy || vm.CheckoutUncertain || !vm.FinancialSessionActive) return false;
         try
         {
-            if (!_setFinancialContext(draft.Cashier, draft.Register, draft.CashMad)) return false;
-            vm.PaymentContext = new CashierPaymentContext(draft.Cashier, draft.Register, "MAD", "Cash", draft.CashMad);
+            // The basket may have changed during a modal dialog. Never approve a stale quote.
+            if (_readTrustedCashTotal() != trustedTotal) return false;
+            if (!_setFinancialContext(draft.Value.Cashier, draft.Value.Register, draft.Value.CashMad)) return false;
+            vm.PaymentContext = new CashierPaymentContext(draft.Value.Cashier, draft.Value.Register, "MAD", "Cash", draft.Value.CashMad);
             return true;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException) { return false; }
