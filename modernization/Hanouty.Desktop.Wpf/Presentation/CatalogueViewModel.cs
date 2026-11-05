@@ -33,10 +33,27 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private readonly IProductSelection _selection;
     private bool _selectionInFlight;
     private readonly ICheckoutSubmission? _submission;
+    private CashierPaymentContext? _paymentContext;
+    // WPF payment context is never an authorization grant: the production adapter
+    // checks it against authenticated cashier/session data on every commit.
+    public CashierPaymentContext? PaymentContext
+    {
+        get => _paymentContext;
+        set
+        {
+            if (_selectionInFlight || CheckoutUncertain) return;
+            _paymentContext = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CanCommit));
+        }
+    }
     private string? _pendingOperationId;
     private string _commitFeedback = "Checkout submission unavailable";
     public string CommitFeedback { get => _commitFeedback; private set { _commitFeedback = value; OnPropertyChanged(); } }
-    public bool CanCommit => _submission is not null && CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
+    public bool CanCommit => _submission is not null && CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight &&
+        (_submission is not IContextualCheckoutSubmission ||
+         (_paymentContext?.IsWellFormed == true &&
+          string.Equals(_paymentContext.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase)));
     public System.Windows.Input.ICommand CommitCommand { get; }
     private readonly IProductImageAvailability _images;
 
@@ -191,6 +208,10 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     {
         if (_selectionInFlight) { CommitFeedback = "Checkout already in progress"; return; }
         if (_submission is null) { CommitFeedback = "Checkout submission unavailable"; return; }
+        if (_submission is IContextualCheckoutSubmission &&
+            (_paymentContext?.IsWellFormed != true ||
+             !string.Equals(_paymentContext.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase)))
+        { CommitFeedback = "Authorized cash payment context required"; return; }
         if (CheckoutUncertain) { CommitFeedback = "Checkout status unknown — reconcile before retry"; return; }
         if (!CatalogueAvailable) { CommitFeedback = "Local catalogue unavailable"; return; }
         // Stable operation identity is retained for invalidation and unknown outcomes.
@@ -200,7 +221,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             _selectionInFlight = true;
             OnPropertyChanged(nameof(CanSelectProduct));
             OnPropertyChanged(nameof(CanCommit));
-            var result = _submission.Submit(_pendingOperationId);
+            var result = _submission is IContextualCheckoutSubmission contextual
+                ? contextual.Submit(_pendingOperationId, _paymentContext!)
+                : _submission.Submit(_pendingOperationId);
             CommitFeedback = result switch
             {
                 CheckoutSubmissionResult.Committed => "Checkout committed",
@@ -209,7 +232,14 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
                 _ => "Checkout status unknown — reconcile before retry"
             };
             if (result is CheckoutSubmissionResult.Committed or CheckoutSubmissionResult.Empty)
+            {
                 _pendingOperationId = null;
+                if (_submission is IContextualCheckoutSubmission)
+                {
+                    _paymentContext = null; // fresh authenticated tender required for next sale
+                    OnPropertyChanged(nameof(PaymentContext));
+                }
+            }
             // Unknown and future/unrecognized result values are both indeterminate.
             // Never silently leave the checkout button enabled after a protocol mismatch.
             if (result is not (CheckoutSubmissionResult.Committed or CheckoutSubmissionResult.Empty or CheckoutSubmissionResult.Invalidated))
