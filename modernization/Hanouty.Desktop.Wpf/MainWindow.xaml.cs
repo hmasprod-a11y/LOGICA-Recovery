@@ -28,10 +28,19 @@ public partial class MainWindow : Window
         _readBasketIdentity = readBasketIdentity;
     }
 
-    public bool EndFinancialSession() =>
-        !_cashierEntryOpen && !_reviewOpen && DataContext is CatalogueViewModel vm &&
-        !vm.CheckoutBusy && !vm.CheckoutUncertain && vm.PendingOperationId is null &&
-        _endFinancialSession?.Invoke() == true;
+    public bool EndFinancialSession()
+    {
+        if (_cashierEntryOpen || _reviewOpen || DataContext is not CatalogueViewModel vm ||
+            vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
+            _endFinancialSession is null) return false;
+        try { return _endFinancialSession(); }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            // A failed Host logout must not crash the cashier window or claim success.
+            // The Host remains the sole owner of session state and authorization.
+            return false;
+        }
+    }
 
     private void EndFinancialSession_Click(object sender, RoutedEventArgs e) => EndFinancialSession();
 
