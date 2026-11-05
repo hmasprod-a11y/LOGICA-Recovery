@@ -57,6 +57,12 @@ internal static class StockAdjustmentMariaDbSmoke {
                     Denied(()=>validate.Invoke(null,new object[]{null,tx,scopedPlan,deny,"CI-SESSION"}));
                     tx.Commit();
                 }
+                // A default provider cannot confer a grant even when the
+                // transaction is live and the claimed user/session look valid.
+                using(var validTx=db.BeginTransaction()) {
+                    Denied(()=>validate.Invoke(null,new object[]{db,validTx,scopedPlan,deny,"CI-SESSION"}));
+                    validTx.Rollback();
+                }
                 // A committed transaction cannot be recycled as proof of a live
                 // authorization transaction, even if Connector/NET retains its object.
                 var completed=db.BeginTransaction();
