@@ -5,7 +5,23 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $exe = Join-Path ([IO.Path]::GetFullPath($ExtractedDirectory)) 'Hanouty.Desktop.Bootstrap.exe'
-if (-not (Test-Path -LiteralPath $exe)) { throw 'Extracted WPF executable not found.' }
+if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Extracted WPF executable not found.' }
+# A standalone net10 Windows release must carry its runtime metadata and
+# managed entry assembly. A legacy LOGICA executable cannot satisfy this gate.
+$required = @(
+    'Hanouty.Desktop.Bootstrap.dll',
+    'Hanouty.Desktop.Bootstrap.runtimeconfig.json',
+    'Hanouty.Desktop.Bootstrap.deps.json'
+)
+foreach ($name in $required) {
+    if (-not (Test-Path -LiteralPath (Join-Path $ExtractedDirectory $name) -PathType Leaf)) {
+        throw "Extracted standalone WPF package missing required file: $name"
+    }
+}
+$runtime = Get-Content -LiteralPath (Join-Path $ExtractedDirectory 'Hanouty.Desktop.Bootstrap.runtimeconfig.json') -Raw | ConvertFrom-Json
+if ($null -eq $runtime.runtimeOptions -or $runtime.runtimeOptions.tfm -ne 'net10.0-windows') {
+    throw 'Extracted WPF package is not a net10.0-windows build.'
+}
 $root = Join-Path ([IO.Path]::GetFullPath($EvidenceDirectory)) 'disposable-mariadb'
 New-Item -ItemType Directory -Path $root -Force | Out-Null
 $archive = 'mariadb-10.11.14-winx64.zip'
