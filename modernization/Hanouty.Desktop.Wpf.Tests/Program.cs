@@ -747,6 +747,25 @@ var reviewThread = new System.Threading.Thread(() =>
             "logged-out double-click cannot stage stale catalogue article");
         listWindow.Close();
 
+        // A command dispatch is not a successful sale-basket selection: a real
+        // Host can reject a stale article, and a lost acknowledgement must lock.
+        var deniedWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new DenyingSelection(), new RecordingSubmission(), financialContext);
+        var deniedVm = (CatalogueViewModel)deniedWindow.DataContext;
+        deniedVm.SelectedProduct = deniedVm.VisibleProducts[0];
+        Check(!deniedWindow.SelectHighlightedProduct() &&
+            deniedVm.ScanFeedback == "Selection rejected" && !deniedVm.CheckoutUncertain,
+            "rejected production selection must never appear acknowledged in WPF");
+        deniedWindow.Close();
+        var lostAckWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new ThrowingSelection(), new RecordingSubmission(), financialContext);
+        var lostAckVm = (CatalogueViewModel)lostAckWindow.DataContext;
+        lostAckVm.SelectedProduct = lostAckVm.VisibleProducts[0];
+        Check(!lostAckWindow.SelectHighlightedProduct() && lostAckVm.CheckoutUncertain &&
+            !lostAckVm.CanSelectProduct && !lostAckWindow.SelectHighlightedProduct(),
+            "lost selection acknowledgement must lock WPF and forbid blind replay");
+        lostAckWindow.Close();
+
         // Actual WPF window: an unresolved journal must never invoke the Host
         // review authority or read a transient PIN, and cannot release the operation.
         var unresolvedPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
@@ -973,6 +992,11 @@ sealed class ChangingReader(ProductSummary[] products) : ICatalogueReader
 sealed class ImageFixture : IProductImageAvailability
 {
     public bool Exists(string path) => path is "milk.png" or "a.png";
+}
+
+sealed class DenyingSelection : IProductSelection
+{
+    public bool Select(ProductSummary product) => false;
 }
 
 sealed class ThrowingSelection : IProductSelection
