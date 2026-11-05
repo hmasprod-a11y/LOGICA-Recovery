@@ -117,6 +117,8 @@ jobs:
           if($LASTEXITCODE -ne 0) { throw 'WPF_OWNER: full actual WPF test suite failed' }
           dotnet run --project qa/modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj -c Release
           if($LASTEXITCODE -ne 0) { throw 'ARCHITECTURE_OWNER: financial reconciliation adapter regressions failed' }
+          dotnet run --project qa/modernization/stock-authorization-acceptance/StockAuthorizationAcceptance.csproj -c Release -- --no-database
+          if($LASTEXITCODE -ne 0) { throw 'INVENTORY_OWNER: unverified manual write boundary is not closed' }
           # Verify the actual build inputs, not merely independent passing checkouts.
           $manifest=@('architecture='+((git -C architecture rev-parse HEAD).Trim()),'checkout='+((git -C checkout rev-parse HEAD).Trim()),'wpf='+((git -C wpf rev-parse HEAD).Trim()),'qa='+((git -C qa rev-parse HEAD).Trim()))
           $manifest | Set-Content evidence/composed-source-manifest.txt
