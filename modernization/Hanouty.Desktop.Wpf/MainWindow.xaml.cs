@@ -11,6 +11,7 @@ public partial class MainWindow : Window
     private bool _cashierEntryOpen;
     private bool _reviewOpen;
     private bool _logoutOpen;
+    private bool _pinOpen;
     private Func<string, string, decimal, bool>? _setFinancialContext;
     private Func<decimal?>? _readTrustedCashTotal;
     private Func<bool>? _endFinancialSession;
@@ -31,7 +32,7 @@ public partial class MainWindow : Window
 
     public bool EndFinancialSession()
     {
-        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || DataContext is not CatalogueViewModel vm ||
+        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _endFinancialSession is null) return false;
         _logoutOpen = true;
@@ -61,7 +62,7 @@ public partial class MainWindow : Window
 
     public bool ShowCashierEntry()
     {
-        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || DataContext is not CatalogueViewModel vm ||
+        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _setFinancialContext is null || _readTrustedCashTotal is null) return false;
         // Lock BEFORE calling Host-provided delegates: those may pump the WPF
@@ -153,7 +154,7 @@ public partial class MainWindow : Window
     public bool ReviewResolvedCheckout(Func<string> transientPin)
     {
         ArgumentNullException.ThrowIfNull(transientPin);
-        if (_reviewOpen || _cashierEntryOpen || _logoutOpen || _review is null ||
+        if (_reviewOpen || _cashierEntryOpen || _logoutOpen || _pinOpen || _review is null ||
             DataContext is not CatalogueViewModel vm || !vm.CanReviewResolvedCheckout)
             return false;
         _reviewOpen = true;
@@ -180,7 +181,7 @@ public partial class MainWindow : Window
     {
         // Host may synchronously ask for PIN while a modal login/logout or
         // durable-outcome review is active. Never prompt for a competing sale.
-        if (_cashierEntryOpen || _logoutOpen || _reviewOpen ||
+        if (_cashierEntryOpen || _logoutOpen || _reviewOpen || _pinOpen ||
             DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
             vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             vm.PaymentContext is null || vm.PaymentContext.CashierId != cashier)
@@ -222,8 +223,12 @@ public partial class MainWindow : Window
         };
         confirm.Click += (_, _) => dialog.DialogResult = true;
         dialog.Loaded += (_, _) => pin.Focus();
+        // Modal WPF dialogs pump the dispatcher. Prevent nested sale PIN prompts
+        // and session transitions until the transient secret is cleared.
+        if (_pinOpen) return "";
+        _pinOpen = true;
         try { return dialog.ShowDialog() == true ? pin.Password : ""; }
-        finally { pin.Clear(); }
+        finally { pin.Clear(); _pinOpen = false; }
     }
 
     // The production host must supply real Application adapters from its composition root.
