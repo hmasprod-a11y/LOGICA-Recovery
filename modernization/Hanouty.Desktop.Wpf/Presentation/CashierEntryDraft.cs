@@ -7,6 +7,13 @@ namespace Hanouty.Desktop.Wpf.Presentation;
 // The Host must resolve cashier/register identity and trusted basket totals.
 public static class CashierEntryDraft
 {
+    private static bool HasControlCharacters(string value)
+    {
+        foreach (var character in value)
+            if (char.IsControl(character) || char.IsSurrogate(character)) return true;
+        return false;
+    }
+
     public static bool TryParse(string? cashier, string? register, string? cashMad,
         out string cashierId, out string registerId, out decimal tender)
     {
@@ -16,6 +23,7 @@ public static class CashierEntryDraft
         if (string.IsNullOrWhiteSpace(cashier) || string.IsNullOrWhiteSpace(register) ||
             cashier != cashier.Trim() || register != register.Trim() ||
             cashier.Length > 64 || register.Length > 64 ||
+            HasControlCharacters(cashier) || HasControlCharacters(register) ||
             string.IsNullOrWhiteSpace(cashMad) || cashMad != cashMad.Trim()) return false;
         // Explicit invariant decimal entry; never locale-dependent thousands grouping.
         if (!decimal.TryParse(cashMad, NumberStyles.AllowDecimalPoint,
