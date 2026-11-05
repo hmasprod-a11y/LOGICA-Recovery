@@ -135,6 +135,24 @@ internal static class StockAdjustmentMariaDbSmoke {
                     Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m &&
                         Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,
                         "Stale stock attempt changed stock or audit");
+                    // Inject a genuine SQL failure after the guarded stock UPDATE.
+                    // The transaction owner must roll back both the stock change
+                    // and the audit attempt; this is not a mocked writer.
+                    Sql(db,"CREATE TRIGGER CI_REJECT_STOCK_AUDIT BEFORE INSERT ON TABLE_MOUVEMENTS_STOCK FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='CI audit failure'");
+                    try {
+                        object failingPlan=create.Invoke(null,new object[]{"CI-ARTICLE",12m,13m,"injected audit failure","CI-USER"});
+                        try {
+                            executeAuthorized.Invoke(null,new object[]{cs,failingPlan,provider,"CI-SECRET-SESSION"});
+                            throw new Exception("Injected audit failure was accepted");
+                        } catch(TargetInvocationException ex) {
+                            if(!(ex.InnerException is MySqlException)) throw;
+                        }
+                        Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m &&
+                            Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,
+                            "Audit SQL failure did not roll back stock and movement atomically");
+                    } finally {
+                        Sql(db,"DROP TRIGGER CI_REJECT_STOCK_AUDIT");
+                    }
                     Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,scopedPlan,provider,"FORGED-SESSION"}));
                     Sql(db,"UPDATE HANOUTY_ACTOR_GRANTS SET REVOKED_AT=UTC_TIMESTAMP() WHERE ACTOR_ID='CI-USER'");
                     object nextPlan=create.Invoke(null,new object[]{"CI-ARTICLE",12m,13m,"revoked grant","CI-USER"});
