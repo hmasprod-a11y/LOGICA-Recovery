@@ -914,6 +914,22 @@ var reviewThread = new System.Threading.Thread(() =>
             "fresh authorized context restores exactly one acknowledged checkout");
         logoutWindow.Close();
 
+        // Host logout can synchronously discover an unresolved durable sale.
+        // In that case the ViewModel rejects session revocation; WPF must not
+        // falsely acknowledge logout or erase the pending operation identity.
+        var unresolvedLogoutPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
+        var unresolvedLogoutWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new RecordingSelection(), unresolvedLogoutPort, financialContext,
+            requireFreshPaymentContext: true);
+        var unresolvedLogoutVm = (CatalogueViewModel)unresolvedLogoutWindow.DataContext;
+        unresolvedLogoutWindow.ConfigureCashierEntry((_, _, _) => true, () => 10m,
+            () => { unresolvedLogoutVm.CommitCheckout(); return true; });
+        Check(!unresolvedLogoutWindow.EndFinancialSession() &&
+            unresolvedLogoutVm.FinancialSessionActive && unresolvedLogoutVm.CheckoutUncertain &&
+            unresolvedLogoutVm.PendingOperationId is not null && unresolvedLogoutPort.Ids.Count == 1,
+            "logout must not claim success when Host callback exposes unresolved durable checkout");
+        unresolvedLogoutWindow.Close();
+
         // A synchronous Host logout callback must not reenter logout, sign-in
         // or cashier review before the authoritative revocation is complete.
         var reentrantLogoutWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
