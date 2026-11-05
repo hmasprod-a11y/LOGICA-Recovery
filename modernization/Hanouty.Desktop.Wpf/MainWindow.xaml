@@ -88,6 +88,21 @@
                 <Button Content="Select product" Command="{Binding SelectCommand}" MinHeight="44"
                         Padding="12,8" Margin="0,18,0,0"
                         AutomationProperties.Name="Select product" IsEnabled="{Binding CanSelectProduct}"/>
+                <GroupBox Header="Original sale — read-only return preparation" Margin="0,14,0,8"
+                          AutomationProperties.Name="Persisted original sale lookup">
+                    <StackPanel Margin="8">
+                        <TextBox x:Name="OriginalSaleSearch" MinHeight="36"
+                                 AutomationProperties.Name="Search original receipt identity"/>
+                        <Button Content="Find persisted original sale" Click="SearchOriginalSales_Click"
+                                MinHeight="40" Margin="0,6,0,6"/>
+                        <ListBox x:Name="OriginalSaleResults" DisplayMemberPath="ReceiptLabel"
+                                 Height="80" AutomationProperties.Name="Persisted original sale results"/>
+                        <Button Content="Select original sale for review" Click="SelectOriginalSale_Click"
+                                MinHeight="40" Margin="0,6,0,6"/>
+                        <TextBlock x:Name="OriginalSaleStatus" Text="No original sale selected — refunds unavailable"
+                                   TextWrapping="Wrap" AutomationProperties.Name="Original sale review status"/>
+                    </StackPanel>
+                </GroupBox>
                 <TextBlock Text="Authorized cashier / payment context" FontWeight="SemiBold" Margin="0,16,0,4"/>
                 <Button Content="Enter cashier / register / cash tender" Click="CashierEntry_Click" MinHeight="44" Padding="12,8" Margin="0,8,0,8" AutomationProperties.Name="Enter cashier and fresh cash tender"/>
                 <Button Content="End cashier session" Click="EndFinancialSession_Click" MinHeight="40"
