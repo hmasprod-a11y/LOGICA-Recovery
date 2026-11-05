@@ -5185,11 +5185,11 @@ public class Form_0_TEMPLATE : Form
 		Label_DB.Text = File.ReadAllText(System.Windows.Forms.Application.StartupPath + "/CHEMIN_DB.sni");
 		Label_FOLDER.Text = File.ReadAllText(System.Windows.Forms.Application.StartupPath + "/CHEMIN_FOLDER.sni");
 		Label_POSTE.Text = File.ReadAllText(System.Windows.Forms.Application.StartupPath + "/poste.sni");
-		if (Operators.CompareString(Label_DB.Text, "System.Windows.Forms.Application.StartupPath", TextCompare: false) == 0)
+		if (Operators.CompareString(Label_DB.Text, "Application.StartupPath", TextCompare: false) == 0)
 		{
 			Label_DB.Text = System.Windows.Forms.Application.StartupPath;
 		}
-		if (Operators.CompareString(Label_FOLDER.Text, "System.Windows.Forms.Application.StartupPath", TextCompare: false) == 0)
+		if (Operators.CompareString(Label_FOLDER.Text, "Application.StartupPath", TextCompare: false) == 0)
 		{
 			Label_FOLDER.Text = System.Windows.Forms.Application.StartupPath;
 		}
