@@ -57,6 +57,12 @@ internal static class StockAdjustmentMariaDbSmoke {
                     Denied(()=>validate.Invoke(null,new object[]{null,tx,scopedPlan,deny,"CI-SESSION"}));
                     tx.Commit();
                 }
+                // A committed transaction cannot be recycled as proof of a live
+                // authorization transaction, even if Connector/NET retains its object.
+                var completed=db.BeginTransaction();
+                completed.Commit();
+                Denied(()=>validate.Invoke(null,new object[]{db,completed,scopedPlan,deny,"CI-SESSION"}));
+                completed.Dispose();
                 Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==10m && Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==0m,"Denied actor changed stock/audit");
                 Console.WriteLine("PASS actual LOGICA Execute/Apply reject unverified actors with feature enabled; stock/audit unchanged. Manual adjustment remains DISABLED.");
             } finally {
