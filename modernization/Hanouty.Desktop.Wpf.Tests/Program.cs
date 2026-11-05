@@ -1111,6 +1111,27 @@ reviewThread.Start();
 reviewThread.Join();
 if (windowReviewError is not null) throw new Exception("MainWindow reviewed reset regression", windowReviewError);
 
+// Read-only original sale selection: authoritative Host lookup only, no financial
+// command, duplicate persisted IDs fail closed and stale candidates cannot be reused.
+var originalLookup = new OriginalSaleLookupFixture();
+var originalSelection = new OriginalSaleSelection(originalLookup);
+Check(originalSelection.Search("").Count == 0 && originalLookup.Calls == 0,
+    "empty original receipt query must not call Host");
+var originalRows = originalSelection.Search("  receipt-1  ");
+Check(originalLookup.LastQuery == "receipt-1" && originalRows.Count == 1 &&
+    originalSelection.Select(originalRows[0], originalRows) &&
+    originalSelection.Selected == originalRows[0],
+    "persisted original sale selected from trusted Host snapshot");
+Check(!originalSelection.Select(new OriginalSaleCandidate("sale-1", "receipt-1", 10m), originalRows) &&
+    originalSelection.Selected is null,
+    "detached or forged original-sale row cannot be selected");
+originalSelection.Select(originalRows[0], originalRows);
+originalSelection.Search("");
+Check(originalSelection.Selected is null, "new search clears stale original-sale selection");
+originalLookup.Duplicate = true;
+try { originalSelection.Search("receipt-1"); throw new Exception("duplicate sale ID accepted"); }
+catch (InvalidOperationException) { }
+
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
@@ -1305,5 +1326,19 @@ sealed class SessionFinancialSubmission : ICheckoutSubmission, ICheckoutOutcomeR
     {
         Reconciled.Add(operationId);
         return Ids.Contains(operationId) ? CheckoutResolution.Persisted : CheckoutResolution.Absent;
+    }
+}
+
+sealed class OriginalSaleLookupFixture : IOriginalSaleLookup
+{
+    public int Calls { get; private set; }
+    public string? LastQuery { get; private set; }
+    public bool Duplicate { get; set; }
+    public IReadOnlyList<OriginalSaleCandidate> FindPersistedSales(string receiptSearch)
+    {
+        Calls++;
+        LastQuery = receiptSearch;
+        var row = new OriginalSaleCandidate("sale-1", "receipt-1", 10m);
+        return Duplicate ? new[] { row, row } : new[] { row };
     }
 }
