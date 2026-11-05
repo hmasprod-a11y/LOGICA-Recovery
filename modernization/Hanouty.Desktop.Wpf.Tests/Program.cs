@@ -747,6 +747,20 @@ var reviewThread = new System.Threading.Thread(() =>
             "authorized persisted review resets scanner and variant draft without financial replay");
         persistedWindow.Close();
 
+        // The real WPF PIN entry point must fail closed without ever opening a
+        // modal PasswordBox for a logged-out, wrong-cashier or unresolved sale.
+        var pinWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new RecordingSelection(), new RecordingSubmission(), financialContext,
+            requireFreshPaymentContext: true);
+        var pinVm = (CatalogueViewModel)pinWindow.DataContext;
+        Check(pinWindow.PromptCashierPin("other-cashier") == "",
+            "checkout PIN must reject a different cashier without prompting");
+        pinVm.FinancialSessionActive = false;
+        Check(pinWindow.PromptCashierPin() == "" &&
+            pinWindow.PromptCashierPin("cashier-1") == "",
+            "checkout PIN must not prompt after logout");
+        pinWindow.Close();
+
         // Trusted Host callbacks can synchronously reenter WPF before a dialog opens.
         var reentrantEntryWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
             new RecordingSelection(), new RecordingSubmission(), financialContext,
