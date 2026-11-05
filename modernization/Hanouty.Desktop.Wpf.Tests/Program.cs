@@ -728,6 +728,25 @@ var reviewThread = new System.Threading.Thread(() =>
             "authorized persisted review resets scanner and variant draft without financial replay");
         persistedWindow.Close();
 
+        // Real catalogue list interaction uses the existing production selection
+        // seam; double-click must not bypass cashier logout or select a stale row.
+        var listSelection = new RecordingSelection();
+        var listWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            listSelection, new RecordingSubmission(), financialContext,
+            requireFreshPaymentContext: true);
+        var listVm = (CatalogueViewModel)listWindow.DataContext;
+        Check(!listWindow.SelectHighlightedProduct() && listSelection.Selected.Count == 0,
+            "empty catalogue highlight cannot stage an article");
+        listVm.SelectedProduct = items[0];
+        Check(listWindow.SelectHighlightedProduct() && listSelection.Selected.Count == 1 &&
+            listSelection.Selected[0] == items[0],
+            "highlighted catalogue article uses real injected Host selection port");
+        listVm.FinancialSessionActive = false;
+        Check(!listWindow.SelectHighlightedProduct() && listSelection.Selected.Count == 1 &&
+            listVm.SelectedProduct is null,
+            "logged-out double-click cannot stage stale catalogue article");
+        listWindow.Close();
+
         // Actual WPF window: an unresolved journal must never invoke the Host
         // review authority or read a transient PIN, and cannot release the operation.
         var unresolvedPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
