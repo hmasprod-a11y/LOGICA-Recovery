@@ -1044,6 +1044,27 @@ var reviewThread = new System.Threading.Thread(() =>
             "unknown financial outcome blocks real window logout without touching Host or operation");
         lockedLogoutWindow.Close();
 
+        // WPF modal PIN windows pump the dispatcher: a second PIN or session
+        // transition must be rejected while the first transient PIN is open.
+        var modalPinWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new RecordingSelection(), new RecordingSubmission(), financialContext,
+            requireFreshPaymentContext: true);
+        var pinFlag = typeof(Hanouty.Desktop.Wpf.MainWindow).GetField("_pinOpen",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        int modalLogoutCalls = 0;
+        int modalTotalReads = 0;
+        modalPinWindow.ConfigureCashierEntry((_, _, _) => true,
+            () => { modalTotalReads++; return null; },
+            () => { modalLogoutCalls++; return true; });
+        pinFlag.SetValue(modalPinWindow, true);
+        Check(modalPinWindow.PromptCashierPin(financialContext.CashierId) == "" &&
+            !modalPinWindow.ShowCashierEntry() && !modalPinWindow.EndFinancialSession() &&
+            modalLogoutCalls == 0 && modalTotalReads == 0 &&
+            ((CatalogueViewModel)modalPinWindow.DataContext).FinancialSessionActive,
+            "open transient PIN dialog must reject nested PIN/login/logout without Host calls");
+        pinFlag.SetValue(modalPinWindow, false);
+        modalPinWindow.Close();
+
         // Host PIN rejection and exceptions must never consume the durable
         // review identity. PIN is supplied lazily and is never retained by WPF.
         var reviewFailurePort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
