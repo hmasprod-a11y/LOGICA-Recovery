@@ -163,6 +163,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     {
         if (_selectionInFlight) { ScanFeedback = "Selection already in progress"; return; }
         if (CheckoutUncertain) { ScanFeedback = "Checkout status unknown — reconcile before retry"; return; }
+        if (!FinancialSessionActive) { ScanFeedback = "Cashier session required"; return; }
         if (!CatalogueAvailable) { ScanFeedback = "Local catalogue unavailable"; return; }
         var code = ScannerText.Trim();
         if (code.Length == 0) { BarcodeCandidates = Array.Empty<ProductSummary>(); SelectedProduct = null; OnPropertyChanged(nameof(BarcodeCandidates)); OnPropertyChanged(nameof(HasBarcodeAmbiguity)); ScanFeedback = "Empty barcode"; return; }
