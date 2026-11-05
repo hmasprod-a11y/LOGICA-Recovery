@@ -29,12 +29,12 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: 6c0f68f0a2372da58ba6d307d756e936da55816b
+          ref: 38c598da86e51c15d880397877a89ff06df87589
           path: checkout
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: 5c73e78002f07121fdc85eb6272dcbd1bae5b31f
+          ref: 5e6e4257cdea5aa7bb4199ce982b3afa327c1a63
           path: architecture
           persist-credentials: false
       - uses: actions/setup-dotnet@v4
@@ -56,7 +56,7 @@ jobs:
           CHECKOUT_TEST_CONNECTION: Server=127.0.0.1;Port=3306;Database=checkout_disposable;Uid=checkout_test;Pwd=checkout-test-only;SslMode=Disabled;
         run: |
           set -euo pipefail
-          test "$(git -C checkout rev-parse HEAD)" = 6c0f68f0a2372da58ba6d307d756e936da55816b
+          test "$(git -C checkout rev-parse HEAD)" = 38c598da86e51c15d880397877a89ff06df87589
           cp -a architecture/modernization/architecture/. qa/modernization/architecture/
           cp -a architecture/recovered-source/. qa/recovered-source/
           test -f qa/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj
@@ -72,15 +72,15 @@ jobs:
           path: qa
       - uses: actions/checkout@v4
         with:
-          ref: 6c0f68f0a2372da58ba6d307d756e936da55816b
+          ref: 38c598da86e51c15d880397877a89ff06df87589
           path: checkout
       - uses: actions/checkout@v4
         with:
-          ref: 5c73e78002f07121fdc85eb6272dcbd1bae5b31f
+          ref: 5e6e4257cdea5aa7bb4199ce982b3afa327c1a63
           path: architecture
       - uses: actions/checkout@v4
         with:
-          ref: 72fb09785b8abf2baa5bf60b06a0467b58961531
+          ref: f7c5d36a3acacdebb9afa68e74f9a9fad1eb382c
           path: wpf
       - uses: actions/setup-dotnet@v4
         with:
@@ -175,7 +175,7 @@ jobs:
         shell: pwsh
         run: |
           $report = Get-Content evidence/w2/w2-cash-sale.json -Raw | ConvertFrom-Json
-          foreach ($field in @('WindowLoaded','EditedContextRejected','SingleSessionBinding','ReviewCallbackAuthenticated','WrongReviewPinRejected','UnknownReviewBlocked','NoFinancialReplayOnReview','ExplicitReviewedUiReset','PinDialogRenderedAndCleared','InitialCashierPinUi','InitialPinCancelAndWrongRejected','CashChangeSql','SameHostDifferentTotals','PaymentContextConsumed','StaleContextBoundaryRejected','DirectSessionStaleRejected','ContextFrozenDuringPin','CashierSwitchAuthenticated','UnknownContextChangeBlocked','ChangeRowRollback','EmptyBasket','TicketPaymentStockSql','Duplicate','ProcessRestart','WrongPinRejected','WrongTotalRejected','StalePriceRejected','AfterPaymentRollback','UnknownJournalLocked','LostAcknowledgementPersisted','Reconciliation')) {
+          foreach ($field in @('CashierDialogProductionBound','TrustedQuoteDisplayed','DialogTwoSalesSameHost','LogoutLoginUi','ModalPriceChangeRejected','WindowLoaded','EditedContextRejected','SingleSessionBinding','ReviewCallbackAuthenticated','WrongReviewPinRejected','UnknownReviewBlocked','NoFinancialReplayOnReview','ExplicitReviewedUiReset','PinDialogRenderedAndCleared','InitialCashierPinUi','InitialPinCancelAndWrongRejected','CashChangeSql','SameHostDifferentTotals','PaymentContextConsumed','StaleContextBoundaryRejected','DirectSessionStaleRejected','ContextFrozenDuringPin','CashierSwitchAuthenticated','UnknownContextChangeBlocked','ChangeRowRollback','EmptyBasket','TicketPaymentStockSql','Duplicate','ProcessRestart','WrongPinRejected','WrongTotalRejected','StalePriceRejected','AfterPaymentRollback','UnknownJournalLocked','LostAcknowledgementPersisted','Reconciliation')) {
             if ($report.$field -ne $true) { throw "Missing executed acceptance assertion: $field" }
           }
           if ($report.W2Accepted -ne $false) { throw 'Cash-slice evidence must not promote full W2 or commercial payment readiness' }

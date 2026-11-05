@@ -16,6 +16,28 @@ public static class Program
         if (args.Length == 2 && args[0] == "--verify-disposable-cash-sale")
             return DisposableCashSaleAcceptance.Run(Path.GetFullPath(args[1]));
 #endif
+        #if HANOUTY_FINANCIAL
+        if (args.Length == 2 && args[0] == "--cashier-development")
+        {
+            try
+            {
+                var settings = CatalogueSettings.FromEnvironment();
+                var endpoint = new MySqlConnectionStringBuilder(settings.ConnectionString);
+                if (Environment.GetEnvironmentVariable("HANOUTY_W2_DISPOSABLE_MARKER") != "I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY" ||
+                    endpoint.Server != "127.0.0.1" || endpoint.Port != 3307 || endpoint.Database != "logica_ci")
+                    throw new InvalidOperationException("Development cashier requires an explicitly disposable loopback database.");
+                var app = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
+                var workstation = CatalogueHost.CreateCashierWorkstation(settings, args[1]);
+                app.Run(workstation.Window);
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "Hanouty — cashier startup blocked", MessageBoxButton.OK, MessageBoxImage.Error);
+                return 2;
+            }
+        }
+        #endif
         string? evidence = args.Length == 3 && args[0] == "--catalogue-only" &&
             args[1] == "--verify-disposable-catalogue" ? Path.GetFullPath(args[2]) : null;
         try

@@ -158,6 +158,88 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             "PIN remained in the password control after review.");
     }
 
+
+    private static bool CashierEntry(CatalogueHost host, string cashier, string register,
+        string tender, decimal expectedTotal, string? pin = null, bool confirm = true,
+        Action? duringEntry = null)
+    {
+        host.Window.Show();
+        Exception? failure = null;
+        System.Windows.Controls.PasswordBox? pinControl = null;
+        static IEnumerable<DependencyObject> Children(DependencyObject root)
+        {
+            foreach (var child in LogicalTreeHelper.GetChildren(root))
+                if (child is DependencyObject item) {
+                    yield return item;
+                    foreach (var nested in Children(item)) yield return nested;
+                }
+        }
+        var timer = new System.Windows.Threading.DispatcherTimer {
+            Interval = TimeSpan.FromMilliseconds(20)
+        };
+        var expires = DateTime.UtcNow.AddSeconds(8);
+        if (pin is not null)
+        {
+            timer.Tick += (_, _) => {
+                var modal = Application.Current.Windows.Cast<Window>()
+                    .SingleOrDefault(w => w.Owner == host.Window);
+                if (modal is null) return;
+                var password = Children(modal).OfType<System.Windows.Controls.PasswordBox>().SingleOrDefault();
+                if (password is null) {
+                    if (DateTime.UtcNow > expires) { failure = new Exception("PIN modal timeout."); modal.Close(); timer.Stop(); }
+                    return;
+                }
+                try {
+                    Require(!host.Window.ShowCashierEntry() && !host.Window.EndFinancialSession(),
+                        "PIN modal allowed nested cashier entry/logout.");
+                    pinControl = password;
+                    password.Password = pin;
+                    Children(modal).OfType<System.Windows.Controls.Button>().Single(b => b.IsDefault)
+                        .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                }
+                catch (Exception ex) { failure = ex; modal.Close(); }
+                finally { timer.Stop(); }
+            };
+            timer.Start();
+        }
+        host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+            new Action(() => {
+                var modal = Application.Current.Windows.Cast<Window>()
+                    .SingleOrDefault(w => w.Owner == host.Window);
+                try {
+                    Require(modal is Hanouty.Desktop.Wpf.CashierEntryDialog,
+                        "Actual cashier entry dialog did not render.");
+                    Require(Children(modal!).OfType<System.Windows.Controls.TextBlock>().Any(t =>
+                        t.Text.Contains("Application total (MAD): " + expectedTotal.ToString("F2", CultureInfo.InvariantCulture))),
+                        "Dialog displayed a stale/UI-derived total.");
+                    System.Windows.Controls.TextBox Field(string name) =>
+                        Children(modal!).OfType<System.Windows.Controls.TextBox>().Single(t =>
+                            System.Windows.Automation.AutomationProperties.GetName(t) == name);
+                    Require(Field("Cash MAD (decimal, no thousands separator)").Text == "",
+                        "Tender from an earlier operation was retained.");
+                    Require(!host.Window.ShowCashierEntry() && !host.Window.EndFinancialSession(),
+                        "Tender modal allowed nested entry/logout.");
+                    Field("Cashier identity").Text = cashier;
+                    Field("Register identity").Text = register;
+                    Field("Cash MAD (decimal, no thousands separator)").Text = tender;
+                    duringEntry?.Invoke();
+                    if (confirm)
+                        Children(modal!).OfType<System.Windows.Controls.Button>().Single(b => b.IsDefault)
+                            .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                    else modal!.Close();
+                }
+                catch (Exception ex) { failure = ex; modal?.Close(); }
+            }));
+        bool accepted;
+        try { accepted = host.Window.ShowCashierEntry(); }
+        finally { timer.Stop(); }
+        if (failure is not null) throw new InvalidOperationException("Cashier entry UI acceptance failed.", failure);
+        if (pin is not null)
+            Require(pinControl is not null && pinControl.Password.Length == 0,
+                "Expected cashier PIN dialog did not run or retained its credential.");
+        return accepted;
+    }
+
     private static void Verify(CatalogueSettings settings, string pin, CatalogueHost host, string evidence)
     {
         Require(host.Window.IsVisible && host.Window.IsLoaded, "Actual financial WPF window did not render.");
@@ -508,14 +590,100 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         }
         finally { lifecycle.Window.Close(); }
 
+
+        // Actual workstation starts signed out. All session/tender input comes
+        // through the real dialog registered in the existing composition root.
+        var workstation = CatalogueHost.CreateCashierWorkstation(settings, "01");
+        try
+        {
+            var before = Snapshot(settings);
+            var stockBefore = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+            var salesBefore = Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE");
+            var sequenceBefore = Number(settings, "SELECT CL FROM TABLE_NUM");
+            Require(!workstation.ViewModel.FinancialSessionActive && !workstation.ViewModel.CanSelectProduct &&
+                !workstation.ViewModel.CanCommit, "Signed-out workstation enabled checkout.");
+            Require(!CashierEntry(workstation, "O'Neil", "01", "0", 0m, confirm: false) &&
+                Snapshot(settings) == before, "Cancelled login changed business SQL.");
+            Require(!CashierEntry(workstation, "O'Neil", "01", "0", 0m, "incorrect") &&
+                !workstation.ViewModel.FinancialSessionActive && Snapshot(settings) == before,
+                "Wrong PIN activated signed-out cashier session.");
+            Require(CashierEntry(workstation, "O'Neil", "01", "0", 0m, pin) &&
+                workstation.ViewModel.FinancialSessionActive && workstation.ViewModel.PaymentContext is null &&
+                workstation.ViewModel.CanSelectProduct && !workstation.ViewModel.CanCommit && Snapshot(settings) == before,
+                "Authenticated empty session created a dummy financial operation or failed to activate.");
+
+            void Stage(int count) {
+                for (int n = 0; n < count; n++) {
+                    workstation.ViewModel.ScannerText = "CODE'1";
+                    workstation.ViewModel.ScanCommand.Execute(null);
+                    Require(workstation.ViewModel.ScanFeedback == "Selection accepted",
+                        "Authenticated workstation scan did not reach its single Application basket.");
+                }
+            }
+            Stage(1);
+            Require(!workstation.Window.EndFinancialSession(), "Logout abandoned a pending basket.");
+            Require(!CashierEntry(workstation, "O'Neil", "02", "10", 5.25m) &&
+                !CashierEntry(workstation, "Second cashier", "01", "10", 5.25m) &&
+                !CashierEntry(workstation, "O'Neil", "01", "4", 5.25m) &&
+                Snapshot(settings) == before, "Register/cashier/underpayment draft bypassed trusted Host.");
+            Require(!CashierEntry(workstation, "O'Neil", "01", "10", 5.25m, duringEntry: () =>
+                Sql(settings, "UPDATE TABLE_ARTICLES SET PRIX_V_1=6 WHERE ID_ARTICLE='W2-Article'")),
+                "Price changed during modal entry but old quote was approved.");
+            Sql(settings, "UPDATE TABLE_ARTICLES SET PRIX_V_1=5.25 WHERE ID_ARTICLE='W2-Article'");
+            Require(CashierEntry(workstation, "O'Neil", "01", "10", 5.25m) &&
+                workstation.ViewModel.CanCommit && Snapshot(settings) == before,
+                "Fresh tender entry failed or wrote before payment confirmation.");
+            ReviewThroughDialog(workstation, pin, true,
+                () => workstation.ViewModel.CommitCommand.Execute(null));
+            Require(workstation.ViewModel.CommitFeedback == "Checkout committed" &&
+                workstation.ViewModel.PaymentContext is null, "First dialog-driven payment failed.");
+            Stage(2);
+            Require(!workstation.ViewModel.CanCommit &&
+                CashierEntry(workstation, "O'Neil", "01", "20", 10.50m),
+                "Second operation did not require/read a new Application total/tender.");
+            ReviewThroughDialog(workstation, pin, true,
+                () => workstation.ViewModel.CommitCommand.Execute(null));
+            var first = Convert.ToString(Value(settings, "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE WHERE TICKET='" +
+                sequenceBefore.ToString("000000", CultureInfo.InvariantCulture) + "'"))!;
+            var second = Convert.ToString(Value(settings, "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE WHERE TICKET='" +
+                (sequenceBefore + 1).ToString("000000", CultureInfo.InvariantCulture) + "'"))!;
+            Require(first != second &&
+                Number(settings, "SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id", first) == 5.25m &&
+                Number(settings, "SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id", second) == 10.50m &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MONTANT=20", second) == 1 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MONTANT=-9.5", second) == 1 &&
+                Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == stockBefore - 3 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == salesBefore + 2,
+                "Dialog-driven same-Host operations lost quantity, total, change or exact-once identity.");
+            Require(workstation.Window.EndFinancialSession() && !workstation.ViewModel.CanSelectProduct &&
+                !workstation.ViewModel.CanCommit && workstation.ViewModel.PaymentContext is null,
+                "Explicit UI logout failed to invalidate the cashier session.");
+            var afterLogout = Snapshot(settings);
+            Require(!CashierEntry(workstation, "Second cashier", "01", "0", 0m, "incorrect") &&
+                !workstation.ViewModel.FinancialSessionActive && Snapshot(settings) == afterLogout,
+                "Logout/login accepted a forged cashier credential.");
+            Require(CashierEntry(workstation, "Second cashier", "01", "0", 0m, "4321"),
+                "Actual cashier dialog could not reopen/re-authenticate after logout.");
+            Stage(1);
+            Require(CashierEntry(workstation, "Second cashier", "01", "5.25", 5.25m),
+                "Second cashier tender entry failed.");
+            ReviewThroughDialog(workstation, "4321", true,
+                () => workstation.ViewModel.CommitCommand.Execute(null));
+            Require(workstation.ViewModel.CommitFeedback == "Checkout committed" &&
+                Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == stockBefore - 4 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == salesBefore + 3,
+                "Reauthenticated cashier sale failed on the same workstation.");
+        }
+        finally { workstation.Window.Close(); }
+
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
-            Gate = "real WPF exact-cash slice", Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
+            Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
             ReviewCallbackAuthenticated = true, WrongReviewPinRejected = true,
             UnknownReviewBlocked = true, NoFinancialReplayOnReview = true, ExplicitReviewedUiReset = true, PinDialogRenderedAndCleared = true, InitialCashierPinUi = true, InitialPinCancelAndWrongRejected = true, CashChangeSql = true, SameHostDifferentTotals = true, PaymentContextConsumed = true, StaleContextBoundaryRejected = true, DirectSessionStaleRejected = true, ContextFrozenDuringPin = true, CashierSwitchAuthenticated = true, UnknownContextChangeBlocked = true, ChangeRowRollback = true,
             EmptyBasket = true, TicketPaymentStockSql = true, Duplicate = true, ProcessRestart = true,
             WrongPinRejected = true, WrongTotalRejected = true, StalePriceRejected = true,
             AfterPaymentRollback = true, UnknownJournalLocked = true, LostAcknowledgementPersisted = true, Reconciliation = true,
-            W2Accepted = false, Remaining = "Broader V1 payment/returns/device parity and cashier rollout acceptance"
+            W2Accepted = false, Remaining = "Broader V1 payment/returns/device parity and commercial rollout acceptance"
         }));
     }
 

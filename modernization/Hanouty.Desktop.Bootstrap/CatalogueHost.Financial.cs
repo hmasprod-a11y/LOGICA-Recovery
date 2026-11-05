@@ -61,6 +61,20 @@ public sealed partial record CatalogueHost
         return host;
     }
 
+    // Real development cashier entry uses the SAME production graph, initially
+    // signed out and without a dummy payment/identity/price.
+    public static CatalogueHost CreateCashierWorkstation(CatalogueSettings settings,
+        string twoDigitWorkstation)
+    {
+        MainWindow? window = null;
+        var host = CreateFinancialCore(settings, twoDigitWorkstation,
+            () => window?.PromptCashierPin() ??
+                throw new InvalidOperationException("Cashier window unavailable."),
+            null, null, null);
+        window = host.Window;
+        return host;
+    }
+
     public static CatalogueHost CreateFinancial(CatalogueSettings settings,
         string twoDigitWorkstation, Func<string> transientPinProvider,
         AuthorizedCheckoutPaymentContext paymentContext) =>
@@ -73,9 +87,19 @@ public sealed partial record CatalogueHost
         AuthorizedCheckoutPaymentContext paymentContext, Action? afterCommitAcknowledgementFault,
         Action<Exception>? postingFailureDiagnostic = null)
     {
+        return CreateFinancialCore(settings, twoDigitWorkstation, transientPinProvider,
+            FreezeCashContext(paymentContext), afterCommitAcknowledgementFault, postingFailureDiagnostic);
+    }
+
+    private static CatalogueHost CreateFinancialCore(CatalogueSettings settings,
+        string twoDigitWorkstation, Func<string> transientPinProvider,
+        AuthorizedCheckoutPaymentContext? initialContext, Action? afterCommitAcknowledgementFault,
+        Action<Exception>? postingFailureDiagnostic)
+    {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(transientPinProvider);
-        AuthorizedCheckoutPaymentContext? captured = FreezeCashContext(paymentContext);
+        AuthorizedCheckoutPaymentContext? captured = initialContext;
+        string? activeCashierId = captured?.CashierId;
         var contextConsumed = false;
         Func<MySqlConnection> connections = () => new MySqlConnection(settings.ConnectionString);
         var posting = MariaDbCashCheckoutServices.CreatePostingPort(
@@ -91,7 +115,7 @@ public sealed partial record CatalogueHost
             new MariaDbCatalogueReader(settings.ConnectionString, settings.DataDirectory),
             new ExplicitVariantChoice(), posting, journal, () => !contextConsumed && captured is not null
                 ? captured : throw new InvalidOperationException("Fresh payment context required."));
-        CashierPaymentContext? context = new CashierPaymentContext(captured.CashierId,
+        CashierPaymentContext? context = captured is null ? null : new CashierPaymentContext(captured.CashierId,
             twoDigitWorkstation, captured.Currency, "Cash", captured.Payments[0].Amount);
         // Reuse WPF's single-session adapter rather than maintain a second
         // contextual implementation in the Host. SQL still authenticates on commit.
@@ -99,6 +123,7 @@ public sealed partial record CatalogueHost
             binding.Catalogue, binding.Checkout, binding.Submission, () => contextConsumed ? null! : context!);
         var window = new MainWindow(services.Catalogue, services.Checkout, services.Submission, context, requireFreshPaymentContext: true);
         var vm = (CatalogueViewModel)window.DataContext;
+        vm.FinancialSessionActive = captured is not null;
         if (!vm.CatalogueAvailable)
             throw new InvalidOperationException("Local financial catalogue could not be loaded.");
         var result = new CatalogueHost(window, vm, binding.Session);
@@ -116,9 +141,10 @@ public sealed partial record CatalogueHost
             // A staged basket belongs to its current cashier; changing amount
             // is allowed before submission, changing identity is not.
             if (binding.Session.PendingCount != 0 &&
-                (captured is null || frozen.CashierId != captured.CashierId))
+                (activeCashierId is null || frozen.CashierId != activeCashierId))
                 return false;
             captured = frozen;
+            activeCashierId = frozen.CashierId;
             contextConsumed = false;
             context = new CashierPaymentContext(frozen.CashierId,
                 twoDigitWorkstation, frozen.Currency, "Cash", frozen.Payments[0].Amount);
@@ -130,6 +156,7 @@ public sealed partial record CatalogueHost
         {
             if (!CanChangeContext() || binding.Session.PendingCount != 0) return false;
             captured = null;
+            activeCashierId = null;
             contextConsumed = true;
             context = null;
             vm.PaymentContext = null;
@@ -170,6 +197,44 @@ public sealed partial record CatalogueHost
             }
             finally { reviewing = false; }
         };
+        decimal? ReadTrustedTotal()
+        {
+            if (!CanChangeContext()) return null;
+            return MariaDbCashCheckoutServices.ReadCashSaleTotal(connections, binding.Session.PendingLines);
+        }
+        window.ConfigureCashierEntry((cashier, register, tender) => {
+            if (!CanChangeContext() || register != twoDigitWorkstation ||
+                string.IsNullOrWhiteSpace(cashier) || tender < 0m) return false;
+            var total = ReadTrustedTotal();
+            if (total is null) return false;
+            if (binding.Session.PendingCount == 0)
+            {
+                // Empty-basket session entry is authentication, NOT a dummy sale.
+                // Zero tender cannot mint a financial request.
+                if (tender != 0m || total != 0m) return false;
+                reviewing = true;
+                try
+                {
+                    MariaDbCashCheckoutServices.VerifyCashierSession(connections, cashier,
+                        () => window.PromptCashierPin(cashier));
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+                { return false; }
+                finally { reviewing = false; }
+                if (!CanChangeContext() || binding.Session.PendingCount != 0) return false;
+                activeCashierId = cashier;
+                captured = null;
+                contextConsumed = true;
+                context = null;
+                vm.PaymentContext = null;
+                vm.FinancialSessionActive = true;
+                return true;
+            }
+            if (cashier != activeCashierId || total <= 0m || tender < total) return false;
+            return result.TrySetFinancialContext(new AuthorizedCheckoutPaymentContext(
+                cashier, "MAD", false, new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, tender) }, total.Value));
+        }, ReadTrustedTotal, result.TryEndFinancialSession,
+            () => System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines));
         window.ConfigureReviewedCheckout(result.TryReviewResolvedCheckout);
         return result;
     }
