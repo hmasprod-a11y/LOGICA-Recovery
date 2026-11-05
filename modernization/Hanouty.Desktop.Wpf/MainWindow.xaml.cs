@@ -9,6 +9,7 @@ public partial class MainWindow : Window
     // Existing Host owns context authorization and trusted price readback.
     // The UI only collects a draft and never grants financial authority.
     private bool _cashierEntryOpen;
+    private bool _reviewOpen;
     private Func<string, string, decimal, bool>? _setFinancialContext;
     private Func<decimal?>? _readTrustedCashTotal;
     private Func<bool>? _endFinancialSession;
@@ -28,7 +29,7 @@ public partial class MainWindow : Window
     }
 
     public bool EndFinancialSession() =>
-        !_cashierEntryOpen && DataContext is CatalogueViewModel vm &&
+        !_cashierEntryOpen && !_reviewOpen && DataContext is CatalogueViewModel vm &&
         !vm.CheckoutBusy && !vm.CheckoutUncertain && vm.PendingOperationId is null &&
         _endFinancialSession?.Invoke() == true;
 
@@ -36,7 +37,7 @@ public partial class MainWindow : Window
 
     public bool ShowCashierEntry()
     {
-        if (_cashierEntryOpen || DataContext is not CatalogueViewModel vm ||
+        if (_cashierEntryOpen || _reviewOpen || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _setFinancialContext is null || _readTrustedCashTotal is null) return false;
         try
@@ -73,9 +74,21 @@ public partial class MainWindow : Window
     }
 
     // Same path for the UI and executable acceptance; the Host owns authorization.
-    public bool ReviewResolvedCheckout(Func<string> transientPin) =>
-        DataContext is CatalogueViewModel vm && _review is not null &&
-        vm.TryReviewResolvedCheckout((id, outcome) => _review(id, outcome, transientPin));
+    public bool ReviewResolvedCheckout(Func<string> transientPin)
+    {
+        ArgumentNullException.ThrowIfNull(transientPin);
+        if (_reviewOpen || _cashierEntryOpen || _review is null ||
+            DataContext is not CatalogueViewModel vm || !vm.CanReviewResolvedCheckout)
+            return false;
+        _reviewOpen = true;
+        try
+        {
+            // Host alone rechecks durable outcome and authenticates the fresh cashier.
+            // No second PIN prompt, cashier entry or logout may overlap this review.
+            return vm.TryReviewResolvedCheckout((id, outcome) => _review(id, outcome, transientPin));
+        }
+        finally { _reviewOpen = false; }
+    }
 
     private void ReviewResolvedCheckout_Click(object sender, RoutedEventArgs e) =>
         ReviewResolvedCheckout(ReadReviewPin);
