@@ -48,7 +48,7 @@
                 <DataGrid ItemsSource="{Binding VisibleProducts}" AutoGenerateColumns="False"
                           IsReadOnly="True" SelectionMode="Single" SelectionUnit="FullRow"
                           SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
-                          AutomationProperties.Name="Product list">
+                          AutomationProperties.Name="Product list" MouseDoubleClick="ProductList_MouseDoubleClick">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Article" Binding="{Binding Name}" Width="*"/>
                         <DataGridTextColumn Header="Barcode" Binding="{Binding Barcode}" Width="*"/>
