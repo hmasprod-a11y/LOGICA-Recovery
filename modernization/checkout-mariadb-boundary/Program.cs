@@ -672,6 +672,17 @@ namespace LOGICA.Infrastructure.Checkout
                                 Require(discountRestore.ExecuteNonQuery() == 1,
                                     "Expected exactly one original journal line to restore.");
                             }
+                            foreach (var invalidOriginal in new[] { " " + operation, operation + " ", operation + "\n" })
+                            {
+                                bool invalidReferenceRejected = false;
+                                try {
+                                    CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                        evidenceDb, evidenceTx, invalidOriginal);
+                                }
+                                catch (InvalidOperationException) { invalidReferenceRejected = true; }
+                                Require(invalidReferenceRejected,
+                                    "Ambiguous original ticket reference must be rejected before refund.");
+                            }
                             bool missingOriginalRejected = false;
                             try {
                                 CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
