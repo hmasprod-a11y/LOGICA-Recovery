@@ -8,6 +8,10 @@ SET @original_ticket = 'TEST-ORIGINAL-TICKET';
 SET @article_id = 'TEST-ARTICLE';
 CREATE TEMPORARY TABLE hanouty_return_assert (ok TINYINT NOT NULL PRIMARY KEY);
 INSERT INTO hanouty_return_assert VALUES (1);
+-- Executable rounding contract: original DECIMAL cash line at a half-cent
+-- boundary must use MariaDB ROUND (half away from zero), not .NET ToEven.
+INSERT INTO hanouty_return_assert
+SELECT IF(ROUND(CAST('0.125' AS DECIMAL(10,3)),2) = CAST('0.13' AS DECIMAL(10,2)), 2, 1);
 -- Lock the original sale to serialize concurrent return candidates.
 SELECT ID_TICKET, Total_NET FROM TABLE_VENTES_ENTETE
  WHERE BINARY ID_TICKET=BINARY @original_ticket AND BINARY OPERATION=BINARY 'VENTE' FOR UPDATE;
