@@ -16,7 +16,7 @@ foreach ($dir in @($publish,$extract)) {
     if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }
     New-Item -ItemType Directory -Path $dir | Out-Null
 }
-& dotnet publish $project -c Release -r $Runtime --self-contained true -p:PublishSingleFile=false -o $publish
+& dotnet publish $project -c Release -r $Runtime --self-contained true -p:PublishSingleFile=false -p:HanoutyWpfAsLibrary=true -o $publish
 if ($LASTEXITCODE -ne 0) { throw "HANOUTY WPF .NET 10 publish failed." }
 $exe = Join-Path $publish 'Hanouty.Desktop.Bootstrap.exe'
 if (-not (Test-Path -LiteralPath $exe)) { throw "Actual WPF bootstrap EXE is missing." }
