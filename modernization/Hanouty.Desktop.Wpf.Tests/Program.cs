@@ -22,6 +22,25 @@ Check(registered.Payment == startupCash &&
     registered.Submission is IContextualCheckoutSubmission,
     "CreateFinancial WPF startup must preserve same contextual submission and durable reconciliation");
 Hanouty.Desktop.Wpf.App.ResolveFinancialServices = null;
+// Production startup without a Host-authenticated cashier is read-only:
+// a scanner or catalogue touch must not stage a basket before sign-in.
+var lockedSelection = new RecordingSelection();
+var lockedWindow = new Hanouty.Desktop.Wpf.MainWindow(
+    new Reader(new[] { new ProductSummary("locked-1", "Locked article", "L001") }),
+    lockedSelection, new RecordingSubmission(), null, requireFreshPaymentContext: true);
+var lockedVm = (CatalogueViewModel)lockedWindow.DataContext;
+Check(!lockedVm.FinancialSessionActive && !lockedVm.CanSelectProduct && !lockedVm.CanCommit,
+    "unauthenticated production window must start locked");
+lockedVm.ScannerText = "L001";
+lockedVm.ScanCommand.Execute(null);
+lockedVm.SelectCommand.Execute(lockedVm.VisibleProducts[0]);
+Check(lockedSelection.Selected.Count == 0 && lockedVm.ScanFeedback == "Cashier session required",
+    "scanner and touch cannot stage items before cashier authentication");
+lockedVm.FinancialSessionActive = true;
+lockedVm.SelectCommand.Execute(lockedVm.VisibleProducts[0]);
+Check(lockedSelection.Selected.Count == 1,
+    "Host-authorized session enables the existing catalogue selection port");
+lockedWindow.Close();
 var items = new[]
 {
     new ProductSummary("1", "Milk", "123", "milk.png"),
