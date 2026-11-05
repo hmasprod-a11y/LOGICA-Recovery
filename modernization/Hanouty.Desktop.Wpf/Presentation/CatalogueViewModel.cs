@@ -40,6 +40,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         set {
             if (_selectionInFlight || CheckoutUncertain) return;
             _financialSessionActive = value;
+            // A fresh-session host must reissue the authorized payment context.
+            // Logging out must not leave a previously authorized tender reusable on login.
+            if (!value) ClearConsumedPaymentContext();
             OnPropertyChanged();
             OnPropertyChanged(nameof(CanCommit));
             OnPropertyChanged(nameof(CanSelectProduct));
