@@ -111,6 +111,30 @@ internal static class StockAdjustmentMariaDbSmoke {
                     Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m,"Authorized stock not persisted");
                     Require(Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,"Authorized movement audit missing");
                     Require(Number(db,"SELECT QUANTITE FROM TABLE_MOUVEMENTS_STOCK")==2m,"Incorrect audited movement delta");
+                    // Caller-owned authorized writes must participate in the
+                    // outer transaction: rolling it back removes BOTH stock and
+                    // the movement audit, not just one of them.
+                    object rollbackPlan=create.Invoke(null,new object[]{"CI-ARTICLE",12m,14m,"rollback authorized stock and audit","CI-USER"});
+                    using(var rollbackTx=db.BeginTransaction()) {
+                        applyAuthorized.Invoke(null,new object[]{db,rollbackTx,rollbackPlan,provider,"CI-SECRET-SESSION"});
+                        rollbackTx.Rollback();
+                    }
+                    Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m &&
+                        Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,
+                        "Caller rollback failed to restore stock and audit atomically");
+                    // Stale before-stock cannot overwrite a committed change.
+                    using(var staleTx=db.BeginTransaction()) {
+                        try {
+                            applyAuthorized.Invoke(null,new object[]{db,staleTx,scopedPlan,provider,"CI-SECRET-SESSION"});
+                            throw new Exception("Stale stock snapshot accepted");
+                        } catch(TargetInvocationException ex) {
+                            if(!(ex.InnerException is InvalidOperationException)) throw;
+                        }
+                        staleTx.Rollback();
+                    }
+                    Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m &&
+                        Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,
+                        "Stale stock attempt changed stock or audit");
                     Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,scopedPlan,provider,"FORGED-SESSION"}));
                     Sql(db,"UPDATE HANOUTY_ACTOR_GRANTS SET REVOKED_AT=UTC_TIMESTAMP() WHERE ACTOR_ID='CI-USER'");
                     object nextPlan=create.Invoke(null,new object[]{"CI-ARTICLE",12m,13m,"revoked grant","CI-USER"});
