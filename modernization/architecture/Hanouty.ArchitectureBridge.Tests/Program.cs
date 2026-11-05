@@ -334,6 +334,11 @@ photoReader.ImagePath = "images/replaced.png";
 Assert(photoSession.SelectImage(originalTile).Outcome == SelectionOutcome.InvalidCandidates &&
        photoSession.PendingCount == 0, "replaced photo cannot stage stale WPF tile");
 photoReader.ImagePath = "images/original.png";
+photoReader.DisplayName = "Renamed article";
+Assert(photoSession.SelectImage(originalTile).Outcome == SelectionOutcome.InvalidCandidates &&
+       photoSession.PendingCount == 0 && photoPort.Calls.Count == 0,
+       "renamed photo article cannot stage stale WPF tile");
+photoReader.DisplayName = "Image article";
 Assert(photoSession.SelectImage(originalTile).Outcome == SelectionOutcome.Selected &&
        photoSession.Submit("photo-current-001") == CheckoutBatchStatus.Committed &&
        photoPort.Calls.Count == 1, "current WPF photo stages and posts exactly once");
@@ -835,7 +840,8 @@ sealed class MutablePhotoCatalogue : ICatalogueReader
 {
     public string? ImagePath { get; set; } = "images/original.png";
     public string? VariantId { get; set; } = "v1";
-    private ProductSummary Current => new("photo-1", "", "Image article", ImagePath, VariantId);
+    public string DisplayName { get; set; } = "Image article";
+    private ProductSummary Current => new("photo-1", "", DisplayName, ImagePath, VariantId);
     public IReadOnlyList<ProductSummary> ListAll() => new[] { Current };
     public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => Array.Empty<ProductSummary>();
     public IReadOnlyList<ProductSummary> RefreshBarcode(string barcode) => Array.Empty<ProductSummary>();
