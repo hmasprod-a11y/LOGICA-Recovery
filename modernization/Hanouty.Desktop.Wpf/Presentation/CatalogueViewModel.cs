@@ -313,6 +313,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public void CommitCheckout()
     {
         if (_selectionInFlight) { CommitFeedback = "Checkout already in progress"; return; }
+        // ICommand.Execute can be invoked while the visual button is disabled.
+        // Logout must fail closed at the ViewModel boundary, before allocating an operation ID.
+        if (!FinancialSessionActive) { CommitFeedback = "Cashier session required"; return; }
         if (_submission is not IContextualCheckoutSubmission contextual) { CommitFeedback = "Authorized payment adapter unavailable"; return; }
         if (PaymentContext?.IsWellFormed != true) { CommitFeedback = "Cashier and payment context required"; return; }
         if (CheckoutUncertain) { CommitFeedback = "Checkout status unknown — reconcile before retry"; return; }
