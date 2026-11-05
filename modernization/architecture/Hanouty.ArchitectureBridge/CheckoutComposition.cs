@@ -55,11 +55,7 @@ public sealed class CheckoutComposition
     internal bool IsCurrentImage(ProductSummary tile)
     {
         var live = Validate(_reader.RefreshArticle(tile.ArticleId));
-        return live.Count == 1 && live[0].HasImage &&
-            string.Equals(live[0].ArticleId, tile.ArticleId, StringComparison.Ordinal) &&
-            string.Equals(live[0].Barcode, tile.Barcode, StringComparison.Ordinal) &&
-            string.Equals(live[0].VariantId, tile.VariantId, StringComparison.Ordinal) &&
-            string.Equals(live[0].ImagePath, tile.ImagePath, StringComparison.Ordinal);
+        return live.Count == 1 && live[0].HasImage && live[0] == tile;
     }
 
     internal bool IsCurrentArticle(ProductSummary selected)
