@@ -683,6 +683,11 @@ namespace LOGICA.Infrastructure.Checkout
                                 Require(invalidReferenceRejected,
                                     "Ambiguous original ticket reference must be rejected before refund.");
                             }
+                            Require(decimal.Round(
+                                CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                    evidenceDb, evidenceTx, operation), 2,
+                                MidpointRounding.AwayFromZero) == 10.50m,
+                                "Original cash refund evidence must be whole-cent MAD.");
                             bool missingOriginalRejected = false;
                             try {
                                 CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
