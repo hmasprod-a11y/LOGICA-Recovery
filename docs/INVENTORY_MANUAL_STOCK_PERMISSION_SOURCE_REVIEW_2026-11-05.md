@@ -49,3 +49,11 @@ Before enabling writes, add actual persisted-session/grant revocation tests and 
 Run:
 `dotnet run --project modernization/stock-authorization-acceptance/StockAuthorizationAcceptance.csproj -c Release`
 using the existing inventory-p0-authorization workflow's disposable loopback MariaDB.
+
+## Regression discovered during this delivery
+
+Run 41987903363 at 0f5a03a16780337f5e506addbedbf427c4b62715 failed the completed-transaction case: Connector/NET 9.5.0 retains Connection after Commit/Dispose. The production non-writing validator now checks MariaDB @@in_transaction before invoking the provider. This check performs no business mutation and does not enable Execute/Apply.
+
+Provider source: https://github.com/mysql/mysql-connector-net/blob/9.5.0/MySQL.Data/src/MySqlTransaction.cs
+
+Remaining lifecycle limit: server transaction presence plus connection reference cannot distinguish an old transaction object if a different transaction has subsequently started on the same connection. A future production authorization adapter must own/track the operation transaction lifetime before writer enablement; this patch does not claim that identity proof.

@@ -43,6 +43,14 @@ namespace LOGICA.Infrastructure.Inventory
                 !String.Equals(connection.DataSource, "localhost", StringComparison.OrdinalIgnoreCase) &&
                 !String.Equals(connection.DataSource, "::1", StringComparison.OrdinalIgnoreCase))
                 throw new UnauthorizedAccessException("Manual stock authorization requires local MariaDB.");
+            // Connector/NET retains transaction.Connection after Commit/Dispose.
+            // Reference equality alone therefore does not prove an active server transaction.
+            // Read-only check; never begin/commit/repair a caller's transaction here.
+            using (var active = new MySqlCommand("SELECT @@in_transaction", connection, transaction))
+            {
+                if (Convert.ToInt32(active.ExecuteScalar(), CultureInfo.InvariantCulture) != 1)
+                    throw new UnauthorizedAccessException("Authorization requires an active server transaction.");
+            }
             VerifiedManualStockActor actor = authorization.VerifyForWrite(
                 connection, transaction, authenticatedSessionId, plan.UserId);
             if (actor == null || !String.Equals(actor.UserId, plan.UserId, StringComparison.Ordinal))
