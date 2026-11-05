@@ -4,7 +4,7 @@ namespace LOGICA.ApplicationLayer.Checkout
 {
     internal static class StockValidationService
     {
-        public static StockShortage FindFirstShortage(IStockAvailabilityLookup lookup, IEnumerable<StockValidationRow> rows, LOGICA.Domain.ILegacyCheckoutSemantics legacy)
+        public static StockShortage? FindFirstShortage(IStockAvailabilityLookup lookup, IEnumerable<StockValidationRow> rows, LOGICA.Domain.ILegacyCheckoutSemantics legacy)
         {
             foreach (StockValidationRow row in rows)
             {
