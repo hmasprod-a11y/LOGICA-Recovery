@@ -107,7 +107,9 @@ public sealed class CheckoutComposition
             if (!ids.Add(product.ArticleId))
                 throw new InvalidOperationException("Catalogue returned duplicate article identity.");
         }
-        return products.ToArray();
+        // A caller must not mutate a catalogue snapshot through IList<T>.
+        // The reader may reuse its own mutable buffer, so detach before wrapping.
+        return Array.AsReadOnly(products.ToArray());
     }
 
     private sealed class CatalogueSelectionAdapter : ICheckoutSelectionCatalogue
