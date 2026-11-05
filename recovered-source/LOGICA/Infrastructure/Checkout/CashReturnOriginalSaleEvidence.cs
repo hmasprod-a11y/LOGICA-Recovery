@@ -38,8 +38,9 @@ namespace LOGICA.Infrastructure.Checkout
                         sum = checked(sum + amount);
                         count++;
                     }
-                    if (count != 1 || sum != originalTotal)
-                        throw new InvalidOperationException("Original sale has no unique exact cash settlement.");
+                    if (count != 1 || sum != originalTotal ||
+                        decimal.Round(sum, 2, MidpointRounding.AwayFromZero) != sum)
+                        throw new InvalidOperationException("Original sale has no unique whole-cent exact cash settlement.");
                     return sum;
                 }
             }
