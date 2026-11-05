@@ -735,6 +735,31 @@ var reviewThread = new System.Threading.Thread(() =>
         absentVm.PaymentContext = financialContext;
         Check(absentVm.CanCommit, "fresh host-issued context is required for next checkout");
         absentWindow.Close();
+
+        // Real MainWindow: logout after an acknowledged sale must expire the
+        // previous cashier's tender, even if the old context is still well formed.
+        var logoutPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Committed };
+        var logoutWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new RecordingSelection(), logoutPort, financialContext, requireFreshPaymentContext: true);
+        var logoutWindowVm = (CatalogueViewModel)logoutWindow.DataContext;
+        int logoutHostCalls = 0;
+        logoutWindow.ConfigureCashierEntry((_, _, _) => true, () => 10m,
+            () => { logoutHostCalls++; logoutWindowVm.FinancialSessionActive = false; return true; });
+        Check(logoutWindow.EndFinancialSession() && logoutHostCalls == 1 &&
+            !logoutWindowVm.FinancialSessionActive && logoutWindowVm.PaymentContext is null &&
+            !logoutWindowVm.CanCommit, "real window logout must revoke the previous tender");
+        logoutWindowVm.CommitCommand.Execute(null);
+        Check(logoutPort.Ids.Count == 0 && logoutWindowVm.PendingOperationId is null,
+            "real window logged-out command must not post or allocate an operation");
+        logoutWindowVm.FinancialSessionActive = true;
+        logoutWindowVm.CommitCommand.Execute(null);
+        Check(logoutPort.Ids.Count == 0 && !logoutWindowVm.CanCommit,
+            "re-login alone cannot reuse the expired cashier payment context");
+        logoutWindowVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m);
+        logoutWindowVm.CommitCommand.Execute(null);
+        Check(logoutPort.Ids.Count == 1 && logoutWindowVm.PendingOperationId is null,
+            "fresh authorized context restores exactly one acknowledged checkout");
+        logoutWindow.Close();
     }
     catch (Exception ex) { windowReviewError = ex; }
 });
