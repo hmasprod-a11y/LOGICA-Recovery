@@ -2,9 +2,9 @@ name: Inventory P0 unverified actor denial
 on:
   push:
     branches: [fix/inventory-catalogue-parameterized-lookup-20261102]
-    paths: ['recovered-source/LOGICA/Infrastructure/Inventory/StockAdjustmentWriter.cs', 'modernization/stock-authorization-acceptance/**', '.github/workflows/inventory-p0-authorization.yml']
+    paths: ['recovered-source/LOGICA/Application/Inventory/ManualStockAuthorization.cs', 'recovered-source/LOGICA/Infrastructure/Inventory/StockAdjustmentWriter.cs', 'modernization/stock-authorization-acceptance/**', '.github/workflows/inventory-p0-authorization.yml']
   pull_request:
-    paths: ['recovered-source/LOGICA/Infrastructure/Inventory/StockAdjustmentWriter.cs', 'modernization/stock-authorization-acceptance/**', '.github/workflows/inventory-p0-authorization.yml']
+    paths: ['recovered-source/LOGICA/Application/Inventory/ManualStockAuthorization.cs', 'recovered-source/LOGICA/Infrastructure/Inventory/StockAdjustmentWriter.cs', 'modernization/stock-authorization-acceptance/**', '.github/workflows/inventory-p0-authorization.yml']
   workflow_dispatch:
 permissions:
   contents: read

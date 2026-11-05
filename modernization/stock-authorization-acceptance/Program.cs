@@ -40,6 +40,7 @@ static class Program
         Sql(db, null, "CREATE TABLE TABLE_PARAMETRES (OBJET VARCHAR(128), VALEUR VARCHAR(32)) ENGINE=InnoDB");
         Sql(db, null, "CREATE TABLE TABLE_MOUVEMENTS_STOCK (LIBELLE VARCHAR(255), QUANTITE DECIMAL(18,3)) ENGINE=InnoDB");
         Sql(db, null, "INSERT INTO TABLE_ARTICLES VALUES ('P0-ARTICLE',10,'P0','Test'); INSERT INTO TABLE_PARAMETRES VALUES ('MODIF_STOCK_MANUEL','True')");
+        ManualStockAuthorizationContractCases.Run(db);
         foreach (var enabled in new[] { "True", "False", "True" }) {
             Sql(db, null, "UPDATE TABLE_PARAMETRES SET VALEUR='" + enabled + "'");
             foreach (var actor in new[] { "FORGED", "ADMIN", "trusted-looking-user" }) {
