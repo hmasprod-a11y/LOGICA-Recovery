@@ -92,7 +92,9 @@ public partial class MainWindow : Window
         var selected = vm.SelectedProduct;
         if (!vm.SelectCommand.CanExecute(selected)) return false;
         vm.SelectCommand.Execute(selected);
-        return true;
+        // The production selection port can deny a stale article or unavailable
+        // variant. Never report success merely because the command ran.
+        return vm.ScanFeedback == "Selection accepted";
     }
 
     private void ProductList_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
