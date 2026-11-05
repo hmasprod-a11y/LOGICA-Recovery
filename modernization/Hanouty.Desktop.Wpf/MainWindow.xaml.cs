@@ -16,6 +16,58 @@ public partial class MainWindow : Window
     private Func<decimal?>? _readTrustedCashTotal;
     private Func<bool>? _endFinancialSession;
     private Func<string>? _readBasketIdentity;
+    private OriginalSaleSelection? _originalSaleSelection;
+    private IReadOnlyList<OriginalSaleCandidate> _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
+    public void ConfigureOriginalSaleLookup(IOriginalSaleLookup lookup)
+    {
+        ArgumentNullException.ThrowIfNull(lookup);
+        if (_originalSaleSelection is not null) throw new InvalidOperationException("Original-sale lookup already configured.");
+        _originalSaleSelection = new OriginalSaleSelection(lookup);
+    }
+
+    public bool SearchOriginalSales(string receipt)
+    {
+        OriginalSaleResults.ItemsSource = null;
+        _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
+        _originalSaleSelection?.Clear();
+        OriginalSaleStatus.Text = "No original sale selected — refunds unavailable";
+        if (_originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
+            !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
+            vm.PendingOperationId is not null) return false;
+        try
+        {
+            _originalSaleResults = _originalSaleSelection.Search(receipt);
+            OriginalSaleResults.ItemsSource = _originalSaleResults;
+            OriginalSaleStatus.Text = _originalSaleResults.Count == 0 ? "No persisted sale found" :
+                "Select a persisted sale for review; refund posting is not enabled";
+            return _originalSaleResults.Count > 0;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            OriginalSaleStatus.Text = "Original-sale evidence unavailable";
+            return false;
+        }
+    }
+
+    public bool SelectOriginalSale(OriginalSaleCandidate candidate)
+    {
+        if (_originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
+            !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
+            vm.PendingOperationId is not null) return false;
+        var accepted = _originalSaleSelection.Select(candidate, _originalSaleResults);
+        OriginalSaleStatus.Text = accepted ?
+            $"Original sale: {candidate.SaleId} — read-only, refund not authorized" :
+            "Invalid original-sale selection";
+        return accepted;
+    }
+
+    private void SearchOriginalSales_Click(object sender, RoutedEventArgs e) =>
+        SearchOriginalSales(OriginalSaleSearch.Text);
+    private void SelectOriginalSale_Click(object sender, RoutedEventArgs e)
+    {
+        if (OriginalSaleResults.SelectedItem is OriginalSaleCandidate candidate)
+            SelectOriginalSale(candidate);
+    }
 
     public void ConfigureCashierEntry(Func<string, string, decimal, bool> setFinancialContext,
         Func<decimal?> readTrustedCashTotal, Func<bool>? endFinancialSession = null,
@@ -36,6 +88,10 @@ public partial class MainWindow : Window
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _endFinancialSession is null) return false;
         _logoutOpen = true;
+        _originalSaleSelection?.Clear();
+        OriginalSaleResults.ItemsSource = null;
+        _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
+        OriginalSaleStatus.Text = "No original sale selected — refunds unavailable";
         try
         {
             if (!_endFinancialSession()) return false;
