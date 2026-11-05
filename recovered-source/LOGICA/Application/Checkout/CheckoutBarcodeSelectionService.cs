@@ -1,7 +1,9 @@
 using System;
 using System.Data;
 
+#if NET10_0_OR_GREATER
 #nullable enable
+#endif
 
 namespace LOGICA.ApplicationLayer.Checkout
 {
