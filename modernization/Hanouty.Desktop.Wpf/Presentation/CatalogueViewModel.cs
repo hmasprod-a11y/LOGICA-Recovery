@@ -29,7 +29,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private string _scannerText = "";
     private string _scanFeedback = "";
     private bool _checkoutUncertain;
-    public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); OnPropertyChanged(nameof(CanCommit)); } }
+    public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); OnPropertyChanged(nameof(CanCommit)); OnPropertyChanged(nameof(CanReviewResolvedCheckout)); } }
     private readonly IProductSelection _selection;
     private bool _selectionInFlight;
     private readonly ICheckoutSubmission? _submission;
@@ -238,6 +238,52 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         {
             ReviewedResolution = CheckoutResolution.Unknown;
             CommitFeedback = "Checkout status unknown — reconcile before retry";
+        }
+    }
+
+    // Called only by the explicit review UI. A journal read alone never unlocks.
+    // Authorization must recheck the durable outcome and clear the same draft.
+    public bool TryReviewResolvedCheckout(Func<string, CheckoutResolution, bool> authorize)
+    {
+        if (authorize is null || _selectionInFlight || !CanReviewResolvedCheckout ||
+            _pendingOperationId is null) return false;
+        var operation = _pendingOperationId;
+        var resolution = ReviewedResolution;
+        try
+        {
+            _selectionInFlight = true;
+            OnPropertyChanged(nameof(CanCommit));
+            OnPropertyChanged(nameof(CanSelectProduct));
+            if (!authorize(operation, resolution) ||
+                _pendingOperationId != operation || ReviewedResolution != resolution ||
+                !CheckoutUncertain) return false;
+            // Discard the old UI identity too: never retry the resolved operation.
+            _pendingOperationId = null;
+            OnPropertyChanged(nameof(PendingOperationId));
+            _selectedProduct = null;
+            OnPropertyChanged(nameof(SelectedProduct));
+            _scannerText = "";
+            OnPropertyChanged(nameof(ScannerText));
+            BarcodeCandidates = Array.Empty<ProductSummary>();
+            OnPropertyChanged(nameof(BarcodeCandidates));
+            OnPropertyChanged(nameof(HasBarcodeAmbiguity));
+            ReviewedResolution = CheckoutResolution.Unknown;
+            CheckoutUncertain = false;
+            CommitFeedback = resolution == CheckoutResolution.Persisted
+                ? "Persisted sale reviewed — select products for a new checkout"
+                : "Absent sale reviewed — select products for a new checkout";
+            return true;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            CommitFeedback = "Cashier review failed — checkout remains locked";
+            return false;
+        }
+        finally
+        {
+            _selectionInFlight = false;
+            OnPropertyChanged(nameof(CanCommit));
+            OnPropertyChanged(nameof(CanSelectProduct));
         }
     }
 

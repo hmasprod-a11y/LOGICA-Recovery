@@ -97,6 +97,9 @@
                 <Button Content="Complete checkout" Command="{Binding CommitCommand}" IsEnabled="{Binding CanCommit}" MinHeight="44" Padding="12,8" Margin="0,18,0,0" AutomationProperties.Name="Complete checkout"/>
                 <TextBlock Text="{Binding PendingOperationId, StringFormat='Operation: {0}'}" TextWrapping="Wrap" AutomationProperties.Name="Pending operation identity" Margin="0,8,0,0"/>
                 <Button Content="Check durable checkout status" Command="{Binding ReconcileCommand}" IsEnabled="{Binding CheckoutUncertain}" MinHeight="44" Padding="12,8" Margin="0,8,0,0" AutomationProperties.Name="Reconcile uncertain checkout"/>
+                <Button Content="Review result and start a new basket" Click="ReviewResolvedCheckout_Click"
+                        IsEnabled="{Binding CanReviewResolvedCheckout}" MinHeight="44" Padding="12,8" Margin="0,8,0,0"
+                        AutomationProperties.Name="Review resolved checkout with cashier PIN"/>
                 <TextBlock Text="{Binding CommitFeedback}" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.Name="Checkout result"/>
                 <TextBlock Text="Stock posting, printing and licensing require separately verified application contracts."
                            Margin="0,22,0,0" TextWrapping="Wrap" Foreground="DimGray"/>

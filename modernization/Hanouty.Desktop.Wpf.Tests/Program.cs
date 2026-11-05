@@ -540,6 +540,39 @@ wiredVm.CommitCommand.Execute(null);
 Check(wiredPort.Writes == 1 && wiredPreparation.Calls == 1 &&
     wiredVm.CommitFeedback == "Checkout committed",
     "ViewModel command must call trusted preparation and durable gate exactly once");
+
+// Explicit reviewed reset must never post, unlock Unknown, or reuse an old ID.
+foreach (var outcome in new[] { CheckoutResolution.Persisted, CheckoutResolution.Absent })
+{
+    var submit = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
+    var journal = new RecordingReconciliation { Result = outcome };
+    var reviewed = new CatalogueViewModel(new Reader(items), new RecordingSelection(),
+        submission: submit, reconciliation: journal) { PaymentContext = financialContext };
+    reviewed.CommitCheckout();
+    var oldId = reviewed.PendingOperationId;
+    var calls = 0;
+    Check(!reviewed.TryReviewResolvedCheckout((_, _) => { calls++; return true; }) && calls == 0,
+        "Unknown must not invoke review authority");
+    reviewed.ReconcileCheckout();
+    Check(!reviewed.TryReviewResolvedCheckout((_, _) => false) && reviewed.CheckoutUncertain &&
+        reviewed.PendingOperationId == oldId, "cancel or rejected PIN must retain review lock and identity");
+    Check(!reviewed.TryReviewResolvedCheckout((_, _) => throw new IOException()) &&
+        reviewed.CheckoutUncertain, "review exception must fail closed");
+    Check(reviewed.TryReviewResolvedCheckout((id, result) => {
+        Check(id == oldId && result == outcome, "review must authorize the exact durable result");
+        reviewed.CommitCheckout();
+        reviewed.ReconcileCheckout();
+        Check(!reviewed.TryReviewResolvedCheckout((_, _) => true), "nested review must be blocked");
+        return true;
+    }) && !reviewed.CheckoutUncertain && reviewed.PendingOperationId is null &&
+        submit.Ids.Count == 1, "explicit authorized reset clears only UI identity without financial replay");
+    Check(!reviewed.TryReviewResolvedCheckout((_, _) => true), "review cannot be repeated");
+    submit.Result = CheckoutSubmissionResult.Committed;
+    reviewed.CommitCheckout();
+    Check(submit.Ids.Count == 2 && submit.Ids[1] != oldId,
+        "next checkout must receive a fresh durable operation identity");
+}
+
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
