@@ -11,12 +11,12 @@ namespace LOGICA.ApplicationLayer.Checkout
     internal sealed class CheckoutBasketPreview
     {
         internal CheckoutVariantChoiceStatus Status { get; private set; }
-        internal DataRow SelectedRow { get; private set; }
+        internal DataRow? SelectedRow { get; private set; }
         internal decimal? LineNet { get; private set; }
         internal decimal? BasketNet { get; private set; }
         internal bool? DisplayedTotalDiffers { get; private set; }
 
-        internal CheckoutBasketPreview(CheckoutVariantChoiceStatus status, DataRow selectedRow,
+        internal CheckoutBasketPreview(CheckoutVariantChoiceStatus status, DataRow? selectedRow,
             decimal? lineNet, decimal? basketNet, bool? displayedTotalDiffers)
         {
             Status = status;
@@ -34,7 +34,7 @@ namespace LOGICA.ApplicationLayer.Checkout
         // A single candidate needs no dialog. Duplicate barcodes require an
         // explicit choice; the live table is revalidated after the dialog.
         internal static CheckoutVariantChoiceResult ChooseBarcode(
-            DataTable exactBarcodeMatches, Func<IList<CheckoutVariantSnapshot>, int> chooseDuplicate)
+            DataTable exactBarcodeMatches, Func<IList<CheckoutVariantSnapshot>, int>? chooseDuplicate)
         {
             // Preserve the existing in-memory caller contract while sharing
             // exactly one choice/identity implementation with the live-query
@@ -51,7 +51,7 @@ namespace LOGICA.ApplicationLayer.Checkout
         // changed between the initial barcode lookup and selection.
         internal static CheckoutVariantChoiceResult ChooseBarcodeWithRefresh(
             DataTable displayedMatches,
-            Func<IList<CheckoutVariantSnapshot>, int> chooseDuplicate,
+            Func<IList<CheckoutVariantSnapshot>, int>? chooseDuplicate,
             Func<DataTable> readCurrentMatches)
         {
             if (readCurrentMatches == null)
@@ -76,7 +76,7 @@ namespace LOGICA.ApplicationLayer.Checkout
                 throw new ArgumentOutOfRangeException("selectedIndex",
                     "The chosen article is outside the displayed variant list.");
 
-            DataTable live = readCurrentMatches();
+            DataTable? live = readCurrentMatches();
             // A failed/empty refresh is never permission to use the stale
             // displayed row. DB exceptions still propagate to the UI handler.
             if (live == null)
@@ -102,7 +102,7 @@ namespace LOGICA.ApplicationLayer.Checkout
             if (tile == null) throw new ArgumentNullException("tile");
             if (readCurrentCatalogue == null)
                 throw new ArgumentNullException("readCurrentCatalogue");
-            DataTable live = readCurrentCatalogue();
+            DataTable? live = readCurrentCatalogue();
             if (live == null)
                 return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
             return CheckoutArticleTileSelectionService.EvaluateExact(live, tile);
