@@ -27,7 +27,7 @@ jobs:
             # Only bare Application is ambiguous; qualified System.Windows.Forms.Application is valid.
             if ($source -match '(?m)^namespace\s+LOGICA(?:\.[\w.]+)?\s*[;{]' -and
                 $source -match '(?<![\w.:])Application\.(StartupPath|DoEvents|Exit|ExitThread|ExecutablePath|OpenForms|ProductName|Restart|Run|SetHighDpiMode|SetCompatibleTextRenderingDefault|EnableVisualStyles)\b') {
-              $matches = [regex]::Matches($source, '(?<![\w.])Application\.(StartupPath|DoEvents|Exit|ExitThread|ExecutablePath|OpenForms|ProductName|Restart|Run|SetHighDpiMode|SetCompatibleTextRenderingDefault|EnableVisualStyles)\b')
+              $matches = [regex]::Matches($source, '(?<![\w.:])Application\.(StartupPath|DoEvents|Exit|ExitThread|ExecutablePath|OpenForms|ProductName|Restart|Run|SetHighDpiMode|SetCompatibleTextRenderingDefault|EnableVisualStyles)\b')
               $violationCount += $matches.Count
               $issues += "$($file.FullName) ($($matches.Count) callsites)"
             }
