@@ -119,7 +119,7 @@ namespace LOGICA.Infrastructure.Checkout
                 command.Transaction = transaction;
                 command.CommandText =
                     "SELECT Total_NET FROM TABLE_VENTES_ENTETE " +
-                    "WHERE BINARY ID_TICKET=BINARY @original AND OPERATION='VENTE' FOR UPDATE";
+                    "WHERE BINARY ID_TICKET=BINARY @original AND BINARY OPERATION=BINARY 'VENTE' FOR UPDATE";
                 command.Parameters.AddWithValue("@original", originalTicketId);
                 using (var reader = command.ExecuteReader())
                 {
