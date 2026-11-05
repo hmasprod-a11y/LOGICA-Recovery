@@ -760,6 +760,20 @@ var reviewThread = new System.Threading.Thread(() =>
         Check(logoutPort.Ids.Count == 1 && logoutWindowVm.PendingOperationId is null,
             "fresh authorized context restores exactly one acknowledged checkout");
         logoutWindow.Close();
+
+        // The production logout callback can fail (offline/session backend error).
+        // The actual WPF window must fail closed without throwing or inventing a logout.
+        var failedLogoutWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new RecordingSelection(), new RecordingSubmission(), financialContext,
+            requireFreshPaymentContext: true);
+        var failedLogoutVm = (CatalogueViewModel)failedLogoutWindow.DataContext;
+        int failedLogoutCalls = 0;
+        failedLogoutWindow.ConfigureCashierEntry((_, _, _) => true, () => 10m,
+            () => { failedLogoutCalls++; throw new System.IO.IOException("offline"); });
+        Check(!failedLogoutWindow.EndFinancialSession() && failedLogoutCalls == 1 &&
+            failedLogoutVm.FinancialSessionActive && failedLogoutVm.PaymentContext == financialContext,
+            "Host logout exception must not crash WPF or falsely expire the cashier session");
+        failedLogoutWindow.Close();
     }
     catch (Exception ex) { windowReviewError = ex; }
 });
