@@ -138,6 +138,26 @@ internal static class StockAdjustmentMariaDbSmoke {
                     Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m,"Authorized stock not persisted");
                     Require(Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,"Authorized movement audit missing");
                     Require(Number(db,"SELECT QUANTITE FROM TABLE_MOUVEMENTS_STOCK")==2m,"Incorrect audited movement delta");
+                    // Audit must retain the actual before/after quantities and
+                    // verified actor, not merely the delta or a generic label.
+                    using(var auditCmd=new MySqlCommand(
+                        "SELECT LIBELLE FROM TABLE_MOUVEMENTS_STOCK",db)) {
+                        string auditText=Convert.ToString(auditCmd.ExecuteScalar(),CultureInfo.InvariantCulture);
+                        Require(auditText.Contains("[CI-USER]") &&
+                            auditText.Contains("10 -> 12") &&
+                            auditText.Contains("scoped authorization check"),
+                            "Authorized movement audit lost actor or before/after stock");
+                    }
+                    // A valid persisted session must not authorize a different
+                    // requested actor, even if the target user has a grant.
+                    object wrongActorPlan=create.Invoke(null,new object[]{
+                        "CI-ARTICLE",12m,13m,"cross-actor attempt","OTHER-USER"});
+                    Denied(()=>executeAuthorized.Invoke(null,new object[]{
+                        cs,wrongActorPlan,provider,"CI-SECRET-SESSION"}));
+                    Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m &&
+                        Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,
+                        "Cross-actor attempt changed stock or audit");
+
                     // The global V1 configuration is an additional mandatory
                     // condition, never a substitute for a verified actor grant.
                     // Test both disabled and ambiguous rows with a real valid session.
