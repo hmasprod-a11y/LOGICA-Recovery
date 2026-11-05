@@ -89,8 +89,8 @@ public sealed partial record CatalogueHost
         var journal = MariaDbCashCheckoutServices.CreateOperationJournal(connections);
         var binding = ProductionWpfServices.CreateFinancial(
             new MariaDbCatalogueReader(settings.ConnectionString, settings.DataDirectory),
-            new ExplicitVariantChoice(), posting, journal, () => captured ??
-                throw new InvalidOperationException("Fresh payment context required."));
+            new ExplicitVariantChoice(), posting, journal, () => !contextConsumed && captured is not null
+                ? captured : throw new InvalidOperationException("Fresh payment context required."));
         CashierPaymentContext? context = new CashierPaymentContext(captured.CashierId,
             twoDigitWorkstation, captured.Currency, "Cash", captured.Payments[0].Amount);
         // Reuse WPF's single-session adapter rather than maintain a second

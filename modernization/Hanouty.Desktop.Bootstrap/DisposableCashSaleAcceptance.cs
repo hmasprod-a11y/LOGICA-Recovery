@@ -498,13 +498,20 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Require(Snapshot(settings) == beforeStaleContext && lifecyclePinReads == 3 &&
                 lifecycle.ViewModel.CommitFeedback.Contains("invalidated", StringComparison.OrdinalIgnoreCase),
                 "Restoring the consumed UI record bypassed the financial context boundary.");
+            Require(lifecycle.Session.Scan("CODE'1").Outcome == SelectionOutcome.Selected,
+                "Direct session regression could not stage its test article.");
+            var directStaleRejected = false;
+            try { lifecycle.Session.Submit(Guid.NewGuid().ToString("N")); }
+            catch (InvalidOperationException) { directStaleRejected = true; }
+            Require(directStaleRejected && Snapshot(settings) == beforeStaleContext &&
+                lifecyclePinReads == 3, "Direct Application submission reused a consumed payment context.");
         }
         finally { lifecycle.Window.Close(); }
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF exact-cash slice", Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
             ReviewCallbackAuthenticated = true, WrongReviewPinRejected = true,
-            UnknownReviewBlocked = true, NoFinancialReplayOnReview = true, ExplicitReviewedUiReset = true, PinDialogRenderedAndCleared = true, InitialCashierPinUi = true, InitialPinCancelAndWrongRejected = true, CashChangeSql = true, SameHostDifferentTotals = true, PaymentContextConsumed = true, StaleContextBoundaryRejected = true, ContextFrozenDuringPin = true, CashierSwitchAuthenticated = true, UnknownContextChangeBlocked = true, ChangeRowRollback = true,
+            UnknownReviewBlocked = true, NoFinancialReplayOnReview = true, ExplicitReviewedUiReset = true, PinDialogRenderedAndCleared = true, InitialCashierPinUi = true, InitialPinCancelAndWrongRejected = true, CashChangeSql = true, SameHostDifferentTotals = true, PaymentContextConsumed = true, StaleContextBoundaryRejected = true, DirectSessionStaleRejected = true, ContextFrozenDuringPin = true, CashierSwitchAuthenticated = true, UnknownContextChangeBlocked = true, ChangeRowRollback = true,
             EmptyBasket = true, TicketPaymentStockSql = true, Duplicate = true, ProcessRestart = true,
             WrongPinRejected = true, WrongTotalRejected = true, StalePriceRejected = true,
             AfterPaymentRollback = true, UnknownJournalLocked = true, LostAcknowledgementPersisted = true, Reconciliation = true,
