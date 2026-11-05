@@ -14,6 +14,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using Application = System.Windows.Forms.Application;
 using Bunifu.UI.WinForms;
 using ClosedXML.Excel;
 using CustomControls.RJControls;
