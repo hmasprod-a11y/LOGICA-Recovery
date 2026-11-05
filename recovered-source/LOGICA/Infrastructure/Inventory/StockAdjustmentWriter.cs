@@ -100,6 +100,10 @@ namespace LOGICA.Infrastructure.Inventory
                 // Connection reference; never pass it to a permission provider.
                 throw new UnauthorizedAccessException("Authorization requires an active server transaction.");
             }
+            // Reject arbitrary caller-supplied adapters: a forged implementation
+            // returning VerifiedManualStockActor is not permission provenance.
+            if (authorization.GetType() != typeof(MariaDbManualStockAuthorization))
+                throw new UnauthorizedAccessException("Only persisted MariaDB actor grants authorize stock writes.");
             VerifiedManualStockActor actor = authorization.VerifyForWrite(
                 connection, transaction, authenticatedSessionId, plan.UserId);
             if (actor == null || !String.Equals(actor.UserId, plan.UserId, StringComparison.Ordinal))
