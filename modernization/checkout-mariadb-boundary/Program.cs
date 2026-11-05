@@ -586,6 +586,23 @@ namespace LOGICA.Infrastructure.Checkout
                             Require(CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
                                 evidenceDb, evidenceTx, operation) == 10.50m,
                                 "Original sale exact-cash evidence differs from persisted payment.");
+                            Require(CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
+                                evidenceDb, evidenceTx, operation, "CSharp-Stock", 2m) == 10.50m,
+                                "Original full-quantity line must use persisted paid price.");
+                            bool overReturnRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
+                                    evidenceDb, evidenceTx, operation, "CSharp-Stock", 3m);
+                            }
+                            catch (InvalidOperationException) { overReturnRejected = true; }
+                            Require(overReturnRejected, "Over-return must fail before posting.");
+                            bool missingLineRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
+                                    evidenceDb, evidenceTx, operation, "missing-article", 2m);
+                            }
+                            catch (InvalidOperationException) { missingLineRejected = true; }
+                            Require(missingLineRejected, "Missing original line must fail before posting.");
                             bool missingOriginalRejected = false;
                             try {
                                 CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
