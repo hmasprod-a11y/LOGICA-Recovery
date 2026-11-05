@@ -144,7 +144,8 @@ public sealed class CheckoutComposition
                     throw new InvalidOperationException("Catalogue returned an article for a different identity.");
                 result.Add(new ArticleCandidate(product.ArticleId, product.Barcode ?? ""));
             }
-            return result;
+            // Do not expose a mutable selection buffer across the checkout boundary.
+            return Array.AsReadOnly(result.ToArray());
         }
     }
 }
