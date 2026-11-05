@@ -496,6 +496,36 @@ Assert(paymentPort.Calls == 1 && paymentContextReads == 1 &&
     "explicit payment adapter sends cashier, tender, quantity and stable ID to existing financial gate");
 financialBatch.AddBatch(new[] { new CheckoutBatchLine("article-01", 2) }, "financial-batch-001");
 Assert(paymentPort.Calls == 1, "durable persisted operation is never posted twice");
+// One adapter and gate must read a fresh authorized context per distinct operation,
+// while each posted request retains the first operation's immutable tender snapshot.
+var sequentialJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
+var sequentialPort = new RecordingFinancialPort {
+    OnCommit = () => sequentialJournal.Outcome = CheckoutOperationOutcome.Persisted
+};
+var activeTender = new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 5.25m) };
+var activeCashier = "cashier-01";
+var activeTotal = 5.25m;
+var sequentialReads = 0;
+var sequentialBatch = new AuthorizedCheckoutBatchAdapter(
+    new AuthorizedCheckoutCommitGate(sequentialPort, sequentialJournal),
+    () => { sequentialReads++; return new AuthorizedCheckoutPaymentContext(
+        activeCashier, "MAD", false, activeTender, activeTotal); });
+sequentialBatch.AddBatch(new[] { new CheckoutBatchLine("article-01", 1) }, "sequential-001");
+var firstRequest = sequentialPort.LastRequest!;
+activeCashier = "cashier-02";
+activeTender[0] = new CheckoutPayment(CheckoutPaymentKind.Cash, 10m);
+activeTotal = 10m;
+sequentialJournal.Outcome = CheckoutOperationOutcome.Absent;
+sequentialBatch.AddBatch(new[] { new CheckoutBatchLine("article-02", 2) }, "sequential-002");
+Assert(sequentialPort.Calls == 2 && sequentialReads == 2 &&
+    firstRequest.OperationId == "sequential-001" && firstRequest.CashierId == "cashier-01" &&
+    firstRequest.Payments[0].Amount == 5.25m && firstRequest.ExpectedTotal == 5.25m &&
+    sequentialPort.LastRequest?.OperationId == "sequential-002" &&
+    sequentialPort.LastRequest.CashierId == "cashier-02" &&
+    sequentialPort.LastRequest.Payments[0].Amount == 10m &&
+    sequentialPort.LastRequest.ExpectedTotal == 10m,
+    "distinct operations use fresh cashier/payment context without mutating the prior request");
+
 var unknownJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Unknown };
 var unknownPort = new RecordingFinancialPort();
 var unknownBatch = new AuthorizedCheckoutBatchAdapter(
