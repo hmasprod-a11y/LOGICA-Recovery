@@ -72,6 +72,35 @@ public partial class MainWindow : Window
         { return false; }
     }
 
+    // Double-click on the real catalogue stages the selected article through the
+    // same Host-owned IProductSelection as the explicit Select button.
+    public bool SelectHighlightedProduct()
+    {
+        if (DataContext is not CatalogueViewModel vm || !vm.CanSelectProduct ||
+            vm.SelectedProduct is null) return false;
+        var selected = vm.SelectedProduct;
+        if (!vm.SelectCommand.CanExecute(selected)) return false;
+        vm.SelectCommand.Execute(selected);
+        return true;
+    }
+
+    private void ProductList_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        // Header, scrollbar and empty-space double-clicks are not product actions.
+        if (e.OriginalSource is not System.Windows.DependencyObject origin) return;
+        for (var node = origin; node is not null; node = System.Windows.Media.VisualTreeHelper.GetParent(node))
+        {
+            if (node is System.Windows.Controls.DataGridRow row)
+            {
+                if (row.Item is ProductSummary product &&
+                    DataContext is CatalogueViewModel vm && vm.SelectedProduct == product)
+                    SelectHighlightedProduct();
+                return;
+            }
+            if (node is System.Windows.Controls.DataGrid) return;
+        }
+    }
+
     private void CashierEntry_Click(object sender, RoutedEventArgs e) => ShowCashierEntry();
 
     private Func<string, CheckoutResolution, Func<string>, bool>? _review;
