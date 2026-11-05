@@ -1,4 +1,5 @@
 using System;
+using MySql.Data.MySqlClient;
 
 namespace LOGICA.Application.Inventory
 {
@@ -10,7 +11,8 @@ namespace LOGICA.Application.Inventory
         // Must fail closed on missing/expired sessions, missing/ambiguous grants,
         // connectivity failures and any identity mismatch. Implementations must
         // verify permission in the SAME database transaction as the stock write.
-        VerifiedManualStockActor VerifyForWrite(string authenticatedSessionId,
+        VerifiedManualStockActor VerifyForWrite(MySqlConnection connection,
+            MySqlTransaction transaction, string authenticatedSessionId,
             string requestedUserId);
     }
 
