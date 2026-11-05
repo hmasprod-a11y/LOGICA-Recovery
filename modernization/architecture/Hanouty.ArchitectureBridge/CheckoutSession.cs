@@ -61,9 +61,6 @@ public sealed class CheckoutSession
         var matching = System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Where(ImageProducts,
             p => string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal)));
         if (matching.Length != 1 || matching[0] != product ||
-            !string.Equals(visible.Barcode, product.Barcode, StringComparison.Ordinal) ||
-            !string.Equals(visible.ImagePath, product.ImagePath, StringComparison.Ordinal) ||
-            !string.Equals(visible.VariantId, product.VariantId, StringComparison.Ordinal) ||
             !_composition.IsCurrentImage(product))
             return new SelectionResponse(SelectionOutcome.InvalidCandidates, null);
         var selected = _batch.StageImage(new ArticleCandidate(product.ArticleId, product.Barcode ?? ""), quantity);
