@@ -747,6 +747,30 @@ var reviewThread = new System.Threading.Thread(() =>
             "authorized persisted review resets scanner and variant draft without financial replay");
         persistedWindow.Close();
 
+        // Trusted Host callbacks can synchronously reenter WPF before a dialog opens.
+        var reentrantEntryWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+            new RecordingSelection(), new RecordingSubmission(), financialContext,
+            requireFreshPaymentContext: true);
+        int totalReads = 0;
+        int nestedLogoutCalls = 0;
+        int nestedEntryCalls = 0;
+        reentrantEntryWindow.ConfigureCashierEntry((_, _, _) => true, () =>
+        {
+            totalReads++;
+            if (totalReads == 1)
+            {
+                if (reentrantEntryWindow.ShowCashierEntry()) nestedEntryCalls++;
+                if (reentrantEntryWindow.EndFinancialSession()) nestedLogoutCalls++;
+            }
+            return null;
+        }, () => { nestedLogoutCalls++; return true; });
+        Check(!reentrantEntryWindow.ShowCashierEntry() && totalReads == 1 &&
+            nestedEntryCalls == 0 && nestedLogoutCalls == 0 &&
+            reentrantEntryWindow.DataContext is CatalogueViewModel reentrantVm &&
+            reentrantVm.FinancialSessionActive && reentrantVm.PaymentContext == financialContext,
+            "trusted total callback cannot reenter cashier login or logout");
+        reentrantEntryWindow.Close();
+
         // Real catalogue list interaction uses the existing production selection
         // seam; double-click must not bypass cashier logout or select a stale row.
         var listSelection = new RecordingSelection();
