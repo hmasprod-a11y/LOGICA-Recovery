@@ -1,0 +1,41 @@
+name: QA WinForms Application namespace regression
+on:
+  push:
+    branches: [integration/hanouty-qa-desktop-inventory-20261102]
+    paths:
+      - 'recovered-source/**/*.cs'
+      - '.github/workflows/qa-winforms-application-regression.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  application-namespace:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect every recovered C# source and enforce qualified WinForms callsites
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @(Get-ChildItem recovered-source -Filter '*.cs' -Recurse)
+          if ($files.Count -eq 0) { throw 'No recovered C# sources found' }
+          $issues = @()
+          foreach ($file in $files) {
+            $source = [IO.File]::ReadAllText($file.FullName)
+            # Check only callsites where LOGICA.Application is imported and
+            # Application is used as a WinForms static class without a binding.
+            if ($source -match '(?m)^using\s+LOGICA\.Application\s*;' -and
+                $source -match '(?<![\w.])Application\.(StartupPath|DoEvents|Exit|ExitThread|ExecutablePath|OpenForms|ProductName|Restart|Run|SetHighDpiMode|SetCompatibleTextRenderingDefault|EnableVisualStyles)\b' -and
+                $source -notmatch '(?m)^using\s+Application\s*=\s*System\.Windows\.Forms\.Application\s*;') {
+              $issues += $file.FullName
+            }
+          }
+          foreach ($name in @('Form_1_LOGIN.cs','Form_2_ARTICLES.cs')) {
+            $path = Join-Path 'recovered-source/LOGICA' $name
+            if (!(Test-Path $path) -or
+                (Get-Content $path -Raw) -notmatch '(?m)^using Application = System\.Windows\.Forms\.Application;') {
+              $issues += $path
+            }
+          }
+          Write-Host "Inspected $($files.Count) recovered C# files."
+          if ($issues.Count) { throw "Ambiguous Application references: $($issues -join ', ')" }
