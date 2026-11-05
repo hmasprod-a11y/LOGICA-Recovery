@@ -589,6 +589,14 @@ namespace LOGICA.Infrastructure.Checkout
                             Require(CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
                                 evidenceDb, evidenceTx, operation, "CSharp-Stock", 2m) == 10.50m,
                                 "Original full-quantity line must use persisted paid price.");
+                            bool zeroQuantityRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
+                                    evidenceDb, evidenceTx, operation, "CSharp-Stock", 0m);
+                            }
+                            catch (InvalidOperationException) { zeroQuantityRejected = true; }
+                            Require(zeroQuantityRejected,
+                                "Zero-quantity original line cannot authorize a refund.");
                             bool overReturnRejected = false;
                             try {
                                 CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
