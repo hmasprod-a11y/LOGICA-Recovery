@@ -825,6 +825,8 @@ var reviewThread = new System.Threading.Thread(() =>
             listSelection.Selected[0] == items[0],
             "highlighted catalogue article uses real injected Host selection port");
         listVm.FinancialSessionActive = false;
+        Check(!EntryAuthorized(financialContext.CashierId, financialContext.TenderedAmount),
+            "expired cashier session rejects even an otherwise matching Host quote");
         Check(!listWindow.SelectHighlightedProduct() && listSelection.Selected.Count == 1 &&
             listVm.SelectedProduct is null,
             "logged-out double-click cannot stage stale catalogue article");
