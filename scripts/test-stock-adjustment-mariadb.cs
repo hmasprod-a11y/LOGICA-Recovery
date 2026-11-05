@@ -53,6 +53,8 @@ internal static class StockAdjustmentMariaDbSmoke {
                     Denied(()=>validate.Invoke(null,new object[]{db,tx,scopedPlan,null,"CI-SESSION"}));
                     Denied(()=>validate.Invoke(null,new object[]{db,tx,scopedPlan,deny,""}));
                     Denied(()=>validate.Invoke(null,new object[]{db,tx,scopedPlan,deny,"FORGED-SESSION"}));
+                    Denied(()=>validate.Invoke(null,new object[]{db,null,scopedPlan,deny,"CI-SESSION"}));
+                    Denied(()=>validate.Invoke(null,new object[]{null,tx,scopedPlan,deny,"CI-SESSION"}));
                     tx.Commit();
                 }
                 Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==10m && Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==0m,"Denied actor changed stock/audit");
