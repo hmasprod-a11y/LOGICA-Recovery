@@ -80,7 +80,7 @@ jobs:
           path: architecture
       - uses: actions/checkout@v4
         with:
-          ref: c3365c54f554c736df74d76c298a506cc39f52d6
+          ref: 3459dc99edd243ba671a27db7bbfe6110ee8e40f
           path: wpf
       - uses: actions/setup-dotnet@v4
         with:
@@ -175,7 +175,7 @@ jobs:
         shell: pwsh
         run: |
           $report = Get-Content evidence/w2/w2-cash-sale.json -Raw | ConvertFrom-Json
-          foreach ($field in @('WindowLoaded','EditedContextRejected','SingleSessionBinding','ReviewCallbackAuthenticated','WrongReviewPinRejected','UnknownReviewBlocked','NoFinancialReplayOnReview','ExplicitReviewedUiReset','PinDialogRenderedAndCleared','CashChangeSql','ChangeRowRollback','EmptyBasket','TicketPaymentStockSql','Duplicate','ProcessRestart','WrongPinRejected','WrongTotalRejected','StalePriceRejected','AfterPaymentRollback','UnknownJournalLocked','LostAcknowledgementPersisted','Reconciliation')) {
+          foreach ($field in @('WindowLoaded','EditedContextRejected','SingleSessionBinding','ReviewCallbackAuthenticated','WrongReviewPinRejected','UnknownReviewBlocked','NoFinancialReplayOnReview','ExplicitReviewedUiReset','PinDialogRenderedAndCleared','InitialCashierPinUi','InitialPinCancelAndWrongRejected','CashChangeSql','ChangeRowRollback','EmptyBasket','TicketPaymentStockSql','Duplicate','ProcessRestart','WrongPinRejected','WrongTotalRejected','StalePriceRejected','AfterPaymentRollback','UnknownJournalLocked','LostAcknowledgementPersisted','Reconciliation')) {
             if ($report.$field -ne $true) { throw "Missing executed acceptance assertion: $field" }
           }
           if ($report.W2Accepted -ne $false) { throw 'Cash-slice evidence must not promote full W2 or commercial payment readiness' }

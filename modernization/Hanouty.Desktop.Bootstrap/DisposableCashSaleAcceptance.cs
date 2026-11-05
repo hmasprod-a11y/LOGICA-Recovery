@@ -115,7 +115,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
     }
 
 
-    private static void ReviewThroughDialog(CatalogueHost host, string pin, bool confirm)
+    private static void ReviewThroughDialog(CatalogueHost host, string pin, bool confirm, Action? execute = null)
     {
         host.Window.Show();
         System.Windows.Controls.PasswordBox? entered = null;
@@ -145,10 +145,14 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 }
                 catch (Exception ex) { uiFailure = ex; dialog?.Close(); }
             }));
-        var review = Descendants(host.Window).OfType<System.Windows.Controls.Button>().Single(b =>
-            System.Windows.Automation.AutomationProperties.GetName(b) == "Review resolved checkout with cashier PIN");
-        Require(review.IsEnabled, "Resolved review button is not enabled.");
-        review.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        if (execute is not null) execute();
+        else
+        {
+            var review = Descendants(host.Window).OfType<System.Windows.Controls.Button>().Single(b =>
+                System.Windows.Automation.AutomationProperties.GetName(b) == "Review resolved checkout with cashier PIN");
+            Require(review.IsEnabled, "Resolved review button is not enabled.");
+            review.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        }
         if (uiFailure is not null) throw new InvalidOperationException("PIN dialog acceptance failed.", uiFailure);
         Require(entered is not null && entered.Password.Length == 0,
             "PIN remained in the password control after review.");
@@ -371,14 +375,47 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Require(Snapshot(settings) == afterChange, "Cash-change duplicate repeated financial writes.");
         }
         finally { changeHost.Window.Close(); }
+
+        CatalogueHost InteractiveHost() => CatalogueHost.CreateInteractiveFinancial(settings, "01",
+            new AuthorizedCheckoutPaymentContext("O'Neil", "MAD", false,
+                new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 5.25m) }, 5.25m));
+        foreach (var candidate in new[] { (Pin: "incorrect", Confirm: true), (Pin: pin, Confirm: false) })
+        {
+            var deniedUi = InteractiveHost();
+            try
+            {
+                Select(deniedUi);
+                var before = Snapshot(settings);
+                ReviewThroughDialog(deniedUi, candidate.Pin, candidate.Confirm,
+                    () => deniedUi.ViewModel.CommitCommand.Execute(null));
+                Require(Snapshot(settings) == before && deniedUi.ViewModel.CheckoutUncertain &&
+                    !deniedUi.ViewModel.CanCommit, "Initial PIN cancel/wrong PIN changed SQL or unlocked session.");
+            }
+            finally { deniedUi.Window.Close(); }
+        }
+        var interactive = InteractiveHost();
+        try
+        {
+            Select(interactive);
+            ReviewThroughDialog(interactive, pin, true,
+                () => interactive.ViewModel.CommitCommand.Execute(null));
+            Require(interactive.ViewModel.CommitFeedback == "Checkout committed" &&
+                Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == 96m,
+                "Fresh masked cashier PIN did not authorize the real financial session.");
+            var after = Snapshot(settings);
+            interactive.ViewModel.CommitCommand.Execute(null);
+            Require(Snapshot(settings) == after, "Interactive session replayed the completed basket.");
+        }
+        finally { interactive.Window.Close(); }
+
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF exact-cash slice", Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
             ReviewCallbackAuthenticated = true, WrongReviewPinRejected = true,
-            UnknownReviewBlocked = true, NoFinancialReplayOnReview = true, ExplicitReviewedUiReset = true, PinDialogRenderedAndCleared = true, CashChangeSql = true, ChangeRowRollback = true,
+            UnknownReviewBlocked = true, NoFinancialReplayOnReview = true, ExplicitReviewedUiReset = true, PinDialogRenderedAndCleared = true, InitialCashierPinUi = true, InitialPinCancelAndWrongRejected = true, CashChangeSql = true, ChangeRowRollback = true,
             EmptyBasket = true, TicketPaymentStockSql = true, Duplicate = true, ProcessRestart = true,
             WrongPinRejected = true, WrongTotalRejected = true, StalePriceRejected = true,
             AfterPaymentRollback = true, UnknownJournalLocked = true, LostAcknowledgementPersisted = true, Reconciliation = true,
-            W2Accepted = false, Remaining = "Initial cashier session entry and broader V1/device parity"
+            W2Accepted = false, Remaining = "Broader V1 payment/returns/device parity and cashier rollout acceptance"
         }));
     }
 

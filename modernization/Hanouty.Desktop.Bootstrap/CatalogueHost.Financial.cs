@@ -19,6 +19,20 @@ public sealed partial record CatalogueHost
         CheckoutResolution expected, Func<string> transientReviewPin) =>
         reviewedReset?.Invoke(stableOperationId, expected, transientReviewPin) ?? false;
 
+    // Interactive production composition: request a fresh masked PIN only at
+    // posting time, never capture a credential in session/ViewModel state.
+    public static CatalogueHost CreateInteractiveFinancial(CatalogueSettings settings,
+        string twoDigitWorkstation, AuthorizedCheckoutPaymentContext paymentContext)
+    {
+        MainWindow? window = null;
+        var host = CreateFinancial(settings, twoDigitWorkstation,
+            () => window?.PromptCashierPin() ??
+                throw new InvalidOperationException("Cashier window unavailable."),
+            paymentContext);
+        window = host.Window;
+        return host;
+    }
+
     public static CatalogueHost CreateFinancial(CatalogueSettings settings,
         string twoDigitWorkstation, Func<string> transientPinProvider,
         AuthorizedCheckoutPaymentContext paymentContext) =>
