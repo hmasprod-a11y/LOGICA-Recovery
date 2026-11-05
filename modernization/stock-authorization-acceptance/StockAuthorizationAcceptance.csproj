@@ -2,6 +2,7 @@
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>disable</Nullable></PropertyGroup>
   <ItemGroup>
     <PackageReference Include="MySql.Data" Version="9.5.0" />
+    <Compile Include="../../recovered-source/LOGICA/Application/Inventory/ManualStockAuthorization.cs" Link="Production/ManualStockAuthorization.cs" />
     <Compile Include="../../recovered-source/LOGICA/Application/Inventory/StockAdjustmentPlan.cs" Link="Production/StockAdjustmentPlan.cs" />
     <Compile Include="../../recovered-source/LOGICA/Infrastructure/Inventory/StockAdjustmentWriter.cs" Link="Production/StockAdjustmentWriter.cs" />
   </ItemGroup>
