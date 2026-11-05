@@ -1,6 +1,8 @@
 using System;
 using System.Data;
 
+#nullable enable
+
 namespace LOGICA.ApplicationLayer.Checkout
 {
     // A duplicate scan is never silently posted: the UI must return an explicit
