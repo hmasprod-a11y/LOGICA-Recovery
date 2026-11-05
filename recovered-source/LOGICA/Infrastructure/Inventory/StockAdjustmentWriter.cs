@@ -36,6 +36,13 @@ namespace LOGICA.Infrastructure.Inventory
             if (connection.State != ConnectionState.Open ||
                 !Object.ReferenceEquals(transaction.Connection, connection))
                 throw new UnauthorizedAccessException("Authorization must use the active stock transaction.");
+            // Never disclose a session token or call a permission provider on a
+            // remote/incorrect database endpoint. The grant and stock must share
+            // the same verified local transaction.
+            if (!String.Equals(connection.DataSource, "127.0.0.1", StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(connection.DataSource, "localhost", StringComparison.OrdinalIgnoreCase) &&
+                !String.Equals(connection.DataSource, "::1", StringComparison.OrdinalIgnoreCase))
+                throw new UnauthorizedAccessException("Manual stock authorization requires local MariaDB.");
             VerifiedManualStockActor actor = authorization.VerifyForWrite(
                 connection, transaction, authenticatedSessionId, plan.UserId);
             if (actor == null || !String.Equals(actor.UserId, plan.UserId, StringComparison.Ordinal))
