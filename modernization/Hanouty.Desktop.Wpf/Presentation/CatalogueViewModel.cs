@@ -187,6 +187,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
 
     public void SelectCurrent()
     {
+        if (!FinancialSessionActive) { ScanFeedback = "Cashier session required"; return; }
         if (CheckoutUncertain) { ScanFeedback = "Checkout status unknown — reconcile before retry"; return; }
         if (_selectionInFlight) { ScanFeedback = "Selection already in progress"; return; }
         if (!CatalogueAvailable) { ScanFeedback = "Local catalogue unavailable"; return; }
