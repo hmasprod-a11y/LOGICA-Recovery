@@ -20,6 +20,11 @@ public sealed class MariaDbCatalogueReader : ICatalogueReader
             throw new ArgumentException("A local MariaDB connection is required.", nameof(connectionString));
         if (string.IsNullOrWhiteSpace(legacyDataDirectory))
             throw new ArgumentException("Legacy data directory is required.", nameof(legacyDataDirectory));
+        var endpoint = new MySqlConnectionStringBuilder(connectionString);
+        if (!string.Equals(endpoint.Server, "localhost", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(endpoint.Server, "127.0.0.1", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(endpoint.Server, "::1", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Catalogue reader requires local MariaDB.");
         _connectionString = connectionString;
         _imagesDirectory = Path.GetFullPath(Path.Combine(legacyDataDirectory, "bd", "images"));
     }
@@ -43,7 +48,7 @@ public sealed class MariaDbCatalogueReader : ICatalogueReader
             _ => columns
         };
         var result = new List<ProductSummary>();
-        var identities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var identities = new HashSet<string>(StringComparer.Ordinal);
         using var connection = new MySqlConnection(_connectionString);
         connection.Open();
         using var command = new MySqlCommand(sql, connection);
@@ -68,7 +73,9 @@ public sealed class MariaDbCatalogueReader : ICatalogueReader
         if (string.IsNullOrWhiteSpace(legacyName) || legacyName == "0") return null;
         // Legacy Images stores a file name relative to <data>/bd/images.
         // Do not allow DB-supplied paths to escape the image directory.
-        if (Path.IsPathRooted(legacyName) || legacyName != Path.GetFileName(legacyName))
+        if (legacyName == "." || legacyName == ".." || legacyName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            return null;
+        if (Path.IsPathRooted(legacyName) || legacyName.Contains('/') || legacyName.Contains((char)92) || legacyName != Path.GetFileName(legacyName))
             return null;
         string candidate = Path.GetFullPath(Path.Combine(_imagesDirectory, legacyName));
         return File.Exists(candidate) ? candidate : null;

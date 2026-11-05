@@ -21,6 +21,7 @@ static class Program
             throw new InvalidOperationException("Refusing non-disposable MariaDB; requires loopback:3307/logica_ci");
         var folder = Path.Combine(Path.GetTempPath(), "hanouty-w1-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path.Combine(folder, "bd", "images"));
+        bool fixtureCreated = false;
         File.WriteAllBytes(Path.Combine(folder, "bd", "images", "exists.png"), new byte[] { 137, 80, 78, 71 });
         try
         {
@@ -28,15 +29,39 @@ static class Program
             {
                 db.Open();
                 // Dedicated CI-only database; replace only the fixture table, never any shop schema.
-                Sql(db, "DROP TABLE IF EXISTS TABLE_ARTICLES");
+                using (var check = new MySqlCommand("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'TABLE_ARTICLES'", db))
+                {
+                    if (Convert.ToInt64(check.ExecuteScalar()) != 0)
+                        throw new InvalidOperationException("Refusing existing TABLE_ARTICLES even on disposable target.");
+                }
                 Sql(db, "CREATE TABLE TABLE_ARTICLES (ID_ARTICLE VARCHAR(128) NULL, Code VARCHAR(128) NULL, Article VARCHAR(255), Images VARCHAR(255)) ENGINE=InnoDB");
+                fixtureCreated = true;
                 Sql(db, "INSERT INTO TABLE_ARTICLES VALUES ('A-1','Q''42','First','exists.png'),('A-2','Q''42','Variant','missing.png'),('A-3',NULL,'No barcode',NULL),('A-4','','Image-only','0')");
             }
+            var remote = new MySqlConnectionStringBuilder(connectionString) { Server = "198.51.100.9" };
+            bool remoteRejected = false;
+            try { _ = new MariaDbCatalogueReader(remote.ConnectionString, folder); }
+            catch (InvalidOperationException) { remoteRejected = true; }
+            Assert(remoteRejected, "remote catalogue connection rejected before opening");
             var reader = new MariaDbCatalogueReader(connectionString, folder);
             var all = reader.ListAll();
             Assert(all.Count == 4, "all products, including NULL and empty barcode");
+            Assert(all.All(p => p.VariantId == null), "no fabricated variant identity");
+            Assert(reader.FindBarcode("Q\u002742").All(p => p.VariantId == null), "duplicate barcodes do not fabricate variants");
             Assert(all.Count(p => p.ImagePath != null) == 1 && File.Exists(all.Single(p => p.ImagePath != null).ImagePath), "only existing photos");
             Assert(reader.FindBarcode("Q'42").Count == 2, "quoted duplicate barcode candidates preserved");
+            using (var db = new MySqlConnection(connectionString))
+            {
+                db.Open();
+                Sql(db, "INSERT INTO TABLE_ARTICLES VALUES ('A-5','TRAVERSAL','Unsafe slash','../exists.png')");
+                Sql(db, "INSERT INTO TABLE_ARTICLES VALUES ('A-6','BACKSLASH','Unsafe backslash','..\\\\exists.png')");
+            }
+            Assert(reader.ListAll().Where(p => p.ArticleId == "A-5" || p.ArticleId == "A-6").All(p => p.ImagePath == null), "slash and backslash traversal images rejected");
+            using (var db = new MySqlConnection(connectionString))
+            {
+                db.Open();
+                Sql(db, "DELETE FROM TABLE_ARTICLES WHERE ID_ARTICLE IN ('A-5','A-6')");
+            }
             Assert(reader.RefreshBarcode("Q'42").Count == 2, "refresh duplicate barcode candidates");
             Assert(reader.FindBarcode("Q'42' OR 1=1 --").Count == 0, "barcode SQL injection cannot broaden");
             Assert(reader.FindBarcode("").Count == 1, "empty barcode is not NULL");
@@ -76,7 +101,8 @@ static class Program
         }
         finally
         {
-            try { using var db = new MySqlConnection(connectionString); db.Open(); Sql(db, "DROP TABLE IF EXISTS TABLE_ARTICLES"); } catch { }
+            if (fixtureCreated)
+                try { using var db = new MySqlConnection(connectionString); db.Open(); Sql(db, "DROP TABLE IF EXISTS TABLE_ARTICLES"); } catch { }
             Directory.Delete(folder, true);
         }
     }
