@@ -10,6 +10,7 @@ public partial class MainWindow : Window
     // The UI only collects a draft and never grants financial authority.
     private bool _cashierEntryOpen;
     private bool _reviewOpen;
+    private bool _logoutOpen;
     private Func<string, string, decimal, bool>? _setFinancialContext;
     private Func<decimal?>? _readTrustedCashTotal;
     private Func<bool>? _endFinancialSession;
@@ -30,9 +31,10 @@ public partial class MainWindow : Window
 
     public bool EndFinancialSession()
     {
-        if (_cashierEntryOpen || _reviewOpen || DataContext is not CatalogueViewModel vm ||
+        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _endFinancialSession is null) return false;
+        _logoutOpen = true;
         try
         {
             if (!_endFinancialSession()) return false;
@@ -48,13 +50,14 @@ public partial class MainWindow : Window
             // The Host remains the sole owner of session state and authorization.
             return false;
         }
+        finally { _logoutOpen = false; }
     }
 
     private void EndFinancialSession_Click(object sender, RoutedEventArgs e) => EndFinancialSession();
 
     public bool ShowCashierEntry()
     {
-        if (_cashierEntryOpen || _reviewOpen || DataContext is not CatalogueViewModel vm ||
+        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _setFinancialContext is null || _readTrustedCashTotal is null) return false;
         try
@@ -123,7 +126,7 @@ public partial class MainWindow : Window
     public bool ReviewResolvedCheckout(Func<string> transientPin)
     {
         ArgumentNullException.ThrowIfNull(transientPin);
-        if (_reviewOpen || _cashierEntryOpen || _review is null ||
+        if (_reviewOpen || _cashierEntryOpen || _logoutOpen || _review is null ||
             DataContext is not CatalogueViewModel vm || !vm.CanReviewResolvedCheckout)
             return false;
         _reviewOpen = true;
