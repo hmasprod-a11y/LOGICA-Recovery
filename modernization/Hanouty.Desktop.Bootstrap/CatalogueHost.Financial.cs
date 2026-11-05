@@ -76,11 +76,16 @@ public sealed partial record CatalogueHost
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(transientPinProvider);
         AuthorizedCheckoutPaymentContext? captured = FreezeCashContext(paymentContext);
+        var contextConsumed = false;
         Func<MySqlConnection> connections = () => new MySqlConnection(settings.ConnectionString);
         var posting = MariaDbCashCheckoutServices.CreatePostingPort(
             connections, twoDigitWorkstation, transientPinProvider);
-        if (afterCommitAcknowledgementFault is not null || postingFailureDiagnostic is not null)
-            posting = new AcknowledgementFaultPort(posting, afterCommitAcknowledgementFault, postingFailureDiagnostic);
+        posting = new AcknowledgementFaultPort(posting, () => {
+            // Consume at the real financial boundary, not merely in UI state.
+            // Retain the immutable context for lost-ack journal review only.
+            contextConsumed = true;
+            afterCommitAcknowledgementFault?.Invoke();
+        }, postingFailureDiagnostic);
         var journal = MariaDbCashCheckoutServices.CreateOperationJournal(connections);
         var binding = ProductionWpfServices.CreateFinancial(
             new MariaDbCatalogueReader(settings.ConnectionString, settings.DataDirectory),
@@ -91,7 +96,7 @@ public sealed partial record CatalogueHost
         // Reuse WPF's single-session adapter rather than maintain a second
         // contextual implementation in the Host. SQL still authenticates on commit.
         var services = AuthorizedWpfServiceRegistration.CreateSessionBound(
-            binding.Catalogue, binding.Checkout, binding.Submission, () => context);
+            binding.Catalogue, binding.Checkout, binding.Submission, () => contextConsumed ? null! : context!);
         var window = new MainWindow(services.Catalogue, services.Checkout, services.Submission, context, requireFreshPaymentContext: true);
         var vm = (CatalogueViewModel)window.DataContext;
         if (!vm.CatalogueAvailable)
@@ -114,6 +119,7 @@ public sealed partial record CatalogueHost
                 (captured is null || frozen.CashierId != captured.CashierId))
                 return false;
             captured = frozen;
+            contextConsumed = false;
             context = new CashierPaymentContext(frozen.CashierId,
                 twoDigitWorkstation, frozen.Currency, "Cash", frozen.Payments[0].Amount);
             vm.FinancialSessionActive = true;
@@ -124,6 +130,7 @@ public sealed partial record CatalogueHost
         {
             if (!CanChangeContext() || binding.Session.PendingCount != 0) return false;
             captured = null;
+            contextConsumed = true;
             context = null;
             vm.PaymentContext = null;
             vm.FinancialSessionActive = false;
@@ -153,6 +160,7 @@ public sealed partial record CatalogueHost
                     vm.PaymentContext != context || binding.Session.State != CheckoutCommitState.Ready)
                     return false;
                 binding.Session.DiscardInvalidated();
+                contextConsumed = true;
                 lastReviewed = operation;
                 return true; // UI owner may now explicitly reset its review state.
             }

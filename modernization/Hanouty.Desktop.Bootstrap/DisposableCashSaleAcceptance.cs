@@ -485,19 +485,26 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Require(lifecycle.TrySetFinancialContext(CashContext(5.25m, 5.25m, "Second cashier")),
                 "New empty session could not accept a different cashier claim.");
             Select(lifecycle);
+            var lastContext = lifecycle.ViewModel.PaymentContext;
             lifecycle.ViewModel.CommitCommand.Execute(null);
             Require(lifecycle.ViewModel.CommitFeedback == "Checkout committed" && lifecyclePinReads == 3 &&
                 Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE CAISSIER='Second cashier' AND Total_NET=5.25") == 1 &&
                 Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == lifecycleSales + 3 &&
                 Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == lifecycleStock - 4m,
                 "New cashier was not independently authenticated on the same Host.");
+            var beforeStaleContext = Snapshot(settings);
+            lifecycle.ViewModel.PaymentContext = lastContext;
+            lifecycle.ViewModel.CommitCommand.Execute(null);
+            Require(Snapshot(settings) == beforeStaleContext && lifecyclePinReads == 3 &&
+                lifecycle.ViewModel.CommitFeedback.Contains("invalidated", StringComparison.OrdinalIgnoreCase),
+                "Restoring the consumed UI record bypassed the financial context boundary.");
         }
         finally { lifecycle.Window.Close(); }
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF exact-cash slice", Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
             ReviewCallbackAuthenticated = true, WrongReviewPinRejected = true,
-            UnknownReviewBlocked = true, NoFinancialReplayOnReview = true, ExplicitReviewedUiReset = true, PinDialogRenderedAndCleared = true, InitialCashierPinUi = true, InitialPinCancelAndWrongRejected = true, CashChangeSql = true, SameHostDifferentTotals = true, PaymentContextConsumed = true, ContextFrozenDuringPin = true, CashierSwitchAuthenticated = true, UnknownContextChangeBlocked = true, ChangeRowRollback = true,
+            UnknownReviewBlocked = true, NoFinancialReplayOnReview = true, ExplicitReviewedUiReset = true, PinDialogRenderedAndCleared = true, InitialCashierPinUi = true, InitialPinCancelAndWrongRejected = true, CashChangeSql = true, SameHostDifferentTotals = true, PaymentContextConsumed = true, StaleContextBoundaryRejected = true, ContextFrozenDuringPin = true, CashierSwitchAuthenticated = true, UnknownContextChangeBlocked = true, ChangeRowRollback = true,
             EmptyBasket = true, TicketPaymentStockSql = true, Duplicate = true, ProcessRestart = true,
             WrongPinRejected = true, WrongTotalRejected = true, StalePriceRejected = true,
             AfterPaymentRollback = true, UnknownJournalLocked = true, LostAcknowledgementPersisted = true, Reconciliation = true,
