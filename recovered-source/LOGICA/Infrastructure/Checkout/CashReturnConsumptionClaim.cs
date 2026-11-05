@@ -9,6 +9,23 @@ namespace LOGICA.Infrastructure.Checkout
     // No schema creation or migration occurs on a shop database.
     internal static class CashReturnConsumptionClaim
     {
+        // The only supported full-ticket return preflight: authoritative original
+        // journal and settlement are locked before the durable consumption claim.
+        // Call inside the SAME transaction that posts signed refund/payment/stock.
+        internal static decimal VerifyAndClaimFullOriginal(
+            MySqlConnection connection, MySqlTransaction transaction,
+            string originalTicketId, string returnOperationId,
+            string articleId, decimal originalQuantity)
+        {
+            if (string.Equals(originalTicketId, returnOperationId, StringComparison.Ordinal))
+                throw new InvalidOperationException("A refund cannot reuse the original sale operation.");
+            decimal amount = CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
+                connection, transaction, originalTicketId, articleId, originalQuantity);
+            ClaimFullOriginal(connection, transaction, originalTicketId,
+                returnOperationId, originalQuantity);
+            return amount;
+        }
+
         internal static void ClaimFullOriginal(
             MySqlConnection connection, MySqlTransaction transaction,
             string originalTicketId, string returnOperationId, decimal quantity)
