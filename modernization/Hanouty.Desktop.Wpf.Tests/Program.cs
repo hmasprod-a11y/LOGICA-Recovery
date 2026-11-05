@@ -309,6 +309,30 @@ frozenCommitVm.ScannerText = "777";
 frozenCommitVm.SearchText = "Other";
 Check(frozenCommitVm.ScannerText == "123" && frozenCommitVm.SearchText == "Milk" &&
     !frozenCommitVm.CanCommit, "unknown sale freezes cashier inputs and prevents replay");
+// Integration regression: the WPF view model must use the contextual production
+// cash adapter, never its context-free entry point. It must also consume the
+// tender on acknowledgement and preserve unknown-result retry protection.
+var contextualPort = new ContextualCashSubmission();
+var contextualVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: contextualPort);
+Check(!contextualVm.CanCommit, "production cash checkout requires a fresh authenticated payment context");
+contextualVm.CommitCheckout();
+Check(contextualPort.ContextCalls == 0 && contextualVm.CommitFeedback.Contains("context"),
+    "missing payment context cannot invoke production posting");
+contextualVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "Credit", 100m);
+Check(!contextualVm.CanCommit, "non-cash payment cannot use cash-only checkout adapter");
+contextualVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "Cash", 100m);
+Check(contextualVm.CanCommit, "authorized cash context enables submission");
+contextualVm.CommitCheckout();
+Check(contextualPort.ContextCalls == 1 && contextualPort.ContextlessCalls == 0 &&
+    contextualPort.LastContext?.TenderedAmount == 100m && contextualVm.PaymentContext is null &&
+    !contextualVm.CanCommit, "acknowledged cash uses contextual adapter and consumes tender");
+contextualVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "Cash", 101m);
+contextualPort.Result = CheckoutSubmissionResult.Unknown;
+contextualVm.CommitCheckout();
+Check(contextualPort.ContextCalls == 2 && contextualVm.CheckoutUncertain && !contextualVm.CanCommit,
+    "unknown cash operation latches and prevents a second posting");
+contextualVm.CommitCheckout();
+Check(contextualPort.ContextCalls == 2, "unknown cash outcome cannot replay through WPF");
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
@@ -413,4 +437,23 @@ sealed class UnexpectedSubmission : ICheckoutSubmission
 {
     public CheckoutSubmissionResult Submit(string stableOperationId) =>
         throw new System.FormatException("unexpected checkout adapter failure");
+}
+
+sealed class ContextualCashSubmission : IContextualCheckoutSubmission
+{
+    public int ContextCalls { get; private set; }
+    public int ContextlessCalls { get; private set; }
+    public CashierPaymentContext? LastContext { get; private set; }
+    public CheckoutSubmissionResult Result { get; set; } = CheckoutSubmissionResult.Committed;
+    public CheckoutSubmissionResult Submit(string stableOperationId)
+    {
+        ContextlessCalls++;
+        throw new InvalidOperationException("context-free production posting forbidden");
+    }
+    public CheckoutSubmissionResult Submit(string stableOperationId, CashierPaymentContext context)
+    {
+        ContextCalls++;
+        LastContext = context;
+        return Result;
+    }
 }
