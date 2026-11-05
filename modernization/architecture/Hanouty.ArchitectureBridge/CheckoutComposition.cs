@@ -87,7 +87,12 @@ public sealed class CheckoutComposition
         var id = batch.UncertainOperationId;
         if (id is null) throw new InvalidOperationException("No uncertain checkout operation.");
         var outcome = _journal.Lookup(id);
+        // An invalid journal value is not proof of absence. Never unlock an
+        // uncertain payment unless durable storage explicitly says Persisted or Absent.
         if (outcome == CheckoutOperationOutcome.Unknown) return outcome;
+        if (outcome != CheckoutOperationOutcome.Persisted &&
+            outcome != CheckoutOperationOutcome.Absent)
+            throw new InvalidOperationException("Checkout journal returned an unsupported durable outcome.");
         batch.ReconcileUnknownOutcome(id, outcome == CheckoutOperationOutcome.Persisted);
         return outcome;
     }
