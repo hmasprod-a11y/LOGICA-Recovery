@@ -16,6 +16,19 @@ namespace LOGICA.Application.Inventory
             string requestedUserId);
     }
 
+    // Safe default: a missing persisted grant provider must never authorize a write.
+    // This is deliberately NOT a fake or hard-coded permission implementation.
+    internal sealed class DenyAllManualStockAuthorization : IManualStockAuthorization
+    {
+        public VerifiedManualStockActor VerifyForWrite(MySqlConnection connection,
+            MySqlTransaction transaction, string authenticatedSessionId,
+            string requestedUserId)
+        {
+            throw new UnauthorizedAccessException(
+                "No verified actor-scoped manual stock permission provider is configured.");
+        }
+    }
+
     // Immutable result from a trusted authorization adapter, never from WPF.
     // This type does not itself confer permission; writer integration remains
     // disabled until Architecture approves the real session/grant mapping.
