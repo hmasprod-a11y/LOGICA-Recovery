@@ -603,6 +603,37 @@ namespace LOGICA.Infrastructure.Checkout
                             }
                             catch (InvalidOperationException) { missingLineRejected = true; }
                             Require(missingLineRejected, "Missing original line must fail before posting.");
+                            // Refunds with a discount are outside the first
+                            // full-quantity exact-cash slice. Prove this using
+                            // persisted journal rows, not caller-supplied prices.
+                            using (var discountTamper = evidenceDb.CreateCommand())
+                            {
+                                discountTamper.Transaction = evidenceTx;
+                                discountTamper.CommandText =
+                                    "UPDATE TABLE_VENTES_JOURNAL SET Remise=1 " +
+                                    "WHERE ID_TICKET=@id AND ID_ARTICLE='CSharp-Stock'";
+                                discountTamper.Parameters.AddWithValue("@id", operation);
+                                Require(discountTamper.ExecuteNonQuery() == 1,
+                                    "Expected exactly one original journal line.");
+                            }
+                            bool discountedOriginalRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
+                                    evidenceDb, evidenceTx, operation, "CSharp-Stock", 2m);
+                            }
+                            catch (InvalidOperationException) { discountedOriginalRejected = true; }
+                            Require(discountedOriginalRejected,
+                                "Discounted original must not enter exact-cash refund slice.");
+                            using (var discountRestore = evidenceDb.CreateCommand())
+                            {
+                                discountRestore.Transaction = evidenceTx;
+                                discountRestore.CommandText =
+                                    "UPDATE TABLE_VENTES_JOURNAL SET Remise=0 " +
+                                    "WHERE ID_TICKET=@id AND ID_ARTICLE='CSharp-Stock'";
+                                discountRestore.Parameters.AddWithValue("@id", operation);
+                                Require(discountRestore.ExecuteNonQuery() == 1,
+                                    "Expected exactly one original journal line to restore.");
+                            }
                             bool missingOriginalRejected = false;
                             try {
                                 CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
