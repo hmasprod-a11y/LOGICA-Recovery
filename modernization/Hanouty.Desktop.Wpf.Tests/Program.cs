@@ -385,6 +385,22 @@ Check(reconciliationVm.PaymentContext?.CashierId == "cashier",
     "uncertain checkout must freeze cashier identity");
 // A disabled WPF button is not a transaction authorization boundary.
 // Direct keyboard/programmatic commit after logout must not reach the production port.
+var freshContextPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Committed };
+var freshContextVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(),
+    submission: freshContextPort) { RequireFreshPaymentContext = true,
+    PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m) };
+Check(freshContextVm.CanCommit, "fresh authorized cashier payment context initially permits checkout");
+freshContextVm.FinancialSessionActive = false;
+Check(freshContextVm.PaymentContext is null && !freshContextVm.CanCommit,
+    "logout expires the previous authorized payment context without submitting a sale");
+freshContextVm.FinancialSessionActive = true;
+freshContextVm.CommitCommand.Execute(null);
+Check(freshContextPort.Ids.Count == 0 && freshContextVm.PaymentContext is null,
+    "new cashier session cannot reuse the previous payment authorization");
+freshContextVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 11m);
+freshContextVm.CommitCommand.Execute(null);
+Check(freshContextPort.Ids.Count == 1,
+    "fresh host-supplied payment context restores checkout after logout");
 var loggedOutCommitPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Committed };
 var loggedOutCommitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(),
     submission: loggedOutCommitPort) { PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m) };
