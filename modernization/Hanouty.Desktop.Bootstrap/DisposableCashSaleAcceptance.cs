@@ -114,6 +114,46 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         finally { host.Window.Close(); }
     }
 
+
+    private static void ReviewThroughDialog(CatalogueHost host, string pin, bool confirm)
+    {
+        host.Window.Show();
+        System.Windows.Controls.PasswordBox? entered = null;
+        Exception? uiFailure = null;
+        static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
+        {
+            foreach (var child in LogicalTreeHelper.GetChildren(parent))
+                if (child is DependencyObject item)
+                {
+                    yield return item;
+                    foreach (var nested in Descendants(item)) yield return nested;
+                }
+        }
+        host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+            new Action(() => {
+                var dialog = Application.Current.Windows.Cast<Window>()
+                    .SingleOrDefault(w => w.Owner == host.Window);
+                try
+                {
+                    Require(dialog is not null && dialog.IsVisible, "Cashier PIN review dialog did not render.");
+                    entered = Descendants(dialog!).OfType<System.Windows.Controls.PasswordBox>().Single();
+                    entered.Password = pin;
+                    if (confirm)
+                        Descendants(dialog!).OfType<System.Windows.Controls.Button>()
+                            .Single(b => b.IsDefault).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                    else dialog!.Close();
+                }
+                catch (Exception ex) { uiFailure = ex; dialog?.Close(); }
+            }));
+        var review = Descendants(host.Window).OfType<System.Windows.Controls.Button>().Single(b =>
+            System.Windows.Automation.AutomationProperties.GetName(b) == "Review resolved checkout with cashier PIN");
+        Require(review.IsEnabled, "Resolved review button is not enabled.");
+        review.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        if (uiFailure is not null) throw new InvalidOperationException("PIN dialog acceptance failed.", uiFailure);
+        Require(entered is not null && entered.Password.Length == 0,
+            "PIN remained in the password control after review.");
+    }
+
     private static void Verify(CatalogueSettings settings, string pin, CatalogueHost host, string evidence)
     {
         Require(host.Window.IsVisible && host.Window.IsLoaded, "Actual financial WPF window did not render.");
@@ -200,15 +240,15 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                     denied.Session.PendingCount == 1 && Snapshot(settings) == before &&
                     denied.ViewModel.CheckoutUncertain,
                     "Wrong review PIN cleared draft or changed SQL.");
-                Require(!denied.Window.ReviewResolvedCheckout(() => "") &&
-                    denied.ViewModel.CheckoutUncertain && Snapshot(settings) == before,
+                ReviewThroughDialog(denied, pin, false);
+                Require(denied.ViewModel.CheckoutUncertain && Snapshot(settings) == before,
                     "Cancelled PIN review must retain UI lock.");
-                Require(denied.Window.ReviewResolvedCheckout(() => { pinReads++; return pin; }) &&
-                    pinReads == 2 && denied.Session.PendingCount == 0 && Snapshot(settings) == before &&
+                ReviewThroughDialog(denied, pin, true);
+                Require(pinReads == 1 && denied.Session.PendingCount == 0 && Snapshot(settings) == before &&
                     !denied.ViewModel.CheckoutUncertain && denied.ViewModel.PendingOperationId is null,
                     "Verified UI review must clear only the old draft and operation identity.");
                 Require(!denied.Window.ReviewResolvedCheckout(() => { pinReads++; return pin; }) &&
-                    pinReads == 2, "Reviewed UI operation was authorized twice.");
+                    pinReads == 1, "Reviewed UI operation was authorized twice.");
                 denied.ViewModel.CommitCommand.Execute(null);
                 Require(Snapshot(settings) == before && denied.ViewModel.PendingOperationId is null,
                     "Reset UI replayed the discarded basket.");
@@ -334,7 +374,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF exact-cash slice", Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
             ReviewCallbackAuthenticated = true, WrongReviewPinRejected = true,
-            UnknownReviewBlocked = true, NoFinancialReplayOnReview = true, ExplicitReviewedUiReset = true, CashChangeSql = true, ChangeRowRollback = true,
+            UnknownReviewBlocked = true, NoFinancialReplayOnReview = true, ExplicitReviewedUiReset = true, PinDialogRenderedAndCleared = true, CashChangeSql = true, ChangeRowRollback = true,
             EmptyBasket = true, TicketPaymentStockSql = true, Duplicate = true, ProcessRestart = true,
             WrongPinRejected = true, WrongTotalRejected = true, StalePriceRejected = true,
             AfterPaymentRollback = true, UnknownJournalLocked = true, LostAcknowledgementPersisted = true, Reconciliation = true,
