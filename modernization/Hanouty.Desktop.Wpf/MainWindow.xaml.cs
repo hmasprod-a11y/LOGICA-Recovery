@@ -48,6 +48,7 @@ public partial class MainWindow : Window
             // The basket may have changed during a modal dialog. Never approve a stale quote.
             if (_readTrustedCashTotal() != trustedTotal) return false;
             if (!_setFinancialContext(draft.Value.Cashier, draft.Value.Register, draft.Value.CashMad)) return false;
+            // Host has authorized the new session; UI state follows, never leads.
             vm.FinancialSessionActive = true;
             vm.PaymentContext = new CashierPaymentContext(draft.Value.Cashier, draft.Value.Register, "MAD", "Cash", draft.Value.CashMad);
             return true;
