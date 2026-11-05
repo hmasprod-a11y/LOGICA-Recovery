@@ -18,7 +18,7 @@ SELECT IF(
    WHERE BINARY ID_TICKET=BINARY @original_ticket AND OPERATION='VENTE')=1
  AND (SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL
    WHERE BINARY ID_TICKET=BINARY @original_ticket
-     AND BINARY ID_ARTICLE=BINARY @article_id AND OPERATION='VENTE')=1
+     AND BINARY ID_ARTICLE=BINARY @article_id AND OPERATION='VENTE' AND `Qté` > 0 AND Remise=0 AND PRIX_V >= 0 AND Total_NET > 0 AND Total_NET = ROUND(PRIX_V * `Qté`,2) AND Total_NET = (SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE BINARY ID_TICKET=BINARY @original_ticket AND OPERATION='VENTE'))=1
  AND (SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL
    WHERE BINARY ID_TICKET=BINARY @original_ticket)=1
  AND (SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS
@@ -33,5 +33,8 @@ SELECT IF(
         AND MODE_P='ESPECES' AND OPERATION='VENTE')
  ,2,1);
 ROLLBACK;
+-- Negative fixture contract: changing the original line to a non-VENTE operation,
+-- fractional/zero quantity, nonzero discount, or mismatched line total must
+-- cause the duplicate-key assertion above to abort. Use disposable data only.
 -- This preflight is not a substitute for a durable UNIQUE original-ticket
 -- refund claim, signed return postings, or restart/Unknown integration tests.
