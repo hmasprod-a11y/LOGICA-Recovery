@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private OriginalSaleSelection? _originalSaleSelection;
     private IReadOnlyList<OriginalSaleCandidate> _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
     private bool _originalSaleLookupBusy;
+    private long _originalSaleQueryRevision;
     private CashierPaymentContext? _originalSaleLookupContext;
     // A reviewed original-sale reference is only valid within its cashier context.
     // VM state transitions can originate from Host reconciliation, not just clicks.
@@ -63,10 +64,11 @@ public partial class MainWindow : Window
         try
         {
             var context = vm.PaymentContext;
+            var queryRevision = _originalSaleQueryRevision;
             var results = _originalSaleSelection.Search(receipt);
             // A Host lookup may pump the dispatcher, revoke the session, or
             // initiate Unknown. Never publish rows obtained under stale authority.
-            if (!vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
+            if (queryRevision != _originalSaleQueryRevision || !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
                 vm.PendingOperationId is not null || !ReferenceEquals(vm.PaymentContext, context))
             {
                 _originalSaleSelection.Clear();
@@ -109,6 +111,7 @@ public partial class MainWindow : Window
     {
         // A previously returned receipt is no longer evidence for the edited
         // query. Do not leave a selectable row from a different receipt visible.
+        _originalSaleQueryRevision++;
         _originalSaleSelection?.Clear();
         _originalSaleLookupContext = null;
         _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
