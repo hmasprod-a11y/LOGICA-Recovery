@@ -732,6 +732,20 @@ catch (UnauthorizedAccessException) { anonymousDenied = true; }
 Assert(unauthorizedDenied && anonymousDenied && verifiedPermissions.Calls == 2,
     "manual stock authorization denies missing actor and explicit permission denial");
 
+// A cashier logout/login during the durable permission read must not grant
+// the previous actor's permission to the new session.
+verifiedActorSource.Actor = trustedActor;
+var changedSessionPermission = new StubManualStockPermissionReader {
+    Allowed = true,
+    OnRead = () => verifiedActorSource.Actor = new VerifiedStockActor("session-2", "actor-2")
+};
+var switchedSessionDenied = false;
+try { ManualStockAuthorizationBoundary.RequireAuthorized(verifiedActorSource, changedSessionPermission); }
+catch (UnauthorizedAccessException) { switchedSessionDenied = true; }
+Assert(switchedSessionDenied && changedSessionPermission.Calls == 1,
+    "manual stock authorization rejects session change during permission lookup");
+verifiedActorSource.Actor = trustedActor;
+
 var failingPermissionSource = new StubManualStockPermissionReader { ThrowOnRead = true };
 verifiedActorSource.Actor = trustedActor;
 var permissionBackendDenied = false;
@@ -754,8 +768,9 @@ sealed class StubManualStockPermissionReader : IManualStockPermissionReader
 {
     public bool Allowed { get; set; }
     public bool ThrowOnRead { get; set; }
+    public Action? OnRead { get; set; }
     public int Calls { get; private set; }
-    public bool CanAdjustStock(VerifiedStockActor actor) { Calls++; if (ThrowOnRead) throw new InvalidOperationException("permission backend unavailable"); return Allowed; }
+    public bool CanAdjustStock(VerifiedStockActor actor) { Calls++; OnRead?.Invoke(); if (ThrowOnRead) throw new InvalidOperationException("permission backend unavailable"); return Allowed; }
 }
 
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
