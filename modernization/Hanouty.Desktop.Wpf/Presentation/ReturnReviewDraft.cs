@@ -32,6 +32,12 @@ public sealed class ReturnReviewDraft
         Status = "Review original sale and confirm quantity";
         return true;
     }
+    public void ClearQuantity(string reason)
+    {
+        Quantity = 0m;
+        Confirmed = false;
+        Status = reason;
+    }
     public bool Confirm(bool cashierActive, bool unresolvedOperation)
     {
         Confirmed = cashierActive && !unresolvedOperation && OriginalSaleId is not null && Quantity > 0m;
