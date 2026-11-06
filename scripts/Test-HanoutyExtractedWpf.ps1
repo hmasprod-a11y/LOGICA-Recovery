@@ -160,6 +160,21 @@ try {
     $provenancePath = Join-Path $evidence 'package-provenance.json'
     $provenance | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $provenancePath -Encoding UTF8
     Write-Host 'PASS extracted HANOUTY WPF W1 runtime on disposable MariaDB; package SHA256 provenance recorded (W2 not accepted).'
+} catch {
+    # A failed run may already have written acceptance.json, but must never
+    # leave an apparently successful acceptance/provenance pair behind.
+    # Preserve the original failure while attempting best-effort cleanup.
+    $failure = $_
+    foreach ($failedEvidence in @($acceptancePath, $provenancePath)) {
+        try {
+            if (Test-Path -LiteralPath $failedEvidence) {
+                Remove-Item -LiteralPath $failedEvidence -Force -ErrorAction Stop
+            }
+        } catch {
+            Write-Warning "Unable to invalidate failed WPF evidence '$failedEvidence': $_"
+        }
+    }
+    throw $failure
 } finally {
     # Cleanup failure must never leave the disposable-only authorization marker
     # enabled in the caller's PowerShell process. Restore it even if stopping
