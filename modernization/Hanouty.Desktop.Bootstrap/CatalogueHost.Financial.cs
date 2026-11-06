@@ -205,7 +205,12 @@ public sealed partial record CatalogueHost
         decimal? ReadTrustedTotal()
         {
             if (!CanChangeContext()) return null;
-            return MariaDbCashCheckoutServices.ReadCashSaleTotal(connections, binding.Session.PendingLines);
+            // Reject a price preview if the basket changed during SQL access.
+            var before = System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines);
+            var total = MariaDbCashCheckoutServices.ReadCashSaleTotal(connections, binding.Session.PendingLines.ToArray());
+            if (!CanChangeContext() || before != System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines))
+                return null;
+            return total;
         }
         window.ConfigureCashierEntry((cashier, register, tender) => {
             if (!CanChangeContext() || register != twoDigitWorkstation ||
@@ -217,6 +222,7 @@ public sealed partial record CatalogueHost
                 // Empty-basket session entry is authentication, NOT a dummy sale.
                 // Zero tender cannot mint a financial request.
                 if (tender != 0m || total != 0m) return false;
+                var emptyBasketSnapshot = System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines);
                 reviewing = true;
                 try
                 {
@@ -226,7 +232,9 @@ public sealed partial record CatalogueHost
                 catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
                 { return false; }
                 finally { reviewing = false; }
-                if (!CanChangeContext() || binding.Session.PendingCount != 0) return false;
+                if (!CanChangeContext() || binding.Session.PendingCount != 0 ||
+                    emptyBasketSnapshot != System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines))
+                    return false;
                 activeCashierId = cashier;
                 captured = null;
                 contextConsumed = true;
