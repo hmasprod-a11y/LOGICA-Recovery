@@ -58,6 +58,8 @@ public partial class MainWindow : Window
         OriginalSaleResults.ItemsSource = null;
         _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
         _originalSaleSelection?.Clear();
+        _returnDraft.Invalidate("New receipt lookup — review quantity again");
+        ReturnDraftStatus.Text = _returnDraft.Status;
         _originalSaleLookupContext = null;
         OriginalSaleStatus.Text = "No original sale selected — refunds unavailable";
         if (_originalSaleLookupBusy || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
@@ -147,6 +149,14 @@ public partial class MainWindow : Window
             vm.CheckoutUncertain || vm.PendingOperationId is not null);
         ReturnDraftStatus.Text = _returnDraft.Status;
         return confirmed;
+    }
+
+    private void ReturnQuantity_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        // Editing the quantity after confirmation invalidates the reviewed
+        // amount. The cashier must explicitly review and confirm the new value.
+        _returnDraft.ClearQuantity("Return quantity edited — review again");
+        ReturnDraftStatus.Text = _returnDraft.Status;
     }
 
     private void ReviewReturnQuantity_Click(object sender, RoutedEventArgs e) =>
