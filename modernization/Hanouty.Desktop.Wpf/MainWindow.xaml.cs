@@ -26,6 +26,13 @@ public partial class MainWindow : Window
     // VM state transitions can originate from Host reconciliation, not just clicks.
     private void InvalidateOriginalSaleOnSessionChange(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(CatalogueViewModel.ScanFeedback) &&
+            DataContext is CatalogueViewModel selectionVm &&
+            selectionVm.ScanFeedback == "Selection accepted")
+        {
+            TrustedBasketTotal.Text = "Basket changed — refresh trusted total";
+            return;
+        }
         if (e.PropertyName is not (nameof(CatalogueViewModel.FinancialSessionActive) or
             nameof(CatalogueViewModel.CheckoutUncertain) or nameof(CatalogueViewModel.PaymentContext))) return;
         if (DataContext is not CatalogueViewModel vm) return;
@@ -214,9 +221,9 @@ public partial class MainWindow : Window
             vm.PaymentContext is null || vm.CheckoutBusy || vm.CheckoutUncertain ||
             vm.PendingOperationId is not null) return false;
         var context = vm.PaymentContext;
-        var basketIdentity = _readBasketIdentity?.Invoke();
         try
         {
+            var basketIdentity = _readBasketIdentity?.Invoke();
             var total = _readTrustedCashTotal();
             if (total is null || total < 0m ||
                 !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
