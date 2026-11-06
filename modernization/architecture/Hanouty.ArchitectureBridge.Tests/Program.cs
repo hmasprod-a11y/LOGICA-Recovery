@@ -514,6 +514,20 @@ static bool InvalidW2(AuthorizedCheckoutRequest request)
     try { request.Validate(); return false; }
     catch (ArgumentException) { return true; }
 }
+// Durable original-ticket identity is mandatory for returns but forbidden on sales.
+// The financial port still owns real refund authorization and remains fail-closed.
+var returnEnvelope = W2(id: "refund-contract-001") with {
+    IsReturn = true, OriginalTicketId = "persisted-ticket-001"
+};
+returnEnvelope.Validate();
+Assert(returnEnvelope.OriginalTicketId == "persisted-ticket-001",
+    "return envelope carries the durable original ticket identity");
+Assert(InvalidW2(W2() with { IsReturn = true }),
+    "return envelope denies missing original ticket identity");
+Assert(InvalidW2(W2() with { IsReturn = true, OriginalTicketId = "  " }),
+    "return envelope denies blank original ticket identity");
+Assert(InvalidW2(W2() with { OriginalTicketId = "persisted-ticket-001" }),
+    "sale envelope rejects injected original ticket identity");
 Assert(InvalidW2(W2(id: "")), "W2 rejects missing operation ID");
 Assert(InvalidW2(W2() with { Currency = " " }), "W2 rejects missing currency");
 Assert(InvalidW2(W2(lines: Array.Empty<CheckoutBatchLine>())), "W2 rejects empty sale lines");
