@@ -745,6 +745,18 @@ catch (UnauthorizedAccessException) { switchedSessionDenied = true; }
 Assert(switchedSessionDenied && changedSessionPermission.Calls == 1,
     "manual stock authorization rejects session change during permission lookup");
 verifiedActorSource.Actor = trustedActor;
+// Session and actor identifiers are opaque tokens: case changes are NOT
+// equivalent identities even when a permission backend uses case-insensitive SQL.
+var caseChangedPermission = new StubManualStockPermissionReader {
+    Allowed = true,
+    OnRead = () => verifiedActorSource.Actor = new VerifiedStockActor("SESSION-1", "actor-1")
+};
+var caseChangedSessionDenied = false;
+try { ManualStockAuthorizationBoundary.RequireAuthorized(verifiedActorSource, caseChangedPermission); }
+catch (UnauthorizedAccessException) { caseChangedSessionDenied = true; }
+Assert(caseChangedSessionDenied && caseChangedPermission.Calls == 1,
+    "manual stock authorization rejects case-changed opaque session token");
+verifiedActorSource.Actor = trustedActor;
 
 var failingPermissionSource = new StubManualStockPermissionReader { ThrowOnRead = true };
 verifiedActorSource.Actor = trustedActor;
