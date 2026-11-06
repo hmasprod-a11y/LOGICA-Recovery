@@ -53,6 +53,25 @@ namespace LOGICA.Infrastructure.Checkout
                 if (!string.Equals(Convert.ToString(engine.ExecuteScalar()), "InnoDB", StringComparison.Ordinal))
                     throw new InvalidOperationException("Durable InnoDB return consumption ledger is required.");
             }
+            // Both identifiers must be independently unique, not merely a composite pair.
+            // Otherwise two return operation IDs could consume the same original sale.
+            foreach (string column in new[] { "original_ticket_id", "return_operation_id" })
+            {
+                using (var index = connection.CreateCommand())
+                {
+                    index.Transaction = transaction;
+                    index.CommandText =
+                        "SELECT COUNT(*) FROM (" +
+                        "SELECT INDEX_NAME FROM information_schema.STATISTICS " +
+                        "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='hanouty_cash_return_consumption' " +
+                        "AND NON_UNIQUE=0 GROUP BY INDEX_NAME " +
+                        "HAVING COUNT(*)=1 AND MAX(COLUMN_NAME)=@column AND MAX(SUB_PART) IS NULL" +
+                        ") AS unique_single_column";
+                    index.Parameters.AddWithValue("@column", column);
+                    if (Convert.ToInt64(index.ExecuteScalar()) < 1L)
+                        throw new InvalidOperationException("Return ledger requires a full-column unique index on " + column + ".");
+                }
+            }
             // The original header is locked by CashReturnOriginalSaleEvidence before this call.
             // The unique original_ticket_id index serializes competing return IDs,
             // including independent sessions and after process restart.
