@@ -96,8 +96,13 @@ try {
     # Never accept an acceptance report left by an earlier run. A failed or
     # prematurely exited bootstrap must produce fresh evidence to pass this gate.
     $acceptancePath = Join-Path $evidence 'acceptance.json'
-    if (Test-Path -LiteralPath $acceptancePath) {
-        Remove-Item -LiteralPath $acceptancePath -Force -ErrorAction Stop
+    # A failed rerun must not leave a previous package-provenance.json looking
+    # like a fresh attestation, even when the current run never reaches hashing.
+    $provenancePath = Join-Path $evidence 'package-provenance.json'
+    foreach ($staleEvidence in @($acceptancePath, $provenancePath)) {
+        if (Test-Path -LiteralPath $staleEvidence) {
+            Remove-Item -LiteralPath $staleEvidence -Force -ErrorAction Stop
+        }
     }
     & (Join-Path $PSScriptRoot 'test-w1-bootstrap.ps1') -MariaDbBin $bin -HostExe $exe -EvidenceDirectory $evidence
     if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { throw 'Extracted WPF host failed runtime verification.' }
