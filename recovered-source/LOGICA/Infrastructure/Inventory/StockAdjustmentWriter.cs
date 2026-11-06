@@ -64,6 +64,7 @@ namespace LOGICA.Infrastructure.Inventory
             }
             // Both rows are locked in the caller's stock transaction. Revocation
             // and expiry are checked on the database clock, never on WPF state.
+            VerifiedManualStockActor verified;
             using (var command = new MySqlCommand(
                 "SELECT s.ACTOR_ID FROM HANOUTY_AUTH_SESSIONS s " +
                 "INNER JOIN HANOUTY_ACTOR_GRANTS g ON BINARY g.ACTOR_ID=BINARY s.ACTOR_ID " +
@@ -83,9 +84,28 @@ namespace LOGICA.Infrastructure.Inventory
                     string actor = Convert.ToString(reader.GetValue(0), CultureInfo.InvariantCulture);
                     if (reader.Read())
                         throw new UnauthorizedAccessException("Ambiguous manual stock permission.");
-                    return new VerifiedManualStockActor(actor);
+                    verified = new VerifiedManualStockActor(actor);
                 }
             }
+            // A filtered join can hide another actor using the same token, or
+            // another state of the same grant. Check full unique keys after
+            // locking the rows, while this transaction holds table metadata locks.
+            using (var keys = new MySqlCommand(
+                "SELECT COUNT(DISTINCT authority_keys.TABLE_NAME) FROM (" +
+                "SELECT TABLE_NAME, INDEX_NAME FROM information_schema.STATISTICS " +
+                "WHERE TABLE_SCHEMA=DATABASE() AND NON_UNIQUE=0 " +
+                "AND TABLE_NAME IN ('HANOUTY_AUTH_SESSIONS','HANOUTY_ACTOR_GRANTS') " +
+                "GROUP BY TABLE_NAME,INDEX_NAME HAVING COUNT(SUB_PART)=0 AND (" +
+                "(TABLE_NAME='HANOUTY_AUTH_SESSIONS' AND COUNT(*)=1 AND MAX(COLUMN_NAME)='SESSION_TOKEN') OR " +
+                "(TABLE_NAME='HANOUTY_ACTOR_GRANTS' AND COUNT(*)=2 AND " +
+                "SUM(CASE WHEN COLUMN_NAME='ACTOR_ID' THEN 1 ELSE 0 END)=1 AND " +
+                "SUM(CASE WHEN COLUMN_NAME='PERMISSION_CODE' THEN 1 ELSE 0 END)=1))) authority_keys",
+                db, tx))
+            {
+                if (Convert.ToInt32(keys.ExecuteScalar(), CultureInfo.InvariantCulture) != 2)
+                    throw new UnauthorizedAccessException("Session tokens and actor grants require unique keys.");
+            }
+            return verified;
         }
     }
 
@@ -108,7 +128,7 @@ namespace LOGICA.Infrastructure.Inventory
         // Never accept a grant supplied by a WPF command or from plan.UserId.
         // This gate is intentionally non-writing until a persisted actor-scoped
         // permission implementation is reviewed and configured.
-        internal static void ValidateAuthorizationContext(MySqlConnection connection,
+        internal static VerifiedManualStockActor ValidateAuthorizationContext(MySqlConnection connection,
             MySqlTransaction transaction, StockAdjustmentPlan plan,
             IManualStockAuthorization authorization, string authenticatedSessionId)
         {
@@ -165,6 +185,7 @@ namespace LOGICA.Infrastructure.Inventory
             {
                 throw new UnauthorizedAccessException("Authorization provider ended the stock transaction.");
             }
+            return actor;
         }
 
         // Transaction-owning entry point for the new Application/WPF workflow.
@@ -265,8 +286,8 @@ namespace LOGICA.Infrastructure.Inventory
             if (connection == null)
                 throw new UnauthorizedAccessException("Manual stock proposal requires a disposable connection.");
             RequireDisposableAuthorizationProposal(connection.ConnectionString);
-            ValidateAuthorizationContext(connection, transaction, plan, authorization, authenticatedSessionId);
-            ApplyCore(connection, transaction, plan);
+            var actor = ValidateAuthorizationContext(connection, transaction, plan, authorization, authenticatedSessionId);
+            ApplyCore(connection, transaction, plan, actor);
         }
 
         internal static void Apply(MySqlConnection connection, MySqlTransaction transaction,
@@ -276,7 +297,7 @@ namespace LOGICA.Infrastructure.Inventory
         }
 
         private static void ApplyCore(MySqlConnection connection, MySqlTransaction transaction,
-            StockAdjustmentPlan plan)
+            StockAdjustmentPlan plan, VerifiedManualStockActor actor)
         {
             if (connection == null) throw new ArgumentNullException("connection");
             if (transaction == null) throw new ArgumentNullException("transaction");
@@ -297,7 +318,7 @@ namespace LOGICA.Infrastructure.Inventory
             // this writer must remain internal and unavailable to untrusted UI callers.
             // Validate the audit payload before any database mutation. A too-long
             // reason/user must never leave an uncommittable stock update behind.
-            string audit = "Ajustement [" + plan.UserId + "] " +
+            string audit = "Ajustement [" + actor.UserId + "] " +
                 plan.BeforeStock.ToString(CultureInfo.InvariantCulture) + " -> " +
                 plan.AfterStock.ToString(CultureInfo.InvariantCulture) + " : " + plan.Reason;
             if (Encoding.UTF8.GetByteCount(audit) > 255)

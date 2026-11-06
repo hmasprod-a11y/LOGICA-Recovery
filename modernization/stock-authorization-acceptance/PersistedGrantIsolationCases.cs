@@ -37,12 +37,24 @@ internal static class PersistedGrantIsolationCases
                 tx.Commit();
             }
             Environment.SetEnvironmentVariable(marker, "YES");
+            // A token+actor key still allows one bearer to identify two actors.
+            Sql(db, "ALTER TABLE HANOUTY_AUTH_SESSIONS DROP PRIMARY KEY, ADD UNIQUE KEY misleading (SESSION_TOKEN, ACTOR_ID)");
+            Sql(db, "INSERT INTO HANOUTY_AUTH_SESSIONS SELECT SESSION_TOKEN,'Actor-B',EXPIRES_AT,NULL FROM HANOUTY_AUTH_SESSIONS");
+            Denied(() => StockAdjustmentWriter.ExecuteAuthorized(cs, plan, provider, "fixture-token"));
+            Sql(db, "DELETE FROM HANOUTY_AUTH_SESSIONS WHERE ACTOR_ID='Actor-B'");
+            Denied(() => StockAdjustmentWriter.ExecuteAuthorized(cs, plan, provider, "fixture-token"));
+            Sql(db, "ALTER TABLE HANOUTY_AUTH_SESSIONS DROP INDEX misleading, ADD PRIMARY KEY (SESSION_TOKEN)");
+            Sql(db, "ALTER TABLE HANOUTY_ACTOR_GRANTS DROP PRIMARY KEY");
+            Denied(() => StockAdjustmentWriter.ExecuteAuthorized(cs, plan, provider, "fixture-token"));
+            Sql(db, "ALTER TABLE HANOUTY_ACTOR_GRANTS ADD PRIMARY KEY (ACTOR_ID,PERMISSION_CODE)");
             var wrongDb = new MySqlConnectionStringBuilder(cs) { Database = "not_the_fixture" };
             Denied(() => StockAdjustmentWriter.ExecuteAuthorized(wrongDb.ConnectionString, plan, provider, "fixture-token"));
             using (var tx = db.BeginTransaction()) {
                 StockAdjustmentWriter.ApplyAuthorized(db, tx, plan, provider, "fixture-token");
                 using var read = new MySqlCommand("SELECT STOCK=12 AND (SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK)=1 FROM TABLE_ARTICLES WHERE ID_ARTICLE='P0-ARTICLE'", db, tx);
                 Require(Convert.ToInt32(read.ExecuteScalar()) == 1, "Fixture grant failed to write stock and audit together.");
+                using var audit = new MySqlCommand("SELECT LIBELLE FROM TABLE_MOUVEMENTS_STOCK", db, tx);
+                Require(Convert.ToString(audit.ExecuteScalar()) == "Ajustement [Actor-A] 10 -> 12 : proposal rollback", "Audit must record the verified session actor.");
                 tx.Rollback();
             }
             using var after = new MySqlCommand("SELECT STOCK=10 AND (SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK)=0 FROM TABLE_ARTICLES WHERE ID_ARTICLE='P0-ARTICLE'", db);
