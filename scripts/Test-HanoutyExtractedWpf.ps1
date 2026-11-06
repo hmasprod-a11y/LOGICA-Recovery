@@ -74,6 +74,9 @@ $dbdata = Join-Path $root 'db'
 & (Join-Path $bin 'mariadb-install-db.exe') "--datadir=$dbdata" '--password=logica-ci-only' '--port=3307'
 if ($LASTEXITCODE -ne 0) { throw 'Disposable MariaDB initialization failed.' }
 $server = $null
+# Capture the caller's process environment before the disposable-only test marker is set.
+# StrictMode requires this variable to be initialized on both success and failure paths.
+$previousDisposableMarker = [Environment]::GetEnvironmentVariable('HANOUTY_W1_DISPOSABLE_MARKER', 'Process')
 try {
     $server = Start-Process -FilePath (Join-Path $bin 'mariadbd.exe') -ArgumentList @(
         "--defaults-file=`"$dbdata/my.ini`"",
