@@ -454,7 +454,12 @@ namespace LOGICA.Infrastructure.Inventory
                     "VALUES (@date, @time, @audit, @id, @code, @name, @delta)",
                     connection, transaction))
                 {
-                    DateTime now = DateTime.Now;
+                    // Use the same database UTC clock as session/grant expiry.
+                    // A workstation clock/time-zone change must not falsify the
+                    // movement timestamp or place it outside its grant window.
+                    DateTime now;
+                    using (var clock = new MySqlCommand("SELECT UTC_TIMESTAMP()", connection, transaction))
+                        now = Convert.ToDateTime(clock.ExecuteScalar(), CultureInfo.InvariantCulture);
                     movement.Parameters.AddWithValue("@date", now);
                     movement.Parameters.AddWithValue("@time", now.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
                     movement.Parameters.AddWithValue("@audit", audit);
