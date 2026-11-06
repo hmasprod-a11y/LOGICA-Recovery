@@ -34,11 +34,11 @@ jobs:
       - name: Checkout approved Architecture source for real financial port
         uses: actions/checkout@v4
         with:
-          ref: f934763edbb0ae15c5e2a449bf6440b0d1bcca39
+          ref: b63ad9b917fd9587724f580899025acf175fdbec
           path: architecture-source
           persist-credentials: false
       - name: Verify exact Architecture source
-        run: test "$(git -C architecture-source rev-parse HEAD)" = "f934763edbb0ae15c5e2a449bf6440b0d1bcca39"
+        run: test "$(git -C architecture-source rev-parse HEAD)" = "b63ad9b917fd9587724f580899025acf175fdbec"
       - name: Install MariaDB client
         run: sudo apt-get update && sudo apt-get install -y mariadb-client
       - name: Exercise isolated transaction and durable claim
