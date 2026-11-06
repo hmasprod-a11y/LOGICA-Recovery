@@ -84,6 +84,25 @@ Check(nestedWindow.RefreshTrustedBasketTotal() && nestedDenied && nestedReads ==
 nestedVm.FinancialSessionActive = false;
 nestedWindow.Close();
 
+// Real STA window: a Host total read may pump Dispatcher; it must not
+// concurrently end the cashier session or open a second login dialog.
+var readLockWindow = new Hanouty.Desktop.Wpf.MainWindow(new EmptyCatalogueReader(),
+    new RecordingSelection(), new RecordingSubmission(), null, requireFreshPaymentContext: true);
+var readLockVm = (CatalogueViewModel)readLockWindow.DataContext;
+readLockVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "Cash", 19m);
+int logoutDuringRead = 0;
+bool deniedLogoutDuringRead = false;
+bool deniedLoginDuringRead = false;
+readLockWindow.ConfigureCashierEntry((_, _, _) => false, () => {
+    deniedLogoutDuringRead = !readLockWindow.EndFinancialSession();
+    deniedLoginDuringRead = !readLockWindow.ShowCashierEntry();
+    return 19m;
+}, () => { logoutDuringRead++; return true; }, () => "basket-locked");
+Check(readLockWindow.RefreshTrustedBasketTotal() && deniedLogoutDuringRead &&
+    deniedLoginDuringRead && logoutDuringRead == 0 && readLockVm.FinancialSessionActive,
+    "STA trusted read blocks reentrant logout and login without invoking Host logout");
+readLockWindow.Close();
+
 var precisionWindow = new Hanouty.Desktop.Wpf.MainWindow(new EmptyCatalogueReader(),
     new RecordingSelection(), new RecordingSubmission(), null, requireFreshPaymentContext: true);
 var precisionVm = (CatalogueViewModel)precisionWindow.DataContext;
