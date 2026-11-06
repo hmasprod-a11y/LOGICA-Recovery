@@ -1118,8 +1118,22 @@ var originalWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
     requireFreshPaymentContext: true);
 Check(!originalWindow.SearchOriginalSales("receipt-1"),
     "unregistered Host lookup must fail closed in real window");
+// WPF modal PIN/session transitions must not permit receipt evidence changes.
+// This exercises the real window guard without displaying a blocking modal dialog.
+var modalPinField = typeof(Hanouty.Desktop.Wpf.MainWindow).GetField("_pinOpen",
+    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+    ?? throw new Exception("WPF modal PIN guard missing");
+modalPinField.SetValue(originalWindow, true);
+Check(!originalWindow.SearchOriginalSales("receipt-1") &&
+    originalWindow.OriginalSaleResults.Items.Count == 0,
+    "PIN modal blocks original-sale lookup before Host registration");
+modalPinField.SetValue(originalWindow, false);
 originalWindow.ConfigureOriginalSaleLookup(new OriginalSaleLookupFixture());
 var originalWindowVm = (CatalogueViewModel)originalWindow.DataContext;
+modalPinField.SetValue(originalWindow, true);
+Check(!originalWindow.SearchOriginalSales("receipt-1"),
+    "registered Host lookup remains blocked during transient PIN prompt");
+modalPinField.SetValue(originalWindow, false);
 Check(originalWindow.SearchOriginalSales("receipt-1"),
     "authenticated window must query registered persisted-sale Host reader");
 var persistedRow = (OriginalSaleCandidate)originalWindow.OriginalSaleResults.Items[0];
