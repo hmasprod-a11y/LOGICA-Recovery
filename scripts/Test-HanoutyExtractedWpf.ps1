@@ -158,10 +158,12 @@ try {
     $provenance | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $provenancePath -Encoding UTF8
     Write-Host 'PASS extracted HANOUTY WPF W1 runtime on disposable MariaDB; package SHA256 provenance recorded (W2 not accepted).'
 } finally {
-    if ($null -ne $server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
-    if ($null -ne $previousDisposableMarker) {
+    # Cleanup failure must never leave the disposable-only authorization marker
+    # enabled in the caller's PowerShell process. Restore it even if stopping
+    # the MariaDB child process throws (for example, an access-denied race).
+    try {
+        if ($null -ne $server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force -ErrorAction Stop }
+    } finally {
         [Environment]::SetEnvironmentVariable('HANOUTY_W1_DISPOSABLE_MARKER', $previousDisposableMarker, 'Process')
-    } else {
-        [Environment]::SetEnvironmentVariable('HANOUTY_W1_DISPOSABLE_MARKER', $null, 'Process')
     }
 }
