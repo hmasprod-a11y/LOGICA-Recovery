@@ -264,7 +264,7 @@ public partial class MainWindow : Window
 
     public bool EndFinancialSession()
     {
-        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
+        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _endFinancialSession is null) return false;
         _logoutOpen = true;
@@ -301,7 +301,7 @@ public partial class MainWindow : Window
 
     public bool ShowCashierEntry()
     {
-        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
+        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _setFinancialContext is null || _readTrustedCashTotal is null) return false;
         // Lock BEFORE calling Host-provided delegates: those may pump the WPF
