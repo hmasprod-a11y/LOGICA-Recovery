@@ -67,7 +67,8 @@ public static class ManualStockAuthorizationBoundary
             // lookup runs. Never return an actor whose session has since ended
             // or switched to another cashier.
             var current = actors.CurrentVerifiedActor();
-            if (current is null || current != actor)
+            if (current is null || !string.Equals(current.SessionId, actor.SessionId, StringComparison.Ordinal) ||
+                !string.Equals(current.ActorId, actor.ActorId, StringComparison.Ordinal))
                 throw new UnauthorizedAccessException("Manual stock actor session changed during authorization.");
             return actor;
         }
