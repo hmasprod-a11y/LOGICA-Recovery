@@ -66,7 +66,7 @@ public partial class MainWindow : Window
 
     public bool SelectOriginalSale(OriginalSaleCandidate candidate)
     {
-        if (_originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
+        if (_originalSaleLookupBusy || _originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
             !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
             vm.PendingOperationId is not null) return false;
         // The candidate must still belong to the current, visible Host snapshot.
@@ -103,7 +103,7 @@ public partial class MainWindow : Window
 
     public bool EndFinancialSession()
     {
-        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || DataContext is not CatalogueViewModel vm ||
+        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _endFinancialSession is null) return false;
         _logoutOpen = true;
@@ -137,7 +137,7 @@ public partial class MainWindow : Window
 
     public bool ShowCashierEntry()
     {
-        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || DataContext is not CatalogueViewModel vm ||
+        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _setFinancialContext is null || _readTrustedCashTotal is null) return false;
         // Lock BEFORE calling Host-provided delegates: those may pump the WPF
@@ -229,7 +229,7 @@ public partial class MainWindow : Window
     public bool ReviewResolvedCheckout(Func<string> transientPin)
     {
         ArgumentNullException.ThrowIfNull(transientPin);
-        if (_reviewOpen || _cashierEntryOpen || _logoutOpen || _pinOpen || _review is null ||
+        if (_reviewOpen || _cashierEntryOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy || _review is null ||
             DataContext is not CatalogueViewModel vm || !vm.CanReviewResolvedCheckout)
             return false;
         _reviewOpen = true;
@@ -256,7 +256,7 @@ public partial class MainWindow : Window
     {
         // Host may synchronously ask for PIN while a modal login/logout or
         // durable-outcome review is active. Never prompt for a competing sale.
-        if (_cashierEntryOpen || _logoutOpen || _reviewOpen || _pinOpen ||
+        if (_cashierEntryOpen || _logoutOpen || _reviewOpen || _pinOpen || _originalSaleLookupBusy ||
             DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
             vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             vm.PaymentContext is null || vm.PaymentContext.CashierId != cashier)
