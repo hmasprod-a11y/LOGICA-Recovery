@@ -91,7 +91,7 @@
                 <GroupBox Header="Original sale — read-only return preparation" Margin="0,14,0,8"
                           AutomationProperties.Name="Persisted original sale lookup">
                     <StackPanel Margin="8">
-                        <TextBox x:Name="OriginalSaleSearch" MinHeight="36"
+                        <TextBox x:Name="OriginalSaleSearch" MinHeight="36" TextChanged="OriginalSaleSearch_TextChanged"
                                  AutomationProperties.Name="Search original receipt identity"/>
                         <Button Content="Find persisted original sale" Click="SearchOriginalSales_Click"
                                 MinHeight="40" Margin="0,6,0,6"/>
