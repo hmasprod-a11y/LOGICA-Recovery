@@ -80,7 +80,9 @@
                     </ItemsControl>
                 </ScrollViewer>
             </StackPanel>
-            <StackPanel Grid.Column="1">
+            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          CanContentScroll="True" AutomationProperties.Name="Cashier and return workflow scroll region">
+                <StackPanel Margin="0,0,8,0">
                 <TextBlock Text="Selected product" FontSize="18" FontWeight="SemiBold"/>
                 <TextBlock Text="{Binding SelectedProduct.Name, TargetNullValue=No product selected}"
                            Margin="0,12,0,6" TextWrapping="Wrap"/>
@@ -129,7 +131,8 @@
                 <TextBlock Text="{Binding CommitFeedback}" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.Name="Checkout result"/>
                 <TextBlock Text="Stock posting, printing and licensing require separately verified application contracts."
                            Margin="0,22,0,0" TextWrapping="Wrap" Foreground="DimGray"/>
-            </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
     </DockPanel>
 </Window>
