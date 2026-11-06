@@ -28,6 +28,17 @@ var lockedSelection = new RecordingSelection();
 var lockedWindow = new Hanouty.Desktop.Wpf.MainWindow(
     new Reader(new[] { new ProductSummary("locked-1", "Locked article", "L001") }),
     lockedSelection, new RecordingSubmission(), null, requireFreshPaymentContext: true);
+var cashierScroll = (System.Windows.Controls.ScrollViewer)lockedWindow.FindName("CashierWorkflowScroll");
+Check(cashierScroll is not null && cashierScroll.VerticalScrollBarVisibility ==
+    System.Windows.Controls.ScrollBarVisibility.Auto &&
+    cashierScroll.HorizontalScrollBarVisibility == System.Windows.Controls.ScrollBarVisibility.Disabled,
+    "cashier and return controls remain vertically reachable in compact high-DPI window");
+lockedWindow.Width = lockedWindow.MinWidth;
+lockedWindow.Height = lockedWindow.MinHeight;
+lockedWindow.UpdateLayout();
+Check(cashierScroll.ActualHeight >= 0 && lockedWindow.FlowDirection ==
+    System.Windows.FlowDirection.LeftToRight,
+    "compact WPF window measures cashier workflow without clipping horizontal controls");
 var lockedVm = (CatalogueViewModel)lockedWindow.DataContext;
 Check(!lockedVm.FinancialSessionActive && !lockedVm.CanSelectProduct && !lockedVm.CanCommit,
     "unauthenticated production window must start locked");
