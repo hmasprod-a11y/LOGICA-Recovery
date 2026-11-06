@@ -26,7 +26,8 @@ public sealed class CheckoutSession
     private IReadOnlyList<ProductSummary>? _snapshot;
     public IReadOnlyList<ProductSummary> Products => _snapshot ??= _composition.AllProducts();
     public IReadOnlyList<ProductSummary> ImageProducts =>
-        System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Where(Products, p => p.HasImage));
+        Array.AsReadOnly(System.Linq.Enumerable.ToArray(
+            System.Linq.Enumerable.Where(Products, p => p.HasImage)));
 
     public void RefreshCatalogue()
     {
