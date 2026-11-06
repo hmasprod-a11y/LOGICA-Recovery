@@ -4,6 +4,24 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+# Reject directory junctions/symlinks before even resolving required files or reading runtime metadata.
+# A linked directory can hide payload outside the extracted archive; rejecting
+# linked files alone does not cover directory junctions or symbolic links.
+$packageDirectories = @((Get-Item -LiteralPath $ExtractedDirectory)) +
+    @(Get-ChildItem -LiteralPath $ExtractedDirectory -Directory -Recurse -Force)
+foreach ($directory in $packageDirectories) {
+    if (($directory.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Extracted WPF package contains a linked directory: $($directory.FullName)"
+    }
+}
+# Reject linked files before reading runtimeconfig.json or executing the host.
+$packageFiles = @(Get-ChildItem -LiteralPath $ExtractedDirectory -File -Recurse -Force | Sort-Object FullName)
+if ($packageFiles.Count -lt 4) { throw 'Extracted WPF package has an incomplete payload.' }
+foreach ($item in $packageFiles) {
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Extracted WPF package contains a linked file: $($item.FullName)"
+    }
+}
 $exe = Join-Path ([IO.Path]::GetFullPath($ExtractedDirectory)) 'Hanouty.Desktop.Bootstrap.exe'
 if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Extracted WPF executable not found.' }
 # A standalone net10 Windows release must carry its runtime metadata and
@@ -21,23 +39,6 @@ foreach ($name in $required) {
 $runtime = Get-Content -LiteralPath (Join-Path $ExtractedDirectory 'Hanouty.Desktop.Bootstrap.runtimeconfig.json') -Raw | ConvertFrom-Json
 if ($null -eq $runtime.runtimeOptions -or $runtime.runtimeOptions.tfm -notin @('net10.0', 'net10.0-windows')) {
     throw 'Extracted WPF package is not a .NET 10 build.'
-}
-# Reject junctions/symlinks before executing any untrusted extracted payload.
-# A linked directory can hide payload outside the extracted archive; rejecting
-# linked files alone does not cover directory junctions or symbolic links.
-$packageDirectories = @((Get-Item -LiteralPath $ExtractedDirectory)) +
-    @(Get-ChildItem -LiteralPath $ExtractedDirectory -Directory -Recurse -Force)
-foreach ($directory in $packageDirectories) {
-    if (($directory.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "Extracted WPF package contains a linked directory: $($directory.FullName)"
-    }
-}
-$packageFiles = @(Get-ChildItem -LiteralPath $ExtractedDirectory -File -Recurse -Force | Sort-Object FullName)
-if ($packageFiles.Count -lt 4) { throw 'Extracted WPF package has an incomplete payload.' }
-foreach ($item in $packageFiles) {
-    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "Extracted WPF package contains a linked file: $($item.FullName)"
-    }
 }
 # Snapshot every payload hash BEFORE any executable is launched. A package that
 # changes during the runtime gate must not receive a valid provenance manifest.
