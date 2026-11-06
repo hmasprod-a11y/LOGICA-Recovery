@@ -1165,6 +1165,23 @@ foreach (var modalFieldName in new[] { "_cashierEntryOpen", "_reviewOpen", "_log
         "receipt selection resumes only after modal exits: " + modalFieldName);
 }
 
+// Actual STA ListBox interaction: changing highlighted receipt invalidates the
+// previously reviewed quantity even before a second Select button click.
+Check(originalWindow.ReviewReturnQuantity("1") && originalWindow.ConfirmReturnDraft(),
+    "trusted receipt can prepare a non-posting return draft");
+originalWindow.OriginalSaleResults.SelectedItem = null;
+Check(!originalWindow.ConfirmReturnDraft() &&
+    !originalWindow.ReviewReturnQuantity("1"),
+    "clearing highlighted receipt revokes previously confirmed return");
+originalWindow.OriginalSaleResults.SelectedItem = persistedRow;
+Check(originalWindow.SelectOriginalSale(persistedRow) &&
+    originalWindow.ReviewReturnQuantity("1"),
+    "fresh explicit receipt selection restores quantity review");
+modalPinField.SetValue(originalWindow, true);
+Check(!originalWindow.ConfirmReturnDraft() && !originalWindow.ReviewReturnQuantity("1"),
+    "transient PIN modal blocks return review and confirmation");
+modalPinField.SetValue(originalWindow, false);
+
 // Actual WPF TextChanged must invalidate the previous receipt evidence.
 originalWindow.OriginalSaleSearch.Text = "different-receipt";
 Check(originalWindow.OriginalSaleResults.Items.Count == 0 &&
