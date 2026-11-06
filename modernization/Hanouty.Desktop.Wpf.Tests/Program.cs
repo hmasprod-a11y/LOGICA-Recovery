@@ -67,6 +67,25 @@ Check(((System.Windows.Controls.TextBlock)lockedWindow.FindName("TrustedBasketTo
     !lockedWindow.RefreshTrustedBasketTotal() && trustedReads == 1,
     "logout revokes trusted total and blocks another readback");
 lockedWindow.Close();
+// A successful or uncertain checkout must not leave the old basket quote on
+// screen: readback requires a fresh authoritative Host call after resolution.
+var quoteSubmission = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
+var quoteWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+    new RecordingSelection(), quoteSubmission,
+    new CashierPaymentContext("cashier", "register", "MAD", "Cash", 10m),
+    requireFreshPaymentContext: true);
+var quoteVm = (CatalogueViewModel)quoteWindow.DataContext;
+quoteWindow.ConfigureCashierEntry((_, _, _) => false, () => 10m, () => true, () => "basket-before");
+Check(quoteWindow.RefreshTrustedBasketTotal() &&
+    quoteWindow.TrustedBasketTotal.Text.Contains("10.00"),
+    "STA displays original Host quote before checkout");
+quoteVm.CommitCheckout();
+Check(quoteVm.CheckoutUncertain &&
+    !quoteWindow.TrustedBasketTotal.Text.Contains("10.00") &&
+    !quoteWindow.RefreshTrustedBasketTotal(),
+    "Unknown checkout revokes old displayed quote and prevents a second read");
+quoteWindow.Close();
+
 // Actual STA window: nested Host callback cannot publish a stale amount.
 var nestedWindow = new Hanouty.Desktop.Wpf.MainWindow(new EmptyCatalogueReader(),
     new RecordingSelection(), new RecordingSubmission(), null, requireFreshPaymentContext: true);
