@@ -87,6 +87,7 @@ try {
         if ($server.HasExited) { throw 'Disposable MariaDB exited before readiness.' }
     }
     if (-not $ready) { throw 'Disposable MariaDB failed to become ready.' }
+    # Disposable-only permission must not leak into subsequent checks.
     $env:HANOUTY_W1_DISPOSABLE_MARKER = 'I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY'
     $evidence = Join-Path ([IO.Path]::GetFullPath($EvidenceDirectory)) 'wpf-extracted-runtime'
     & (Join-Path $PSScriptRoot 'test-w1-bootstrap.ps1') -MariaDbBin $bin -HostExe $exe -EvidenceDirectory $evidence
@@ -149,4 +150,9 @@ try {
     Write-Host 'PASS extracted HANOUTY WPF W1 runtime on disposable MariaDB; package SHA256 provenance recorded (W2 not accepted).'
 } finally {
     if ($null -ne $server -and -not $server.HasExited) { Stop-Process -Id $server.Id -Force }
+    if ($null -ne $previousDisposableMarker) {
+        [Environment]::SetEnvironmentVariable('HANOUTY_W1_DISPOSABLE_MARKER', $previousDisposableMarker, 'Process')
+    } else {
+        [Environment]::SetEnvironmentVariable('HANOUTY_W1_DISPOSABLE_MARKER', $null, 'Process')
+    }
 }
