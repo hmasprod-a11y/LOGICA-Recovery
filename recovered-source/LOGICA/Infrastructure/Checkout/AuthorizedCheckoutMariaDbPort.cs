@@ -35,9 +35,9 @@ namespace LOGICA.Infrastructure.Checkout
             request.Validate();
             // Do not pretend to support return, credit or non-cash tenders
             // before their financial policy and trusted preparation are wired.
-            if (request.IsReturn || request.Payments.Count != 1 ||
+            if (request.Payments.Count != 1 ||
                 request.Payments[0].Kind != CheckoutPaymentKind.Cash)
-                throw new NotSupportedException("Only authorized cash sales are enabled.");
+                throw new NotSupportedException("Only authorized single-cash sale or verified full-ticket cash return is enabled.");
 
             using (MySqlConnection connection = createConnection())
             {
