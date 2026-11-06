@@ -1122,6 +1122,17 @@ originalWindow.ConfigureOriginalSaleLookup(new OriginalSaleLookupFixture());
 var originalWindowVm = (CatalogueViewModel)originalWindow.DataContext;
 Check(originalWindow.SearchOriginalSales("receipt-1"),
     "authenticated window must query registered persisted-sale Host reader");
+var persistedRow = (OriginalSaleCandidate)originalWindow.OriginalSaleResults.Items[0];
+originalWindow.OriginalSaleResults.SelectedItem = persistedRow;
+Check(originalWindow.SelectOriginalSale(persistedRow),
+    "persisted original-sale row is selectable for read-only review");
+originalWindowVm.PaymentContext = null;
+Check(originalWindow.OriginalSaleResults.Items.Count == 0 &&
+    !originalWindow.SelectOriginalSale(persistedRow),
+    "Host-revoked payment context invalidates original-sale selection without a refund");
+originalWindowVm.PaymentContext = financialContext;
+Check(originalWindow.SearchOriginalSales("receipt-1"),
+    "fresh authorized cashier context can search again");
 originalWindowVm.IsRightToLeft = true;
 Check(originalWindow.FlowDirection == System.Windows.FlowDirection.RightToLeft ||
     originalWindowVm.LayoutDirection == System.Windows.FlowDirection.RightToLeft,
