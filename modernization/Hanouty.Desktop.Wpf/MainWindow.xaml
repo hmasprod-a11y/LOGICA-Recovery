@@ -100,7 +100,7 @@
                         <Button Content="Select original sale for review" Click="SelectOriginalSale_Click"
                                 MinHeight="40" Margin="0,6,0,6"/>
                         <TextBlock Text="Return quantity (maximum three decimal places)" Margin="0,8,0,3"/>
-                        <TextBox x:Name="ReturnQuantity" MinHeight="36" AutomationProperties.Name="Return quantity"/>
+                        <TextBox x:Name="ReturnQuantity" MinHeight="36" TextChanged="ReturnQuantity_TextChanged" AutomationProperties.Name="Return quantity"/>
                         <Button Content="Review return quantity" Click="ReviewReturnQuantity_Click"
                                 MinHeight="44" Margin="0,6,0,4"/>
                         <Button Content="Confirm return draft (no financial posting)" Click="ConfirmReturnDraft_Click"
