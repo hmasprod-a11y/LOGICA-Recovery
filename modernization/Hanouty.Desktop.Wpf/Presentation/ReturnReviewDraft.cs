@@ -23,7 +23,7 @@ public sealed class ReturnReviewDraft
         Quantity = 0m;
         if (OriginalSaleId is null || !decimal.TryParse(text, System.Globalization.NumberStyles.AllowDecimalPoint,
             System.Globalization.CultureInfo.InvariantCulture, out var amount) || amount <= 0m ||
-            decimal.Round(amount, 3) != amount)
+            (decimal.GetBits(amount)[3] >> 16 & 0xFF) > 3)
         {
             Status = "Invalid return quantity";
             return false;
