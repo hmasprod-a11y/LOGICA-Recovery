@@ -231,6 +231,22 @@ var sessionComposition = new CheckoutComposition(new CompositionCatalogue(),
 var session = sessionComposition.CreateSession();
 Assert(session.Products.Count == 3 && session.ImageProducts.Count == 1,
        "session exposes all products and only image products");
+// WPF must never be able to mutate the photo grid through an IList cast.
+var imageSnapshot = session.ImageProducts;
+Assert(imageSnapshot is System.Collections.Generic.IList<ProductSummary>,
+       "image grid exposes a read-only IList for mutation rejection");
+try
+{
+    ((System.Collections.Generic.IList<ProductSummary>)imageSnapshot)[0] =
+        new ProductSummary("forged", "", "Forged", "fake/path.png");
+    throw new Exception("image grid permitted identity mutation");
+}
+catch (NotSupportedException)
+{
+    Assert(session.ImageProducts.Count == 1 && session.ImageProducts[0].ArticleId == "21",
+           "image grid retains authoritative article identity after mutation attempt");
+}
+
 // Both WPF catalogue views use the same immutable snapshot; tile selection
 // cannot be forged by a stale or fabricated image entry.
 Assert(session.SelectImage(new ProductSummary("21", "", "Forged", "fake/path.png")).Outcome ==
