@@ -34,6 +34,11 @@ foreach ($directory in $packageDirectories) {
 }
 $packageFiles = @(Get-ChildItem -LiteralPath $ExtractedDirectory -File -Recurse -Force | Sort-Object FullName)
 if ($packageFiles.Count -lt 4) { throw 'Extracted WPF package has an incomplete payload.' }
+foreach ($item in $packageFiles) {
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Extracted WPF package contains a linked file: $($item.FullName)"
+    }
+}
 $root = Join-Path ([IO.Path]::GetFullPath($EvidenceDirectory)) 'disposable-mariadb'
 New-Item -ItemType Directory -Path $root -Force | Out-Null
 $archive = 'mariadb-10.11.14-winx64.zip'
@@ -90,9 +95,6 @@ try {
     $packageRoot = [IO.Path]::GetFullPath($ExtractedDirectory).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
     $hashes = @()
     foreach ($item in $packageFiles) {
-        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-            throw "Extracted WPF package contains a linked file: $($item.FullName)"
-        }
         $relative = $item.FullName.Substring($packageRoot.Length).Replace('\', '/')
         $hashes += [ordered]@{
             file = $relative
