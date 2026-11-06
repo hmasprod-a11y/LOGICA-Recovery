@@ -1140,6 +1140,13 @@ var persistedRow = (OriginalSaleCandidate)originalWindow.OriginalSaleResults.Ite
 originalWindow.OriginalSaleResults.SelectedItem = persistedRow;
 Check(originalWindow.SelectOriginalSale(persistedRow),
     "persisted original-sale row is selectable for read-only review");
+modalPinField.SetValue(originalWindow, true);
+Check(!originalWindow.SelectOriginalSale(persistedRow) &&
+    originalWindow.OriginalSaleResults.Items.Count == 1,
+    "PIN modal denies original-sale selection without discarding trusted receipt evidence");
+modalPinField.SetValue(originalWindow, false);
+Check(originalWindow.SelectOriginalSale(persistedRow),
+    "after PIN modal closes the same persisted evidence can be reviewed");
 // Actual WPF TextChanged must invalidate the previous receipt evidence.
 originalWindow.OriginalSaleSearch.Text = "different-receipt";
 Check(originalWindow.OriginalSaleResults.Items.Count == 0 &&
