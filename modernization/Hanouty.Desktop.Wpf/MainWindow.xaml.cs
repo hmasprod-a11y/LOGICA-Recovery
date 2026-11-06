@@ -26,9 +26,14 @@ public partial class MainWindow : Window
     {
         if (e.PropertyName is not (nameof(CatalogueViewModel.FinancialSessionActive) or
             nameof(CatalogueViewModel.CheckoutUncertain) or nameof(CatalogueViewModel.PaymentContext))) return;
-        if (DataContext is not CatalogueViewModel vm ||
-            (vm.FinancialSessionActive && !vm.CheckoutUncertain && vm.PendingOperationId is null &&
-             vm.PaymentContext is not null)) return;
+        if (DataContext is not CatalogueViewModel vm) return;
+        // A valid-looking replacement cashier context is not the context that
+        // authorized these receipt results. Invalidate on every identity change,
+        // including cashier A -> cashier B without an intermediate null.
+        if (vm.FinancialSessionActive && !vm.CheckoutUncertain &&
+            vm.PendingOperationId is null && vm.PaymentContext is not null &&
+            (_originalSaleLookupContext is null ||
+             ReferenceEquals(vm.PaymentContext, _originalSaleLookupContext))) return;
         _originalSaleSelection?.Clear();
         _originalSaleLookupContext = null;
         _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
