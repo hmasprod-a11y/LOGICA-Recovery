@@ -19,6 +19,21 @@ public partial class MainWindow : Window
     private OriginalSaleSelection? _originalSaleSelection;
     private IReadOnlyList<OriginalSaleCandidate> _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
     private bool _originalSaleLookupBusy;
+    // A reviewed original-sale reference is only valid within its cashier context.
+    // VM state transitions can originate from Host reconciliation, not just clicks.
+    private void InvalidateOriginalSaleOnSessionChange(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is not (nameof(CatalogueViewModel.FinancialSessionActive) or
+            nameof(CatalogueViewModel.CheckoutUncertain) or nameof(CatalogueViewModel.PaymentContext))) return;
+        if (DataContext is not CatalogueViewModel vm ||
+            (vm.FinancialSessionActive && !vm.CheckoutUncertain && vm.PendingOperationId is null &&
+             vm.PaymentContext is not null)) return;
+        _originalSaleSelection?.Clear();
+        _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
+        OriginalSaleResults.ItemsSource = null;
+        OriginalSaleStatus.Text = "Cashier context changed — search again";
+    }
+
     public void ConfigureOriginalSaleLookup(IOriginalSaleLookup lookup)
     {
         ArgumentNullException.ThrowIfNull(lookup);
@@ -335,5 +350,6 @@ public partial class MainWindow : Window
             // the Host to authorize a new cashier session explicitly.
             FinancialSessionActive = !requireFreshPaymentContext || paymentContext is not null
         };
+        ((CatalogueViewModel)DataContext).PropertyChanged += InvalidateOriginalSaleOnSessionChange;
     }
 }
