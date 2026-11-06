@@ -93,6 +93,12 @@ try {
     # Disposable-only permission must not leak into subsequent checks.
     $env:HANOUTY_W1_DISPOSABLE_MARKER = 'I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY'
     $evidence = Join-Path ([IO.Path]::GetFullPath($EvidenceDirectory)) 'wpf-extracted-runtime'
+    # Never accept an acceptance report left by an earlier run. A failed or
+    # prematurely exited bootstrap must produce fresh evidence to pass this gate.
+    $acceptancePath = Join-Path $evidence 'acceptance.json'
+    if (Test-Path -LiteralPath $acceptancePath) {
+        Remove-Item -LiteralPath $acceptancePath -Force -ErrorAction Stop
+    }
     & (Join-Path $PSScriptRoot 'test-w1-bootstrap.ps1') -MariaDbBin $bin -HostExe $exe -EvidenceDirectory $evidence
     if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { throw 'Extracted WPF host failed runtime verification.' }
     $report = Get-Content -LiteralPath (Join-Path $evidence 'acceptance.json') -Raw | ConvertFrom-Json
