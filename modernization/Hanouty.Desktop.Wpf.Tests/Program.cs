@@ -1291,6 +1291,19 @@ originalLookup.Duplicate = true;
 try { originalSelection.Search("receipt-1"); throw new Exception("duplicate sale ID accepted"); }
 catch (InvalidOperationException) { }
 
+var returnDraft = new ReturnReviewDraft();
+Check(!returnDraft.SetQuantity("1") && !returnDraft.Confirm(true, false),
+    "return requires persisted original sale");
+returnDraft.SetOriginalSale("sale-verified");
+Check(!returnDraft.SetQuantity("0") && !returnDraft.SetQuantity("-1") &&
+    !returnDraft.SetQuantity("1.0001") && returnDraft.SetQuantity("1.250"),
+    "return quantity requires positive, bounded precision");
+Check(!returnDraft.Confirm(false, false) && !returnDraft.Confirm(true, true) &&
+    returnDraft.Confirm(true, false), "return confirmation requires active cashier and no Unknown");
+returnDraft.Invalidate("Cashier changed");
+Check(!returnDraft.Confirmed && returnDraft.OriginalSaleId is null &&
+    returnDraft.Quantity == 0m, "cashier transition revokes confirmed return draft");
+
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
