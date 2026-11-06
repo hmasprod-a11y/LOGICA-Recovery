@@ -94,7 +94,10 @@ public partial class MainWindow : Window
 
     public bool SelectOriginalSale(OriginalSaleCandidate candidate)
     {
-        if (_originalSaleLookupBusy || _originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
+        // Modal dialogs pump the dispatcher; a nested selection must not alter
+        // the receipt evidence during PIN, login, logout or durable review.
+        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
+            _originalSaleLookupBusy || _originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
             !vm.FinancialSessionActive || vm.PaymentContext is null || vm.CheckoutBusy || vm.CheckoutUncertain ||
             vm.PendingOperationId is not null || _originalSaleLookupContext is null ||
             !ReferenceEquals(vm.PaymentContext, _originalSaleLookupContext)) return false;
