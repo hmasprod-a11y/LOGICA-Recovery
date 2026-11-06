@@ -21,7 +21,11 @@ public sealed class ReturnReviewDraft
     {
         Confirmed = false;
         Quantity = 0m;
-        if (OriginalSaleId is null || !decimal.TryParse(text, System.Globalization.NumberStyles.AllowDecimalPoint,
+        // Moroccan French/Arabic keyboards commonly enter comma decimals. Accept
+        // exactly one decimal separator without accepting grouping or mixed syntax.
+        var normalized = text?.Trim().Replace(',', '.');
+        if (OriginalSaleId is null || string.IsNullOrEmpty(normalized) ||
+            !decimal.TryParse(normalized, System.Globalization.NumberStyles.AllowDecimalPoint,
             System.Globalization.CultureInfo.InvariantCulture, out var amount) || amount <= 0m ||
             (decimal.GetBits(amount)[3] >> 16 & 0xFF) > 3)
         {
