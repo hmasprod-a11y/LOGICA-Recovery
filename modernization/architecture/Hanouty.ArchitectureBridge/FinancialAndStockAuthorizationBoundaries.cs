@@ -63,6 +63,12 @@ public static class ManualStockAuthorizationBoundary
             if (actor is null || string.IsNullOrWhiteSpace(actor.SessionId) ||
                 string.IsNullOrWhiteSpace(actor.ActorId) || !permissions.CanAdjustStock(actor))
                 throw new UnauthorizedAccessException("Verified manual stock adjustment permission required.");
+            // The authenticated session may change while the durable permission
+            // lookup runs. Never return an actor whose session has since ended
+            // or switched to another cashier.
+            var current = actors.CurrentVerifiedActor();
+            if (current is null || current != actor)
+                throw new UnauthorizedAccessException("Manual stock actor session changed during authorization.");
             return actor;
         }
         catch (UnauthorizedAccessException) { throw; }
