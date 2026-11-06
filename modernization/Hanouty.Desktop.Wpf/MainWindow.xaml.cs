@@ -51,13 +51,14 @@ public partial class MainWindow : Window
 
     public bool SearchOriginalSales(string receipt)
     {
-        if (_originalSaleLookupBusy) return false;
+        if (_originalSaleLookupBusy || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen) return false;
         OriginalSaleResults.ItemsSource = null;
         _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
         _originalSaleSelection?.Clear();
         _originalSaleLookupContext = null;
         OriginalSaleStatus.Text = "No original sale selected — refunds unavailable";
-        if (_originalSaleLookupBusy || _originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
+        if (_originalSaleLookupBusy || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
+            _originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
             !vm.FinancialSessionActive || vm.PaymentContext is null || vm.CheckoutBusy || vm.CheckoutUncertain ||
             vm.PendingOperationId is not null) return false;
         _originalSaleLookupBusy = true;
@@ -68,7 +69,8 @@ public partial class MainWindow : Window
             var results = _originalSaleSelection.Search(receipt);
             // A Host lookup may pump the dispatcher, revoke the session, or
             // initiate Unknown. Never publish rows obtained under stale authority.
-            if (queryRevision != _originalSaleQueryRevision || !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
+            if (queryRevision != _originalSaleQueryRevision || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
+                !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
                 vm.PendingOperationId is not null || !ReferenceEquals(vm.PaymentContext, context))
             {
                 _originalSaleSelection.Clear();
