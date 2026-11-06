@@ -1133,6 +1133,13 @@ Check(originalWindow.OriginalSaleResults.Items.Count == 0 &&
 originalWindowVm.PaymentContext = financialContext;
 Check(originalWindow.SearchOriginalSales("receipt-1"),
     "fresh authorized cashier context can search again");
+var replacedContext = new CashierPaymentContext("cashier-2", "register-2", "MAD", "Cash", 100m);
+originalWindowVm.PaymentContext = replacedContext;
+Check(originalWindow.OriginalSaleResults.Items.Count == 0 &&
+    !originalWindow.SelectOriginalSale(persistedRow),
+    "direct valid cashier replacement invalidates persisted original receipt rows");
+Check(originalWindow.SearchOriginalSales("receipt-1"),
+    "new cashier must explicitly query authoritative Host again");
 originalWindowVm.IsRightToLeft = true;
 Check(originalWindow.FlowDirection == System.Windows.FlowDirection.RightToLeft ||
     originalWindowVm.LayoutDirection == System.Windows.FlowDirection.RightToLeft,
