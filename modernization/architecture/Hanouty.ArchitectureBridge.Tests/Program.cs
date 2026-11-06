@@ -262,6 +262,8 @@ var session = sessionComposition.CreateSession();
 Assert(session.Products.Count == 3 && session.ImageProducts.Count == 1,
        "session exposes all products and only image products");
 var sessionImages = session.ImageProducts;
+Assert(ReferenceEquals(sessionImages, session.ImageProducts),
+       "image grid uses the same immutable snapshot throughout one catalogue generation");
 Assert(sessionImages is IList<ProductSummary>, "session image catalogue has a guarded list surface");
 try
 {
@@ -302,6 +304,9 @@ try {
 }
 catch (NotSupportedException) { Assert(true, "catalogue snapshot rejects mutation"); }
 session.RefreshCatalogue();
+Assert(!ReferenceEquals(sessionImages, session.ImageProducts) &&
+       ReferenceEquals(session.ImageProducts, session.ImageProducts),
+       "explicit catalogue refresh replaces image snapshot atomically");
 Assert(session.Products.Count == 3 && session.ImageProducts.Count == 1,
        "explicit catalogue refresh preserves list/photo membership");
 Assert(session.Scan("123", 2).Article?.ArticleId == "12" &&
