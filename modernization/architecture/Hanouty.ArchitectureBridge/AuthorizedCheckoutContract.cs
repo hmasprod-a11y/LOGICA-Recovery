@@ -18,7 +18,8 @@ public sealed record AuthorizedCheckoutRequest(
     bool IsReturn,
     IReadOnlyList<CheckoutBatchLine> Lines,
     IReadOnlyList<CheckoutPayment> Payments,
-    decimal ExpectedTotal)
+    decimal ExpectedTotal,
+    string? OriginalTicketId = null)
 {
     public void Validate()
     {
@@ -38,6 +39,10 @@ public sealed record AuthorizedCheckoutRequest(
             throw new ArgumentException("At least one positive supported payment is required.", nameof(Payments));
         if (IsReturn && Payments.Any(x => x.Kind == CheckoutPaymentKind.Credit))
             throw new ArgumentException("Credit settlement on returns requires explicit Checkout policy.", nameof(Payments));
+        if (IsReturn && string.IsNullOrWhiteSpace(OriginalTicketId))
+            throw new ArgumentException("A durable original ticket reference is required for returns.", nameof(OriginalTicketId));
+        if (!IsReturn && OriginalTicketId is not null)
+            throw new ArgumentException("An original ticket reference is only valid for returns.", nameof(OriginalTicketId));
         if (ExpectedTotal <= 0)
             throw new ArgumentOutOfRangeException(nameof(ExpectedTotal));
         // Never compare totals here: legacy checkout owns rounding, discounts,
