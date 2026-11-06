@@ -39,6 +39,12 @@ foreach ($item in $packageFiles) {
         throw "Extracted WPF package contains a linked file: $($item.FullName)"
     }
 }
+# Snapshot every payload hash BEFORE any executable is launched. A package that
+# changes during the runtime gate must not receive a valid provenance manifest.
+$preExecutionHashes = @{}
+foreach ($item in $packageFiles) {
+    $preExecutionHashes[$item.FullName] = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+}
 $root = Join-Path ([IO.Path]::GetFullPath($EvidenceDirectory)) 'disposable-mariadb'
 New-Item -ItemType Directory -Path $root -Force | Out-Null
 $archive = 'mariadb-10.11.14-winx64.zip'
@@ -96,9 +102,16 @@ try {
     $hashes = @()
     foreach ($item in $packageFiles) {
         $relative = $item.FullName.Substring($packageRoot.Length).Replace('\', '/')
+        if (-not (Test-Path -LiteralPath $item.FullName -PathType Leaf)) {
+            throw "Extracted WPF payload disappeared during runtime verification: $relative"
+        }
+        $currentHash = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($currentHash -cne $preExecutionHashes[$item.FullName]) {
+            throw "Extracted WPF payload changed during runtime verification: $relative"
+        }
         $hashes += [ordered]@{
             file = $relative
-            sha256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            sha256 = $currentHash
             bytes = $item.Length
         }
     }
