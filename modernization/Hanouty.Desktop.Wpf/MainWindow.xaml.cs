@@ -197,6 +197,8 @@ public partial class MainWindow : Window
         try
         {
             if (!_endFinancialSession()) return false;
+            _returnDraft.Invalidate("Cashier session ended — return draft revoked");
+            ReturnDraftStatus.Text = _returnDraft.Status;
             _originalSaleSelection?.Clear();
             _originalSaleLookupContext = null;
             OriginalSaleResults.ItemsSource = null;
