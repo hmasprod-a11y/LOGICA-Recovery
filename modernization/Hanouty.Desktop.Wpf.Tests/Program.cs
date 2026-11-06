@@ -1300,6 +1300,10 @@ Check(!returnDraft.SetQuantity("0") && !returnDraft.SetQuantity("-1") &&
     "return quantity requires positive, bounded precision");
 Check(!returnDraft.Confirm(false, false) && !returnDraft.Confirm(true, true) &&
     returnDraft.Confirm(true, false), "return confirmation requires active cashier and no Unknown");
+returnDraft.ClearQuantity("Quantity edited");
+Check(!returnDraft.Confirmed && returnDraft.Quantity == 0m &&
+    !returnDraft.Confirm(true, false) && returnDraft.OriginalSaleId == "sale-verified",
+    "editing confirmed quantity revokes amount without forging a new original sale");
 returnDraft.Invalidate("Cashier changed");
 Check(!returnDraft.Confirmed && returnDraft.OriginalSaleId is null &&
     returnDraft.Quantity == 0m, "cashier transition revokes confirmed return draft");
