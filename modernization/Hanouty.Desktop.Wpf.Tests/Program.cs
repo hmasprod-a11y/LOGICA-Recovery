@@ -1147,6 +1147,24 @@ Check(!originalWindow.SelectOriginalSale(persistedRow) &&
 modalPinField.SetValue(originalWindow, false);
 Check(originalWindow.SelectOriginalSale(persistedRow),
     "after PIN modal closes the same persisted evidence can be reviewed");
+// WPF modal dispatcher reentrancy: cashier entry, durable review and logout
+// must also refuse the same persisted row without silently clearing evidence.
+foreach (var modalFieldName in new[] { "_cashierEntryOpen", "_reviewOpen", "_logoutOpen" })
+{
+    var modalField = typeof(Hanouty.Desktop.Wpf.MainWindow).GetField(modalFieldName,
+        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+    modalField.SetValue(originalWindow, true);
+    try
+    {
+        Check(!originalWindow.SelectOriginalSale(persistedRow) &&
+            originalWindow.OriginalSaleResults.Items.Count == 1,
+            "financial modal boundary must block original-sale selection: " + modalFieldName);
+    }
+    finally { modalField.SetValue(originalWindow, false); }
+    Check(originalWindow.SelectOriginalSale(persistedRow),
+        "receipt selection resumes only after modal exits: " + modalFieldName);
+}
+
 // Actual WPF TextChanged must invalidate the previous receipt evidence.
 originalWindow.OriginalSaleSearch.Text = "different-receipt";
 Check(originalWindow.OriginalSaleResults.Items.Count == 0 &&
