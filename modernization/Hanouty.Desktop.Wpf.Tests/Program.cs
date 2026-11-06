@@ -1126,6 +1126,17 @@ var persistedRow = (OriginalSaleCandidate)originalWindow.OriginalSaleResults.Ite
 originalWindow.OriginalSaleResults.SelectedItem = persistedRow;
 Check(originalWindow.SelectOriginalSale(persistedRow),
     "persisted original-sale row is selectable for read-only review");
+// Actual WPF TextChanged must invalidate the previous receipt evidence.
+originalWindow.OriginalSaleSearch.Text = "different-receipt";
+Check(originalWindow.OriginalSaleResults.Items.Count == 0 &&
+    !originalWindow.SelectOriginalSale(persistedRow),
+    "editing original receipt query invalidates stale Host rows");
+Check(originalWindow.SearchOriginalSales("receipt-1"),
+    "fresh explicit Host lookup restores only newly queried evidence");
+persistedRow = (OriginalSaleCandidate)originalWindow.OriginalSaleResults.Items[0];
+originalWindow.OriginalSaleResults.SelectedItem = persistedRow;
+Check(originalWindow.SelectOriginalSale(persistedRow),
+    "new persisted receipt evidence can be selected after query edit");
 originalWindowVm.PaymentContext = null;
 Check(originalWindow.OriginalSaleResults.Items.Count == 0 &&
     !originalWindow.SelectOriginalSale(persistedRow),
