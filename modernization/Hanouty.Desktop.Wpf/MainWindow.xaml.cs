@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private OriginalSaleSelection? _originalSaleSelection;
     private IReadOnlyList<OriginalSaleCandidate> _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
     private bool _originalSaleLookupBusy;
+    private CashierPaymentContext? _originalSaleLookupContext;
     // A reviewed original-sale reference is only valid within its cashier context.
     // VM state transitions can originate from Host reconciliation, not just clicks.
     private void InvalidateOriginalSaleOnSessionChange(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -29,6 +30,7 @@ public partial class MainWindow : Window
             (vm.FinancialSessionActive && !vm.CheckoutUncertain && vm.PendingOperationId is null &&
              vm.PaymentContext is not null)) return;
         _originalSaleSelection?.Clear();
+        _originalSaleLookupContext = null;
         _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
         OriginalSaleResults.ItemsSource = null;
         OriginalSaleStatus.Text = "Cashier context changed — search again";
@@ -47,25 +49,27 @@ public partial class MainWindow : Window
         OriginalSaleResults.ItemsSource = null;
         _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
         _originalSaleSelection?.Clear();
+        _originalSaleLookupContext = null;
         OriginalSaleStatus.Text = "No original sale selected — refunds unavailable";
         if (_originalSaleLookupBusy || _originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
-            !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
+            !vm.FinancialSessionActive || vm.PaymentContext is null || vm.CheckoutBusy || vm.CheckoutUncertain ||
             vm.PendingOperationId is not null) return false;
         _originalSaleLookupBusy = true;
         try
         {
-            var cashier = vm.PaymentContext?.CashierId;
+            var context = vm.PaymentContext;
             var results = _originalSaleSelection.Search(receipt);
             // A Host lookup may pump the dispatcher, revoke the session, or
             // initiate Unknown. Never publish rows obtained under stale authority.
             if (!vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
-                vm.PendingOperationId is not null || vm.PaymentContext?.CashierId != cashier)
+                vm.PendingOperationId is not null || !ReferenceEquals(vm.PaymentContext, context))
             {
                 _originalSaleSelection.Clear();
                 OriginalSaleStatus.Text = "Cashier context changed — search again";
                 return false;
             }
             _originalSaleResults = results;
+            _originalSaleLookupContext = context;
             OriginalSaleResults.ItemsSource = _originalSaleResults;
             OriginalSaleStatus.Text = _originalSaleResults.Count == 0 ? "No persisted sale found" :
                 "Select a persisted sale for review; refund posting is not enabled";
@@ -82,8 +86,9 @@ public partial class MainWindow : Window
     public bool SelectOriginalSale(OriginalSaleCandidate candidate)
     {
         if (_originalSaleLookupBusy || _originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
-            !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
-            vm.PendingOperationId is not null) return false;
+            !vm.FinancialSessionActive || vm.PaymentContext is null || vm.CheckoutBusy || vm.CheckoutUncertain ||
+            vm.PendingOperationId is not null || _originalSaleLookupContext is null ||
+            !ReferenceEquals(vm.PaymentContext, _originalSaleLookupContext)) return false;
         // The candidate must still belong to the current, visible Host snapshot.
         // A stale selection event after a new search cannot authorize a return.
         if (!ReferenceEquals(OriginalSaleResults.ItemsSource, _originalSaleResults) ||
@@ -126,6 +131,7 @@ public partial class MainWindow : Window
         {
             if (!_endFinancialSession()) return false;
             _originalSaleSelection?.Clear();
+            _originalSaleLookupContext = null;
             OriginalSaleResults.ItemsSource = null;
             _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
             OriginalSaleStatus.Text = "No original sale selected — refunds unavailable";
