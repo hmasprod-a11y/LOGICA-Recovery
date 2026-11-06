@@ -1150,6 +1150,26 @@ Check(!reentrantWindow.SearchOriginalSales("receipt-1") && nestedBlocked &&
     "reentrant Host read must not expose stale original sale after logout");
 reentrantWindow.Close();
 
+// A Host reader pumping the dispatcher cannot switch cashier context while its
+// persisted-sale result is still in flight. No extra Host/logout authority is minted.
+var lockedWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+    new RecordingSelection(), new RecordingSubmission(), financialContext,
+    requireFreshPaymentContext: true);
+var lockedVm = (CatalogueViewModel)lockedWindow.DataContext;
+var logoutCallsDuringLookup = 0;
+lockedWindow.ConfigureCashierEntry((_, _, _) => true, () => 0m,
+    () => { logoutCallsDuringLookup++; return true; });
+var deniedDuringLookup = false;
+lockedWindow.ConfigureOriginalSaleLookup(new CallbackOriginalSaleLookup(() =>
+{
+    deniedDuringLookup = !lockedWindow.EndFinancialSession() &&
+        !lockedWindow.SelectOriginalSale(new OriginalSaleCandidate("sale-1", "receipt-1", 10m));
+}));
+Check(lockedWindow.SearchOriginalSales("receipt-1") && deniedDuringLookup &&
+    logoutCallsDuringLookup == 0 && lockedVm.FinancialSessionActive,
+    "reentrant original-sale reader cannot logout or select during in-flight lookup");
+lockedWindow.Close();
+
 // Read-only original sale selection: authoritative Host lookup only, no financial
 // command, duplicate persisted IDs fail closed and stale candidates cannot be reused.
 var originalLookup = new OriginalSaleLookupFixture();
