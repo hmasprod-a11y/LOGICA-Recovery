@@ -105,6 +105,17 @@ public partial class MainWindow : Window
         return accepted;
     }
 
+    private void OriginalSaleSearch_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        // A previously returned receipt is no longer evidence for the edited
+        // query. Do not leave a selectable row from a different receipt visible.
+        _originalSaleSelection?.Clear();
+        _originalSaleLookupContext = null;
+        _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
+        OriginalSaleResults.ItemsSource = null;
+        OriginalSaleStatus.Text = "Receipt query changed — search persisted sales again";
+    }
+
     private void SearchOriginalSales_Click(object sender, RoutedEventArgs e) =>
         SearchOriginalSales(OriginalSaleSearch.Text);
     private void SelectOriginalSale_Click(object sender, RoutedEventArgs e)
