@@ -113,6 +113,10 @@
                                    TextWrapping="Wrap" AutomationProperties.Name="Original sale review status"/>
                     </StackPanel>
                 </GroupBox>
+                <Button Content="Read trusted basket total" Click="RefreshTrustedBasketTotal_Click"
+                        MinHeight="44" Margin="0,8,0,4" AutomationProperties.Name="Read trusted basket total"/>
+                <TextBlock x:Name="TrustedBasketTotal" Text="Trusted basket total unavailable"
+                           TextWrapping="Wrap" AutomationProperties.Name="Trusted basket total MAD"/>
                 <TextBlock Text="Authorized cashier / payment context" FontWeight="SemiBold" Margin="0,16,0,4"/>
                 <Button Content="Enter cashier / register / cash tender" Click="CashierEntry_Click" MinHeight="44" Padding="12,8" Margin="0,8,0,8" AutomationProperties.Name="Enter cashier and fresh cash tender"/>
                 <Button Content="End cashier session" Click="EndFinancialSession_Click" MinHeight="40"
