@@ -777,6 +777,49 @@ namespace LOGICA.Infrastructure.Checkout
                 }
             }
             finally { System.Globalization.CultureInfo.CurrentCulture = previousCulture; }
+            // Real return path: same posting port, existing signed V1 writers,
+            // persisted original sale, durable unique consumption, one InnoDB transaction.
+            Sql("CREATE TABLE IF NOT EXISTS hanouty_cash_return_consumption (original_ticket_id VARCHAR(64) NOT NULL,return_operation_id VARCHAR(64) NOT NULL,consumed_quantity DECIMAL(16,3) NOT NULL,UNIQUE KEY uq_original (original_ticket_id),UNIQUE KEY uq_return (return_operation_id)) ENGINE=InnoDB");
+            var refund = new Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest(
+                "refund-fr", "O'Neil", "MAD", true,
+                new[] { new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2) },
+                new[] { new Hanouty.ArchitectureBridge.CheckoutPayment(Hanouty.ArchitectureBridge.CheckoutPaymentKind.Cash, 10.50m) },
+                10.50m, "trusted-fr-FR");
+            Sql("UPDATE TABLE_ARTICLES SET PRIX_V_1=99 WHERE ID_ARTICLE='CSharp-Stock'");
+            decimal stockBeforeRefund = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            correct.Commit(refund);
+            Require(journal.IsPersisted("refund-fr") &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 2m &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-fr-FR' AND return_operation_id='refund-fr' AND consumed_quantity=2") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='refund-fr' AND Total_NET=-10.50 AND OPERATION='RETOUR REMBOURSEMENT'") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='refund-fr' AND MONTANT=-10.50 AND MODE_P='ESPECES'") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='refund-fr' AND Qté=-2 AND Total_NET=-10.50") == 1,
+                "Real cash return did not atomically persist signed header, payment, journal, stock and consumption.");
+            correct.Commit(refund); // identical operation ID must be exactly once.
+            Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 2m,
+                "Duplicate refund operation changed stock.");
+            var secondRefund = refund with { OperationId = "refund-different" };
+            rejected("refund-same-original-new-operation", () => correct.Commit(secondRefund));
+            rejected("refund-over-quantity", () => correct.Commit(refund with { OperationId = "refund-over", Lines = new[] { new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 3) }, OriginalTicketId = "trusted-en-US" }));
+            rejected("refund-missing-original", () => correct.Commit(refund with { OperationId = "refund-missing", OriginalTicketId = "missing-ticket" }));
+            Require(!journal.IsPersisted("refund-different") && !journal.IsPersisted("refund-over") &&
+                !journal.IsPersisted("refund-missing"), "Rejected refund left durable operation claim.");
+            Sql("CREATE TRIGGER refund_payment_failure AFTER INSERT ON TABLE_VENTES_REGLEMENTS FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='refund-payment-rollback'");
+            bool refundFailed = false;
+            try { correct.Commit(refund with { OperationId = "refund-rollback", OriginalTicketId = "trusted-en-US" }); }
+            catch (MySqlException ex) when (ex.Number == 1644) { refundFailed = true; }
+            finally { Sql("DROP TRIGGER refund_payment_failure"); }
+            Require(refundFailed && !journal.IsPersisted("refund-rollback") &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-en-US'") == 0 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 2m &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='refund-rollback'") == 0 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='refund-rollback'") == 0,
+                "Injected refund payment failure did not roll back claim, stock and receipt.");
+            correct.Commit(refund with { OperationId = "refund-restart", OriginalTicketId = "trusted-en-US" });
+            Require(journal.IsPersisted("refund-restart") &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 4m,
+                "Refund after failed transaction did not recover correctly.");
+            Console.WriteLine("PASS real full-ticket cash refund, signed SQL, stock restoration, durable exact-once, duplicate, missing, over-return, rollback and restart.");
             // A nontransactional ledger must be rejected BEFORE a durable claim,
             // and must never be reported Persisted by the production journal.
             Sql("ALTER TABLE hanouty_checkout_operations ENGINE=MyISAM");
