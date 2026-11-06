@@ -99,6 +99,16 @@ try {
     # Record every extracted payload file, not only the bootstrap assembly.
     # A dependency DLL must not be replaceable without changing the manifest.
     $packageRoot = [IO.Path]::GetFullPath($ExtractedDirectory).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    $postExecutionFiles = @(Get-ChildItem -LiteralPath $ExtractedDirectory -File -Recurse -Force)
+    if ($postExecutionFiles.Count -ne $packageFiles.Count) {
+        throw 'Extracted WPF payload file count changed during runtime verification.'
+    }
+    foreach ($postItem in $postExecutionFiles) {
+        if (-not $preExecutionHashes.ContainsKey($postItem.FullName) -or
+            ($postItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Extracted WPF payload file added or linked during runtime verification: $($postItem.FullName)"
+        }
+    }
     $hashes = @()
     foreach ($item in $packageFiles) {
         $relative = $item.FullName.Substring($packageRoot.Length).Replace('\', '/')
