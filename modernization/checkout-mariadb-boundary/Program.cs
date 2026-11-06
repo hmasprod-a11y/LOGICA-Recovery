@@ -798,6 +798,14 @@ namespace LOGICA.Infrastructure.Checkout
             correct.Commit(refund); // identical operation ID must be exactly once.
             Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 2m,
                 "Duplicate refund operation changed stock.");
+            // Rebase the rejection snapshot after the intentionally committed refund.
+            // Otherwise a correct rejected return is compared to pre-refund sale totals.
+            headers = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE");
+            payments = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS");
+            stock = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            detailCount = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL");
+            movementCount = Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK");
+            sequenceValue = Scalar("SELECT CL FROM TABLE_NUM");
             var secondRefund = refund with { OperationId = "refund-different" };
             rejected("refund-same-original-new-operation", () => correct.Commit(secondRefund));
             rejected("refund-over-quantity", () => correct.Commit(refund with { OperationId = "refund-over", Lines = new[] { new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 3) }, OriginalTicketId = "trusted-en-US" }));
