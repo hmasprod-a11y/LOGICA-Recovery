@@ -154,6 +154,13 @@ internal static class StockAdjustmentMariaDbSmoke {
                     Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m,"Authorized stock not persisted");
                     Require(Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,"Authorized movement audit missing");
                     Require(Number(db,"SELECT QUANTITE FROM TABLE_MOUVEMENTS_STOCK")==2m,"Incorrect audited movement delta");
+                    // Audit date/time must be sourced from MariaDB UTC clock,
+                    // consistent with the persisted session/grant expiry checks.
+                    Require(Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE " +
+                        "DATES BETWEEN DATE_SUB(UTC_TIMESTAMP(),INTERVAL 2 MINUTE) AND " +
+                        "DATE_ADD(UTC_TIMESTAMP(),INTERVAL 2 MINUTE) AND " +
+                        "HEURE=DATE_FORMAT(DATES,'%H:%i:%s')")==1m,
+                        "Stock audit timestamp differs from MariaDB UTC clock");
                     // Audit must retain the actual before/after quantities and
                     // verified actor, not merely the delta or a generic label.
                     using(var auditCmd=new MySqlCommand(
