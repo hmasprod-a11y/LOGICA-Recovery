@@ -2,6 +2,36 @@
 -- Requires hanouty_cash_return_consumption DDL from
 -- recovered-source/LOGICA/Infrastructure/Checkout/hanouty_checkout_operations.disposable.sql
 -- Exercises durable original identity, repeat, rollback and restart semantics.
+-- The production guard requires two independent, non-prefix UNIQUE indexes.
+-- This assertion fails if the disposable schema accidentally uses a composite
+-- index that would allow distinct refund IDs for the same original ticket.
+DELIMITER //
+CREATE PROCEDURE hanouty_assert_return_unique_indexes()
+BEGIN
+    DECLARE original_indexes INT DEFAULT 0;
+    DECLARE operation_indexes INT DEFAULT 0;
+    SELECT COUNT(*) INTO original_indexes FROM (
+        SELECT INDEX_NAME FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='hanouty_cash_return_consumption'
+          AND NON_UNIQUE=0 GROUP BY INDEX_NAME
+        HAVING COUNT(*)=1 AND MAX(COLUMN_NAME)='original_ticket_id'
+          AND MAX(SUB_PART) IS NULL
+    ) AS unique_original;
+    SELECT COUNT(*) INTO operation_indexes FROM (
+        SELECT INDEX_NAME FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='hanouty_cash_return_consumption'
+          AND NON_UNIQUE=0 GROUP BY INDEX_NAME
+        HAVING COUNT(*)=1 AND MAX(COLUMN_NAME)='return_operation_id'
+          AND MAX(SUB_PART) IS NULL
+    ) AS unique_operation;
+    IF original_indexes=0 OR operation_indexes=0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Cash return ledger lacks independent full-column uniqueness';
+    END IF;
+END//
+DELIMITER ;
+CALL hanouty_assert_return_unique_indexes();
+DROP PROCEDURE hanouty_assert_return_unique_indexes();
+
 START TRANSACTION;
 INSERT INTO hanouty_cash_return_consumption
 (original_ticket_id, return_operation_id, consumed_quantity)
