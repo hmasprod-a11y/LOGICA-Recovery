@@ -119,9 +119,23 @@ public partial class MainWindow : Window
         return accepted;
     }
 
+    private void OriginalSaleResults_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        // A highlighted receipt is not the previously reviewed receipt. A row
+        // switch must revoke the draft even without pressing Select again.
+        if (_originalSaleSelection?.Selected is { } selected &&
+            !ReferenceEquals(OriginalSaleResults.SelectedItem, selected))
+        {
+            _originalSaleSelection.Clear();
+            _returnDraft.Invalidate("Original sale selection changed — review again");
+            ReturnDraftStatus.Text = _returnDraft.Status;
+        }
+    }
+
     public bool ReviewReturnQuantity(string quantity)
     {
-        if (_originalSaleSelection?.Selected is null || DataContext is not CatalogueViewModel vm ||
+        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy ||
+            _originalSaleSelection?.Selected is null || DataContext is not CatalogueViewModel vm ||
             !vm.FinancialSessionActive || vm.PaymentContext is null || vm.CheckoutBusy ||
             vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             !ReferenceEquals(vm.PaymentContext, _originalSaleLookupContext))
@@ -137,8 +151,10 @@ public partial class MainWindow : Window
 
     public bool ConfirmReturnDraft()
     {
-        if (DataContext is not CatalogueViewModel vm || _originalSaleSelection?.Selected is null ||
+        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy ||
+            DataContext is not CatalogueViewModel vm || _originalSaleSelection?.Selected is null ||
             _returnDraft.OriginalSaleId != _originalSaleSelection.Selected.SaleId ||
+            !ReferenceEquals(OriginalSaleResults.SelectedItem, _originalSaleSelection.Selected) ||
             !ReferenceEquals(vm.PaymentContext, _originalSaleLookupContext))
         {
             _returnDraft.Invalidate("Return confirmation refused — original sale or session changed");
