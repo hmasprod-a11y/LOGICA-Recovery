@@ -206,6 +206,28 @@ internal static class StockAdjustmentMariaDbSmoke {
                     Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m &&
                         Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,
                         "Disabled or ambiguous configuration changed stock/audit");
+                    // Regression: caller session time zone is not authoritative.
+                    // A real authorized adjustment must record the database UTC
+                    // timestamp even when its connection uses a non-UTC zone.
+                    Sql(db,"SET time_zone = '+09:00'");
+                    object zonePlan=create.Invoke(null,new object[]{
+                        "CI-ARTICLE",12m,13m,"timezone invariant audit","CI-USER"});
+                    using(var zoneTx=db.BeginTransaction()) {
+                        applyAuthorized.Invoke(null,new object[]{
+                            db,zoneTx,zonePlan,provider,"CI-SECRET-SESSION"});
+                        using(var zoneAudit=new MySqlCommand(
+                            "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE " +
+                            "LIBELLE LIKE '%timezone invariant audit%' AND " +
+                            "DATES BETWEEN DATE_SUB(UTC_TIMESTAMP(),INTERVAL 2 MINUTE) " +
+                            "AND DATE_ADD(UTC_TIMESTAMP(),INTERVAL 2 MINUTE)",db,zoneTx))
+                            Require(Convert.ToInt32(zoneAudit.ExecuteScalar(),CultureInfo.InvariantCulture)==1,
+                                "Non-UTC connection shifted persisted movement timestamp");
+                        zoneTx.Rollback();
+                    }
+                    Sql(db,"SET time_zone = '+00:00'");
+                    Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m &&
+                        Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,
+                        "Time-zone regression left stock or audit after rollback");
                     // Caller-owned authorized writes must participate in the
                     // outer transaction: rolling it back removes BOTH stock and
                     // the movement audit, not just one of them.
