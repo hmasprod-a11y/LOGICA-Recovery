@@ -29,6 +29,7 @@ public partial class MainWindow : Window
         if (e.PropertyName is not (nameof(CatalogueViewModel.FinancialSessionActive) or
             nameof(CatalogueViewModel.CheckoutUncertain) or nameof(CatalogueViewModel.PaymentContext))) return;
         if (DataContext is not CatalogueViewModel vm) return;
+        TrustedBasketTotal.Text = "Trusted basket total unavailable";
         // A valid-looking replacement cashier context is not the context that
         // authorized these receipt results. Invalidate on every identity change,
         // including cashier A -> cashier B without an intermediate null.
@@ -200,6 +201,35 @@ public partial class MainWindow : Window
         if (OriginalSaleResults.SelectedItem is OriginalSaleCandidate candidate)
             SelectOriginalSale(candidate);
     }
+
+    // Display-only authoritative basket total: never calculate a price in WPF.
+    // A dispatcher-reentrant Host callback cannot publish an amount from an old
+    // cashier, basket, or unresolved operation.
+    public bool RefreshTrustedBasketTotal()
+    {
+        TrustedBasketTotal.Text = "Trusted basket total unavailable";
+        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
+            _originalSaleLookupBusy || _readTrustedCashTotal is null ||
+            DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
+            vm.PaymentContext is null || vm.CheckoutBusy || vm.CheckoutUncertain ||
+            vm.PendingOperationId is not null) return false;
+        var context = vm.PaymentContext;
+        var basketIdentity = _readBasketIdentity?.Invoke();
+        try
+        {
+            var total = _readTrustedCashTotal();
+            if (total is null || total < 0m ||
+                !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
+                vm.PendingOperationId is not null || !ReferenceEquals(vm.PaymentContext, context) ||
+                _readBasketIdentity?.Invoke() != basketIdentity) return false;
+            TrustedBasketTotal.Text = "Trusted basket total (MAD): " +
+                total.Value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+            return true;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        { return false; }
+    }
+    private void RefreshTrustedBasketTotal_Click(object sender, RoutedEventArgs e) => RefreshTrustedBasketTotal();
 
     public void ConfigureCashierEntry(Func<string, string, decimal, bool> setFinancialContext,
         Func<decimal?> readTrustedCashTotal, Func<bool>? endFinancialSession = null,
