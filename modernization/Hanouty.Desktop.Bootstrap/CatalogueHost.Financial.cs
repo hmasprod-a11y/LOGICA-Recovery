@@ -36,6 +36,7 @@ public sealed partial record CatalogueHost
             frozen.Payments[0] is not { Kind: CheckoutPaymentKind.Cash, Amount: > 0m } ||
             frozen.ExpectedTotal <= 0m ||
             frozen.ExpectedTotal > frozen.Payments[0].Amount ||
+            decimal.Round(frozen.ExpectedTotal, 2) != frozen.ExpectedTotal ||
             decimal.Round(frozen.Payments[0].Amount, 2) != frozen.Payments[0].Amount)
             throw new ArgumentException("Explicit MAD cash context required.", nameof(value));
         return frozen;
