@@ -12,6 +12,8 @@ public partial class MainWindow : Window
     private bool _reviewOpen;
     private bool _logoutOpen;
     private bool _pinOpen;
+    private bool _trustedTotalReadBusy;
+    private long _trustedTotalRevision;
     private Func<string, string, decimal, bool>? _setFinancialContext;
     private Func<decimal?>? _readTrustedCashTotal;
     private Func<bool>? _endFinancialSession;
@@ -30,12 +32,14 @@ public partial class MainWindow : Window
             DataContext is CatalogueViewModel selectionVm &&
             selectionVm.ScanFeedback == "Selection accepted")
         {
+            _trustedTotalRevision++;
             TrustedBasketTotal.Text = "Basket changed — refresh trusted total";
             return;
         }
         if (e.PropertyName is not (nameof(CatalogueViewModel.FinancialSessionActive) or
             nameof(CatalogueViewModel.CheckoutUncertain) or nameof(CatalogueViewModel.PaymentContext))) return;
         if (DataContext is not CatalogueViewModel vm) return;
+        _trustedTotalRevision++;
         TrustedBasketTotal.Text = "Trusted basket total unavailable";
         // A valid-looking replacement cashier context is not the context that
         // authorized these receipt results. Invalidate on every identity change,
@@ -214,18 +218,24 @@ public partial class MainWindow : Window
     // cashier, basket, or unresolved operation.
     public bool RefreshTrustedBasketTotal()
     {
+        // Host callbacks can pump the dispatcher. A nested refresh must not
+        // overwrite the in-flight result or clear the current status.
+        if (_trustedTotalReadBusy) return false;
         TrustedBasketTotal.Text = "Trusted basket total unavailable";
         if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
             _originalSaleLookupBusy || _readTrustedCashTotal is null ||
             DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
             vm.PaymentContext is null || vm.CheckoutBusy || vm.CheckoutUncertain ||
             vm.PendingOperationId is not null) return false;
+        _trustedTotalReadBusy = true;
         var context = vm.PaymentContext;
+        var revision = _trustedTotalRevision;
         try
         {
             var basketIdentity = _readBasketIdentity?.Invoke();
             var total = _readTrustedCashTotal();
-            if (total is null || total < 0m ||
+            if (total is null || total < 0m || decimal.Round(total.Value, 2) != total.Value ||
+                revision != _trustedTotalRevision ||
                 !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
                 vm.PendingOperationId is not null || !ReferenceEquals(vm.PaymentContext, context) ||
                 _readBasketIdentity?.Invoke() != basketIdentity) return false;
@@ -235,6 +245,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         { return false; }
+        finally { _trustedTotalReadBusy = false; }
     }
     private void RefreshTrustedBasketTotal_Click(object sender, RoutedEventArgs e) => RefreshTrustedBasketTotal();
 
