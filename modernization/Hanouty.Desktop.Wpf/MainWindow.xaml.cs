@@ -28,6 +28,14 @@ public partial class MainWindow : Window
     // VM state transitions can originate from Host reconciliation, not just clicks.
     private void InvalidateOriginalSaleOnSessionChange(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        // Any checkout outcome (including Unknown/failed posting) invalidates
+        // the previously displayed quote. Only a new Host read can restore it.
+        if (e.PropertyName == nameof(CatalogueViewModel.CommitFeedback))
+        {
+            _trustedTotalRevision++;
+            TrustedBasketTotal.Text = "Checkout state changed — refresh trusted total after resolution";
+            return;
+        }
         if (e.PropertyName == nameof(CatalogueViewModel.ScanFeedback) &&
             DataContext is CatalogueViewModel selectionVm &&
             selectionVm.ScanFeedback == "Selection accepted")
