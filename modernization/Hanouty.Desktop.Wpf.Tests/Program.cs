@@ -1179,6 +1179,24 @@ Check(!reentrantWindow.SearchOriginalSales("receipt-1") && nestedBlocked &&
     "reentrant Host read must not expose stale original sale after logout");
 reentrantWindow.Close();
 
+// A receipt edit while the authoritative reader is still executing must
+// invalidate that in-flight query, even if the cashier session stays valid.
+var editedDuringReadWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+    new RecordingSelection(), new RecordingSubmission(), financialContext,
+    requireFreshPaymentContext: true);
+editedDuringReadWindow.OriginalSaleSearch.Text = "receipt-1";
+var editedDuringReadHost = new CallbackOriginalSaleLookup(() =>
+    editedDuringReadWindow.OriginalSaleSearch.Text = "receipt-2");
+editedDuringReadWindow.ConfigureOriginalSaleLookup(editedDuringReadHost);
+Check(!editedDuringReadWindow.SearchOriginalSales("receipt-1") &&
+    editedDuringReadHost.Calls == 1 &&
+    editedDuringReadWindow.OriginalSaleResults.Items.Count == 0,
+    "editing receipt during Host read must reject stale result on unchanged cashier session");
+Check(editedDuringReadWindow.SearchOriginalSales("receipt-2") &&
+    editedDuringReadWindow.OriginalSaleResults.Items.Count == 1,
+    "explicit new receipt query can display fresh persisted Host evidence");
+editedDuringReadWindow.Close();
+
 // A Host reader pumping the dispatcher cannot switch cashier context while its
 // persisted-sale result is still in flight. No extra Host/logout authority is minted.
 var lockedWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
