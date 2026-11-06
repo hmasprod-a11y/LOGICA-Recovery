@@ -41,7 +41,7 @@ namespace LOGICA.Infrastructure.Checkout
             if (connection == null || connection.State != ConnectionState.Open ||
                 transaction == null || !ReferenceEquals(transaction.Connection, connection))
                 throw new InvalidOperationException("Trusted preparation requires the active checkout transaction.");
-            if (request.IsReturn || request.Currency != "MAD" || request.Payments.Count != 1 ||
+            if (request.Currency != "MAD" || request.Payments.Count != 1 ||
                 request.Payments[0].Kind != CheckoutPaymentKind.Cash || request.OperationId.Length > 64)
                 throw new NotSupportedException("Only single-tender cash MAD sales are accepted by this preparation.");
 
@@ -79,6 +79,8 @@ namespace LOGICA.Infrastructure.Checkout
             if (occupied.Rows.Count != 0)
                 throw new InvalidOperationException(
                     "Workstation basket is occupied; refusing to replace another cashier's sale.");
+            if (request.IsReturn)
+                return PrepareFullCashReturn(request, connection, transaction, cashier, ticket);
             foreach (var line in request.Lines)
             {
                 var authoritative = Read(connection, transaction,
@@ -202,6 +204,84 @@ namespace LOGICA.Infrastructure.Checkout
                             !payments.Rows.Cast<DataRow>().Any(row => Number(row, "MONTANT") == change))) ||
                         detail.Rows.Count != stock.Count)
                         throw new InvalidOperationException("Persisted receipt staging failed.");
+                },
+                ReadCompletion = () => new CheckoutCompletionRecord { Workstation = workstation, TicketNumber = ticket }
+            };
+        }
+
+        // One-line, full-ticket, exact-cash V1 refund. This runs inside the
+        // SAME operation-claim transaction and posting writers as a cash sale.
+        // Original journal values, never current prices or UI amounts, are authoritative.
+        private CheckoutPostingInput PrepareFullCashReturn(AuthorizedCheckoutRequest request,
+            MySqlConnection connection, MySqlTransaction transaction, string cashier, string ticket)
+        {
+            if (request.Lines.Count != 1 || string.IsNullOrWhiteSpace(request.OriginalTicketId))
+                throw new NotSupportedException("Only one-line full-ticket cash returns are enabled.");
+            var line = request.Lines[0];
+            decimal amount = CashReturnConsumptionClaim.VerifyAndClaimFullOriginal(
+                connection, transaction, request.OriginalTicketId, request.OperationId,
+                line.ArticleId, line.Quantity);
+            if (request.ExpectedTotal != amount || request.Payments[0].Amount != amount)
+                throw new InvalidOperationException("Refund must equal the persisted original exact-cash settlement.");
+            // Require the original article to remain uniquely addressable for stock restoration.
+            var article = Read(connection, transaction,
+                "SELECT ID_ARTICLE FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE",
+                ("@id", line.ArticleId));
+            if (article.Rows.Count != 1)
+                throw new InvalidOperationException("Original return article is no longer uniquely stocked.");
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "INSERT INTO TABLE_" + workstation +
+                    " (ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté,Remise,TOTAL_NET,TAUX_TVA,GROUPE) " +
+                    "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,-Qté,Remise,-Total_NET,TAUX_TVA,GROUPE " +
+                    "FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @original AND BINARY ID_ARTICLE=BINARY @article";
+                command.Parameters.AddWithValue("@original", request.OriginalTicketId);
+                command.Parameters.AddWithValue("@article", line.ArticleId);
+                if (command.ExecuteNonQuery() != 1)
+                    throw new InvalidOperationException("Could not stage the signed original return line.");
+            }
+            var staged = Read(connection, transaction,
+                "SELECT ID_ARTICLE,Code,Article,Qté,TOTAL_NET FROM TABLE_" + workstation + " FOR UPDATE");
+            if (staged.Rows.Count != 1 || Number(staged.Rows[0], "Qté") != -line.Quantity ||
+                Number(staged.Rows[0], "TOTAL_NET") != -amount)
+                throw new InvalidOperationException("Signed return staging differs from the original sale.");
+            var date = DateTime.Now;
+            string id = request.OperationId;
+            string negativeAmount = (-amount).ToString(CultureInfo.CurrentCulture);
+            var context = new TicketPaymentContext { TicketId = id, TicketNumber = ticket,
+                SaleDate = date, Cashier = cashier, ClientId = "0", ClientCode = "0", ClientName = "",
+                Workstation = workstation, Operation = "RETOUR REMBOURSEMENT", Remark = request.OriginalTicketId };
+            return new CheckoutPostingInput
+            {
+                ReadStock = () => new[] { new CheckoutStockLine { TicketNumber = ticket,
+                    ArticleId = line.ArticleId, ArticleCode = staged.Rows[0]["Code"],
+                    ArticleName = staged.Rows[0]["Article"], BasketQuantity = -line.Quantity } },
+                ReadHeader = () => new TicketHeaderRecord { TicketId = id, TicketNumber = ticket,
+                    SaleDate = date, Cashier = cashier, ClientId = "0", ClientCode = "0", ClientName = "",
+                    Workstation = workstation, TotalText = negativeAmount, Operation = "RETOUR REMBOURSEMENT" },
+                ReadJournal = () => new TicketJournalRecord { TicketId = id, TicketNumber = ticket,
+                    SaleDate = date, Cashier = cashier, Seller = "", ClientId = "0", ClientCode = "0",
+                    ClientName = "", Workstation = workstation, Operation = "RETOUR REMBOURSEMENT",
+                    PriceType = "PRIX 1", PaymentModes = "ESPECES" },
+                ReadPayments = () => new[] { new TicketPaymentWrite { Kind = TicketPaymentKind.Cash,
+                    Context = context, AmountText = negativeAmount } },
+                Print = () => {
+                    var receipt = Read(connection, transaction,
+                        "SELECT Total_NET,OPERATION FROM TABLE_VENTES_ENTETE WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
+                    var payment = Read(connection, transaction,
+                        "SELECT MONTANT,OPERATION FROM TABLE_VENTES_REGLEMENTS WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
+                    var detail = Read(connection, transaction,
+                        "SELECT Qté,Total_NET,OPERATION FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
+                    if (receipt.Rows.Count != 1 || payment.Rows.Count != 1 || detail.Rows.Count != 1 ||
+                        Number(receipt.Rows[0], "Total_NET") != -amount ||
+                        Number(payment.Rows[0], "MONTANT") != -amount ||
+                        Number(detail.Rows[0], "Qté") != -line.Quantity ||
+                        Number(detail.Rows[0], "Total_NET") != -amount ||
+                        Convert.ToString(receipt.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT" ||
+                        Convert.ToString(payment.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT" ||
+                        Convert.ToString(detail.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT")
+                        throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
                 },
                 ReadCompletion = () => new CheckoutCompletionRecord { Workstation = workstation, TicketNumber = ticket }
             };
