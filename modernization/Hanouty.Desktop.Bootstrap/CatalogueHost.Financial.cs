@@ -132,7 +132,8 @@ public sealed partial record CatalogueHost
         var result = new CatalogueHost(window, vm, binding.Session);
         string? lastReviewed = null;
         var reviewing = false;
-        bool CanChangeContext() => !reviewing && !vm.CheckoutBusy &&
+        var quoting = false;
+        bool CanChangeContext() => !reviewing && !quoting && !vm.CheckoutBusy &&
             !vm.CheckoutUncertain && vm.PendingOperationId is null &&
             binding.Session.OperationId is null && binding.Session.State == CheckoutCommitState.Ready;
         result.setFinancialContext = next =>
@@ -205,12 +206,22 @@ public sealed partial record CatalogueHost
         decimal? ReadTrustedTotal()
         {
             if (!CanChangeContext()) return null;
-            // Reject a price preview if the basket changed during SQL access.
-            var before = System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines);
-            var total = MariaDbCashCheckoutServices.ReadCashSaleTotal(connections, binding.Session.PendingLines.ToArray());
-            if (!CanChangeContext() || before != System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines))
-                return null;
-            return total;
+            // A SQL preview may pump callbacks: prevent nested quote, logout or
+            // payment-context replacement until the same basket is revalidated.
+            quoting = true;
+            try
+            {
+                var lines = binding.Session.PendingLines.ToArray();
+                var before = System.Text.Json.JsonSerializer.Serialize(lines);
+                var total = MariaDbCashCheckoutServices.ReadCashSaleTotal(connections, lines);
+                if (reviewing || vm.CheckoutBusy || vm.CheckoutUncertain ||
+                    vm.PendingOperationId is not null || binding.Session.OperationId is not null ||
+                    binding.Session.State != CheckoutCommitState.Ready ||
+                    before != System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines))
+                    return null;
+                return total;
+            }
+            finally { quoting = false; }
         }
         window.ConfigureCashierEntry((cashier, register, tender) => {
             if (!CanChangeContext() || register != twoDigitWorkstation ||
