@@ -1256,6 +1256,21 @@ foreach (var modalFieldName in new[] { "_cashierEntryOpen", "_reviewOpen", "_log
         "receipt selection resumes only after modal exits: " + modalFieldName);
 }
 
+// Real STA TextBox event: incomplete quantity input must never inherit a
+// previously reviewed return amount after a keyboard edit.
+originalWindow.ReturnQuantity.Text = "1.";
+Check(!originalWindow.ReviewReturnQuantity(originalWindow.ReturnQuantity.Text) &&
+    !originalWindow.ConfirmReturnDraft(),
+    "unfinished decimal separator must not confirm a return in real WPF window");
+originalWindow.ReturnQuantity.Text = "0,250";
+Check(originalWindow.ReviewReturnQuantity(originalWindow.ReturnQuantity.Text) &&
+    originalWindow.ConfirmReturnDraft(),
+    "Moroccan comma decimal quantity can be reviewed explicitly in STA window");
+originalWindow.ReturnQuantity.Text = "0,2500";
+Check(!originalWindow.ConfirmReturnDraft() &&
+    !originalWindow.ReviewReturnQuantity(originalWindow.ReturnQuantity.Text),
+    "editing reviewed quantity to overprecision revokes confirmation in STA window");
+
 // Actual STA ListBox interaction: changing highlighted receipt invalidates the
 // previously reviewed quantity even before a second Select button click.
 Check(originalWindow.ReviewReturnQuantity("1") && originalWindow.ConfirmReturnDraft(),
@@ -1421,7 +1436,11 @@ returnDraft.SetOriginalSale("sale-verified");
 Check(!returnDraft.SetQuantity("0") && !returnDraft.SetQuantity("-1") &&
     !returnDraft.SetQuantity("1.0001") && !returnDraft.SetQuantity("1.0000") &&
     !returnDraft.SetQuantity("1.2500") && !returnDraft.SetQuantity("1,2.5") &&
-    !returnDraft.SetQuantity("1,2500") && returnDraft.SetQuantity("1,250") &&
+    !returnDraft.SetQuantity("1,2500") && !returnDraft.SetQuantity("1.") &&
+    !returnDraft.SetQuantity("1,") && !returnDraft.SetQuantity(".5") &&
+    !returnDraft.SetQuantity("1 000") && !returnDraft.SetQuantity("1..5") &&
+    !returnDraft.SetQuantity("+1") && returnDraft.SetQuantity("0,250") &&
+    returnDraft.SetQuantity("1,250") &&
     returnDraft.Quantity == 1.250m && returnDraft.SetQuantity("1.250"),
     "return quantity requires positive, bounded precision");
 Check(!returnDraft.Confirm(false, false) && !returnDraft.Confirm(true, true) &&
