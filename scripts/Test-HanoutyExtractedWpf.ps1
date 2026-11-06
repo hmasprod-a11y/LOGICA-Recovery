@@ -105,7 +105,13 @@ try {
     & (Join-Path $PSScriptRoot 'test-w1-bootstrap.ps1') -MariaDbBin $bin -HostExe $exe -EvidenceDirectory $evidence
     if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { throw 'Extracted WPF host failed runtime verification.' }
     $report = Get-Content -LiteralPath (Join-Path $evidence 'acceptance.json') -Raw | ConvertFrom-Json
-    if ($report.W2Accepted -or -not $report.WindowLoaded -or $report.StagedSelections -ne 3) {
+    if ($null -eq $report -or
+        $null -eq $report.PSObject.Properties['W2Accepted'] -or
+        $report.W2Accepted -isnot [bool] -or $report.W2Accepted -ne $false -or
+        $null -eq $report.PSObject.Properties['WindowLoaded'] -or
+        $report.WindowLoaded -isnot [bool] -or $report.WindowLoaded -ne $true -or
+        $null -eq $report.PSObject.Properties['StagedSelections'] -or
+        $report.StagedSelections -isnot [int] -or $report.StagedSelections -ne 3) {
         throw 'Unacceptable extracted WPF runtime evidence.'
     }
     # Persist exact package identity next to the runtime acceptance evidence.
