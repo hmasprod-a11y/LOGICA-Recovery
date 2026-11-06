@@ -4,6 +4,16 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+# Invalidate previous-run evidence BEFORE any network, archive, database or
+# runtime setup. An early setup failure must never leave old success artifacts.
+$evidence = Join-Path ([IO.Path]::GetFullPath($EvidenceDirectory)) 'wpf-extracted-runtime'
+$acceptancePath = Join-Path $evidence 'acceptance.json'
+$provenancePath = Join-Path $evidence 'package-provenance.json'
+foreach ($staleEvidence in @($acceptancePath, $provenancePath)) {
+    if (Test-Path -LiteralPath $staleEvidence) {
+        Remove-Item -LiteralPath $staleEvidence -Force -ErrorAction Stop
+    }
+}
 # Reject directory junctions/symlinks before even resolving required files or reading runtime metadata.
 # A linked directory can hide payload outside the extracted archive; rejecting
 # linked files alone does not cover directory junctions or symbolic links.
@@ -92,18 +102,6 @@ try {
     if (-not $ready) { throw 'Disposable MariaDB failed to become ready.' }
     # Disposable-only permission must not leak into subsequent checks.
     $env:HANOUTY_W1_DISPOSABLE_MARKER = 'I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY'
-    $evidence = Join-Path ([IO.Path]::GetFullPath($EvidenceDirectory)) 'wpf-extracted-runtime'
-    # Never accept an acceptance report left by an earlier run. A failed or
-    # prematurely exited bootstrap must produce fresh evidence to pass this gate.
-    $acceptancePath = Join-Path $evidence 'acceptance.json'
-    # A failed rerun must not leave a previous package-provenance.json looking
-    # like a fresh attestation, even when the current run never reaches hashing.
-    $provenancePath = Join-Path $evidence 'package-provenance.json'
-    foreach ($staleEvidence in @($acceptancePath, $provenancePath)) {
-        if (Test-Path -LiteralPath $staleEvidence) {
-            Remove-Item -LiteralPath $staleEvidence -Force -ErrorAction Stop
-        }
-    }
     & (Join-Path $PSScriptRoot 'test-w1-bootstrap.ps1') -MariaDbBin $bin -HostExe $exe -EvidenceDirectory $evidence
     if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { throw 'Extracted WPF host failed runtime verification.' }
     $report = Get-Content -LiteralPath (Join-Path $evidence 'acceptance.json') -Raw | ConvertFrom-Json
