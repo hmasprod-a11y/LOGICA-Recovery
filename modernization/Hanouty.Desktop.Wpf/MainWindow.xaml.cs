@@ -34,6 +34,16 @@ public partial class MainWindow : Window
         {
             _trustedTotalRevision++;
             TrustedBasketTotal.Text = "Checkout state changed — refresh trusted total after resolution";
+            // A cash checkout outcome invalidates any separately prepared return.
+            // Never allow a previous cashier review to survive a posted sale,
+            // rejected payment or Unknown outcome, even with the same receipt row.
+            _returnDraft.Invalidate("Checkout state changed — review original sale again");
+            ReturnDraftStatus.Text = _returnDraft.Status;
+            _originalSaleSelection?.Clear();
+            _originalSaleLookupContext = null;
+            _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
+            OriginalSaleResults.ItemsSource = null;
+            OriginalSaleStatus.Text = "Checkout state changed — search original sale again";
             return;
         }
         if (e.PropertyName == nameof(CatalogueViewModel.ScanFeedback) &&
