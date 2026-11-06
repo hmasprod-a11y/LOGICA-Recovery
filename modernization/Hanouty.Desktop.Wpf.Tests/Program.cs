@@ -51,6 +51,21 @@ lockedVm.FinancialSessionActive = true;
 lockedVm.SelectCommand.Execute(lockedVm.VisibleProducts[0]);
 Check(lockedSelection.Selected.Count == 1,
     "Host-authorized session enables the existing catalogue selection port");
+// Actual STA MainWindow trusted readback: fail closed without cashier, then
+// show only Host-provided amount and revoke it on logout/context transition.
+int trustedReads = 0;
+lockedWindow.ConfigureCashierEntry((_, _, _) => false,
+    () => { trustedReads++; return 17.25m; }, () => true, () => "basket-a");
+Check(!lockedWindow.RefreshTrustedBasketTotal() && trustedReads == 0,
+    "no trusted basket readback without authenticated payment context");
+lockedVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "Cash", 17.25m);
+Check(lockedWindow.RefreshTrustedBasketTotal() && trustedReads == 1 &&
+    ((System.Windows.Controls.TextBlock)lockedWindow.FindName("TrustedBasketTotal")).Text.Contains("17.25"),
+    "STA window displays Host-authoritative MAD total");
+lockedVm.FinancialSessionActive = false;
+Check(((System.Windows.Controls.TextBlock)lockedWindow.FindName("TrustedBasketTotal")).Text.Contains("unavailable") &&
+    !lockedWindow.RefreshTrustedBasketTotal() && trustedReads == 1,
+    "logout revokes trusted total and blocks another readback");
 lockedWindow.Close();
 var items = new[]
 {
