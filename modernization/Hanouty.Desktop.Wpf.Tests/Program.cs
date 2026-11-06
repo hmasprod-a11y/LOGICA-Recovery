@@ -67,6 +67,33 @@ Check(((System.Windows.Controls.TextBlock)lockedWindow.FindName("TrustedBasketTo
     !lockedWindow.RefreshTrustedBasketTotal() && trustedReads == 1,
     "logout revokes trusted total and blocks another readback");
 lockedWindow.Close();
+// Actual STA window: nested Host callback cannot publish a stale amount.
+var nestedWindow = new Hanouty.Desktop.Wpf.MainWindow(new EmptyCatalogueReader(),
+    new RecordingSelection(), new RecordingSubmission(), null, requireFreshPaymentContext: true);
+var nestedVm = (CatalogueViewModel)nestedWindow.DataContext;
+nestedVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "Cash", 12m);
+int nestedReads = 0;
+bool nestedDenied = false;
+nestedWindow.ConfigureCashierEntry((_, _, _) => false, () => {
+    nestedReads++;
+    nestedDenied = !nestedWindow.RefreshTrustedBasketTotal();
+    return 12m;
+}, () => true, () => "basket-1");
+Check(nestedWindow.RefreshTrustedBasketTotal() && nestedDenied && nestedReads == 1,
+    "nested Host total callback is rejected without duplicate read");
+nestedVm.FinancialSessionActive = false;
+nestedWindow.Close();
+
+var precisionWindow = new Hanouty.Desktop.Wpf.MainWindow(new EmptyCatalogueReader(),
+    new RecordingSelection(), new RecordingSubmission(), null, requireFreshPaymentContext: true);
+var precisionVm = (CatalogueViewModel)precisionWindow.DataContext;
+precisionVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "Cash", 12m);
+precisionWindow.ConfigureCashierEntry((_, _, _) => false, () => 12.345m, () => true, () => "basket-1");
+Check(!precisionWindow.RefreshTrustedBasketTotal() &&
+    ((System.Windows.Controls.TextBlock)precisionWindow.FindName("TrustedBasketTotal")).Text.Contains("unavailable"),
+    "non-cent MAD amount is not rounded into a misleading trusted total");
+precisionWindow.Close();
+
 var items = new[]
 {
     new ProductSummary("1", "Milk", "123", "milk.png"),
