@@ -16,6 +16,7 @@ public partial class MainWindow : Window
     private Func<decimal?>? _readTrustedCashTotal;
     private Func<bool>? _endFinancialSession;
     private Func<string>? _readBasketIdentity;
+    private readonly ReturnReviewDraft _returnDraft = new();
     private OriginalSaleSelection? _originalSaleSelection;
     private IReadOnlyList<OriginalSaleCandidate> _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
     private bool _originalSaleLookupBusy;
@@ -36,6 +37,8 @@ public partial class MainWindow : Window
             (_originalSaleLookupContext is null ||
              ReferenceEquals(vm.PaymentContext, _originalSaleLookupContext))) return;
         _originalSaleSelection?.Clear();
+        _returnDraft.Invalidate("Cashier context changed — return draft revoked");
+        ReturnDraftStatus.Text = _returnDraft.Status;
         _originalSaleLookupContext = null;
         _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
         OriginalSaleResults.ItemsSource = null;
@@ -106,11 +109,49 @@ public partial class MainWindow : Window
         if (!ReferenceEquals(OriginalSaleResults.ItemsSource, _originalSaleResults) ||
             !ReferenceEquals(OriginalSaleResults.SelectedItem, candidate)) return false;
         var accepted = _originalSaleSelection.Select(candidate, _originalSaleResults);
+        _returnDraft.SetOriginalSale(accepted ? candidate.SaleId : null);
+        ReturnDraftStatus.Text = _returnDraft.Status;
         OriginalSaleStatus.Text = accepted ?
             $"Original sale: {candidate.SaleId} — read-only, refund not authorized" :
             "Invalid original-sale selection";
         return accepted;
     }
+
+    public bool ReviewReturnQuantity(string quantity)
+    {
+        if (_originalSaleSelection?.Selected is null || DataContext is not CatalogueViewModel vm ||
+            !vm.FinancialSessionActive || vm.PaymentContext is null || vm.CheckoutBusy ||
+            vm.CheckoutUncertain || vm.PendingOperationId is not null ||
+            !ReferenceEquals(vm.PaymentContext, _originalSaleLookupContext))
+        {
+            _returnDraft.Invalidate("Return quantity refused — cashier or original sale unavailable");
+            ReturnDraftStatus.Text = _returnDraft.Status;
+            return false;
+        }
+        var valid = _returnDraft.SetQuantity(quantity);
+        ReturnDraftStatus.Text = _returnDraft.Status;
+        return valid;
+    }
+
+    public bool ConfirmReturnDraft()
+    {
+        if (DataContext is not CatalogueViewModel vm || _originalSaleSelection?.Selected is null ||
+            _returnDraft.OriginalSaleId != _originalSaleSelection.Selected.SaleId ||
+            !ReferenceEquals(vm.PaymentContext, _originalSaleLookupContext))
+        {
+            _returnDraft.Invalidate("Return confirmation refused — original sale or session changed");
+            ReturnDraftStatus.Text = _returnDraft.Status;
+            return false;
+        }
+        var confirmed = _returnDraft.Confirm(vm.FinancialSessionActive && !vm.CheckoutBusy,
+            vm.CheckoutUncertain || vm.PendingOperationId is not null);
+        ReturnDraftStatus.Text = _returnDraft.Status;
+        return confirmed;
+    }
+
+    private void ReviewReturnQuantity_Click(object sender, RoutedEventArgs e) =>
+        ReviewReturnQuantity(ReturnQuantity.Text);
+    private void ConfirmReturnDraft_Click(object sender, RoutedEventArgs e) => ConfirmReturnDraft();
 
     private void OriginalSaleSearch_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
@@ -118,6 +159,8 @@ public partial class MainWindow : Window
         // query. Do not leave a selectable row from a different receipt visible.
         _originalSaleQueryRevision++;
         _originalSaleSelection?.Clear();
+        _returnDraft.Invalidate("Receipt query changed — return draft revoked");
+        ReturnDraftStatus.Text = _returnDraft.Status;
         _originalSaleLookupContext = null;
         _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
         OriginalSaleResults.ItemsSource = null;
