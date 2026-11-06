@@ -23,7 +23,29 @@ public sealed class ReturnReviewDraft
         Quantity = 0m;
         // Moroccan French/Arabic keyboards commonly enter comma decimals. Accept
         // exactly one decimal separator without accepting grouping or mixed syntax.
-        var normalized = text?.Trim().Replace(',', '.');
+        var raw = text?.Trim();
+        // A trailing separator is an unfinished keyboard edit, not an approved
+        // return amount. Reject incomplete, signed, grouped and mixed formats.
+        // Decimal.TryParse alone accepts some incomplete forms (e.g. "1.").
+        var separatorSeen = false;
+        var digitsAfterSeparator = 0;
+        var validSyntax = !string.IsNullOrEmpty(raw);
+        if (validSyntax)
+        {
+            for (var i = 0; i < raw!.Length; i++)
+            {
+                var c = raw[i];
+                if (c >= '0' && c <= '9')
+                {
+                    if (separatorSeen) digitsAfterSeparator++;
+                }
+                else if ((c == '.' || c == ',') && !separatorSeen && i > 0)
+                    separatorSeen = true;
+                else { validSyntax = false; break; }
+            }
+            if (separatorSeen && digitsAfterSeparator == 0) validSyntax = false;
+        }
+        var normalized = validSyntax ? raw!.Replace(',', '.') : null;
         if (OriginalSaleId is null || string.IsNullOrEmpty(normalized) ||
             !decimal.TryParse(normalized, System.Globalization.NumberStyles.AllowDecimalPoint,
             System.Globalization.CultureInfo.InvariantCulture, out var amount) || amount <= 0m ||
