@@ -1181,6 +1181,20 @@ Check(lockedWindow.SearchOriginalSales("receipt-1") && deniedDuringLookup &&
     "reentrant original-sale reader cannot logout or select during in-flight lookup");
 lockedWindow.Close();
 
+// A reentrant Host callback can replace the payment context with a NEW object
+// carrying the SAME cashier identity. Results belong to the exact authorization,
+// not merely the cashier name, and must be discarded on context rotation.
+var rotatedWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+    new RecordingSelection(), new RecordingSubmission(), financialContext,
+    requireFreshPaymentContext: true);
+var rotatedVm = (CatalogueViewModel)rotatedWindow.DataContext;
+rotatedWindow.ConfigureOriginalSaleLookup(new CallbackOriginalSaleLookup(() =>
+    rotatedVm.PaymentContext = new CashierPaymentContext("cashier-1", "register-1", "MAD", "Cash", 100m)));
+Check(!rotatedWindow.SearchOriginalSales("receipt-1") &&
+    rotatedWindow.OriginalSaleResults.Items.Count == 0,
+    "same cashier but new authorization context must reject stale persisted-sale readback");
+rotatedWindow.Close();
+
 // Read-only original sale selection: authoritative Host lookup only, no financial
 // command, duplicate persisted IDs fail closed and stale candidates cannot be reused.
 var originalLookup = new OriginalSaleLookupFixture();
