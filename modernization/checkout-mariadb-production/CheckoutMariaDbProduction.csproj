@@ -12,6 +12,7 @@
     <ProjectReference Include="$(ArchitectureProject)" />
     <Compile Include="MariaDbCashCheckoutServices.cs" />
     <Compile Include="AssemblyInfo.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/CashReturnConsumptionClaim.cs" Link="Production/recovered-source/LOGICA/Infrastructure/Checkout/CashReturnConsumptionClaim.cs" />
     <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/CashReturnOriginalSaleEvidence.cs" Link="Production/recovered-source/LOGICA/Infrastructure/Checkout/CashReturnOriginalSaleEvidence.cs" />
     <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/MariaDbCashCheckoutPreparation.cs" Link="Production/recovered-source/LOGICA/Infrastructure/Checkout/MariaDbCashCheckoutPreparation.cs" />
     <Compile Include="../../recovered-source/LOGICA/Domain/SalesLinePricing.cs" Link="Production/recovered-source/LOGICA/Domain/SalesLinePricing.cs" />
