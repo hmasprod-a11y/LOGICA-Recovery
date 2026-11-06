@@ -99,6 +99,16 @@ try {
     # Record every extracted payload file, not only the bootstrap assembly.
     # A dependency DLL must not be replaceable without changing the manifest.
     $packageRoot = [IO.Path]::GetFullPath($ExtractedDirectory).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    # Recheck directory reparse points AFTER host execution as well: the host
+    # could replace a payload subdirectory with a junction during the W1 run.
+    # Never hash or attest files reachable through a newly linked directory.
+    $postExecutionDirectories = @((Get-Item -LiteralPath $ExtractedDirectory)) +
+        @(Get-ChildItem -LiteralPath $ExtractedDirectory -Directory -Recurse -Force)
+    foreach ($directory in $postExecutionDirectories) {
+        if (($directory.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Extracted WPF package gained a linked directory during runtime verification: $($directory.FullName)"
+        }
+    }
     $postExecutionFiles = @(Get-ChildItem -LiteralPath $ExtractedDirectory -File -Recurse -Force)
     if ($postExecutionFiles.Count -ne $packageFiles.Count) {
         throw 'Extracted WPF payload file count changed during runtime verification.'
