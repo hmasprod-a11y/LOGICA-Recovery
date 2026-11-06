@@ -1273,6 +1273,21 @@ Check(!originalWindow.ConfirmReturnDraft() && !originalWindow.ReviewReturnQuanti
     "transient PIN modal blocks return review and confirmation");
 modalPinField.SetValue(originalWindow, false);
 
+// A rejected cash checkout still changes financial state. The same real
+// MainWindow must revoke an already reviewed original-sale return draft.
+Check(originalWindow.SearchOriginalSales("receipt-1"),
+    "return evidence available before checkout outcome");
+persistedRow = (OriginalSaleCandidate)originalWindow.OriginalSaleResults.Items[0];
+originalWindow.OriginalSaleResults.SelectedItem = persistedRow;
+Check(originalWindow.SelectOriginalSale(persistedRow) &&
+    originalWindow.ReviewReturnQuantity("1") && originalWindow.ConfirmReturnDraft(),
+    "original sale and quantity reviewed before checkout state transition");
+originalWindowVm.CommitCheckout(); // no contextual port: fail closed, not posted
+Check(originalWindow.OriginalSaleResults.Items.Count == 0 &&
+    !originalWindow.ConfirmReturnDraft() &&
+    !originalWindow.SelectOriginalSale(persistedRow),
+    "cash checkout rejection revokes previously reviewed return evidence");
+
 // Actual WPF TextChanged must invalidate the previous receipt evidence.
 originalWindow.OriginalSaleSearch.Text = "different-receipt";
 Check(originalWindow.OriginalSaleResults.Items.Count == 0 &&
