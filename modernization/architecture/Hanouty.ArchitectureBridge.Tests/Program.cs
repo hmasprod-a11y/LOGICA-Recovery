@@ -261,6 +261,19 @@ var sessionComposition = new CheckoutComposition(new CompositionCatalogue(),
 var session = sessionComposition.CreateSession();
 Assert(session.Products.Count == 3 && session.ImageProducts.Count == 1,
        "session exposes all products and only image products");
+var sessionImages = session.ImageProducts;
+Assert(sessionImages is IList<ProductSummary>, "session image catalogue has a guarded list surface");
+try
+{
+    ((IList<ProductSummary>)sessionImages)[0] =
+        new ProductSummary("forged", "", "Forged tile", "images/forged.png");
+    throw new Exception("session image catalogue mutation accepted");
+}
+catch (NotSupportedException)
+{
+    Assert(session.ImageProducts.Count == 1 && session.ImageProducts[0].ArticleId == "21",
+        "session photo-grid snapshot rejects mutation without changing catalogue identity");
+}
 // Both WPF catalogue views use the same immutable snapshot; tile selection
 // cannot be forged by a stale or fabricated image entry.
 Assert(session.SelectImage(new ProductSummary("21", "", "Forged", "fake/path.png")).Outcome ==
