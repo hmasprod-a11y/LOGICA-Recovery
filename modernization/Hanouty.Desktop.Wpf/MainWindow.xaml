@@ -80,7 +80,7 @@
                     </ItemsControl>
                 </ScrollViewer>
             </StackPanel>
-            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+            <ScrollViewer x:Name="CashierWorkflowScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                           CanContentScroll="True" AutomationProperties.Name="Cashier and return workflow scroll region">
                 <StackPanel Margin="0,0,8,0">
                 <TextBlock Text="Selected product" FontSize="18" FontWeight="SemiBold"/>
