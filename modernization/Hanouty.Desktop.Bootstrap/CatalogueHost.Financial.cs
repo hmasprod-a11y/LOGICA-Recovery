@@ -102,6 +102,8 @@ public sealed partial record CatalogueHost
         AuthorizedCheckoutPaymentContext? captured = initialContext;
         string? activeCashierId = captured?.CashierId;
         var contextConsumed = false;
+        // A cashier session cannot silently change while a draft is staged.
+        // Empty-basket sign-in is reauthenticated below before this identity is set.
         Func<MySqlConnection> connections = () => new MySqlConnection(settings.ConnectionString);
         var posting = MariaDbCashCheckoutServices.CreatePostingPort(
             connections, twoDigitWorkstation, transientPinProvider);
@@ -141,8 +143,10 @@ public sealed partial record CatalogueHost
             catch (ArgumentException) { return false; }
             // A staged basket belongs to its current cashier; changing amount
             // is allowed before submission, changing identity is not.
-            if (binding.Session.PendingCount != 0 &&
-                (activeCashierId is null || frozen.CashierId != activeCashierId))
+            if (activeCashierId is not null &&
+                !string.Equals(frozen.CashierId, activeCashierId, StringComparison.Ordinal))
+                return false;
+            if (binding.Session.PendingCount != 0 && activeCashierId is null)
                 return false;
             captured = frozen;
             activeCashierId = frozen.CashierId;
@@ -231,7 +235,9 @@ public sealed partial record CatalogueHost
                 vm.FinancialSessionActive = true;
                 return true;
             }
-            if (cashier != activeCashierId || total <= 0m || tender < total) return false;
+            if (!string.Equals(cashier, activeCashierId, StringComparison.Ordinal) ||
+                total <= 0m || tender < total ||
+                decimal.Round(tender, 2) != tender) return false;
             return result.TrySetFinancialContext(new AuthorizedCheckoutPaymentContext(
                 cashier, "MAD", false, new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, tender) }, total.Value));
         }, ReadTrustedTotal, result.TryEndFinancialSession,
