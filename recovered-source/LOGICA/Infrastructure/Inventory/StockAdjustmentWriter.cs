@@ -209,6 +209,23 @@ namespace LOGICA.Infrastructure.Inventory
         // This owns a standalone MANUAL adjustment transaction. Sale/return
         // stock posting remains exclusively owned by Checkout and must use
         // neither this method nor ApplyAuthorized.
+        // Architecture has not approved a session issuer/V1 actor mapping.
+        // Keep the proposed provider executable ONLY in an explicitly opted-in
+        // disposable acceptance process. This switch never substitutes for a grant.
+        private static void RequireDisposableAuthorizationProposal(string connectionString)
+        {
+            var endpoint = new MySqlConnectionStringBuilder(connectionString);
+            if ((!String.Equals(endpoint.Server, "127.0.0.1", StringComparison.OrdinalIgnoreCase) &&
+                 !String.Equals(endpoint.Server, "localhost", StringComparison.OrdinalIgnoreCase) &&
+                 !String.Equals(endpoint.Server, "::1", StringComparison.OrdinalIgnoreCase)) ||
+                endpoint.Port != 3307 ||
+                !String.Equals(endpoint.Database, "logica_ci", StringComparison.Ordinal) ||
+                !String.Equals(Environment.GetEnvironmentVariable("HANOUTY_MANUAL_STOCK_PROPOSAL_TEST_ONLY"),
+                    "YES", StringComparison.Ordinal))
+                throw new UnauthorizedAccessException(
+                    "Manual stock authorization mapping is not approved for production.");
+        }
+
         internal static void ExecuteAuthorized(string connectionString, StockAdjustmentPlan plan,
             IManualStockAuthorization authorization, string authenticatedSessionId)
         {
@@ -221,6 +238,7 @@ namespace LOGICA.Infrastructure.Inventory
                 !String.Equals(endpoint.Server, "localhost", StringComparison.OrdinalIgnoreCase) &&
                 !String.Equals(endpoint.Server, "::1", StringComparison.OrdinalIgnoreCase))
                 throw new UnauthorizedAccessException("Manual stock adjustment requires local MariaDB.");
+            RequireDisposableAuthorizationProposal(connectionString);
             using (var connection = new MySqlConnection(connectionString))
             {
                 connection.Open();
@@ -244,6 +262,9 @@ namespace LOGICA.Infrastructure.Inventory
             StockAdjustmentPlan plan, IManualStockAuthorization authorization,
             string authenticatedSessionId)
         {
+            if (connection == null)
+                throw new UnauthorizedAccessException("Manual stock proposal requires a disposable connection.");
+            RequireDisposableAuthorizationProposal(connection.ConnectionString);
             ValidateAuthorizationContext(connection, transaction, plan, authorization, authenticatedSessionId);
             ApplyCore(connection, transaction, plan);
         }

@@ -105,6 +105,14 @@ internal static class StockAdjustmentMariaDbSmoke {
                     Sql(db,"INSERT INTO HANOUTY_ACTOR_GRANTS VALUES ('CI-USER','ManualStockAdjustment',NULL,NULL)");
                     var providerType=assembly.GetType("LOGICA.Infrastructure.Inventory.MariaDbManualStockAuthorization",true);
                     var provider=Activator.CreateInstance(providerType,true);
+                    // Even valid fixture rows must not enable a default process.
+                    Environment.SetEnvironmentVariable("HANOUTY_MANUAL_STOCK_PROPOSAL_TEST_ONLY",null);
+                    Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,scopedPlan,provider,"CI-SECRET-SESSION"}));
+                    using(var disabledTx=db.BeginTransaction()) {
+                        Denied(()=>applyAuthorized.Invoke(null,new object[]{db,disabledTx,scopedPlan,provider,"CI-SECRET-SESSION"}));
+                        disabledTx.Commit();
+                    }
+                    Environment.SetEnvironmentVariable("HANOUTY_MANUAL_STOCK_PROPOSAL_TEST_ONLY","YES");
                     // Validate actual production provider input handling, not a
                     // test double: malformed bearer secrets/actors fail closed.
                     var verifyPersisted=providerType.GetMethod("VerifyForWrite",
@@ -295,6 +303,7 @@ internal static class StockAdjustmentMariaDbSmoke {
                     Denied(()=>executeAuthorized.Invoke(null,new object[]{cs,nextPlan,provider,"CI-SECRET-SESSION"}));
                     Require(Number(db,"SELECT STOCK FROM TABLE_ARTICLES")==12m && Number(db,"SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK")==1m,"Revoked or expired session/grant changed stock or audit");
                 } finally {
+                    Environment.SetEnvironmentVariable("HANOUTY_MANUAL_STOCK_PROPOSAL_TEST_ONLY",null);
                     Sql(db,"DROP TABLE HANOUTY_ACTOR_GRANTS; DROP TABLE HANOUTY_AUTH_SESSIONS");
                 }
                 Console.WriteLine("PASS persisted actor-scoped authorized adjustment, audit and revoked/forged denial on disposable MariaDB.");

@@ -25,6 +25,29 @@ internal static class PersistedGrantIsolationCases
             tx.Commit();
         }
         Sql(db, "UPDATE HANOUTY_ACTOR_GRANTS SET ACTOR_ID='Actor-A'");
+        var plan = LOGICA.Application.Inventory.StockAdjustmentPlan.Create(
+            "P0-ARTICLE", 10m, 12m, "proposal rollback", "Actor-A");
+        const string marker = "HANOUTY_MANUAL_STOCK_PROPOSAL_TEST_ONLY";
+        var prior = Environment.GetEnvironmentVariable(marker);
+        try {
+            Environment.SetEnvironmentVariable(marker, null);
+            Denied(() => StockAdjustmentWriter.ExecuteAuthorized(cs, plan, provider, "fixture-token"));
+            using (var tx = db.BeginTransaction()) {
+                Denied(() => StockAdjustmentWriter.ApplyAuthorized(db, tx, plan, provider, "fixture-token"));
+                tx.Commit();
+            }
+            Environment.SetEnvironmentVariable(marker, "YES");
+            var wrongDb = new MySqlConnectionStringBuilder(cs) { Database = "not_the_fixture" };
+            Denied(() => StockAdjustmentWriter.ExecuteAuthorized(wrongDb.ConnectionString, plan, provider, "fixture-token"));
+            using (var tx = db.BeginTransaction()) {
+                StockAdjustmentWriter.ApplyAuthorized(db, tx, plan, provider, "fixture-token");
+                using var read = new MySqlCommand("SELECT STOCK=12 AND (SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK)=1 FROM TABLE_ARTICLES WHERE ID_ARTICLE='P0-ARTICLE'", db, tx);
+                Require(Convert.ToInt32(read.ExecuteScalar()) == 1, "Fixture grant failed to write stock and audit together.");
+                tx.Rollback();
+            }
+            using var after = new MySqlCommand("SELECT STOCK=10 AND (SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK)=0 FROM TABLE_ARTICLES WHERE ID_ARTICLE='P0-ARTICLE'", db);
+            Require(Convert.ToInt32(after.ExecuteScalar()) == 1, "Rollback did not restore both tables.");
+        } finally { Environment.SetEnvironmentVariable(marker, prior); }
         using (var tx = db.BeginTransaction()) {
             Require(provider.VerifyForWrite(db, tx, "fixture-token", "Actor-A").UserId == "Actor-A", "Exact actor grant missing.");
             Denied(() => provider.VerifyForWrite(db, tx, "FIXTURE-TOKEN", "Actor-A"));
