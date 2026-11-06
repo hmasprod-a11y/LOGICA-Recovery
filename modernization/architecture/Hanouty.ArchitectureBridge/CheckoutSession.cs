@@ -24,15 +24,18 @@ public sealed class CheckoutSession
     // A single catalogue snapshot backs both the list and image grid. Refresh
     // explicitly after Inventory updates; never mix two independently read lists.
     private IReadOnlyList<ProductSummary>? _snapshot;
+    private IReadOnlyList<ProductSummary>? _imageSnapshot;
     public IReadOnlyList<ProductSummary> Products => _snapshot ??= _composition.AllProducts();
     public IReadOnlyList<ProductSummary> ImageProducts =>
-        Array.AsReadOnly(System.Linq.Enumerable.ToArray(
+        _imageSnapshot ??= Array.AsReadOnly(System.Linq.Enumerable.ToArray(
             System.Linq.Enumerable.Where(Products, p => p.HasImage)));
 
     public void RefreshCatalogue()
     {
         EnsureNoSubmission();
-        _snapshot = _composition.AllProducts();
+        var refreshed = _composition.AllProducts();
+        _snapshot = refreshed;
+        _imageSnapshot = null;
     }
     public int PendingCount => _batch.PendingCount;
 
