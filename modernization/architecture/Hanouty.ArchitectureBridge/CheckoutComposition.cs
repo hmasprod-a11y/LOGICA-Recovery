@@ -141,6 +141,11 @@ public sealed class CheckoutComposition
                 if (product is null || string.IsNullOrWhiteSpace(product.ArticleId) ||
                     !ids.Add(product.ArticleId))
                     throw new InvalidOperationException("Catalogue returned invalid or duplicate article identity.");
+                // Selection and display snapshots share the same fail-closed
+                // catalogue boundary: a malformed legacy display name must not
+                // be accepted merely because the caller used barcode selection.
+                if (product.DisplayName is null)
+                    throw new InvalidOperationException("Catalogue returned a product without a display name.");
                 if (requestedBarcode is not null &&
                     !string.Equals(product.Barcode, requestedBarcode, StringComparison.Ordinal))
                     throw new InvalidOperationException("Catalogue returned an article for a different barcode.");
