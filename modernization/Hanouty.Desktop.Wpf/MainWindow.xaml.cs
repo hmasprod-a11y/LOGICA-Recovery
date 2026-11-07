@@ -184,6 +184,8 @@ public partial class MainWindow : Window
         if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy ||
             DataContext is not CatalogueViewModel vm || _originalSaleSelection?.Selected is null ||
             _returnDraft.OriginalSaleId != _originalSaleSelection.Selected.SaleId ||
+            !ReferenceEquals(OriginalSaleResults.ItemsSource, _originalSaleResults) ||
+            !_originalSaleResults.Any(row => ReferenceEquals(row, _originalSaleSelection.Selected)) ||
             !ReferenceEquals(OriginalSaleResults.SelectedItem, _originalSaleSelection.Selected) ||
             !ReferenceEquals(vm.PaymentContext, _originalSaleLookupContext))
         {
