@@ -15,6 +15,15 @@ Hanouty.Desktop.Wpf.App.ResolveServices = () =>
 Check(!Hanouty.Desktop.Wpf.App.HasProductionStartupResolver,
     "catalogue-only resolver must not unlock installed production startup");
 Hanouty.Desktop.Wpf.App.ResolveServices = null;
+// Production session adapter must not post if the Host session expires or
+// its authorization callback fails. The same durable submission stays unused.
+var expiredHostSession = new SessionFinancialSubmission();
+var expiredAdapter = new SessionBoundCashCheckoutSubmission(expiredHostSession,
+    () => throw new InvalidOperationException("Local cashier session expired"));
+var expiredContext = new CashierPaymentContext("cashier-1", "register-1", "MAD", "Cash", 100m);
+Check(expiredAdapter.Submit("expired-session-operation", expiredContext) == CheckoutSubmissionResult.Invalidated &&
+    expiredHostSession.Ids.Count == 0,
+    "expired Host cashier context must fail closed without financial posting");
 // Architecture CreateFinancial host registers the same financial adapter and
 // authenticated cash context at WPF startup, without a second host or PIN copy.
 var startupJournal = new FinancialJournal();
