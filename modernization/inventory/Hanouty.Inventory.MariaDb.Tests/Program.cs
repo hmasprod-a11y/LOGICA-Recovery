@@ -49,6 +49,20 @@ static class Program
                    inventory.ReadArticle("A-1").PurchasePrice == 7.125m, "snapshot exact article and decimal prices");
             Assert(inventory.ListAll().Select(x => x.ArticleId).OrderBy(x => x).SequenceEqual(new[] { "A-1", "A-2", "A-3", "A-4" }), "stocktake includes all stable article IDs including missing barcodes");
             Assert(inventory.ListAll().Sum(x => x.Stock) == 6.500m, "stocktake preserves signed decimal stock without rounding");
+            Assert(inventory.ReadArticlesByIds(new[] { "A-4", "A-1" }).Select(x => x.ArticleId).SequenceEqual(new[] { "A-4", "A-1" }), "explicit batch preserves requested stable-ID order");
+            Assert(inventory.ReadArticlesByIds(Array.Empty<string>()).Count == 0, "empty explicit batch does not query catalogue");
+            bool batchMissing = false;
+            try { inventory.ReadArticlesByIds(new[] { "A-1", "MISSING" }); } catch (InvalidOperationException) { batchMissing = true; }
+            Assert(batchMissing, "batch fails closed when any stable ID is missing");
+            bool batchDuplicate = false;
+            try { inventory.ReadArticlesByIds(new[] { "A-1", "A-1" }); } catch (ArgumentException) { batchDuplicate = true; }
+            Assert(batchDuplicate, "batch rejects repeated stable IDs");
+            bool batchInjection = false;
+            try { inventory.ReadArticlesByIds(new[] { "A-1", "A-2' OR 1=1 --" }); } catch (InvalidOperationException) { batchInjection = true; }
+            Assert(batchInjection, "batch identity SQL injection does not broaden lookup");
+            bool batchTooLarge = false;
+            try { inventory.ReadArticlesByIds(Enumerable.Repeat("A-1", 501).ToArray()); } catch (ArgumentOutOfRangeException) { batchTooLarge = true; }
+            Assert(batchTooLarge, "batch refuses unbounded ID count");
             var totals = inventory.ReadStocktakeTotals();
             Assert(totals.ArticleCount == 4 && totals.SignedUnits == 6.500m, "stocktake totals include all identities and signed units");
             Assert(totals.PositiveStockArticles == 2 && totals.ZeroStockArticles == 1 && totals.NegativeStockArticles == 1, "stocktake distinguishes positive zero and negative articles");
