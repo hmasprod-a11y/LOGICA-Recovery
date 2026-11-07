@@ -125,7 +125,25 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public System.Windows.Input.ICommand ScanCommand { get; }
     public System.Windows.Input.ICommand SelectCommand { get; }
     public System.Windows.Input.ICommand ReloadCommand { get; }
-    public string ScannerText { get => _scannerText; set { if (_selectionInFlight || CheckoutUncertain) return; _scannerText = value ?? ""; OnPropertyChanged(); } }
+    public string ScannerText {
+        get => _scannerText;
+        set {
+            if (_selectionInFlight || CheckoutUncertain) return;
+            var next = value ?? "";
+            if (string.Equals(_scannerText, next, StringComparison.Ordinal)) return;
+            _scannerText = next;
+            // A variant chosen for an earlier barcode must not remain selectable
+            // after the cashier edits or replaces the scanner input.
+            if (BarcodeCandidates.Count != 0)
+            {
+                BarcodeCandidates = Array.Empty<ProductSummary>();
+                SelectedProduct = null;
+                OnPropertyChanged(nameof(BarcodeCandidates));
+                OnPropertyChanged(nameof(HasBarcodeAmbiguity));
+            }
+            OnPropertyChanged();
+        }
+    }
     public string ScanFeedback { get => _scanFeedback; private set { _scanFeedback = value; OnPropertyChanged(); } }
     private bool _isRightToLeft;
     public bool IsRightToLeft
