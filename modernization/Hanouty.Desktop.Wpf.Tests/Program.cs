@@ -974,6 +974,13 @@ var reviewThread = new System.Threading.Thread(() =>
             financialContext.TenderedAmount);
         Check(!RegisterAuthorized(financialContext.RegisterId),
             "MAD cashier must reject a Host context with different currency");
+        Check(!EntryAuthorized(financialContext.CashierId, financialContext.TenderedAmount),
+            "cashier entry cannot accept EUR context even when cashier and tender match");
+        listVm.PaymentContext = new CashierPaymentContext(
+            financialContext.CashierId, financialContext.RegisterId, "MAD", "Credit",
+            financialContext.TenderedAmount);
+        Check(!EntryAuthorized(financialContext.CashierId, financialContext.TenderedAmount),
+            "cashier entry cannot accept non-cash Host tender for cash payment");
         listVm.PaymentContext = oldPayment;
         Check(!listWindow.SelectHighlightedProduct() && listSelection.Selected.Count == 0,
             "empty catalogue highlight cannot stage an article");
