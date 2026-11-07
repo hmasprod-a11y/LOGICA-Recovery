@@ -33,7 +33,21 @@ jobs:
     env:
       HANOUTY_W1_TEST_DB: Server=127.0.0.1;Port=3307;Database=logica_ci;Uid=inventory_ci;Pwd=inventory-disposable-password;SslMode=None;
     steps:
+      # Build the Inventory candidate against the accepted QA architecture contract.
+      # The Inventory branch does not itself contain ArchitectureBridge (MSB9008).
       - uses: actions/checkout@v4
+        with:
+          ref: 34500c23ec9d05fbe8953740043e7564bf61715a
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: _inventory_candidate
+      - name: Overlay candidate Inventory sources onto pinned QA baseline
+        run: |
+          test -f modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj
+          test -f _inventory_candidate/modernization/inventory/Hanouty.Inventory.MariaDb.Tests/Hanouty.Inventory.MariaDb.Tests.csproj
+          cp -a _inventory_candidate/modernization/inventory/. modernization/inventory/
+          rm -rf _inventory_candidate
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
