@@ -1,3 +1,4 @@
+#nullable enable annotations
 using System.Data;
 using LOGICA.Domain;
 
