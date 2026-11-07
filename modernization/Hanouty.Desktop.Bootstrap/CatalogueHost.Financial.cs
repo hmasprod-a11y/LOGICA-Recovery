@@ -36,6 +36,7 @@ public sealed partial record CatalogueHost
             frozen.Payments[0] is not { Kind: CheckoutPaymentKind.Cash, Amount: > 0m } ||
             frozen.ExpectedTotal <= 0m ||
             frozen.ExpectedTotal > frozen.Payments[0].Amount ||
+            decimal.Round(frozen.ExpectedTotal, 2) != frozen.ExpectedTotal ||
             decimal.Round(frozen.Payments[0].Amount, 2) != frozen.Payments[0].Amount)
             throw new ArgumentException("Explicit MAD cash context required.", nameof(value));
         return frozen;
@@ -134,14 +135,13 @@ public sealed partial record CatalogueHost
             binding.Session.OperationId is null && binding.Session.State == CheckoutCommitState.Ready;
         result.setFinancialContext = next =>
         {
-            if (!CanChangeContext()) return false;
+            if (!CanChangeContext() || activeCashierId is null || !vm.FinancialSessionActive) return false;
             AuthorizedCheckoutPaymentContext frozen;
             try { frozen = FreezeCashContext(next); }
             catch (ArgumentException) { return false; }
             // A staged basket belongs to its current cashier; changing amount
             // is allowed before submission, changing identity is not.
-            if (binding.Session.PendingCount != 0 &&
-                (activeCashierId is null || frozen.CashierId != activeCashierId))
+            if (frozen.CashierId != activeCashierId)
                 return false;
             captured = frozen;
             activeCashierId = frozen.CashierId;
