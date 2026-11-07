@@ -42,8 +42,10 @@ public static class Program
             args[1] == "--verify-disposable-catalogue" ? Path.GetFullPath(args[2]) : null;
         try
         {
-            if (!(args.Length == 1 && args[0] == "--catalogue-only") && evidence is null)
-                throw new InvalidOperationException("This candidate requires --catalogue-only. Financial posting is not configured.");
+            // A double-click starts the same safe, read-only WPF production graph.
+            // Command-line acceptance remains explicit and financially disabled.
+            if (args.Length != 0 && !(args.Length == 1 && args[0] == "--catalogue-only") && evidence is null)
+                throw new InvalidOperationException("Unsupported startup arguments. Launch without arguments for read-only catalogue mode.");
             var settings = CatalogueSettings.FromEnvironment();
             if (evidence is not null) RequireDisposable(settings);
             var application = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
@@ -72,7 +74,12 @@ public static class Program
                 Directory.CreateDirectory(evidence);
                 File.WriteAllText(Path.Combine(evidence, "failure.txt"), ex.ToString());
             }
-            else MessageBox.Show(ex.Message, "Hanouty — startup blocked",
+            else MessageBox.Show(
+                ex.Message + Environment.NewLine + Environment.NewLine +
+                "Configure HANOUTY_CATALOGUE_CONNECTION for a local SELECT-only MariaDB account " +
+                "and HANOUTY_DATA_DIRECTORY for an existing local data directory. " +
+                "Financial operations remain disabled in this mode.",
+                "Hanouty — local catalogue setup required",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return 2;
         }
