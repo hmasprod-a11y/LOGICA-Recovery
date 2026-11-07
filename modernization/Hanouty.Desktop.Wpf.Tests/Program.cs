@@ -30,6 +30,13 @@ Check(!Hanouty.Desktop.Wpf.App.HasAuthorizedFinancialRegistration(
 Check(!Hanouty.Desktop.Wpf.App.HasAuthorizedFinancialRegistration(
     registered.Catalogue, registered.Checkout, registered.Submission, null),
     "missing cashier registration must fail closed");
+Check(!Hanouty.Desktop.Wpf.App.HasAuthorizedFinancialRegistration(
+    registered.Catalogue, registered.Checkout, registered.Submission,
+    new CashierPaymentContext("cashier-1", "register-1", "MAD", "Card", 100m)),
+    "non-cash tender must not unlock cash-only production startup");
+Check(!Hanouty.Desktop.Wpf.App.HasAuthorizedFinancialRegistration(
+    null, registered.Checkout, registered.Submission, registered.Payment),
+    "missing production catalogue must block startup");
 Hanouty.Desktop.Wpf.App.ResolveFinancialServices = null;
 // Production startup without a Host-authenticated cashier is read-only:
 // a scanner or catalogue touch must not stage a basket before sign-in.
