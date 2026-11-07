@@ -211,6 +211,25 @@ caseVm.ScannerText = "abc123";
 caseVm.ScanBarcode();
 Check(caseSelection.Selected.Count == 2 && caseSelection.Selected[1].Id == "case-b",
     "case-distinct barcode must resolve independently");
+// Changing a duplicate barcode query revokes the old variant evidence immediately.
+var changedVariantSelection = new RecordingSelection();
+var changedVariantVm = new CatalogueViewModel(new Reader(items), changedVariantSelection);
+changedVariantVm.ScannerText = "777";
+changedVariantVm.ScanBarcode();
+Check(changedVariantVm.HasBarcodeAmbiguity && changedVariantVm.BarcodeCandidates.Count > 1,
+    "duplicate scan exposes explicit variants");
+changedVariantVm.SelectedProduct = changedVariantVm.BarcodeCandidates[0];
+changedVariantVm.ScannerText = "123";
+Check(!changedVariantVm.HasBarcodeAmbiguity &&
+    changedVariantVm.BarcodeCandidates.Count == 0 && changedVariantVm.SelectedProduct is null,
+    "scanner edit revokes stale duplicate barcode variant and selection");
+changedVariantVm.SelectCurrent();
+Check(changedVariantSelection.Selected.Count == 0,
+    "stale variant cannot be dispatched after scanner input changes");
+changedVariantVm.ScanBarcode();
+Check(changedVariantSelection.Selected.Count == 1 &&
+    changedVariantSelection.Selected[0].Barcode == "123",
+    "new scan selects only the new barcode after revocation");
 // A disabled visual button is not a security boundary: keyboard/programmatic
 // SelectCommand must also reject selection after logout, then allow a fresh session.
 var logoutSelection = new RecordingSelection();
