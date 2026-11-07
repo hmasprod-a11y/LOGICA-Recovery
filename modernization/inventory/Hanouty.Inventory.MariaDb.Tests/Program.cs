@@ -51,6 +51,8 @@ static class Program
             Assert(inventory.ListAll().Sum(x => x.Stock) == 6.500m, "stocktake preserves signed decimal stock without rounding");
             var totals = inventory.ReadStocktakeTotals();
             Assert(totals.ArticleCount == 4 && totals.SignedUnits == 6.500m, "stocktake totals include all identities and signed units");
+            Assert(totals.PositiveStockArticles == 2 && totals.ZeroStockArticles == 1 && totals.NegativeStockArticles == 1, "stocktake distinguishes positive zero and negative articles");
+            Assert(totals.PositiveStockArticles + totals.ZeroStockArticles + totals.NegativeStockArticles == totals.ArticleCount, "stocktake stock status partition covers all articles");
             Assert(totals.PurchaseCostValue == 41.1875m && totals.SalePriceValue == 70.375m, "stocktake purchase/sale valuation retains signed decimal precision");
             Assert(inventory.FindBarcode("Q'42").Count == 2, "snapshot preserves ambiguous quoted barcode candidates");
             bool ambiguousScan = false;
