@@ -110,7 +110,11 @@ def validate(root):
             else:
                 code = source.read_text(encoding="utf-8-sig")
                 for prefix in FORBIDDEN_IMPORTS:
-                    if "using " + prefix in code or "Imports " + prefix in code:
+                    # C# global/alias imports and arbitrary whitespace are still imports.
+                    # Do not let a tab or newline bypass the portable-source boundary.
+                    csharp_import = re.compile(r"\b(?:global\s+)?using\s+(?:[A-Za-z_]\w*\s*=\s*)?" + re.escape(prefix))
+                    vb_import = re.compile(r"\bImports\s+" + re.escape(prefix), re.IGNORECASE)
+                    if csharp_import.search(code) or vb_import.search(code):
                         errors.append("platform dependency in " + str(relative) + ": " + prefix)
                 # Ignore line comments: mentioning a forbidden dependency in an explanatory
                 # comment is not a production reference. Keep scanning executable source.
