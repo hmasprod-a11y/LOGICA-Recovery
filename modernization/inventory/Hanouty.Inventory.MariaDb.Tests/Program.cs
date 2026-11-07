@@ -47,6 +47,8 @@ static class Program
             Assert(inventory.ReadArticle("A-1").Stock == 5.500m &&
                    inventory.ReadArticle("A-1").SalePrice == 12.250m &&
                    inventory.ReadArticle("A-1").PurchasePrice == 7.125m, "snapshot exact article and decimal prices");
+            Assert(inventory.ListAll().Select(x => x.ArticleId).OrderBy(x => x).SequenceEqual(new[] { "A-1", "A-2", "A-3", "A-4" }), "stocktake includes all stable article IDs including missing barcodes");
+            Assert(inventory.ListAll().Sum(x => x.Stock) == 6.500m, "stocktake preserves signed decimal stock without rounding");
             Assert(inventory.FindBarcode("Q'42").Count == 2, "snapshot preserves ambiguous quoted barcode candidates");
             bool ambiguousScan = false;
             try { inventory.ReadUniqueBarcode("Q'42"); } catch (InvalidOperationException) { ambiguousScan = true; }
