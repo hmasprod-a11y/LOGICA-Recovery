@@ -11,6 +11,7 @@ public sealed class CheckoutSession
     private readonly CheckoutComposition _composition;
     private readonly CheckoutBatchController _batch;
     private string? _operationId;
+    private bool _invalidatedSubmission;
     private readonly List<ProductSummary> _stagedImages = new();
     private readonly List<ProductSummary> _stagedExplicitVariants = new();
     private readonly List<ProductSummary> _stagedArticles = new();
@@ -129,6 +130,8 @@ public sealed class CheckoutSession
         // is still unknown; reconciliation must precede any new submission.
         if (_batch.State == CheckoutCommitState.OutcomeUnknown)
             throw new InvalidOperationException("Reconcile the uncertain checkout outcome before submitting again.");
+        if (_invalidatedSubmission)
+            throw new InvalidOperationException("Discard and rebuild the invalidated checkout before retrying.");
         if (string.IsNullOrWhiteSpace(operationId))
             throw new ArgumentException("Stable operation ID required.", nameof(operationId));
         if (_operationId is not null && !string.Equals(_operationId, operationId, StringComparison.Ordinal))
@@ -137,11 +140,23 @@ public sealed class CheckoutSession
         // A photo/variant can change after the operator stages it but before
         // payment. Refuse the entire operation before any durable write.
         foreach (var image in _stagedImages)
-            if (!_composition.IsCurrentImage(image)) return CheckoutBatchStatus.Invalidated;
+            if (!_composition.IsCurrentImage(image))
+            {
+                _invalidatedSubmission = true;
+                return CheckoutBatchStatus.Invalidated;
+            }
         foreach (var variant in _stagedExplicitVariants)
-            if (!_composition.IsCurrentDuplicateVariant(variant)) return CheckoutBatchStatus.Invalidated;
+            if (!_composition.IsCurrentDuplicateVariant(variant))
+            {
+                _invalidatedSubmission = true;
+                return CheckoutBatchStatus.Invalidated;
+            }
         foreach (var article in _stagedArticles)
-            if (!_composition.IsCurrentArticle(article)) return CheckoutBatchStatus.Invalidated;
+            if (!_composition.IsCurrentArticle(article))
+            {
+                _invalidatedSubmission = true;
+                return CheckoutBatchStatus.Invalidated;
+            }
         var result = _batch.Commit(operationId);
         if (result == CheckoutBatchStatus.Committed || result == CheckoutBatchStatus.Empty)
         {
@@ -150,7 +165,8 @@ public sealed class CheckoutSession
             _stagedExplicitVariants.Clear();
         _stagedArticles.Clear();
         }
-        // Invalidated retains operation ID until the operator clears/rebuilds.
+        // An invalidated draft must never silently become payable on retry.
+        if (result == CheckoutBatchStatus.Invalidated) _invalidatedSubmission = true;
         return result;
     }
 
@@ -181,6 +197,7 @@ public sealed class CheckoutSession
         _stagedExplicitVariants.Clear();
         _stagedArticles.Clear();
         _operationId = null;
+        _invalidatedSubmission = false;
     }
 
     private void EnsureNoSubmission()
