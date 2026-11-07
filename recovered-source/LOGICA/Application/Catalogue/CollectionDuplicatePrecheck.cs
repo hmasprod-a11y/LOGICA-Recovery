@@ -5,7 +5,8 @@ namespace LOGICA.ApplicationLayer.Catalogue
 {
     internal static class CollectionDuplicatePrecheck
     {
-        public static DataRow FindFirst(int lastIndex, Func<int, object> readCode,
+                public static DataRow FindFirst
+(int lastIndex, Func<int, object> readCode,
             Func<object, DataTable> lookup, Action afterNoMatch)
         {
             checked

@@ -1,0 +1,38 @@
+name: Hanouty Inventory real MariaDB snapshot acceptance
+on:
+  push:
+    branches: [fix/inventory-catalogue-parameterized-lookup-20261102]
+    paths:
+      - 'modernization/inventory/**'
+      - 'modernization/architecture/Hanouty.ArchitectureBridge/**'
+      - '.github/workflows/hanouty-inventory-mariadb-snapshot.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-mariadb-inventory:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: inventory-disposable-root
+          MARIADB_DATABASE: logica_ci
+          MARIADB_USER: inventory_ci
+          MARIADB_PASSWORD: inventory-disposable-password
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      HANOUTY_W1_TEST_DB: Server=127.0.0.1;Port=3307;Database=logica_ci;Uid=inventory_ci;Pwd=inventory-disposable-password;SslMode=None;
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build Inventory SQL acceptance with warnings as errors
+        run: dotnet build modernization/inventory/Hanouty.Inventory.MariaDb.Tests/Hanouty.Inventory.MariaDb.Tests.csproj -c Release --warnaserror
+      - name: Execute actual production readers against disposable MariaDB
+        run: dotnet run --project modernization/inventory/Hanouty.Inventory.MariaDb.Tests/Hanouty.Inventory.MariaDb.Tests.csproj -c Release --no-build
