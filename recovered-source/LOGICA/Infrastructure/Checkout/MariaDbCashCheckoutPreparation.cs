@@ -325,6 +325,10 @@ namespace LOGICA.Infrastructure.Checkout
                             line.ArticleId, StringComparison.Ordinal) ||
                         Number(detail.Rows[0], "Qté") != -line.Quantity ||
                         Number(detail.Rows[0], "Total_NET") != -amount ||
+                        // A receipt trigger must not swap the refunded article's
+                        // canonical ID while leaving the signed amount intact.
+                        !String.Equals(Convert.ToString(detail.Rows[0]["ID_ARTICLE"], CultureInfo.InvariantCulture),
+                            Convert.ToString(original.Rows[0]["ID_ARTICLE"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
                         !String.Equals(Convert.ToString(detail.Rows[0]["Code"], CultureInfo.InvariantCulture),
                             Convert.ToString(original.Rows[0]["Code"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
                         !String.Equals(Convert.ToString(detail.Rows[0]["Article"], CultureInfo.InvariantCulture),
