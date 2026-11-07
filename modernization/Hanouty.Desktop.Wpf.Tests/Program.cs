@@ -105,7 +105,7 @@ Check(cashierScroll is not null && cashierScroll.VerticalScrollBarVisibility ==
 lockedWindow.Width = lockedWindow.MinWidth;
 lockedWindow.Height = lockedWindow.MinHeight;
 lockedWindow.UpdateLayout();
-Check(cashierScroll.ActualHeight >= 0 && lockedWindow.FlowDirection ==
+Check(cashierScroll is { ActualHeight: >= 0 } && lockedWindow.FlowDirection ==
     System.Windows.FlowDirection.LeftToRight,
     "compact WPF window measures cashier workflow without clipping horizontal controls");
 var lockedVm = (CatalogueViewModel)lockedWindow.DataContext;
