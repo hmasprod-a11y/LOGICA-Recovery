@@ -194,6 +194,16 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             ScanFeedback = "Barcode contains leading or trailing whitespace";
             return;
         }
+        // Never normalize scanner control characters into another article identity.
+        if (code.Any(char.IsControl))
+        {
+            BarcodeCandidates = Array.Empty<ProductSummary>();
+            SelectedProduct = null;
+            OnPropertyChanged(nameof(BarcodeCandidates));
+            OnPropertyChanged(nameof(HasBarcodeAmbiguity));
+            ScanFeedback = "Barcode contains control characters";
+            return;
+        }
         if (code.Length == 0) { BarcodeCandidates = Array.Empty<ProductSummary>(); SelectedProduct = null; OnPropertyChanged(nameof(BarcodeCandidates)); OnPropertyChanged(nameof(HasBarcodeAmbiguity)); ScanFeedback = "Empty barcode"; return; }
         // Preserve the exact barcode identity used by the Application checkout gateway.
         // Case-folding here could select a different article than the live catalogue.
