@@ -8,6 +8,8 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
   <ItemGroup>
+    <!-- WPF x:Name fields are generated internal; allow the actual STA test assembly to inspect them. -->
+    <InternalsVisibleTo Include="Hanouty.Desktop.Wpf.Tests" />
     <ProjectReference Include="../architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj" />
   </ItemGroup>
 </Project>
