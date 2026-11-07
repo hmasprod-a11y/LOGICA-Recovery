@@ -109,16 +109,18 @@ def validate(root):
                 errors.append("missing source: " + str(relative))
             else:
                 code = source.read_text(encoding="utf-8-sig")
+                # Scan executable lines for imports too: a commented-out using must not
+                # make an otherwise portable source fail its boundary check.
+                executable_lines = "\n".join("" if line.lstrip().startswith("//") else line for line in code.splitlines())
                 for prefix in FORBIDDEN_IMPORTS:
                     # C# global/alias imports and arbitrary whitespace are still imports.
                     # Do not let a tab or newline bypass the portable-source boundary.
                     csharp_import = re.compile(r"\b(?:global\s+)?using\s+(?:(?:static\s+)|(?:[A-Za-z_]\w*\s*=\s*))?(?:global::)?" + re.escape(prefix))
                     vb_import = re.compile(r"\bImports\s+" + re.escape(prefix), re.IGNORECASE)
-                    if csharp_import.search(code) or vb_import.search(code):
+                    if csharp_import.search(executable_lines) or vb_import.search(executable_lines):
                         errors.append("platform dependency in " + str(relative) + ": " + prefix)
                 # Ignore line comments: mentioning a forbidden dependency in an explanatory
                 # comment is not a production reference. Keep scanning executable source.
-                executable_lines = "\n".join("" if line.lstrip().startswith("//") else line for line in code.splitlines())
                 if FORBIDDEN_QUALIFIED_TYPES.search(executable_lines):
                     errors.append("fully qualified platform dependency in " + str(relative))
             paths.append(relative.as_posix())
