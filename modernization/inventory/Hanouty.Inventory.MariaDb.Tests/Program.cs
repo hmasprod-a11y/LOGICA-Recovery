@@ -34,15 +34,31 @@ static class Program
                     if (Convert.ToInt64(check.ExecuteScalar()) != 0)
                         throw new InvalidOperationException("Refusing existing TABLE_ARTICLES even on disposable target.");
                 }
-                Sql(db, "CREATE TABLE TABLE_ARTICLES (ID_ARTICLE VARCHAR(128) NULL, Code VARCHAR(128) NULL, Article VARCHAR(255), Images VARCHAR(255)) ENGINE=InnoDB");
+                Sql(db, "CREATE TABLE TABLE_ARTICLES (ID_ARTICLE VARCHAR(128) NULL, Code VARCHAR(128) NULL, Article VARCHAR(255), Images VARCHAR(255), STOCK DECIMAL(18,3) NULL, PRIX_V_1 DECIMAL(18,3) NULL, Prix_A DECIMAL(18,3) NULL) ENGINE=InnoDB");
                 fixtureCreated = true;
-                Sql(db, "INSERT INTO TABLE_ARTICLES VALUES ('A-1','Q''42','First','exists.png'),('A-2','Q''42','Variant','missing.png'),('A-3',NULL,'No barcode',NULL),('A-4','','Image-only','0')");
+                Sql(db, "INSERT INTO TABLE_ARTICLES VALUES ('A-1','Q''42','First','exists.png',5.500,12.250,7.125),('A-2','Q''42','Variant','missing.png',0,14,8),('A-3',NULL,'No barcode',NULL,2,4,3),('A-4','','Image-only','0',-1,5,4)");
             }
             var remote = new MySqlConnectionStringBuilder(connectionString) { Server = "198.51.100.9" };
             bool remoteRejected = false;
             try { _ = new MariaDbCatalogueReader(remote.ConnectionString, folder); }
             catch (InvalidOperationException) { remoteRejected = true; }
             Assert(remoteRejected, "remote catalogue connection rejected before opening");
+            var inventory = new MariaDbInventorySnapshotReader(connectionString);
+            Assert(inventory.ReadArticle("A-1").Stock == 5.500m &&
+                   inventory.ReadArticle("A-1").SalePrice == 12.250m &&
+                   inventory.ReadArticle("A-1").PurchasePrice == 7.125m, "snapshot exact article and decimal prices");
+            Assert(inventory.FindBarcode("Q'42").Count == 2, "snapshot preserves ambiguous quoted barcode candidates");
+            bool ambiguousScan = false;
+            try { inventory.ReadUniqueBarcode("Q'42"); } catch (InvalidOperationException) { ambiguousScan = true; }
+            Assert(ambiguousScan, "snapshot refuses ambiguous barcode");
+            Assert(inventory.FindBarcode("Q'42' OR 1=1 --").Count == 0, "snapshot parameterized barcode");
+            Assert(inventory.FindStockBelow(1m).Count == 2, "snapshot low stock includes zero and negative stock");
+            bool negativeThreshold = false;
+            try { inventory.FindStockBelow(-1m); } catch (ArgumentOutOfRangeException) { negativeThreshold = true; }
+            Assert(negativeThreshold, "negative low-stock threshold rejected");
+            bool missingArticle = false;
+            try { inventory.ReadArticle("MISSING"); } catch (InvalidOperationException) { missingArticle = true; }
+            Assert(missingArticle, "missing stable article rejected");
             var reader = new MariaDbCatalogueReader(connectionString, folder);
             var all = reader.ListAll();
             Assert(all.Count == 4, "all products, including NULL and empty barcode");
@@ -53,8 +69,8 @@ static class Program
             using (var db = new MySqlConnection(connectionString))
             {
                 db.Open();
-                Sql(db, "INSERT INTO TABLE_ARTICLES VALUES ('A-5','TRAVERSAL','Unsafe slash','../exists.png')");
-                Sql(db, "INSERT INTO TABLE_ARTICLES VALUES ('A-6','BACKSLASH','Unsafe backslash','..\\\\exists.png')");
+                Sql(db, "INSERT INTO TABLE_ARTICLES VALUES ('A-5','TRAVERSAL','Unsafe slash','../exists.png',1,2,1)");
+                Sql(db, "INSERT INTO TABLE_ARTICLES VALUES ('A-6','BACKSLASH','Unsafe backslash','..\\\\exists.png',1,2,1)");
             }
             Assert(reader.ListAll().Where(p => p.ArticleId == "A-5" || p.ArticleId == "A-6").All(p => p.ImagePath == null), "slash and backslash traversal images rejected");
             using (var db = new MySqlConnection(connectionString))
@@ -70,7 +86,7 @@ static class Program
             using (var db = new MySqlConnection(connectionString))
             {
                 db.Open();
-                Sql(db, "INSERT INTO TABLE_ARTICLES VALUES ('A-1','OTHER','Duplicate','0')");
+                Sql(db, "INSERT INTO TABLE_ARTICLES VALUES ('A-1','OTHER','Duplicate','0',1,2,1)");
             }
             bool duplicateRejected = false;
             try { reader.ListAll(); } catch (InvalidOperationException) { duplicateRejected = true; }
@@ -79,7 +95,7 @@ static class Program
             {
                 db.Open();
                 Sql(db, "DELETE FROM TABLE_ARTICLES WHERE Code='OTHER'");
-                Sql(db, "INSERT INTO TABLE_ARTICLES VALUES (NULL,'ORPHAN','Missing ID',NULL)");
+                Sql(db, "INSERT INTO TABLE_ARTICLES VALUES (NULL,'ORPHAN','Missing ID',NULL,1,2,1)");
             }
             bool missingRejected = false;
             try { reader.ListAll(); } catch (InvalidOperationException) { missingRejected = true; }
