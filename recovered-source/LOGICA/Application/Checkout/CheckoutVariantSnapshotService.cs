@@ -31,9 +31,9 @@ namespace LOGICA.ApplicationLayer.Checkout
     internal sealed class CheckoutVariantChoiceResult
     {
         internal CheckoutVariantChoiceStatus Status { get; private set; }
-        internal DataRow? SelectedRow { get; private set; }
+        internal DataRow SelectedRow { get; private set; }
 
-        internal CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus status, DataRow? selectedRow)
+        internal CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus status, DataRow selectedRow)
         {
             Status = status;
             SelectedRow = selectedRow;
@@ -102,7 +102,7 @@ namespace LOGICA.ApplicationLayer.Checkout
                     invalid = true;
                     continue;
                 }
-                string? articleId = Convert.ToString(row["ID_ARTICLE"]);
+                string articleId = Convert.ToString(row["ID_ARTICLE"]);
                 if (String.IsNullOrWhiteSpace(articleId))
                 {
                     invalid = true;
@@ -127,7 +127,7 @@ namespace LOGICA.ApplicationLayer.Checkout
         // Modern selection boundary: -1 is explicit cancellation; no implicit first
         // match for duplicate barcodes. Re-resolve against the current query so
         // removed, changed or ambiguous article identities cannot be sold.
-        internal static DataRow? ResolveChosenVariant(
+        internal static DataRow ResolveChosenVariant(
             DataTable currentMatches, IList<CheckoutVariantSnapshot> displayed,
             int selectedIndex)
         {
@@ -221,7 +221,7 @@ namespace LOGICA.ApplicationLayer.Checkout
                 !currentMatches.Columns.Contains("ID_ARTICLE"))
                 return new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.InvalidCandidates, null);
 
-            DataRow? found = null;
+            DataRow found = null;
             bool ambiguous = false;
             bool invalidCandidates = false;
             // The live result must obey the same identity uniqueness contract
@@ -242,7 +242,7 @@ namespace LOGICA.ApplicationLayer.Checkout
                     invalidCandidates = true;
                     continue;
                 }
-                string? candidateBarcode = nullBarcode ? "" : row["Code"].ToString();
+                string candidateBarcode = nullBarcode ? "" : row["Code"].ToString();
                 string articleId = Convert.ToString(row["ID_ARTICLE"]);
                 if (!seenIds.Add(articleId))
                     ambiguous = true;
@@ -267,7 +267,7 @@ namespace LOGICA.ApplicationLayer.Checkout
                 : new CheckoutVariantChoiceResult(CheckoutVariantChoiceStatus.Selected, found);
         }
 
-        internal static DataRow? Resolve(DataTable matches, CheckoutVariantSnapshot selected)
+        internal static DataRow Resolve(DataTable matches, CheckoutVariantSnapshot selected)
         {
             if (matches == null) throw new ArgumentNullException("matches");
             if (selected == null) throw new ArgumentNullException("selected");
