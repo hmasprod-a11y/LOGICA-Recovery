@@ -53,6 +53,7 @@ static class Program
             Assert(ambiguousScan, "snapshot refuses ambiguous barcode");
             Assert(inventory.FindBarcode("Q'42' OR 1=1 --").Count == 0, "snapshot parameterized barcode");
             Assert(inventory.FindStockBelow(1m).Count == 2, "snapshot low stock includes zero and negative stock");
+            Assert(inventory.FindOutOfStock().Select(x => x.ArticleId).OrderBy(x => x).SequenceEqual(new[] { "A-2", "A-4" }), "out-of-stock returns zero and negative articles by stable ID");
             Assert(inventory.FindStockInRange(-1m, 0m).Count == 2, "bounded stock interval includes negative and zero");
             Assert(inventory.FindStockInRange(5.500m, 5.500m).Single().ArticleId == "A-1", "bounded stock interval includes exact decimal boundary");
             Assert(inventory.FindStockInRange(0.001m, 5.499m).Single().ArticleId == "A-3", "bounded stock interval excludes both boundaries");
