@@ -407,9 +407,11 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(PendingOperationId));
                 ClearConsumedPaymentContext();
             }
-            // Unknown and future/unrecognized result values are both indeterminate.
-            // Never silently leave the checkout button enabled after a protocol mismatch.
-            if (result is not (CheckoutSubmissionResult.Committed or CheckoutSubmissionResult.Empty or CheckoutSubmissionResult.Invalidated))
+            // Invalidated means the Host rejected the previously authorized draft.
+            // Keep its stable operation ID locked for explicit durable reconciliation:
+            // never silently resubmit the same stale cashier/basket context.
+            // Unknown and future/unrecognized results are likewise fail-closed.
+            if (result is not (CheckoutSubmissionResult.Committed or CheckoutSubmissionResult.Empty))
                 CheckoutUncertain = true;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
