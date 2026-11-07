@@ -95,6 +95,26 @@ namespace LOGICA.Infrastructure.Checkout
                     throw new InvalidOperationException("Original sale was already returned.", ex);
                 }
             }
+            // Verify the actual durable claim before financial posting continues.
+            // A trigger or schema drift must not silently alter the original,
+            // operation identity or consumed quantity inside this transaction.
+            using (var verify = connection.CreateCommand())
+            {
+                verify.Transaction = transaction;
+                verify.CommandText =
+                    "SELECT original_ticket_id, return_operation_id, consumed_quantity " +
+                    "FROM hanouty_cash_return_consumption " +
+                    "WHERE BINARY original_ticket_id=BINARY @original FOR UPDATE";
+                verify.Parameters.AddWithValue("@original", originalTicketId);
+                using (var reader = verify.ExecuteReader())
+                {
+                    if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1) || reader.IsDBNull(2) ||
+                        !string.Equals(Convert.ToString(reader.GetValue(0)), originalTicketId, StringComparison.Ordinal) ||
+                        !string.Equals(Convert.ToString(reader.GetValue(1)), returnOperationId, StringComparison.Ordinal) ||
+                        Convert.ToDecimal(reader.GetValue(2)) != quantity || reader.Read())
+                        throw new InvalidOperationException("Persisted cash return consumption claim changed.");
+                }
+            }
         }
     }
 }
