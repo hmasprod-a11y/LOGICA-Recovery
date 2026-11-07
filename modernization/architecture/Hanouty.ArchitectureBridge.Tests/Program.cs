@@ -386,6 +386,22 @@ catch (InvalidOperationException ex) when (ex.Message.Contains("display name", S
     Assert(true, "null legacy display name fails closed at modern catalogue boundary");
 }
 
+// Empty or whitespace-only labels are not usable cashier-facing catalogue names.
+foreach (var invalidLabel in new[] { "", "   ", "\t" })
+{
+    var invalidReader = new MutablePhotoCatalogue { DisplayName = invalidLabel };
+    try
+    {
+        new CheckoutComposition(invalidReader, new RecordingPrompt(),
+            new RecordingAtomicBatchPort(), new CompositionJournal()).AllProducts();
+        throw new Exception("blank catalogue display name accepted");
+    }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("display name", StringComparison.Ordinal))
+    {
+        Assert(true, "blank legacy display name fails closed at modern catalogue boundary");
+    }
+}
+
 // Real WPF tile selection must re-read live Inventory identity/photo/variant.
 var photoReader = new MutablePhotoCatalogue();
 var photoPort = new RecordingAtomicBatchPort();
