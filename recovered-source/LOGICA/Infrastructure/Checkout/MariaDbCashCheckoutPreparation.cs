@@ -295,10 +295,12 @@ namespace LOGICA.Infrastructure.Checkout
                     var payment = Read(connection, transaction,
                         "SELECT MONTANT,OPERATION FROM TABLE_VENTES_REGLEMENTS WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
                     var detail = Read(connection, transaction,
-                        "SELECT Qté,Total_NET,OPERATION FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
+                        "SELECT ID_ARTICLE,Qté,Total_NET,OPERATION FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
                     if (receipt.Rows.Count != 1 || payment.Rows.Count != 1 || detail.Rows.Count != 1 ||
                         Number(receipt.Rows[0], "Total_NET") != -amount ||
                         Number(payment.Rows[0], "MONTANT") != -amount ||
+                        !String.Equals(Convert.ToString(detail.Rows[0]["ID_ARTICLE"], CultureInfo.InvariantCulture),
+                            line.ArticleId, StringComparison.Ordinal) ||
                         Number(detail.Rows[0], "Qté") != -line.Quantity ||
                         Number(detail.Rows[0], "Total_NET") != -amount ||
                         Convert.ToString(receipt.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT" ||
