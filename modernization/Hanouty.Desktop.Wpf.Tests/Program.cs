@@ -267,6 +267,17 @@ Check(vm.ScanFeedback == "Barcode contains leading or trailing whitespace" &&
     selection.Selected.Count == 1 && vm.SelectedProduct is null,
     "scanner must not trim trailing whitespace into another article identity");
 
+vm.ScannerText = "12\\u00003";
+vm.ScanBarcode();
+Check(vm.ScanFeedback == "Barcode contains control characters" &&
+    selection.Selected.Count == 1 && vm.SelectedProduct is null &&
+    vm.BarcodeCandidates.Count == 0,
+    "scanner must reject embedded NUL without dispatching a different product");
+vm.ScannerText = "12\\u001F3";
+vm.ScanBarcode();
+Check(vm.ScanFeedback == "Barcode contains control characters" &&
+    selection.Selected.Count == 1 && vm.SelectedProduct is null,
+    "scanner must reject embedded unit separator without dispatch");
 vm.ScannerText = "777";
 vm.ScanBarcode();
 Check(vm.ScanFeedback == "Ambiguous barcode" && selection.Selected.Count == 1 && vm.BarcodeCandidates.Count == 2 && vm.SelectedProduct is null, "duplicate barcode must expose candidates and not select silently");
