@@ -39,6 +39,8 @@ namespace LOGICA.Infrastructure.Checkout
                 string.IsNullOrWhiteSpace(returnOperationId) || returnOperationId.Length > 64 ||
                 returnOperationId.Trim() != returnOperationId || quantity <= 0m)
                 throw new InvalidOperationException("Canonical return identifiers and positive quantity are required.");
+            if (string.Equals(originalTicketId, returnOperationId, StringComparison.Ordinal))
+                throw new InvalidOperationException("A refund cannot consume its own operation as an original sale.");
             foreach (char c in originalTicketId + returnOperationId)
                 if (char.IsControl(c))
                     throw new InvalidOperationException("Return identifier contains a control character.");
