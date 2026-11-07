@@ -152,6 +152,27 @@ static class Program
             try { inventory.PreviewReplenishmentForArticles(new[] { "A-2" }, -1m); }
             catch (ArgumentOutOfRangeException) { selectedReorderNegativeTarget = true; }
             Assert(selectedReorderNegativeTarget, "supplier preview rejects negative target");
+            // Invalid legacy purchase costs must never produce negative supplier draft totals.
+            using (var db = new MySqlConnection(connectionString))
+            {
+                db.Open();
+                Sql(db, "UPDATE TABLE_ARTICLES SET Prix_A = -2 WHERE ID_ARTICLE = 'A-2'");
+                try
+                {
+                    bool allRejected = false;
+                    try { inventory.PreviewReplenishment(1m, 5m); }
+                    catch (InvalidOperationException) { allRejected = true; }
+                    Assert(allRejected, "supplier preview refuses negative purchase price");
+                    bool selectedRejected = false;
+                    try { inventory.PreviewReplenishmentForArticles(new[] { "A-2" }, 5m); }
+                    catch (InvalidOperationException) { selectedRejected = true; }
+                    Assert(selectedRejected, "selected supplier preview refuses negative purchase price");
+                }
+                finally
+                {
+                    Sql(db, "UPDATE TABLE_ARTICLES SET Prix_A = 8 WHERE ID_ARTICLE = 'A-2'");
+                }
+            }
             Assert(inventory.ReadArticle("A-4").Stock == -1m, "replenishment does not mutate stock");
             Assert(inventory.FindOutOfStock().Select(x => x.ArticleId).OrderBy(x => x).SequenceEqual(new[] { "A-2", "A-4" }), "out-of-stock returns zero and negative articles by stable ID");
             Assert(inventory.FindStockInRange(-1m, 0m).Count == 2, "bounded stock interval includes negative and zero");
