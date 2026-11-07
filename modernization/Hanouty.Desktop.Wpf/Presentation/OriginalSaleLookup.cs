@@ -39,9 +39,12 @@ public sealed class OriginalSaleSelection
         Selected = candidate;
         return true;
     }
+    // Changing the highlighted row revokes authorization but preserves the
+    // current trusted Host snapshot for a fresh explicit selection.
+    public void ClearSelection() => Selected = null;
     public void Clear()
     {
-        Selected = null;
+        ClearSelection();
         _activeSnapshot = null;
     }
 }
