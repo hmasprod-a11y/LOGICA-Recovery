@@ -1378,7 +1378,7 @@ if (windowReviewError is not null) throw new Exception("MainWindow reviewed rese
 // Actual STA window interactions: original-sale lookup is disabled without a
 // registered Host, respects cashier session, and survives RTL layout switching.
 var originalWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
-    new RecordingSelection(), new RecordingSubmission(), financialContext,
+    new RecordingSelection(), new LegacyOnlySubmission(), financialContext,
     requireFreshPaymentContext: true);
 Check(!originalWindow.SearchOriginalSales("receipt-1"),
     "unregistered Host lookup must fail closed in real window");
@@ -1728,7 +1728,14 @@ sealed class ReentrantArticleSelection(ProductSummary other) : IProductSelection
     }
 }
 
-sealed class RecordingSubmission : IContextualCheckoutSubmission
+sealed // Legacy-only posting must be rejected before creating a financial operation.
+sealed class LegacyOnlySubmission : ICheckoutSubmission
+{
+    public CheckoutSubmissionResult Submit(string stableOperationId) =>
+        throw new InvalidOperationException("Legacy posting is forbidden");
+}
+
+class RecordingSubmission : IContextualCheckoutSubmission
 {
     public CheckoutSubmissionResult Submit(string stableOperationId) => throw new InvalidOperationException("legacy submission forbidden");
     public List<string> Ids { get; } = new();
