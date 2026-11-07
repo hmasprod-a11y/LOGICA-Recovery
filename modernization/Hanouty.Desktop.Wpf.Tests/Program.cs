@@ -7,6 +7,14 @@ static void Check(bool value, string reason)
 {
     if (!value) throw new Exception(reason);
 }
+// A catalogue-only diagnostic resolver must never make the installed WPF app
+// start a cashier process. The QA-owned Bootstrap must supply financial services.
+Hanouty.Desktop.Wpf.App.ResolveFinancialServices = null;
+Hanouty.Desktop.Wpf.App.ResolveServices = () =>
+    (new EmptyCatalogueReader(), new RecordingSelection(), new RecordingSubmission());
+Check(!Hanouty.Desktop.Wpf.App.HasProductionStartupResolver,
+    "catalogue-only resolver must not unlock installed production startup");
+Hanouty.Desktop.Wpf.App.ResolveServices = null;
 // Architecture CreateFinancial host registers the same financial adapter and
 // authenticated cash context at WPF startup, without a second host or PIN copy.
 var startupJournal = new FinancialJournal();
@@ -15,6 +23,7 @@ var startupAdapter = new AuthorizedWpfCheckoutAdapter(new FinancialPreparation()
 var startupCash = new CashierPaymentContext("cashier-1", "register-1", "MAD", "Cash", 100m);
 Hanouty.Desktop.Wpf.App.ResolveFinancialServices = () =>
     (new EmptyCatalogueReader(), new RecordingSelection(), startupAdapter, startupCash);
+Check(Hanouty.Desktop.Wpf.App.HasProductionStartupResolver, "financial host must enable startup");
 var registered = Hanouty.Desktop.Wpf.App.ResolveFinancialServices();
 Check(registered.Payment == startupCash &&
     ReferenceEquals(registered.Submission, startupAdapter) &&
