@@ -9,10 +9,14 @@ namespace Hanouty.Inventory.MariaDb;
 public sealed record InventorySnapshot(string ArticleId, string Barcode, decimal Stock,
     decimal SalePrice, decimal PurchasePrice);
 
+/// <summary>Read-only stocktake totals; not a financial posting or accounting balance.</summary>
+public sealed record InventoryStocktakeTotals(int ArticleCount, decimal SignedUnits, decimal PurchaseCostValue, decimal SalePriceValue);
+
 public interface IInventorySnapshotReader
 {
     InventorySnapshot ReadArticle(string articleId);
     IReadOnlyList<InventorySnapshot> ListAll();
+    InventoryStocktakeTotals ReadStocktakeTotals();
     IReadOnlyList<InventorySnapshot> FindBarcode(string barcode);
     InventorySnapshot ReadUniqueBarcode(string barcode);
     IReadOnlyList<InventorySnapshot> FindStockBelow(decimal threshold);
@@ -43,6 +47,23 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
     /// <summary>Full read-only inventory for stocktake and WPF reporting; no sales or adjustment side effects.</summary>
     public IReadOnlyList<InventorySnapshot> ListAll()
         => Read("1 = @all", "@all", 1);
+
+    /// <summary>Compute stocktake totals from one read-only query snapshot, retaining negative stock.</summary>
+    public InventoryStocktakeTotals ReadStocktakeTotals()
+    {
+        var rows = ListAll();
+        decimal units = 0m, cost = 0m, sale = 0m;
+        foreach (var row in rows)
+        {
+            checked
+            {
+                units += row.Stock;
+                cost += row.Stock * row.PurchasePrice;
+                sale += row.Stock * row.SalePrice;
+            }
+        }
+        return new InventoryStocktakeTotals(rows.Count, units, cost, sale);
+    }
 
     public InventorySnapshot ReadArticle(string articleId)
     {
