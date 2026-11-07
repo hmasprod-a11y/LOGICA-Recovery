@@ -280,6 +280,10 @@ vm.ScanBarcode();
 Check(vm.ScanFeedback == "Barcode contains leading or trailing whitespace" &&
     selection.Selected.Count == 1 && vm.SelectedProduct is null && vm.BarcodeCandidates.Count == 0,
     "scanner must not trim leading whitespace into another article identity");
+vm.ScannerText = "123";
+Check(vm.ScanFeedback == "" && vm.BarcodeCandidates.Count == 0 &&
+    vm.SelectedProduct is null && selection.Selected.Count == 1,
+    "editing rejected whitespace scan clears stale error without dispatching");
 vm.ScannerText = "123 ";
 vm.ScanBarcode();
 Check(vm.ScanFeedback == "Barcode contains leading or trailing whitespace" &&
