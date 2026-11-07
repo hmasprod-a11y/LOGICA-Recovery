@@ -9,7 +9,8 @@ namespace LOGICA.ApplicationLayer.Catalogue
         public static DataRow? FindFirst(int lastIndex,
 #else
         public static DataRow FindFirst(int lastIndex,
-#endif Func<int, object> readCode,
+#endif
+            Func<int, object> readCode,
             Func<object, DataTable> lookup, Action afterNoMatch)
         {
             checked
