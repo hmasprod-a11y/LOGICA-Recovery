@@ -59,6 +59,15 @@ class BoundaryTests(unittest.TestCase):
         self.rule.write_text("using System.Windows.Forms;")
         self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
 
+    def test_commented_import_does_not_fail_portable_source(self):
+        self.rule.write_text("// using System.Windows.Forms;\n// Imports MySql.Data\nnamespace Hanouty {}")
+        result = validate(self.root)
+        self.assertTrue(result["ok"], result["errors"])
+
+    def test_real_import_after_comment_still_rejected(self):
+        self.rule.write_text("// using System.Windows.Forms;\nusing MySql.Data.MySqlClient;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
     def test_global_using_winforms_with_tab_rejected(self):
         self.rule.write_text("global using\tSystem.Windows.Forms;")
         self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
