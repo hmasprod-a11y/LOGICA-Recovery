@@ -576,15 +576,22 @@ var commitVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(
 Check(commitVm.CanCommit, "contextual checkout port with valid payment context enables commit control");
 commitPort.Result = CheckoutSubmissionResult.Invalidated;
 commitVm.CommitCommand.Execute(null);
-Check(commitPort.Ids.Count == 1 && !commitVm.CheckoutUncertain &&
-    commitVm.CommitFeedback.Contains("invalidated"), "invalidated checkout must not claim success");
+Check(commitPort.Ids.Count == 1 && commitVm.CheckoutUncertain &&
+    !commitVm.CanCommit && commitVm.PendingOperationId == commitPort.Ids[0] &&
+    commitVm.CommitFeedback.Contains("invalidated"), "invalidated checkout must latch durable review, not claim success");
 commitPort.Result = CheckoutSubmissionResult.Unknown;
 commitVm.CommitCheckout();
-Check(commitPort.Ids.Count == 2 && commitPort.Ids[0] == commitPort.Ids[1] &&
-    commitVm.CheckoutUncertain && !commitVm.CanCommit,
-    "unknown result retains stable operation ID and blocks retry");
-commitVm.CommitCheckout();
-Check(commitPort.Ids.Count == 2, "unknown checkout must never auto-retry");
+Check(commitPort.Ids.Count == 1 && commitVm.CheckoutUncertain,
+    "invalidated checkout must never retry even if the Host outcome changes");
+var unknownPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
+var unknownVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: unknownPort)
+{ PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "Cash", 10m) };
+unknownVm.CommitCheckout();
+Check(unknownPort.Ids.Count == 1 && unknownVm.PendingOperationId == unknownPort.Ids[0] &&
+    unknownVm.CheckoutUncertain && !unknownVm.CanCommit,
+    "unknown result preserves operation identity and blocks retry");
+unknownVm.CommitCheckout();
+Check(unknownPort.Ids.Count == 1, "unknown checkout must never auto-retry");
 Check(CashierEntryDraft.TryParse("cashier01", "register02", "10.25", out var enteredCashier, out var enteredRegister, out var enteredTender) &&
     enteredCashier == "cashier01" && enteredRegister == "register02" && enteredTender == 10.25m,
     "cashier/register and invariant MAD tender parse without authorization");
