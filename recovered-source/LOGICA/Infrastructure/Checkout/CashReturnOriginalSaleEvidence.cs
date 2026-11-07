@@ -58,15 +58,22 @@ namespace LOGICA.Infrastructure.Checkout
                 throw new InvalidOperationException("A positive original line quantity is required.");
             // A full-ticket cash refund cannot be inferred from one matching
             // line if other lines exist, even when totals happen to match.
-            using (var countCommand = connection.CreateCommand())
+            // Lock the actual persisted detail rows, not an aggregate COUNT(*)
+            // result. This also rejects a multi-line ticket before claiming it.
+            using (var lines = connection.CreateCommand())
             {
-                countCommand.Transaction = transaction;
-                countCommand.CommandText =
-                    "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL " +
+                lines.Transaction = transaction;
+                lines.CommandText =
+                    "SELECT ID_ARTICLE FROM TABLE_VENTES_JOURNAL " +
                     "WHERE BINARY ID_TICKET=BINARY @original FOR UPDATE";
-                countCommand.Parameters.AddWithValue("@original", originalTicketId);
-                if (Convert.ToInt64(countCommand.ExecuteScalar()) != 1L)
-                    throw new InvalidOperationException("Full-ticket cash return requires exactly one original sale line.");
+                lines.Parameters.AddWithValue("@original", originalTicketId);
+                using (var reader = lines.ExecuteReader())
+                {
+                    if (!reader.Read() || reader.IsDBNull(0) ||
+                        !string.Equals(Convert.ToString(reader.GetValue(0)), articleId,
+                            StringComparison.Ordinal) || reader.Read())
+                        throw new InvalidOperationException("Full-ticket cash return requires one matching original sale line.");
+                }
             }
             using (var command = connection.CreateCommand())
             {
