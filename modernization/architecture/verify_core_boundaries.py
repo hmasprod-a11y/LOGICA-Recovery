@@ -112,7 +112,10 @@ def validate(root):
                 for prefix in FORBIDDEN_IMPORTS:
                     if "using " + prefix in code or "Imports " + prefix in code:
                         errors.append("platform dependency in " + str(relative) + ": " + prefix)
-                if FORBIDDEN_QUALIFIED_TYPES.search(code):
+                # Ignore line comments: mentioning a forbidden dependency in an explanatory
+                # comment is not a production reference. Keep scanning executable source.
+                executable_lines = "\n".join(line.split("//", 1)[0] for line in code.splitlines())
+                if FORBIDDEN_QUALIFIED_TYPES.search(executable_lines):
                     errors.append("fully qualified platform dependency in " + str(relative))
             paths.append(relative.as_posix())
     except (OSError, ET.ParseError) as exc:
