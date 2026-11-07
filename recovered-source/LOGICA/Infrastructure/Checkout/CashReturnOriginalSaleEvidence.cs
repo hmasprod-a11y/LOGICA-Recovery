@@ -63,7 +63,7 @@ namespace LOGICA.Infrastructure.Checkout
                 countCommand.Transaction = transaction;
                 countCommand.CommandText =
                     "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL " +
-                    "WHERE BINARY ID_TICKET=BINARY @original";
+                    "WHERE BINARY ID_TICKET=BINARY @original FOR UPDATE";
                 countCommand.Parameters.AddWithValue("@original", originalTicketId);
                 if (Convert.ToInt64(countCommand.ExecuteScalar()) != 1L)
                     throw new InvalidOperationException("Full-ticket cash return requires exactly one original sale line.");
@@ -86,7 +86,9 @@ namespace LOGICA.Infrastructure.Checkout
                     decimal discount = Convert.ToDecimal(reader.GetValue(2));
                     decimal lineTotal = Convert.ToDecimal(reader.GetValue(3));
                     string operation = Convert.ToString(reader.GetValue(4));
-                    // MariaDB ROUND(positive DECIMAL, 2) rounds half away from zero.\n                    // Mirror that rule to avoid rejecting valid persisted cash sales\n                    // at a half-cent boundary (e.g. 0.125 x 1 = 0.13).\n                    // Detect a corrupted or mismatched original unit price rather
+                    // MariaDB ROUND(positive DECIMAL, 2) rounds half away from zero.
+                    // Mirror that rule for persisted half-cent boundaries.
+                    // Detect a corrupted or mismatched original unit price rather
                     // than treating the paid total alone as price evidence.
                     decimal expectedNet = Math.Round(checked(price * quantity), 2,
                         MidpointRounding.AwayFromZero);
