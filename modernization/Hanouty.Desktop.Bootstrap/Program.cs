@@ -74,7 +74,12 @@ public static class Program
                 Directory.CreateDirectory(evidence);
                 File.WriteAllText(Path.Combine(evidence, "failure.txt"), ex.ToString());
             }
-            else MessageBox.Show(ex.Message, "Hanouty — startup blocked",
+            else MessageBox.Show(
+                ex.Message + Environment.NewLine + Environment.NewLine +
+                "Configure HANOUTY_CATALOGUE_CONNECTION for a local SELECT-only MariaDB account " +
+                "and HANOUTY_DATA_DIRECTORY for an existing local data directory. " +
+                "Financial operations remain disabled in this mode.",
+                "Hanouty — local catalogue setup required",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             return 2;
         }
