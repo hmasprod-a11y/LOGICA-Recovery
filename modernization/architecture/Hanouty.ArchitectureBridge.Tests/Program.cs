@@ -343,10 +343,19 @@ sessionJournal.Outcome = CheckoutOperationOutcome.Persisted;
 Assert(failedSession.Reconcile() == CheckoutOperationOutcome.Persisted &&
        failedSession.PendingCount == 0 && failedSession.OperationId is null,
        "durably persisted session clears without duplicate posting");
-var invalidSession = new CheckoutComposition(new MutableCompositionCatalogue(),
-    new RecordingPrompt(), new RecordingAtomicBatchPort(), new CompositionJournal()).CreateSession();
-Assert(invalidSession.Scan("999").Outcome == SelectionOutcome.Selected,
+var mutableInvalidCatalogue = new MutableCompositionCatalogue();
+var invalidPort = new RecordingAtomicBatchPort();
+var invalidSession = new CheckoutComposition(mutableInvalidCatalogue,
+    new RecordingPrompt(), invalidPort, new CompositionJournal()).CreateSession();
+Assert(invalidSession.SelectArticle(invalidSession.Products[0]).Outcome == SelectionOutcome.Selected,
        "session stages mutable catalogue product");
+mutableInvalidCatalogue.ChangeIdentity = true;
+Assert(invalidSession.Submit("invalidated-001") == CheckoutBatchStatus.Invalidated &&
+       invalidPort.Calls.Count == 0, "stale article refuses financial posting");
+mutableInvalidCatalogue.ChangeIdentity = false;
+try { invalidSession.Submit("invalidated-001"); throw new Exception("invalidated retry accepted"); }
+catch (InvalidOperationException) { Assert(invalidPort.Calls.Count == 0,
+    "restored catalogue cannot silently retry invalidated financial operation"); }
 invalidSession.DiscardInvalidated();
 Assert(invalidSession.PendingCount == 0, "explicit discard resets pending session");
 
