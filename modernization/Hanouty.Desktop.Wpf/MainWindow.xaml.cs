@@ -156,7 +156,7 @@ public partial class MainWindow : Window
         if (_originalSaleSelection?.Selected is { } selected &&
             !ReferenceEquals(OriginalSaleResults.SelectedItem, selected))
         {
-            _originalSaleSelection.Clear();
+            _originalSaleSelection.ClearSelection();
             _returnDraft.Invalidate("Original sale selection changed — review again");
             ReturnDraftStatus.Text = _returnDraft.Status;
         }
