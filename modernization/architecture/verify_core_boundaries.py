@@ -122,8 +122,8 @@ def validate(root):
         errors.append("CoreSources.props: " + str(exc))
     if not paths:
         errors.append("manifest has no production sources")
-    if len(paths) != len(set(paths)):
-        errors.append("duplicate production source")
+    if len(paths) != len({path.casefold() for path in paths}):
+        errors.append("duplicate production source (case-insensitive Windows path identity)")
     return {"ok": not errors, "source_count": len(paths),
             "source_paths": sorted(set(paths)), "targets": targets, "errors": errors}
 
