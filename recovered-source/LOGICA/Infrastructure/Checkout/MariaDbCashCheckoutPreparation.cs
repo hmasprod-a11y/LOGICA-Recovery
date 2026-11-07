@@ -58,6 +58,21 @@ namespace LOGICA.Infrastructure.Checkout
                     throw new InvalidOperationException("Cash posting requires existing transactional tables.");
             }
 
+            // A refund also writes the durable original-ticket consumption claim.
+            // It must participate in the SAME InnoDB transaction as stock,
+            // signed receipt, payment and operation journal. A nontransactional
+            // claim table could survive a failed posting and permanently consume
+            // a sale without refunding the customer.
+            if (request.IsReturn)
+            {
+                var claimEngine = Read(connection, transaction,
+                    "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@table",
+                    ("@table", "hanouty_cash_return_consumption"));
+                if (claimEngine.Rows.Count != 1 ||
+                    Convert.ToString(claimEngine.Rows[0][0]) != "InnoDB")
+                    throw new InvalidOperationException("Cash refund requires a transactional original-ticket claim table.");
+            }
+
             string cashier = AuthenticateCashier(request.CashierId, connection, transaction, readPin);
 
             // Lock the same original sequence and basket used by the writers.
