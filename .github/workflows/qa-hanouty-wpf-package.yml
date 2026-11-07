@@ -34,6 +34,23 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Execute actual WPF .NET 10 MVVM tests on Windows STA runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet run --project modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { throw 'WPF tests failed on Windows' }
+          dotnet run --project modernization/Hanouty.Desktop.Wpf.Smoke/Hanouty.Desktop.Wpf.Smoke.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { throw 'WPF executable smoke failed on Windows' }
+      - name: Verify integrated WPF production bootstrap rejects unapproved financial mode
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $project = 'modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj'
+          $script = 'scripts/Package-HanoutyWpf.ps1'
+          if (-not (Test-Path -LiteralPath $project) -or -not (Test-Path -LiteralPath $script)) { throw 'Integrated WPF bootstrap/package sources missing' }
+          $packager = Get-Content -LiteralPath $script -Raw
+          if ($packager -notmatch "financialAcceptance = \\\$false" -and $packager -notmatch 'financialAcceptance\\s*=\\s*\\$false') { throw 'W2 must remain explicitly unaccepted in engineering candidate manifest' }
       - name: Build self-contained independent HANOUTY WPF and verify extracted ZIP
         shell: pwsh
         run: ./scripts/Package-HanoutyWpf.ps1 -OutputDirectory "${{ runner.temp }}/hanouty-wpf-candidate" -Runtime win-x64
