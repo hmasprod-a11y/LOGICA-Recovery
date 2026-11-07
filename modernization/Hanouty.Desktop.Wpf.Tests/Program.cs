@@ -1595,7 +1595,15 @@ Check(!originalSelection.Select(new OriginalSaleCandidate("sale-1", "receipt-1",
     "detached or forged original-sale row cannot be selected");
 originalSelection.Select(originalRows[0], originalRows);
 originalSelection.Search("");
-Check(originalSelection.Selected is null, "new search clears stale original-sale selection");
+Check(originalSelection.Selected is null && !originalSelection.Select(originalRows[0], originalRows),
+    "new empty search revokes prior original-sale snapshot even when caller retains old rows");
+var refreshedRows = originalSelection.Search("receipt-1");
+Check(!originalSelection.Select(originalRows[0], originalRows) &&
+    originalSelection.Select(refreshedRows[0], refreshedRows),
+    "new Host search rejects stale row/snapshot and permits only latest readback");
+originalSelection.Clear();
+Check(!originalSelection.Select(refreshedRows[0], refreshedRows) && originalSelection.Selected is null,
+    "clearing original-sale evidence revokes retained result snapshots");
 originalLookup.Duplicate = true;
 try { originalSelection.Search("receipt-1"); throw new Exception("duplicate sale ID accepted"); }
 catch (InvalidOperationException) { }
