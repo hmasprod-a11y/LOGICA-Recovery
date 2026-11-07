@@ -239,6 +239,8 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
             if (quantity <= 0m) throw new InvalidOperationException("Invalid replenishment quantity.");
             suggestions.Add(new InventoryReorderSuggestion(row.ArticleId, row.Stock, targetStock, quantity, cost));
         }
+        // Supplier review and QA manifests must not depend on MariaDB row enumeration order.
+        suggestions.Sort((left, right) => StringComparer.Ordinal.Compare(left.ArticleId, right.ArticleId));
         return suggestions;
     }
 
