@@ -22,12 +22,12 @@ namespace LOGICA.ApplicationLayer.Catalogue
         // The article identifier is editable in LOGICA. On Save, the immutable
         // database row ID selects the original record; ID_ARTICLE is validated
         // separately by the existing duplicate lookup before it is changed.
-        internal static DataRow ResolveUniqueByDatabaseId(DataTable table, string id)
+        internal static DataRow? ResolveUniqueByDatabaseId(DataTable? table, string? id)
         {
             if (table == null || string.IsNullOrWhiteSpace(id) ||
                 !table.Columns.Contains("ID") || !table.Columns.Contains("ID_ARTICLE"))
                 return null;
-            DataRow match = null;
+            DataRow? match = null;
             foreach (DataRow row in table.Rows)
             {
                 if (row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached)
@@ -43,13 +43,13 @@ namespace LOGICA.ApplicationLayer.Catalogue
 
         // The WinForms grid can be sorted or filtered independently of DataTable.Rows.
         // Never identify an edited/deleted product by a displayed row index.
-        internal static DataRow ResolveUniqueExistingRow(DataTable table, string id, string articleId)
+        internal static DataRow? ResolveUniqueExistingRow(DataTable? table, string? id, string? articleId)
         {
             if (table == null || string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(articleId) ||
                 !table.Columns.Contains("ID") || !table.Columns.Contains("ID_ARTICLE"))
                 return null;
 
-            DataRow match = null;
+            DataRow? match = null;
             foreach (DataRow row in table.Rows)
             {
                 if (row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached)
