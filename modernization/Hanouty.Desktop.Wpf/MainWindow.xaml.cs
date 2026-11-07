@@ -500,6 +500,7 @@ public partial class MainWindow : Window
         var contextAtPrompt = vmAtPrompt?.PaymentContext;
         var pendingAtPrompt = vmAtPrompt?.PendingOperationId;
         var uncertainAtPrompt = vmAtPrompt?.CheckoutUncertain;
+        var busyAtPrompt = vmAtPrompt?.CheckoutBusy;
         try
         {
             if (dialog.ShowDialog() != true || vmAtPrompt is null ||
@@ -508,7 +509,7 @@ public partial class MainWindow : Window
                 !ReferenceEquals(vmAtPrompt.PaymentContext, contextAtPrompt) ||
                 vmAtPrompt.CheckoutUncertain != uncertainAtPrompt ||
                 vmAtPrompt.PendingOperationId != pendingAtPrompt ||
-                vmAtPrompt.CheckoutBusy)
+                vmAtPrompt.CheckoutBusy != busyAtPrompt)
                 return "";
             return pin.Password;
         }
