@@ -1513,12 +1513,12 @@ originalWindow.Close();
 var reentrantWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
     new RecordingSelection(), new RecordingSubmission(), financialContext,
     requireFreshPaymentContext: true);
-var reentrantVm = (CatalogueViewModel)reentrantWindow.DataContext;
+var originalLookupReentrantVm = (CatalogueViewModel)reentrantWindow.DataContext;
 var nestedBlocked = false;
 var reentrantReader = new CallbackOriginalSaleLookup(() =>
 {
     nestedBlocked = !reentrantWindow.SearchOriginalSales("nested");
-    reentrantVm.FinancialSessionActive = false;
+    originalLookupReentrantVm.FinancialSessionActive = false;
 });
 reentrantWindow.ConfigureOriginalSaleLookup(reentrantReader);
 Check(!reentrantWindow.SearchOriginalSales("receipt-1") && nestedBlocked &&
@@ -1547,23 +1547,23 @@ editedDuringReadWindow.Close();
 
 // A Host reader pumping the dispatcher cannot switch cashier context while its
 // persisted-sale result is still in flight. No extra Host/logout authority is minted.
-var lockedWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
+var originalLookupLockedWindow = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items),
     new RecordingSelection(), new RecordingSubmission(), financialContext,
     requireFreshPaymentContext: true);
-var lockedVm = (CatalogueViewModel)lockedWindow.DataContext;
+var originalLookupLockedVm = (CatalogueViewModel)originalLookupLockedWindow.DataContext;
 var logoutCallsDuringLookup = 0;
-lockedWindow.ConfigureCashierEntry((_, _, _) => true, () => 0m,
+originalLookupLockedWindow.ConfigureCashierEntry((_, _, _) => true, () => 0m,
     () => { logoutCallsDuringLookup++; return true; });
 var deniedDuringLookup = false;
-lockedWindow.ConfigureOriginalSaleLookup(new CallbackOriginalSaleLookup(() =>
+originalLookupLockedWindow.ConfigureOriginalSaleLookup(new CallbackOriginalSaleLookup(() =>
 {
-    deniedDuringLookup = !lockedWindow.EndFinancialSession() &&
-        !lockedWindow.SelectOriginalSale(new OriginalSaleCandidate("sale-1", "receipt-1", 10m));
+    deniedDuringLookup = !originalLookupLockedWindow.EndFinancialSession() &&
+        !originalLookupLockedWindow.SelectOriginalSale(new OriginalSaleCandidate("sale-1", "receipt-1", 10m));
 }));
-Check(lockedWindow.SearchOriginalSales("receipt-1") && deniedDuringLookup &&
-    logoutCallsDuringLookup == 0 && lockedVm.FinancialSessionActive,
+Check(originalLookupLockedWindow.SearchOriginalSales("receipt-1") && deniedDuringLookup &&
+    logoutCallsDuringLookup == 0 && originalLookupLockedVm.FinancialSessionActive,
     "reentrant original-sale reader cannot logout or select during in-flight lookup");
-lockedWindow.Close();
+originalLookupLockedWindow.Close();
 
 // A reentrant Host callback can replace the payment context with a NEW object
 // carrying the SAME cashier identity. Results belong to the exact authorization,
