@@ -68,6 +68,14 @@ static class Program
             Assert(totals.PositiveStockArticles == 2 && totals.ZeroStockArticles == 1 && totals.NegativeStockArticles == 1, "stocktake distinguishes positive zero and negative articles");
             Assert(totals.PositiveStockArticles + totals.ZeroStockArticles + totals.NegativeStockArticles == totals.ArticleCount, "stocktake stock status partition covers all articles");
             Assert(totals.PurchaseCostValue == 41.1875m && totals.SalePriceValue == 70.375m, "stocktake purchase/sale valuation retains signed decimal precision");
+            var selectedTotals = inventory.ReadStocktakeTotalsForArticles(new[] { "A-4", "A-1" });
+            Assert(selectedTotals.ArticleCount == 2 && selectedTotals.SignedUnits == 4.500m, "selected stocktake uses explicit IDs and signed quantities");
+            Assert(selectedTotals.PurchaseCostValue == 35.1875m && selectedTotals.SalePriceValue == 62.0625m, "selected stocktake values retain decimal precision");
+            Assert(selectedTotals.PositiveStockArticles == 1 && selectedTotals.NegativeStockArticles == 1, "selected stocktake status counts");
+            Assert(inventory.ReadStocktakeTotalsForArticles(Array.Empty<string>()).ArticleCount == 0, "empty selected stocktake has zero totals");
+            bool missingSelection = false;
+            try { inventory.ReadStocktakeTotalsForArticles(new[] { "A-1", "MISSING" }); } catch (InvalidOperationException) { missingSelection = true; }
+            Assert(missingSelection, "selected stocktake refuses missing stable identity");
             Assert(inventory.FindBarcode("Q'42").Count == 2, "snapshot preserves ambiguous quoted barcode candidates");
             bool ambiguousScan = false;
             try { inventory.ReadUniqueBarcode("Q'42"); } catch (InvalidOperationException) { ambiguousScan = true; }
