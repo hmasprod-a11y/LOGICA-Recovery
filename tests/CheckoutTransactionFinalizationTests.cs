@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using LOGICA.ApplicationLayer.Checkout;
 
 internal static class CheckoutTransactionFinalizationTests
@@ -29,9 +30,11 @@ internal static class CheckoutTransactionFinalizationTests
         private IEnumerable<TicketPaymentWrite> PaymentRows()
         {
             Mark("payment.next.1");
-            yield return new TicketPaymentWrite { AmountText = "1" };
+            yield return new TicketPaymentWrite {
+                AmountText = "1", Context = new TicketPaymentContext { TicketNumber = "T-1" } };
             Mark("payment.next.2");
-            yield return new TicketPaymentWrite { AmountText = "2" };
+            yield return new TicketPaymentWrite {
+                AmountText = "2", Context = new TicketPaymentContext { TicketNumber = "T-1" } };
         }
 
         internal CheckoutPostingInput Input()
@@ -97,7 +100,356 @@ internal static class CheckoutTransactionFinalizationTests
             AssertEvents(scenario.Events, expected, "failure at " + Stages[failure]);
         }
 
-        Console.WriteLine("PASS checkout transaction finalization: 19 ordered stages, commit/close failures and caller-owned rollback");
+        // The real WinForms SOLDER entry point uses this production finalizer.
+        // Track the commit boundary without changing legacy rollback behavior.
+        // A failed Commit is ambiguous; a failed Close is AFTER a confirmed Commit.
+        foreach (string stage in new[] { "stock.write.1", "payment.write.1", "print", "commit", "close", "" })
+        {
+            var tracked = new Scenario { FailAt = stage };
+            var progress = new CheckoutCommitProgress();
+            bool threw = false;
+            try
+            {
+                CheckoutTransactionFinalizationService.PostAndFinalize(
+                    tracked, tracked.Input(), tracked, progress);
+            }
+            catch (InjectedFailure) { threw = true; }
+            if (threw != (stage != ""))
+                throw new Exception("Commit progress did not propagate " + stage);
+            CheckoutCommitStage expected = stage == "" ? CheckoutCommitStage.Closed :
+                stage == "commit" ? CheckoutCommitStage.CommitAttempted :
+                stage == "close" ? CheckoutCommitStage.CommitConfirmed : CheckoutCommitStage.Posting;
+            CheckoutAttemptRecoveryAction recovery =
+                expected == CheckoutCommitStage.Posting
+                    ? CheckoutAttemptRecoveryAction.VerifyRollback :
+                expected == CheckoutCommitStage.CommitAttempted ||
+                expected == CheckoutCommitStage.CommitConfirmed
+                    ? CheckoutAttemptRecoveryAction.ReconcileDatabase :
+                    CheckoutAttemptRecoveryAction.ResetBasket;
+            if (progress.RecoveryAction != recovery)
+                throw new Exception("Unsafe SOLDER recovery decision at " + stage);
+            if (progress.Stage != expected ||
+                progress.CommitOutcomeUnknown != (expected == CheckoutCommitStage.CommitAttempted) ||
+                progress.CommitWasConfirmed != (expected == CheckoutCommitStage.CommitConfirmed ||
+                                                expected == CheckoutCommitStage.Closed))
+                throw new Exception("Unsafe SOLDER commit outcome classification at " + stage);
+            int commits = 0, closes = 0;
+            foreach (string item in tracked.Events)
+            {
+                if (item == "commit") commits++;
+                if (item == "close") closes++;
+            }
+            if (commits != (expected == CheckoutCommitStage.Posting ? 0 : 1) ||
+                closes != (expected == CheckoutCommitStage.CommitConfirmed ||
+                           expected == CheckoutCommitStage.Closed ? 1 : 0))
+                throw new Exception("Commit/Close called more than once at " + stage);
+
+            // A progress object from any completed/failed attempt is not
+            // reusable; rejecting it must not invoke any store callback.
+            var accidentalRetry = new Scenario();
+            bool retryRejected = false;
+            try
+            {
+                CheckoutTransactionFinalizationService.PostAndFinalize(
+                    accidentalRetry, accidentalRetry.Input(), accidentalRetry, progress);
+            }
+            catch (InvalidOperationException) { retryRejected = true; }
+            if (!retryRejected || accidentalRetry.Events.Count != 0)
+                throw new Exception("Reused SOLDER progress reached database callbacks");
+        }
+
+        if (new CheckoutCommitProgress().RecoveryAction !=
+            CheckoutAttemptRecoveryAction.None)
+            throw new Exception("Unused checkout progress must not request rollback or reset");
+
+        var missingProgress = new Scenario();
+        bool missingProgressRejected = false;
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                missingProgress, missingProgress.Input(), missingProgress, null);
+        }
+        catch (ArgumentNullException ex) { missingProgressRejected = ex.ParamName == "progress"; }
+        if (!missingProgressRejected || missingProgress.Events.Count != 0)
+            throw new Exception("Null SOLDER progress must fail before stock mutation");
+
+        // Concurrent callers must not both enter the same production progress.
+        // This is deterministic: only one atomic NotStarted -> Posting wins.
+        var sharedProgress = new CheckoutCommitProgress();
+        int starts = 0;
+        var workers = new Thread[16];
+        for (int i = 0; i < workers.Length; i++)
+        {
+            workers[i] = new Thread(new ThreadStart(delegate {
+                if (sharedProgress.TryStart()) Interlocked.Increment(ref starts);
+            }));
+            workers[i].Start();
+        }
+        foreach (Thread worker in workers) worker.Join();
+        if (starts != 1 || sharedProgress.Stage != CheckoutCommitStage.Posting)
+            throw new Exception("Concurrent SOLDER progress was admitted more than once");
+
+        // Regression: two different cashier gates must never strand the loser
+        // if a buggy caller shares one progress token across concurrent clicks.
+        // Only one store may post, commit and close. The other gate must remain
+        // immediately reusable without pretending a rollback occurred.
+        for (int round = 0; round < 24; round++)
+        {
+            var raceProgress = new CheckoutCommitProgress();
+            var raceGates = new[] { new CheckoutAttemptGate(), new CheckoutAttemptGate() };
+            var raceScenarios = new[] { new Scenario(), new Scenario() };
+            var raceStart = new ManualResetEvent(false);
+            var raceWorkers = new Thread[2];
+            int raceWins = 0, raceRejects = 0;
+            for (int i = 0; i < raceWorkers.Length; i++)
+            {
+                int index = i;
+                raceWorkers[i] = new Thread(new ThreadStart(delegate {
+                    raceStart.WaitOne();
+                    try
+                    {
+                        CheckoutTransactionFinalizationService.PostAndFinalize(
+                            raceScenarios[index], raceScenarios[index].Input(),
+                            raceScenarios[index], raceProgress, raceGates[index]);
+                        Interlocked.Increment(ref raceWins);
+                    }
+                    catch (InvalidOperationException) { Interlocked.Increment(ref raceRejects); }
+                }));
+                raceWorkers[i].Start();
+            }
+            raceStart.Set();
+            foreach (Thread worker in raceWorkers) worker.Join();
+            raceStart.Close();
+            if (raceWins != 1 || raceRejects != 1 ||
+                raceProgress.Stage != CheckoutCommitStage.Closed ||
+                raceGates[0].IsBlocked == raceGates[1].IsBlocked)
+                throw new Exception("Concurrent cashier gates admitted two sales or stranded the loser");
+            int winner = raceGates[0].IsBlocked ? 0 : 1;
+            AssertEvents(raceScenarios[winner].Events, Stages,
+                "cross-gate single sale round " + round);
+            if (raceScenarios[1 - winner].Events.Count != 0)
+                throw new Exception("Rejected concurrent SOLDER wrote ticket or stock");
+            raceGates[winner].ReleaseAfterBasketReset(raceProgress);
+            if (raceGates[0].IsBlocked || raceGates[1].IsBlocked)
+                throw new Exception("Concurrent SOLDER gate remained blocked after basket reset");
+        }
+
+        // P0 regression: malformed SOLDER input must fail before the
+        // persistent per-form gate is acquired. The same progress/gate must
+        // remain usable after the UI fixes its payload, without fake rollback.
+        var preflightGate = new CheckoutAttemptGate();
+        var preflightProgress = new CheckoutCommitProgress();
+        var preflightScenario = new Scenario();
+        var missingCallbackInput = preflightScenario.Input();
+        missingCallbackInput.ReadPayments = null;
+        int rejectedPreflight = 0;
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                null, preflightScenario.Input(), preflightScenario,
+                preflightProgress, preflightGate);
+        }
+        catch (ArgumentNullException ex) { if (ex.ParamName == "store") rejectedPreflight++; }
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                preflightScenario, null, preflightScenario,
+                preflightProgress, preflightGate);
+        }
+        catch (ArgumentNullException ex) { if (ex.ParamName == "input") rejectedPreflight++; }
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                preflightScenario, missingCallbackInput, preflightScenario,
+                preflightProgress, preflightGate);
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (ex.Message == "Checkout posting requires all callbacks before stock writes.")
+                rejectedPreflight++;
+        }
+        if (rejectedPreflight != 3 || preflightGate.IsBlocked ||
+            preflightProgress.Stage != CheckoutCommitStage.NotStarted ||
+            preflightScenario.Events.Count != 0)
+            throw new Exception("Malformed SOLDER payload locked cashier or invoked DB callbacks");
+        CheckoutTransactionFinalizationService.PostAndFinalize(
+            preflightScenario, preflightScenario.Input(), preflightScenario,
+            preflightProgress, preflightGate);
+        AssertEvents(preflightScenario.Events, Stages, "cashier retry after preflight");
+        preflightGate.ReleaseAfterBasketReset(preflightProgress);
+        if (preflightGate.IsBlocked)
+            throw new Exception("Preflight retry gate did not release after verified basket reset");
+
+        // The original WinForms three-argument overload uses a fresh
+        // progress token; opt-in callers may also use the four-argument
+        // overload without a cashier gate. Invalid inputs must not consume
+        // that token before the first stock write, or a corrected attempt
+        // could be mistaken for a failed/partially posted transaction.
+        var ungated = new Scenario();
+        var ungatedProgress = new CheckoutCommitProgress();
+        var badUngated = ungated.Input();
+        badUngated.ReadPayments = null;
+        int ungatedRejected = 0;
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                null, ungated.Input(), ungated, ungatedProgress);
+        }
+        catch (ArgumentNullException ex) { if (ex.ParamName == "store") ungatedRejected++; }
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                ungated, null, ungated, ungatedProgress);
+        }
+        catch (ArgumentNullException ex) { if (ex.ParamName == "input") ungatedRejected++; }
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                ungated, badUngated, ungated, ungatedProgress);
+        }
+        catch (InvalidOperationException ex)
+        {
+            if (ex.Message == "Checkout posting requires all callbacks before stock writes.")
+                ungatedRejected++;
+        }
+        if (ungatedRejected != 3 || ungatedProgress.Stage != CheckoutCommitStage.NotStarted ||
+            ungated.Events.Count != 0)
+            throw new Exception("Ungated malformed checkout consumed progress or wrote stock");
+        CheckoutTransactionFinalizationService.PostAndFinalize(
+            ungated, ungated.Input(), ungated, ungatedProgress);
+        AssertEvents(ungated.Events, Stages, "ungated repaired cash sale");
+        if (ungatedProgress.Stage != CheckoutCommitStage.Closed)
+            throw new Exception("Ungated repaired checkout did not close exactly once");
+
+        // A single per-cashier gate must stay blocked until the UI has either
+        // cleared the committed basket or verified rollback/reconciliation.
+        var gate = new CheckoutAttemptGate();
+        var guarded = new Scenario();
+        var guardedProgress = new CheckoutCommitProgress();
+        CheckoutTransactionFinalizationService.PostAndFinalize(
+            guarded, guarded.Input(), guarded, guardedProgress, gate);
+        AssertEvents(guarded.Events, Stages, "guarded cash sale");
+        if (!gate.IsBlocked || guardedProgress.Stage != CheckoutCommitStage.Closed)
+            throw new Exception("Completed SOLDER must remain gated until basket reset");
+
+        var duplicateClick = new Scenario();
+        bool duplicateRejected = false;
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                duplicateClick, duplicateClick.Input(), duplicateClick,
+                new CheckoutCommitProgress(), gate);
+        }
+        catch (InvalidOperationException) { duplicateRejected = true; }
+        if (!duplicateRejected || duplicateClick.Events.Count != 0)
+            throw new Exception("Double SOLDER click wrote stock/ticket/payment");
+
+        bool wrongResetRejected = false;
+        try { gate.ReleaseAfterBasketReset(new CheckoutCommitProgress()); }
+        catch (InvalidOperationException) { wrongResetRejected = true; }
+        if (!wrongResetRejected || !gate.IsBlocked)
+            throw new Exception("Unrelated cashier progress unlocked active settlement");
+        gate.ReleaseAfterBasketReset(guardedProgress);
+        if (gate.IsBlocked)
+            throw new Exception("Verified basket reset did not release cashier gate");
+
+        // A failed precommit posting needs a verified rollback before retry.
+        var precommit = new Scenario { FailAt = "payment.write.1" };
+        var precommitProgress = new CheckoutCommitProgress();
+        bool precommitFailed = false;
+        try
+        {
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                precommit, precommit.Input(), precommit, precommitProgress, gate);
+        }
+        catch (InjectedFailure) { precommitFailed = true; precommit.Rollback(); }
+        if (!precommitFailed || !gate.IsBlocked ||
+            precommitProgress.Stage != CheckoutCommitStage.Posting ||
+            precommit.Events.Contains("commit"))
+            throw new Exception("Precommit SOLDER failure must not commit or unlock");
+        gate.ReleaseAfterVerifiedRollback(precommitProgress);
+        if (gate.IsBlocked) throw new Exception("Verified rollback did not unlock cashier");
+
+        // Ambiguous Commit and post-Commit Close failures cannot use the
+        // precommit rollback path; they require durable ticket reconciliation.
+        foreach (string failAt in new[] { "commit", "close" })
+        {
+            var uncertain = new Scenario { FailAt = failAt };
+            var uncertainProgress = new CheckoutCommitProgress();
+            bool failed = false;
+            try
+            {
+                CheckoutTransactionFinalizationService.PostAndFinalize(
+                    uncertain, uncertain.Input(), uncertain, uncertainProgress, gate);
+            }
+            catch (InjectedFailure) { failed = true; }
+            if (!failed || !gate.IsBlocked)
+                throw new Exception("Post/ambiguous commit failure unlocked SOLDER");
+            bool unsafeReleaseRejected = false;
+            try { gate.ReleaseAfterVerifiedRollback(uncertainProgress); }
+            catch (InvalidOperationException) { unsafeReleaseRejected = true; }
+            if (!unsafeReleaseRejected || !gate.IsBlocked)
+                throw new Exception("Unsafe rollback unlocked a committed/ambiguous sale");
+            gate.ReleaseAfterDatabaseReconciliation(uncertainProgress);
+            if (gate.IsBlocked)
+                throw new Exception("Verified database reconciliation did not unlock cashier");
+        }
+
+        // After reconciliation the same cashier gate can serve the next sale,
+        // but a previously used progress instance still cannot be reused.
+        var nextSale = new Scenario();
+        var nextProgress = new CheckoutCommitProgress();
+        CheckoutTransactionFinalizationService.PostAndFinalize(
+            nextSale, nextSale.Input(), nextSale, nextProgress, gate);
+        AssertEvents(nextSale.Events, Stages, "next sale after reconciliation");
+        gate.ReleaseAfterBasketReset(nextProgress);
+
+        // A null stock/payment collection is malformed checkout input, not a
+        // CLR NullReferenceException. The attempt has already begun, so the
+        // cashier gate must remain blocked until the Form verifies rollback.
+        foreach (bool missingStock in new[] { true, false })
+        {
+            var malformed = new Scenario();
+            var malformedInput = malformed.Input();
+            if (missingStock)
+                malformedInput.ReadStock = delegate {
+                    malformed.Events.Add("stock.read"); return null;
+                };
+            else
+                malformedInput.ReadPayments = delegate {
+                    malformed.Events.Add("payment.read"); return null;
+                };
+            var malformedProgress = new CheckoutCommitProgress();
+            var malformedGate = new CheckoutAttemptGate();
+            bool invalidStreamRejected = false;
+            try
+            {
+                CheckoutTransactionFinalizationService.PostAndFinalize(
+                    malformed, malformedInput, malformed, malformedProgress, malformedGate);
+            }
+            catch (InvalidOperationException ex)
+            {
+                invalidStreamRejected = ex.Message ==
+                    (missingStock ? "Checkout stock reader returned no collection."
+                                  : "Checkout payment reader returned no collection.");
+            }
+            if (!invalidStreamRejected || !malformedGate.IsBlocked ||
+                malformedProgress.RecoveryAction != CheckoutAttemptRecoveryAction.VerifyRollback ||
+                malformed.Events.Contains("commit") || malformed.Events.Contains("close"))
+                throw new Exception("Malformed stream escaped safe SOLDER rollback classification");
+            malformed.Rollback();
+            malformedGate.ReleaseAfterVerifiedRollback(malformedProgress);
+            if (malformedGate.IsBlocked)
+                throw new Exception("Verified rollback failed to release malformed-stream attempt");
+            var repaired = new Scenario();
+            var repairedProgress = new CheckoutCommitProgress();
+            CheckoutTransactionFinalizationService.PostAndFinalize(
+                repaired, repaired.Input(), repaired, repairedProgress, malformedGate);
+            AssertEvents(repaired.Events, Stages, "repaired checkout after null stream");
+            malformedGate.ReleaseAfterBasketReset(repairedProgress);
+        }
+
+        Console.WriteLine("PASS checkout transaction finalization: 19 ordered stages, atomic progress, duplicate SOLDER gate, rollback/commit reconciliation and caller-owned rollback");
         return 0;
     }
 }

@@ -44,10 +44,15 @@ internal static class PortableArticleSearchSmoke
         if (barcode != "select * from TABLE_ARTICLES WHERE Code = @code" ||
             barcode.Contains("O'Hara") || barcode.Contains("ORDER BY") || barcode.Contains("LIKE"))
             throw new Exception("Portable scanned barcode lookup must be parameterized exact equality");
+        // The real exact-barcode SELECT * always includes Code and
+        // ID_ARTICLE. The scanner now rejects incomplete identity schemas,
+        // so this portable smoke must model the actual catalogue query.
         DataTable matches = new DataTable();
         matches.Columns.Add("Article");
-        matches.Rows.Add("first");
-        matches.Rows.Add("variant");
+        matches.Columns.Add("Code");
+        matches.Columns.Add("ID_ARTICLE");
+        matches.Rows.Add("first", "SAME", "A");
+        matches.Rows.Add("variant", "SAME", "B");
         if (CheckoutBarcodeSelectionService.Select(matches, delegate(DataTable rows) { return 1; }) != matches.Rows[1])
             throw new Exception("Portable duplicate selection did not preserve selected DataRow");
         if (CheckoutBarcodeSelectionService.Select(matches, delegate(DataTable rows) { return -1; }) != null)
