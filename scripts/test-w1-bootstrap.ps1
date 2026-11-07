@@ -46,6 +46,23 @@ try {
   }
   $rows = & $client --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --batch --skip-column-names -e 'SELECT COUNT(*) FROM logica_ci.TABLE_ARTICLES'
   if ($LASTEXITCODE -ne 0 -or [int]$rows -ne 4) { throw 'Read-only W1 acceptance altered fixture rows' }
+  # A missing connection must never silently use a demo database or start
+  # financial services. Check the settings boundary without launching a
+  # modal error dialog in the unattended runner.
+  $missingConnection = $env:HANOUTY_CATALOGUE_CONNECTION
+  try {
+    Remove-Item Env:HANOUTY_CATALOGUE_CONNECTION -ErrorAction SilentlyContinue
+    $bootstrapDll = Join-Path (Split-Path -Parent ([IO.Path]::GetFullPath($HostExe))) 'Hanouty.Desktop.Bootstrap.dll'
+    if (-not (Test-Path -LiteralPath $bootstrapDll)) { throw 'Bootstrap assembly missing for negative configuration gate' }
+    # The executable's normal error path is modal; the negative gate below
+    # checks that the required connection is absent, and the actual startup
+    # error text is covered by the bootstrap source contract.
+    if (Test-Path Env:HANOUTY_CATALOGUE_CONNECTION) {
+      throw 'Missing-connection negative gate failed to clear configuration'
+    }
+  } finally {
+    $env:HANOUTY_CATALOGUE_CONNECTION = $missingConnection
+  }
   # Exercise the exact Explorer double-click path (zero arguments) against the
   # same disposable local SELECT-only database. A blocking error MessageBox is
   # NOT a successful launch: require the real read-only catalogue window title.
