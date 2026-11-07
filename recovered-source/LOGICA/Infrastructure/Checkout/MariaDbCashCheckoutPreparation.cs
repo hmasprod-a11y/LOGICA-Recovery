@@ -260,12 +260,27 @@ namespace LOGICA.Infrastructure.Checkout
                     throw new InvalidOperationException("Could not stage the signed original return line.");
             }
             var staged = Read(connection, transaction,
-                "SELECT ID_ARTICLE,Code,Article,Qté,TOTAL_NET FROM TABLE_" + workstation + " FOR UPDATE");
-            // The signed staging table is shared with the workstation; verify the
-            // persisted identity as well as the amount before stock is restored.
-            if (staged.Rows.Count != 1 ||
+                "SELECT ID_ARTICLE,Code,Article,PRIX_V,Remise,Qté,TOTAL_NET FROM TABLE_" + workstation + " FOR UPDATE");
+            // Re-read the locked original journal as authoritative evidence.
+            // A workstation trigger must not silently replace the refunded
+            // article description or unit price while preserving its total.
+            var original = Read(connection, transaction,
+                "SELECT ID_ARTICLE,Code,Article,PRIX_V,Remise,Qté,Total_NET FROM TABLE_VENTES_JOURNAL " +
+                "WHERE BINARY ID_TICKET=BINARY @original AND BINARY ID_ARTICLE=BINARY @article FOR UPDATE",
+                ("@original", request.OriginalTicketId), ("@article", line.ArticleId));
+            if (staged.Rows.Count != 1 || original.Rows.Count != 1 ||
                 !String.Equals(Convert.ToString(staged.Rows[0]["ID_ARTICLE"], CultureInfo.InvariantCulture),
                     line.ArticleId, StringComparison.Ordinal) ||
+                !String.Equals(Convert.ToString(original.Rows[0]["ID_ARTICLE"], CultureInfo.InvariantCulture),
+                    line.ArticleId, StringComparison.Ordinal) ||
+                !String.Equals(Convert.ToString(staged.Rows[0]["Code"], CultureInfo.InvariantCulture),
+                    Convert.ToString(original.Rows[0]["Code"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
+                !String.Equals(Convert.ToString(staged.Rows[0]["Article"], CultureInfo.InvariantCulture),
+                    Convert.ToString(original.Rows[0]["Article"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
+                Number(staged.Rows[0], "PRIX_V") != Number(original.Rows[0], "PRIX_V") ||
+                Number(staged.Rows[0], "Remise") != Number(original.Rows[0], "Remise") ||
+                Number(original.Rows[0], "Qté") != line.Quantity ||
+                Number(original.Rows[0], "Total_NET") != amount ||
                 Number(staged.Rows[0], "Qté") != -line.Quantity ||
                 Number(staged.Rows[0], "TOTAL_NET") != -amount)
                 throw new InvalidOperationException("Signed return staging differs from the original sale.");
