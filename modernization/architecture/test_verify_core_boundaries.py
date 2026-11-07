@@ -60,6 +60,10 @@ class BoundaryTests(unittest.TestCase):
         self.rule.write_text("namespace Hanouty { class X { MySql.Data.MySqlClient.MySqlConnection db; } }")
         self.assertTrue(any("fully qualified platform dependency" in e for e in validate(self.root)["errors"]))
 
+    def test_string_double_slash_cannot_hide_platform_type(self):
+        self.rule.write_text('namespace Hanouty { class X { string url = "https://localhost"; global::System.Windows.Forms.Form form; } }')
+        self.assertTrue(any("fully qualified platform dependency" in e for e in validate(self.root)["errors"]))
+
     def test_missing_default_compile_opt_out_rejected(self):
         p = self.root / "modernization/LOGICA.CorePortability.csproj"
         p.write_text(p.read_text().replace(
