@@ -238,11 +238,18 @@ public sealed partial record CatalogueHost
             }
             finally { quoting = false; }
         }
+        var cashierEntryInProgress = false;
         window.ConfigureCashierEntry((cashier, register, tender) => {
-            if (!CanChangeContext() || register != twoDigitWorkstation ||
-                string.IsNullOrWhiteSpace(cashier) || tender < 0m) return false;
+            // PIN dialogs and SQL readers may pump WPF messages. A nested entry
+            // must not authenticate or replace the outer cashier's payment.
+            if (cashierEntryInProgress || !CanChangeContext() || register != twoDigitWorkstation ||
+                string.IsNullOrWhiteSpace(cashier) || tender < 0m ||
+                decimal.Round(tender, 2) != tender) return false;
+            cashierEntryInProgress = true;
+            try
+            {
             var total = ReadTrustedTotal();
-            if (total is null) return false;
+            if (total is null || total < 0m || decimal.Round(total.Value, 2) != total.Value) return false;
             if (binding.Session.PendingCount == 0)
             {
                 // Empty-basket session entry is authentication, NOT a dummy sale.
@@ -275,6 +282,8 @@ public sealed partial record CatalogueHost
                 decimal.Round(tender, 2) != tender) return false;
             return result.TrySetFinancialContext(new AuthorizedCheckoutPaymentContext(
                 cashier, "MAD", false, new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, tender) }, total.Value));
+            }
+            finally { cashierEntryInProgress = false; }
         }, ReadTrustedTotal, result.TryEndFinancialSession,
             () => System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines));
         window.ConfigureReviewedCheckout(result.TryReviewResolvedCheckout);
