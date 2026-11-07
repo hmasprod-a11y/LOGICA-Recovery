@@ -213,7 +213,22 @@ public sealed partial record CatalogueHost
             {
                 var lines = binding.Session.PendingLines.ToArray();
                 var before = System.Text.Json.JsonSerializer.Serialize(lines);
-                var total = MariaDbCashCheckoutServices.ReadCashSaleTotal(connections, lines);
+                decimal total;
+                try
+                {
+                    total = MariaDbCashCheckoutServices.ReadCashSaleTotal(connections, lines);
+                }
+                catch (MySqlException)
+                {
+                    // A lost local database connection must never authorize a
+                    // stale tender or let the cashier entry callback escape.
+                    return null;
+                }
+                catch (InvalidOperationException)
+                {
+                    // Missing transactional tables / unavailable local pricing.
+                    return null;
+                }
                 if (reviewing || vm.CheckoutBusy || vm.CheckoutUncertain ||
                     vm.PendingOperationId is not null || binding.Session.OperationId is not null ||
                     binding.Session.State != CheckoutCommitState.Ready ||
@@ -244,6 +259,7 @@ public sealed partial record CatalogueHost
                 { return false; }
                 finally { reviewing = false; }
                 if (!CanChangeContext() || binding.Session.PendingCount != 0 ||
+                    activeCashierId != cashier && activeCashierId is not null ||
                     emptyBasketSnapshot != System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines))
                     return false;
                 activeCashierId = cashier;
