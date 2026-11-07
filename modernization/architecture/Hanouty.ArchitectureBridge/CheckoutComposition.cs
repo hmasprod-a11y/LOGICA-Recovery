@@ -108,8 +108,8 @@ public sealed class CheckoutComposition
             // Legacy DataRow mappings may surface DBNull as null at runtime even
             // when the modern DTO declares a non-null display name. Refuse a
             // malformed snapshot rather than passing it into WPF bindings.
-            if (product.DisplayName is null)
-                throw new InvalidOperationException("Catalogue returned a product without a display name.");
+            if (string.IsNullOrWhiteSpace(product.DisplayName))
+                throw new InvalidOperationException("Catalogue returned a product without a usable display name.");
             if (!ids.Add(product.ArticleId))
                 throw new InvalidOperationException("Catalogue returned duplicate article identity.");
         }
@@ -144,7 +144,7 @@ public sealed class CheckoutComposition
                 // Selection and display snapshots share the same fail-closed
                 // catalogue boundary: a malformed legacy display name must not
                 // be accepted merely because the caller used barcode selection.
-                if (product.DisplayName is null)
+                if (string.IsNullOrWhiteSpace(product.DisplayName))
                     throw new InvalidOperationException("Catalogue returned a product without a display name.");
                 if (requestedBarcode is not null &&
                     !string.Equals(product.Barcode, requestedBarcode, StringComparison.Ordinal))
