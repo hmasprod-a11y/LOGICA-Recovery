@@ -513,6 +513,14 @@ Check(!CashierEntryDraft.TryParse("cashier01", "register02", "10,25", out _, out
     !CashierEntryDraft.TryParse("cashier01", "register02", "-1", out _, out _, out _) &&
     !CashierEntryDraft.TryParse("", "register02", "10", out _, out _, out _),
     "invalid decimal, excess precision, negative tender and absent cashier fail closed");
+Check(!CashierEntryDraft.TryParse("cashier01", "register02", "1.", out _, out _, out _) &&
+    !CashierEntryDraft.TryParse("cashier01", "register02", ".5", out _, out _, out _) &&
+    !CashierEntryDraft.TryParse("cashier01", "register02", "1..2", out _, out _, out _) &&
+    !CashierEntryDraft.TryParse("cashier01", "register02", "1 000", out _, out _, out _) &&
+    !CashierEntryDraft.TryParse("cashier01", "register02", "+1", out _, out _, out _) &&
+    CashierEntryDraft.TryParse("cashier01", "register02", "0.50", out _, out _, out var cents) &&
+    cents == 0.50m,
+    "cashier tender rejects unfinished, signed or grouped input before Host validation");
 var reconciliation = new RecordingReconciliation { Result = CheckoutResolution.Persisted };
 var reconciliationPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
 var reconciliationVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(),
