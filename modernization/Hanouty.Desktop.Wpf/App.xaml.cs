@@ -6,7 +6,7 @@ namespace Hanouty.Desktop.Wpf;
 
 public partial class App : Application
 {
-    // Registered by the approved production composition root, never a demo fallback.
+    // Legacy diagnostic seam only; production startup must not fall back to this registration.
     public static Func<(ICatalogueReader Catalogue, IProductSelection Checkout, ICheckoutSubmission Submission)>? ResolveServices { get; set; }
 
     // Architecture-owned CreateFinancial host registers this existing WPF startup
@@ -26,7 +26,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        if (ResolveFinancialServices is null && ResolveServices is null)
+        if (ResolveFinancialServices is null)
         {
             MessageBox.Show("Local MariaDB and authorized cashier services are not configured. Launch HANOUTY through its installed local setup; catalogue-only diagnostics cannot process sales.",
                 "Hanouty — startup blocked", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -36,18 +36,14 @@ public partial class App : Application
         try
         {
             var services = ResolveFinancialServices?.Invoke();
-            var (catalogue, checkout, submission) = services is { } financial
-                ? (financial.Catalogue, financial.Checkout, financial.Submission)
-                : ResolveServices!();
-            // Reject incomplete host registrations without entering a cashier session.
-            if (catalogue is null || checkout is null || submission is null)
-                throw new InvalidOperationException("Incomplete production service registration.");
-            if (services is { } configured &&
-                !HasAuthorizedFinancialRegistration(catalogue, checkout, submission, configured.Payment))
-                throw new InvalidOperationException("Incomplete authorized cash-sale registration.");
-            MainWindow = services is { } authorized
-                ? new MainWindow(catalogue, checkout, submission, authorized.Payment, requireFreshPaymentContext: true)
-                : new MainWindow(catalogue, checkout, submission, null, requireFreshPaymentContext: true);
+            // A diagnostic catalogue registration is not a production startup path.
+            // QA Bootstrap must provide the authorized local financial composition.
+            if (services is not { } financial ||
+                !HasAuthorizedFinancialRegistration(financial.Catalogue, financial.Checkout,
+                    financial.Submission, financial.Payment))
+                throw new InvalidOperationException("Incomplete authorized local checkout registration.");
+            MainWindow = new MainWindow(financial.Catalogue, financial.Checkout,
+                financial.Submission, financial.Payment, requireFreshPaymentContext: true);
             MainWindow.Show();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
