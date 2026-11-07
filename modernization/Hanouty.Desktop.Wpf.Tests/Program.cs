@@ -21,6 +21,15 @@ Check(registered.Payment == startupCash &&
     registered.Submission is ICheckoutOutcomeReconciliation &&
     registered.Submission is IContextualCheckoutSubmission,
     "CreateFinancial WPF startup must preserve same contextual submission and durable reconciliation");
+Check(Hanouty.Desktop.Wpf.App.HasAuthorizedFinancialRegistration(
+    registered.Catalogue, registered.Checkout, registered.Submission, registered.Payment),
+    "production financial composition must be accepted");
+Check(!Hanouty.Desktop.Wpf.App.HasAuthorizedFinancialRegistration(
+    registered.Catalogue, registered.Checkout, new RecordingSubmission(), registered.Payment),
+    "non-contextual preview submission must never pass production registration");
+Check(!Hanouty.Desktop.Wpf.App.HasAuthorizedFinancialRegistration(
+    registered.Catalogue, registered.Checkout, registered.Submission, null),
+    "missing cashier registration must fail closed");
 Hanouty.Desktop.Wpf.App.ResolveFinancialServices = null;
 // Production startup without a Host-authenticated cashier is read-only:
 // a scanner or catalogue touch must not stage a basket before sign-in.
