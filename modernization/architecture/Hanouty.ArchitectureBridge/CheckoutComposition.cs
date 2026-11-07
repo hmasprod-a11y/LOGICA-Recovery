@@ -122,10 +122,21 @@ public sealed class CheckoutComposition
     {
         private readonly ICatalogueReader _source;
         public CatalogueSelectionAdapter(ICatalogueReader source) => _source = source;
-        public IReadOnlyList<ArticleCandidate> FindBarcode(string barcode) =>
-            Convert(_source.FindBarcode(barcode), barcode);
-        public IReadOnlyList<ArticleCandidate> RefreshBarcode(string barcode) =>
-            Convert(_source.RefreshBarcode(barcode), barcode);
+        public IReadOnlyList<ArticleCandidate> FindBarcode(string barcode)
+        {
+            RequireBarcode(barcode);
+            return Convert(_source.FindBarcode(barcode), barcode);
+        }
+        public IReadOnlyList<ArticleCandidate> RefreshBarcode(string barcode)
+        {
+            RequireBarcode(barcode);
+            return Convert(_source.RefreshBarcode(barcode), barcode);
+        }
+        private static void RequireBarcode(string barcode)
+        {
+            if (string.IsNullOrWhiteSpace(barcode))
+                throw new ArgumentException("A scanned barcode must not be blank.", nameof(barcode));
+        }
         public IReadOnlyList<ArticleCandidate> RefreshArticle(string articleId) =>
             Convert(_source.RefreshArticle(articleId), null, articleId);
 
