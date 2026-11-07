@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
 using System.Linq;
 using MySql.Data.MySqlClient;
 using Hanouty.Inventory.MariaDb;
@@ -76,6 +77,25 @@ static class Program
             bool missingSelection = false;
             try { inventory.ReadStocktakeTotalsForArticles(new[] { "A-1", "MISSING" }); } catch (InvalidOperationException) { missingSelection = true; }
             Assert(missingSelection, "selected stocktake refuses missing stable identity");
+            var countPreview = inventory.PreviewCountDiscrepancies(new Dictionary<string, decimal>
+            {
+                ["A-4"] = 0m, ["A-1"] = 4m
+            });
+            Assert(countPreview.Select(x => x.ArticleId).SequenceEqual(new[] { "A-4", "A-1" }), "physical count preview retains explicit article IDs");
+            Assert(countPreview[0].BookUnits == -1m && countPreview[0].DeltaUnits == 1m && countPreview[0].PurchaseCostDelta == 4m, "count preview recovers signed negative book stock");
+            Assert(countPreview[1].BookUnits == 5.500m && countPreview[1].DeltaUnits == -1.500m &&
+                   countPreview[1].PurchaseCostDelta == -10.6875m, "count preview calculates exact purchase-cost discrepancy");
+            Assert(inventory.PreviewCountDiscrepancies(new Dictionary<string, decimal>()).Count == 0, "empty count preview does not write stock");
+            bool missingCount = false;
+            try { inventory.PreviewCountDiscrepancies(new Dictionary<string, decimal> { ["MISSING"] = 1m }); }
+            catch (InvalidOperationException) { missingCount = true; }
+            Assert(missingCount, "physical count preview refuses missing article ID");
+            bool negativeCount = false;
+            try { inventory.PreviewCountDiscrepancies(new Dictionary<string, decimal> { ["A-1"] = -1m }); }
+            catch (ArgumentException) { negativeCount = true; }
+            Assert(negativeCount, "physical count preview rejects negative physical counts");
+            Assert(inventory.ReadArticle("A-1").Stock == 5.500m && inventory.ReadArticle("A-4").Stock == -1m,
+                   "physical count preview leaves authoritative SQL stock unchanged");
             Assert(inventory.FindBarcode("Q'42").Count == 2, "snapshot preserves ambiguous quoted barcode candidates");
             bool ambiguousScan = false;
             try { inventory.ReadUniqueBarcode("Q'42"); } catch (InvalidOperationException) { ambiguousScan = true; }
