@@ -680,6 +680,12 @@ catch (ApplicationException) { }
 try { _ = unknownSnapshot.PendingLines; throw new Exception("unknown snapshot exposed"); }
 catch (InvalidOperationException) { }
 Assert(unknownSnapshotPort.Attempts == 1, "unknown session snapshot cannot authorize retry");
+try { unknownSnapshot.Submit("snapshot-unknown"); throw new Exception("uncertain operation retried"); }
+catch (InvalidOperationException ex) when (ex.Message.Contains("Reconcile the uncertain checkout outcome")) { }
+Assert(unknownSnapshotPort.Attempts == 1 &&
+    unknownSnapshot.State == CheckoutCommitState.OutcomeUnknown &&
+    unknownSnapshot.OperationId == "snapshot-unknown",
+    "repeat submit stays fail-closed until durable reconciliation, without second financial write");
 var overflowSnapshotPort = new RecordingAtomicBatchPort();
 var overflowSnapshot = new CheckoutComposition(new CompositionCatalogue(),
     new RecordingPrompt { Choice = 0 }, overflowSnapshotPort, new CompositionJournal()).CreateSession();
