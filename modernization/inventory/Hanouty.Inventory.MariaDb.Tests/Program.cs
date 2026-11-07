@@ -94,6 +94,18 @@ static class Program
             try { inventory.PreviewCountDiscrepancies(new Dictionary<string, decimal> { ["A-1"] = -1m }); }
             catch (ArgumentException) { negativeCount = true; }
             Assert(negativeCount, "physical count preview rejects negative physical counts");
+            var previewTotals = inventory.PreviewCountTotals(new Dictionary<string, decimal>
+            {
+                ["A-4"] = 0m, ["A-1"] = 4m, ["A-2"] = 0m
+            });
+            Assert(previewTotals.ArticleCount == 3 && previewTotals.ShortageArticles == 1 &&
+                   previewTotals.SurplusArticles == 1 && previewTotals.MatchingArticles == 1,
+                   "physical count totals partition shortage surplus and matching articles");
+            Assert(previewTotals.SignedUnitDifference == -0.500m &&
+                   previewTotals.PurchaseCostDifference == -6.6875m,
+                   "physical count totals retain signed exact decimal valuation");
+            Assert(inventory.PreviewCountTotals(new Dictionary<string, decimal>()).ArticleCount == 0,
+                   "empty count totals are zero without SQL mutation");
             Assert(inventory.ReadArticle("A-1").Stock == 5.500m && inventory.ReadArticle("A-4").Stock == -1m,
                    "physical count preview leaves authoritative SQL stock unchanged");
             Assert(inventory.FindBarcode("Q'42").Count == 2, "snapshot preserves ambiguous quoted barcode candidates");
