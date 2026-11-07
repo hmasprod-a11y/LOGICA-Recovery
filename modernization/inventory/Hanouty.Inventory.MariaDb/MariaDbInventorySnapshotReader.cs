@@ -14,6 +14,7 @@ public interface IInventorySnapshotReader
     InventorySnapshot ReadArticle(string articleId);
     IReadOnlyList<InventorySnapshot> FindBarcode(string barcode);
     InventorySnapshot ReadUniqueBarcode(string barcode);
+    IReadOnlyList<InventorySnapshot> FindStockBelow(decimal threshold);
 }
 
 /// <summary>
@@ -62,7 +63,18 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
         return matches[0];
     }
 
+    /// <summary>Live, read-only low-stock query for WPF inventory review; never modifies stock.</summary>
+    public IReadOnlyList<InventorySnapshot> FindStockBelow(decimal threshold)
+    {
+        if (threshold < 0)
+            throw new ArgumentOutOfRangeException(nameof(threshold), "Stock threshold cannot be negative.");
+        return Read("STOCK < @threshold", "@threshold", threshold);
+    }
+
     private List<InventorySnapshot> Read(string predicate, string value)
+        => Read(predicate, "@value", value);
+
+    private List<InventorySnapshot> Read(string predicate, string parameterName, object value)
     {
         var rows = new List<InventorySnapshot>();
         var identities = new HashSet<string>(StringComparer.Ordinal);
@@ -72,7 +84,7 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
             "SELECT ID_ARTICLE, Code, STOCK, PRIX_V_1, Prix_A FROM TABLE_ARTICLES WHERE " + predicate,
             connection);
         command.CommandType = CommandType.Text;
-        command.Parameters.AddWithValue("@value", value);
+        command.Parameters.AddWithValue(parameterName, value);
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
