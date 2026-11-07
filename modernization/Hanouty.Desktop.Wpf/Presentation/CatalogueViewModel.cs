@@ -141,6 +141,15 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(BarcodeCandidates));
                 OnPropertyChanged(nameof(HasBarcodeAmbiguity));
             }
+            // A new scan query must not leave the previous scan's accepted or
+            // ambiguous feedback visible as though it described the new code.
+            if (!string.IsNullOrEmpty(_scanFeedback) &&
+                (_scanFeedback == "Ambiguous barcode" ||
+                 _scanFeedback == "Product not found" ||
+                 _scanFeedback == "Empty barcode" ||
+                 _scanFeedback == "Barcode contains control characters" ||
+                 _scanFeedback == "Barcode contains leading or trailing whitespace"))
+                ScanFeedback = "";
             OnPropertyChanged();
         }
     }
