@@ -98,6 +98,16 @@ static class Program
             try { inventory.PreviewCountDiscrepancies(new Dictionary<string, decimal> { ["A-1"] = -1m }); }
             catch (ArgumentException) { negativeCount = true; }
             Assert(negativeCount, "physical count preview rejects negative physical counts");
+            bool aliasedIdentity = false;
+            try
+            {
+                inventory.PreviewCountDiscrepancies(new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["a-1"] = 4m
+                });
+            }
+            catch (InvalidOperationException) { aliasedIdentity = true; }
+            Assert(aliasedIdentity, "physical count preview refuses case-folded stable article identities");
             var previewTotals = inventory.PreviewCountTotals(new Dictionary<string, decimal>
             {
                 ["A-4"] = 0m, ["A-1"] = 4m, ["A-2"] = 0m
