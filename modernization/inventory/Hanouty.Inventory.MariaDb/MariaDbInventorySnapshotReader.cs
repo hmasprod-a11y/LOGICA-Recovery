@@ -40,6 +40,7 @@ public interface IInventorySnapshotReader
     IReadOnlyList<InventorySnapshot> FindStockInRange(decimal minimumInclusive, decimal maximumInclusive);
     IReadOnlyList<InventorySnapshot> FindOutOfStock();
     IReadOnlyList<InventoryReorderSuggestion> PreviewReplenishment(decimal reorderPoint, decimal targetStock);
+    IReadOnlyList<InventoryReorderSuggestion> PreviewReplenishmentForArticles(IReadOnlyList<string> articleIds, decimal targetStock);
 }
 
 /// <summary>
@@ -241,6 +242,27 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
         }
         // Supplier review and QA manifests must not depend on MariaDB row enumeration order.
         suggestions.Sort((left, right) => StringComparer.Ordinal.Compare(left.ArticleId, right.ArticleId));
+        return suggestions;
+    }
+
+    /// <summary>Supplier draft preview for explicitly selected stable IDs; never places an order or adjusts stock.</summary>
+    public IReadOnlyList<InventoryReorderSuggestion> PreviewReplenishmentForArticles(IReadOnlyList<string> articleIds, decimal targetStock)
+    {
+        if (targetStock < 0m)
+            throw new ArgumentOutOfRangeException(nameof(targetStock), "Target stock cannot be negative.");
+        var rows = ReadArticlesByIds(articleIds);
+        var suggestions = new List<InventoryReorderSuggestion>(rows.Count);
+        foreach (var row in rows)
+        {
+            if (row.Stock >= targetStock) continue;
+            decimal quantity, cost;
+            checked
+            {
+                quantity = targetStock - row.Stock;
+                cost = quantity * row.PurchasePrice;
+            }
+            suggestions.Add(new InventoryReorderSuggestion(row.ArticleId, row.Stock, targetStock, quantity, cost));
+        }
         return suggestions;
     }
 
