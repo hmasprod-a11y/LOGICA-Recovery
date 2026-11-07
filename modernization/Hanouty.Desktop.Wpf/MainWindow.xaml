@@ -1,0 +1,142 @@
+<Window x:Class="Hanouty.Desktop.Wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Hanouty POS V2.0 — Desktop" Height="650" Width="1080"
+        MinHeight="480" MinWidth="760" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
+    <Window.Resources><BooleanToVisibilityConverter x:Key="BoolVisibility"/></Window.Resources>
+    <DockPanel Margin="20" FlowDirection="{Binding LayoutDirection}">
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,16">
+            <TextBlock Text="Hanouty POS" FontSize="28" FontWeight="SemiBold"/>
+            <CheckBox Content="Right-to-left layout" IsChecked="{Binding IsRightToLeft, Mode=TwoWay}" Margin="0,8,0,0" AutomationProperties.Name="Right-to-left layout"/>
+            <TextBlock Text="Offline desktop — checkout requires registered authorized local services"
+                       Foreground="DimGray" Margin="0,4,0,0"/>
+        </StackPanel>
+        <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Margin="0,0,18,0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Catalogue" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center"/>
+                    <Button Content="Reload local catalogue" Command="{Binding ReloadCommand}" Margin="16,0,0,0" Padding="12,6" MinHeight="40" AutomationProperties.Name="Reload local catalogue"/>
+                </StackPanel>
+                <TextBlock Text="{Binding ScanFeedback}" AutomationProperties.Name="Catalogue status" Foreground="DimGray" Margin="0,4,0,4"/>
+                <TextBox Margin="0,10,0,10" Padding="8" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.Name="Search catalogue"/>
+                <TextBlock Text="Scanner / barcode" Margin="0,0,0,5"/>
+                <TextBox Text="{Binding ScannerText, UpdateSourceTrigger=PropertyChanged}" Padding="8"
+                         AutomationProperties.Name="Barcode scanner input" IsEnabled="{Binding CanSelectProduct}">
+                    <TextBox.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding ScanCommand}"/>
+                    </TextBox.InputBindings>
+                </TextBox>
+                <TextBlock Text="{Binding ScanFeedback}" Margin="0,6,0,10"
+                           AutomationProperties.Name="Barcode result"/>
+                <TextBlock Text="Barcode matches — select explicitly when barcode is shared" Margin="0,4,0,4"
+                           Visibility="{Binding HasBarcodeAmbiguity, Converter={StaticResource BoolVisibility}}"/>
+                <ListBox ItemsSource="{Binding BarcodeCandidates}" Height="90" DisplayMemberPath="Name"
+                         Visibility="{Binding HasBarcodeAmbiguity, Converter={StaticResource BoolVisibility}}"
+                         SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
+                         AutomationProperties.Name="Barcode candidates">
+                    <ListBox.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding SelectCommand}"/>
+                    </ListBox.InputBindings>
+                </ListBox>
+                <Button Content="Choose selected barcode variant" Command="{Binding SelectCommand}"
+                        Visibility="{Binding HasBarcodeAmbiguity, Converter={StaticResource BoolVisibility}}"
+                        MinHeight="44" Margin="0,4,0,8" Padding="12,8"
+                        AutomationProperties.Name="Choose barcode variant" IsEnabled="{Binding CanSelectProduct}"/>
+                <DataGrid ItemsSource="{Binding VisibleProducts}" AutoGenerateColumns="False"
+                          IsReadOnly="True" SelectionMode="Single" SelectionUnit="FullRow"
+                          SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
+                          AutomationProperties.Name="Product list" MouseDoubleClick="ProductList_MouseDoubleClick">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Article" Binding="{Binding Name}" Width="*"/>
+                        <DataGridTextColumn Header="Barcode" Binding="{Binding Barcode}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Text="Image-backed products" Margin="0,12,0,6" FontWeight="SemiBold"/>
+                <ScrollViewer Height="132" VerticalScrollBarVisibility="Auto"
+                              AutomationProperties.Name="Products with photos">
+                    <ItemsControl ItemsSource="{Binding PhotoProducts}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button MinWidth="108" MinHeight="112" Padding="6" Margin="3"
+                                        Command="{Binding DataContext.SelectCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding}"
+                                        AutomationProperties.Name="{Binding Name}"
+                                        IsEnabled="{Binding DataContext.CanSelectProduct, RelativeSource={RelativeSource AncestorType=Window}}">
+                                    <StackPanel Width="96">
+                                        <Image Source="{Binding ImagePath}" Width="80" Height="72" Stretch="Uniform"
+                                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                                   HorizontalAlignment="Center" MaxWidth="96"/>
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
+            <ScrollViewer x:Name="CashierWorkflowScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          CanContentScroll="True" AutomationProperties.Name="Cashier and return workflow scroll region">
+                <StackPanel Margin="0,0,8,0">
+                <TextBlock Text="Selected product" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding SelectedProduct.Name, TargetNullValue=No product selected}"
+                           Margin="0,12,0,6" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding SelectedProduct.Barcode, TargetNullValue=—}"/>
+                <Button Content="Select product" Command="{Binding SelectCommand}" MinHeight="44"
+                        Padding="12,8" Margin="0,18,0,0"
+                        AutomationProperties.Name="Select product" IsEnabled="{Binding CanSelectProduct}"/>
+                <GroupBox Header="Original sale — read-only return preparation" Margin="0,14,0,8"
+                          AutomationProperties.Name="Persisted original sale lookup">
+                    <StackPanel Margin="8">
+                        <TextBox x:Name="OriginalSaleSearch" MinHeight="36" TextChanged="OriginalSaleSearch_TextChanged"
+                                 AutomationProperties.Name="Search original receipt identity"/>
+                        <Button Content="Find persisted original sale" Click="SearchOriginalSales_Click"
+                                MinHeight="40" Margin="0,6,0,6"/>
+                        <ListBox x:Name="OriginalSaleResults" SelectionChanged="OriginalSaleResults_SelectionChanged" DisplayMemberPath="ReceiptLabel"
+                                 Height="80" AutomationProperties.Name="Persisted original sale results"/>
+                        <Button Content="Select original sale for review" Click="SelectOriginalSale_Click"
+                                MinHeight="40" Margin="0,6,0,6"/>
+                        <TextBlock Text="Return quantity (maximum three decimal places)" Margin="0,8,0,3"/>
+                        <TextBox x:Name="ReturnQuantity" MinHeight="36" TextChanged="ReturnQuantity_TextChanged" AutomationProperties.Name="Return quantity"/>
+                        <Button Content="Review return quantity" Click="ReviewReturnQuantity_Click"
+                                MinHeight="44" Margin="0,6,0,4"/>
+                        <Button Content="Confirm return draft (no financial posting)" Click="ConfirmReturnDraft_Click"
+                                MinHeight="44" Margin="0,4,0,4"/>
+                        <TextBlock x:Name="ReturnDraftStatus" Text="Select a persisted original sale"
+                                   TextWrapping="Wrap" AutomationProperties.Name="Return draft status"/>
+                        <TextBlock x:Name="OriginalSaleStatus" Text="No original sale selected — refunds unavailable"
+                                   TextWrapping="Wrap" AutomationProperties.Name="Original sale review status"/>
+                    </StackPanel>
+                </GroupBox>
+                <Button Content="Read trusted basket total" Click="RefreshTrustedBasketTotal_Click"
+                        MinHeight="44" Margin="0,8,0,4" AutomationProperties.Name="Read trusted basket total"/>
+                <TextBlock x:Name="TrustedBasketTotal" Text="Trusted basket total unavailable"
+                           TextWrapping="Wrap" AutomationProperties.Name="Trusted basket total MAD"/>
+                <TextBlock Text="Authorized cashier / payment context" FontWeight="SemiBold" Margin="0,16,0,4"/>
+                <Button Content="Enter cashier / register / cash tender" Click="CashierEntry_Click" MinHeight="44" Padding="12,8" Margin="0,8,0,8" AutomationProperties.Name="Enter cashier and fresh cash tender"/>
+                <Button Content="End cashier session" Click="EndFinancialSession_Click" MinHeight="40"
+                        AutomationProperties.Name="End cashier session"/>
+                <TextBlock Text="{Binding PaymentContext.CashierId, TargetNullValue=No authorized cashier}" AutomationProperties.Name="Cashier identity" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding PaymentContext.RegisterId, TargetNullValue=No register}" AutomationProperties.Name="Register identity" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding PaymentContext.TenderCode, TargetNullValue=No tender}" AutomationProperties.Name="Tender type"/>
+                <TextBlock Text="{Binding PaymentContext.TenderedAmount, StringFormat='Tendered: {0:N2}'}" AutomationProperties.Name="Tendered amount"/>
+                <TextBlock Text="Payment remains disabled until an authorized contextual adapter and trusted cashier session are registered." TextWrapping="Wrap" Foreground="DimGray" Margin="0,6,0,0"/>
+                <Button Content="Complete checkout" Command="{Binding CommitCommand}" IsEnabled="{Binding CanCommit}" MinHeight="44" Padding="12,8" Margin="0,18,0,0" AutomationProperties.Name="Complete checkout"/>
+                <TextBlock Text="{Binding PendingOperationId, StringFormat='Operation: {0}'}" TextWrapping="Wrap" AutomationProperties.Name="Pending operation identity" Margin="0,8,0,0"/>
+                <Button Content="Check durable checkout status" Command="{Binding ReconcileCommand}" IsEnabled="{Binding CheckoutUncertain}" MinHeight="44" Padding="12,8" Margin="0,8,0,0" AutomationProperties.Name="Reconcile uncertain checkout"/>
+                <Button Content="Review result and start a new basket" Click="ReviewResolvedCheckout_Click"
+                        IsEnabled="{Binding CanReviewResolvedCheckout}" MinHeight="44" Padding="12,8" Margin="0,8,0,0"
+                        AutomationProperties.Name="Review resolved checkout with cashier PIN"/>
+                <TextBlock Text="{Binding CommitFeedback}" TextWrapping="Wrap" Margin="0,8,0,0" AutomationProperties.Name="Checkout result"/>
+                <TextBlock Text="Stock posting, printing and licensing require separately verified application contracts."
+                           Margin="0,22,0,0" TextWrapping="Wrap" Foreground="DimGray"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</Window>

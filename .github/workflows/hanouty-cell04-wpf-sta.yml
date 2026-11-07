@@ -1,0 +1,32 @@
+name: HANOUTY WPF actual Windows STA (Cell04)
+on:
+  push:
+    branches:
+      - feature/hanouty-wpf-desktop-shell-20261103
+    paths:
+      - 'modernization/Hanouty.Desktop.Wpf/**'
+      - 'modernization/Hanouty.Desktop.Wpf.Tests/**'
+      - '.github/workflows/hanouty-cell04-wpf-sta.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  wpf-sta:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify checked-out SHA
+        shell: pwsh
+        run: |
+          Write-Host "WPF STA exact SHA: $env:GITHUB_SHA"
+          if ((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw "SHA mismatch" }
+      - name: Build real WPF executable
+        shell: pwsh
+        run: dotnet build modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj --configuration Release --warnaserror
+      - name: Run actual WPF STA executable assertions
+        shell: pwsh
+        run: dotnet run --project modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj --configuration Release
