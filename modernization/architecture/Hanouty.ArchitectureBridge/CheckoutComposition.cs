@@ -134,6 +134,10 @@ public sealed class CheckoutComposition
             string? requestedArticleId = null)
         {
             ArgumentNullException.ThrowIfNull(products);
+            // A scan must never turn an empty/whitespace barcode into a
+            // catalogue-wide lookup or an accidental sale of the first item.
+            if (requestedBarcode is not null && string.IsNullOrWhiteSpace(requestedBarcode))
+                throw new ArgumentException("A scanned barcode must not be blank.", nameof(requestedBarcode));
             var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var result = new List<ArticleCandidate>(products.Count);
             foreach (var product in products)
