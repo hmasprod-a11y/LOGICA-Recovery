@@ -13,6 +13,10 @@ public sealed record InventorySnapshot(string ArticleId, string Barcode, decimal
 public sealed record InventoryStocktakeTotals(int ArticleCount, decimal SignedUnits, decimal PurchaseCostValue, decimal SalePriceValue,
     int PositiveStockArticles, int ZeroStockArticles, int NegativeStockArticles);
 
+/// <summary>Preview-only discrepancy: signed counted-minus-book units and purchase-cost impact. Never posts stock.</summary>
+public sealed record InventoryCountDiscrepancy(string ArticleId, decimal BookUnits, decimal CountedUnits,
+    decimal DeltaUnits, decimal PurchaseCostDelta);
+
 public interface IInventorySnapshotReader
 {
     InventorySnapshot ReadArticle(string articleId);
@@ -20,6 +24,7 @@ public interface IInventorySnapshotReader
     IReadOnlyList<InventorySnapshot> ListAll();
     InventoryStocktakeTotals ReadStocktakeTotals();
     InventoryStocktakeTotals ReadStocktakeTotalsForArticles(IReadOnlyList<string> articleIds);
+    IReadOnlyList<InventoryCountDiscrepancy> PreviewCountDiscrepancies(IReadOnlyDictionary<string, decimal> countedUnits);
     IReadOnlyList<InventorySnapshot> FindBarcode(string barcode);
     InventorySnapshot ReadUniqueBarcode(string barcode);
     IReadOnlyList<InventorySnapshot> FindStockBelow(decimal threshold);
@@ -60,6 +65,33 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
     /// <summary>Stocktake valuation for an explicitly selected stable-ID batch, never inferred from barcode or grid order.</summary>
     public InventoryStocktakeTotals ReadStocktakeTotalsForArticles(IReadOnlyList<string> articleIds)
         => CalculateStocktakeTotals(ReadArticlesByIds(articleIds));
+
+    /// <summary>Read book quantities by stable ID, reject missing IDs, and calculate a non-posting physical count preview.</summary>
+    public IReadOnlyList<InventoryCountDiscrepancy> PreviewCountDiscrepancies(IReadOnlyDictionary<string, decimal> countedUnits)
+    {
+        if (countedUnits == null) throw new ArgumentNullException(nameof(countedUnits));
+        if (countedUnits.Count == 0) return Array.Empty<InventoryCountDiscrepancy>();
+        if (countedUnits.Count > 500)
+            throw new ArgumentOutOfRangeException(nameof(countedUnits), "Count preview is limited to 500 articles.");
+        foreach (var entry in countedUnits)
+            if (string.IsNullOrWhiteSpace(entry.Key) || entry.Value < 0)
+                throw new ArgumentException("Physical counts require stable IDs and nonnegative quantities.", nameof(countedUnits));
+        var ids = new List<string>(countedUnits.Keys);
+        var rows = ReadArticlesByIds(ids);
+        var discrepancies = new List<InventoryCountDiscrepancy>(rows.Count);
+        foreach (var row in rows)
+        {
+            decimal counted = countedUnits[row.ArticleId];
+            decimal delta, impact;
+            checked
+            {
+                delta = counted - row.Stock;
+                impact = delta * row.PurchasePrice;
+            }
+            discrepancies.Add(new InventoryCountDiscrepancy(row.ArticleId, row.Stock, counted, delta, impact));
+        }
+        return discrepancies;
+    }
 
     private static InventoryStocktakeTotals CalculateStocktakeTotals(IReadOnlyList<InventorySnapshot> rows)
     {
