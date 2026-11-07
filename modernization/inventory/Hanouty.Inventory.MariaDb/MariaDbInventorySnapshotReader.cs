@@ -13,6 +13,7 @@ public interface IInventorySnapshotReader
 {
     InventorySnapshot ReadArticle(string articleId);
     IReadOnlyList<InventorySnapshot> FindBarcode(string barcode);
+    InventorySnapshot ReadUniqueBarcode(string barcode);
 }
 
 /// <summary>
@@ -50,6 +51,15 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
         if (string.IsNullOrWhiteSpace(barcode))
             throw new ArgumentException("Nonempty barcode required; blank codes are not identities.", nameof(barcode));
         return Read("BINARY Code = BINARY @value", barcode);
+    }
+
+    /// <summary>Resolve a scan only when exactly one durable article matches; never pick the first variant.</summary>
+    public InventorySnapshot ReadUniqueBarcode(string barcode)
+    {
+        var matches = FindBarcode(barcode);
+        if (matches.Count != 1)
+            throw new InvalidOperationException("Barcode is missing or ambiguous; select an explicit article.");
+        return matches[0];
     }
 
     private List<InventorySnapshot> Read(string predicate, string value)
