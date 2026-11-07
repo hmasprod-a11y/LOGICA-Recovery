@@ -787,6 +787,20 @@ namespace LOGICA.Infrastructure.Checkout
                 10.50m, "trusted-fr-FR");
             Sql("UPDATE TABLE_ARTICLES SET PRIX_V_1=99 WHERE ID_ARTICLE='CSharp-Stock'");
             decimal stockBeforeRefund = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            // A trigger that silently alters the durable claim must abort the
+            // entire refund before any signed stock/payment/journal is committed.
+            Sql("CREATE TRIGGER refund_claim_mutation BEFORE INSERT ON hanouty_cash_return_consumption " +
+                "FOR EACH ROW SET NEW.consumed_quantity=NEW.consumed_quantity+1");
+            bool mutatedClaimRejected = false;
+            try { correct.Commit(refund); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Persisted cash return consumption claim changed."))
+            { mutatedClaimRejected = true; }
+            finally { Sql("DROP TRIGGER refund_claim_mutation"); }
+            Require(mutatedClaimRejected && !journal.IsPersisted("refund-fr") &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-fr-FR'") == 0 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='refund-fr'") == 0,
+                "Mutated durable return claim did not roll back refund and stock.");
             correct.Commit(refund);
             Require(journal.IsPersisted("refund-fr") &&
                 Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 2m &&
