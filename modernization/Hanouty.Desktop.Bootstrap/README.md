@@ -3,9 +3,22 @@
 This executable composes the existing WPF window, Architecture session and
 Inventory MariaDB reader without adding a circular project reference.
 
-Run with `--catalogue-only`, `HANOUTY_CATALOGUE_CONNECTION` containing a
-SELECT-only local account, and `HANOUTY_DATA_DIRECTORY` pointing to the legacy
-data directory. It does not create or migrate a database.
+Double-click `Hanouty.Desktop.Bootstrap.exe` to open the safe read-only WPF
+catalogue. `--catalogue-only` remains supported for existing acceptance scripts.
+Before launching, configure `HANOUTY_CATALOGUE_CONNECTION` for a local
+SELECT-only MariaDB account and `HANOUTY_DATA_DIRECTORY` for an existing local
+data directory. For example, in PowerShell (replace the placeholders):
+
+```powershell
+$env:HANOUTY_CATALOGUE_CONNECTION = 'Server=127.0.0.1;Port=3306;Database=YOUR_TEST_DB;User ID=YOUR_READ_ONLY_USER;Password=YOUR_PASSWORD'
+$env:HANOUTY_DATA_DIRECTORY = 'C:\\YOUR_TEST_DATA'
+.\\Hanouty.Desktop.Bootstrap.exe
+```
+
+These process-scoped variables are only an example; a double-click from Explorer
+requires the variables to be configured in the Windows user environment beforehand.
+The executable does not create or migrate a database. Missing configuration
+produces an actionable startup error, never a fake or unauthenticated checkout.
 
 The catalogue mode explicitly disables financial submission. It is a W1
 candidate, never W2 acceptance or a commercial release. CreateProduction requires
