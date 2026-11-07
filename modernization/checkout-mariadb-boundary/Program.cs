@@ -903,12 +903,12 @@ namespace LOGICA.Infrastructure.Checkout
             // before signed stock, payment and ticket can commit.
             Sql("CREATE TRIGGER refund_claim_quantity_mutation BEFORE INSERT ON hanouty_cash_return_consumption " +
                 "FOR EACH ROW SET NEW.consumed_quantity=NEW.consumed_quantity+1");
-            bool mutatedClaimRejected = false;
+            bool mutatedQuantityClaimRejected = false;
             try { correct.Commit(refund with { OperationId = "refund-mutated-claim", OriginalTicketId = "trusted-en-US" }); }
             catch (InvalidOperationException ex) when (ex.Message.Contains("Persisted cash return consumption claim changed."))
-            { mutatedClaimRejected = true; }
+            { mutatedQuantityClaimRejected = true; }
             finally { Sql("DROP TRIGGER refund_claim_quantity_mutation"); }
-            Require(mutatedClaimRejected && !journal.IsPersisted("refund-mutated-claim") &&
+            Require(mutatedQuantityClaimRejected && !journal.IsPersisted("refund-mutated-claim") &&
                 Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-en-US'") == 0 &&
                 Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 2m &&
                 Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='refund-mutated-claim'") == 0 &&
