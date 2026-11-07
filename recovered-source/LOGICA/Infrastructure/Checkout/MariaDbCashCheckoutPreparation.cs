@@ -315,7 +315,7 @@ namespace LOGICA.Infrastructure.Checkout
                     var receipt = Read(connection, transaction,
                         "SELECT Total_NET,OPERATION FROM TABLE_VENTES_ENTETE WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
                     var payment = Read(connection, transaction,
-                        "SELECT MONTANT,OPERATION FROM TABLE_VENTES_REGLEMENTS WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
+                        "SELECT MONTANT,OPERATION,MODE_P FROM TABLE_VENTES_REGLEMENTS WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
                     var detail = Read(connection, transaction,
                         "SELECT ID_ARTICLE,Code,Article,Famille,GROUPE,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté,Total_NET,TAUX_TVA,OPERATION FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
                     if (receipt.Rows.Count != 1 || payment.Rows.Count != 1 || detail.Rows.Count != 1 ||
@@ -340,6 +340,8 @@ namespace LOGICA.Infrastructure.Checkout
                         Number(detail.Rows[0], "TAUX_TVA") != Number(original.Rows[0], "TAUX_TVA") ||
                         Convert.ToString(receipt.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT" ||
                         Convert.ToString(payment.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT" ||
+                        !String.Equals(Convert.ToString(payment.Rows[0]["MODE_P"], CultureInfo.InvariantCulture),
+                            "ESPECES", StringComparison.Ordinal) ||
                         Convert.ToString(detail.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT")
                         throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
                 },
