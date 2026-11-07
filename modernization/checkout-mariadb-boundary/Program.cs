@@ -853,6 +853,21 @@ namespace LOGICA.Infrastructure.Checkout
             rejected("refund-missing-original", () => correct.Commit(refund with { OperationId = "refund-missing", OriginalTicketId = "missing-ticket" }));
             Require(!journal.IsPersisted("refund-different") && !journal.IsPersisted("refund-over") &&
                 !journal.IsPersisted("refund-missing"), "Rejected refund left durable operation claim.");
+            // A trigger changing a cash refund to another tender must abort the
+            // same transaction before stock, receipt or the original claim commit.
+            Sql("CREATE TRIGGER refund_payment_mode_mutation BEFORE INSERT ON TABLE_VENTES_REGLEMENTS " +
+                "FOR EACH ROW SET NEW.MODE_P='CREDIT'");
+            bool wrongRefundTenderRejected = false;
+            try { correct.Commit(refund with { OperationId = "refund-wrong-tender", OriginalTicketId = "trusted-en-US" }); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Signed refund receipt, payment or journal failed verification."))
+            { wrongRefundTenderRejected = true; }
+            finally { Sql("DROP TRIGGER refund_payment_mode_mutation"); }
+            Require(wrongRefundTenderRejected && !journal.IsPersisted("refund-wrong-tender") &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-en-US'") == 0 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 2m &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='refund-wrong-tender'") == 0 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='refund-wrong-tender'") == 0,
+                "Mutated refund tender was not rejected with full transactional rollback.");
             Sql("CREATE TRIGGER refund_payment_failure AFTER INSERT ON TABLE_VENTES_REGLEMENTS FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='refund-payment-rollback'");
             bool refundFailed = false;
             try { correct.Commit(refund with { OperationId = "refund-rollback", OriginalTicketId = "trusted-en-US" }); }
