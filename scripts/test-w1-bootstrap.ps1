@@ -46,6 +46,29 @@ try {
   }
   $rows = & $client --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only --batch --skip-column-names -e 'SELECT COUNT(*) FROM logica_ci.TABLE_ARTICLES'
   if ($LASTEXITCODE -ne 0 -or [int]$rows -ne 4) { throw 'Read-only W1 acceptance altered fixture rows' }
+  # Exercise the exact Explorer double-click path (zero arguments) against the
+  # same disposable local SELECT-only database. A blocking error MessageBox is
+  # NOT a successful launch: require the real read-only catalogue window title.
+  $normal = Start-Process -FilePath ([IO.Path]::GetFullPath($HostExe)) -PassThru
+  try {
+    $windowReady = $false
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+      Start-Sleep -Milliseconds 500
+      $normal.Refresh()
+      if ($normal.HasExited) { throw "Zero-argument WPF launcher exited $($normal.ExitCode)" }
+      if ($normal.MainWindowTitle -eq 'Hanouty — Catalogue (read-only)') {
+        $windowReady = $true
+        break
+      }
+    }
+    if (-not $windowReady) {
+      throw "Zero-argument WPF launcher did not display the actual read-only catalogue window; observed title: $($normal.MainWindowTitle)"
+    }
+    Write-Host 'PASS zero-argument WPF double-click startup: actual read-only catalogue window visible.'
+  } finally {
+    $normal.Refresh()
+    if (-not $normal.HasExited) { $normal.Kill(); $normal.WaitForExit(10000) | Out-Null }
+  }
   Write-Host 'PASS actual Windows WPF host: real MariaDB rows, image-only tile, scanner, duplicate selection, search, financial submission disabled.'
   Write-Host 'W2 is not accepted by this catalogue-only gate.'
 } finally {
