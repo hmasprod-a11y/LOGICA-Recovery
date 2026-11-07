@@ -813,6 +813,21 @@ namespace LOGICA.Infrastructure.Checkout
                 Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund &&
                 Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='refund-fr'") == 0,
                 "Mutated durable return claim did not roll back refund and stock.");
+            // A corrupted return-operation identity is equally dangerous: the
+            // original ticket would be consumed under an unrelated operation.
+            // The posting transaction must reject it without touching stock.
+            Sql("CREATE TRIGGER refund_claim_identity_mutation BEFORE INSERT ON hanouty_cash_return_consumption " +
+                "FOR EACH ROW SET NEW.return_operation_id='corrupted-refund-operation'");
+            bool mutatedIdentityRejected = false;
+            try { correct.Commit(refund); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Persisted cash return consumption claim changed."))
+            { mutatedIdentityRejected = true; }
+            finally { Sql("DROP TRIGGER refund_claim_identity_mutation"); }
+            Require(mutatedIdentityRejected && !journal.IsPersisted("refund-fr") &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-fr-FR'") == 0 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='refund-fr'") == 0,
+                "Mutated return operation identity did not roll back refund and stock.");
             correct.Commit(refund);
             Require(journal.IsPersisted("refund-fr") &&
                 Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 2m &&
