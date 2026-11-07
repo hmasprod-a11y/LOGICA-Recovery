@@ -12,6 +12,7 @@ public sealed record InventorySnapshot(string ArticleId, string Barcode, decimal
 public interface IInventorySnapshotReader
 {
     InventorySnapshot ReadArticle(string articleId);
+    IReadOnlyList<InventorySnapshot> ListAll();
     IReadOnlyList<InventorySnapshot> FindBarcode(string barcode);
     InventorySnapshot ReadUniqueBarcode(string barcode);
     IReadOnlyList<InventorySnapshot> FindStockBelow(decimal threshold);
@@ -38,6 +39,10 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
             throw new InvalidOperationException("Inventory snapshots require local MariaDB.");
         _connectionString = connectionString;
     }
+
+    /// <summary>Full read-only inventory for stocktake and WPF reporting; no sales or adjustment side effects.</summary>
+    public IReadOnlyList<InventorySnapshot> ListAll()
+        => Read("1 = @all", "@all", 1);
 
     public InventorySnapshot ReadArticle(string articleId)
     {
