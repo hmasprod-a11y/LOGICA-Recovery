@@ -521,6 +521,12 @@ Check(!CashierEntryDraft.TryParse("cashier01", "register02", "1.", out _, out _,
     CashierEntryDraft.TryParse("cashier01", "register02", "0.50", out _, out _, out var cents) &&
     cents == 0.50m,
     "cashier tender rejects unfinished, signed or grouped input before Host validation");
+Check(!new CashierPaymentContext(" cashier01", "register02", "MAD", "Cash", 10m).IsWellFormed &&
+    !new CashierPaymentContext("cashier01", "register\n02", "MAD", "Cash", 10m).IsWellFormed &&
+    !new CashierPaymentContext("cashier01", "register02", "MAD", "Cash", 10.001m).IsWellFormed &&
+    !new CashierPaymentContext("cashier01", "register02", "MAD ", "Cash", 10m).IsWellFormed &&
+    new CashierPaymentContext("cashier01", "register02", "MAD", "Cash", 10.25m).IsWellFormed,
+    "financial context refuses whitespace, controls and sub-cent tender before checkout");
 var reconciliation = new RecordingReconciliation { Result = CheckoutResolution.Persisted };
 var reconciliationPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
 var reconciliationVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(),
