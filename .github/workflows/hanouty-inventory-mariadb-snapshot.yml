@@ -6,6 +6,11 @@ on:
       - 'modernization/inventory/**'
       - 'modernization/architecture/Hanouty.ArchitectureBridge/**'
       - '.github/workflows/hanouty-inventory-mariadb-snapshot.yml'
+  pull_request:
+    paths:
+      - 'modernization/inventory/**'
+      - 'modernization/architecture/Hanouty.ArchitectureBridge/**'
+      - '.github/workflows/hanouty-inventory-mariadb-snapshot.yml'
   workflow_dispatch:
 permissions:
   contents: read
