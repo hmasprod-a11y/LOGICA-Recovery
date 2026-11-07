@@ -10,7 +10,8 @@ public sealed record InventorySnapshot(string ArticleId, string Barcode, decimal
     decimal SalePrice, decimal PurchasePrice);
 
 /// <summary>Read-only stocktake totals; not a financial posting or accounting balance.</summary>
-public sealed record InventoryStocktakeTotals(int ArticleCount, decimal SignedUnits, decimal PurchaseCostValue, decimal SalePriceValue);
+public sealed record InventoryStocktakeTotals(int ArticleCount, decimal SignedUnits, decimal PurchaseCostValue, decimal SalePriceValue,
+    int PositiveStockArticles, int ZeroStockArticles, int NegativeStockArticles);
 
 public interface IInventorySnapshotReader
 {
@@ -53,8 +54,12 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
     {
         var rows = ListAll();
         decimal units = 0m, cost = 0m, sale = 0m;
+        int positive = 0, zero = 0, negative = 0;
         foreach (var row in rows)
         {
+            if (row.Stock > 0) positive++;
+            else if (row.Stock < 0) negative++;
+            else zero++;
             checked
             {
                 units += row.Stock;
@@ -62,7 +67,7 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
                 sale += row.Stock * row.SalePrice;
             }
         }
-        return new InventoryStocktakeTotals(rows.Count, units, cost, sale);
+        return new InventoryStocktakeTotals(rows.Count, units, cost, sale, positive, zero, negative);
     }
 
     public InventorySnapshot ReadArticle(string articleId)
