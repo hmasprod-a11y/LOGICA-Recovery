@@ -3,6 +3,22 @@ using ProductSummary = Hanouty.Desktop.Wpf.Presentation.ProductSummary;
 using Hanouty.Desktop.Wpf.Presentation;
 using Hanouty.ArchitectureBridge;
 
+// Top-level C# entry points do not carry [STAThread]. Run ALL real WPF window
+// assertions on an explicit STA thread; rethrow failures to the process exit code.
+System.Exception? staFailure = null;
+var staThread = new System.Threading.Thread(() =>
+{
+    try { RunWpfAssertions(); }
+    catch (System.Exception ex) { staFailure = ex; }
+});
+staThread.SetApartmentState(System.Threading.ApartmentState.STA);
+staThread.Start();
+staThread.Join();
+if (staFailure is not null)
+    System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(staFailure).Throw();
+
+static void RunWpfAssertions()
+{
 static void Check(bool value, string reason)
 {
     if (!value) throw new Exception(reason);
@@ -1527,6 +1543,7 @@ Check(!returnDraft.Confirmed && returnDraft.OriginalSaleId is null &&
     returnDraft.Quantity == 0m, "cashier transition revokes confirmed return draft");
 
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
+}
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
 {
