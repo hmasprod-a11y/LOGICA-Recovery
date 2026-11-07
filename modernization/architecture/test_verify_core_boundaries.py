@@ -59,6 +59,18 @@ class BoundaryTests(unittest.TestCase):
         self.rule.write_text("using System.Windows.Forms;")
         self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
 
+    def test_global_using_winforms_with_tab_rejected(self):
+        self.rule.write_text("global using\\tSystem.Windows.Forms;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_alias_import_mysql_rejected(self):
+        self.rule.write_text("using Db = MySql.Data.MySqlClient;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_newline_import_winforms_rejected(self):
+        self.rule.write_text("using\\nSystem.Windows.Forms;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
     def test_fully_qualified_winforms_rejected(self):
         self.rule.write_text("namespace Hanouty { class X { global::System.Windows.Forms.Form form; } }")
         self.assertTrue(any("fully qualified platform dependency" in e for e in validate(self.root)["errors"]))
