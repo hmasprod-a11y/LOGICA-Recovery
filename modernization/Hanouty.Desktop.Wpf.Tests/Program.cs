@@ -958,6 +958,23 @@ var reviewThread = new System.Threading.Thread(() =>
         Check(!EntryAuthorized("other-cashier", financialContext.TenderedAmount) &&
             !EntryAuthorized(financialContext.CashierId, financialContext.TenderedAmount + 1m),
             "cashier entry rejects Host-claimed success with mismatched identity or tender");
+        var authorizedRegister = typeof(Hanouty.Desktop.Wpf.MainWindow).GetMethod(
+            "IsAuthorizedRegister", System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.Static);
+        Check(authorizedRegister is not null, "WPF Host register/currency guard exists");
+        bool RegisterAuthorized(string register) => (bool)authorizedRegister!.Invoke(null,
+            new object[] { listVm, register })!;
+        Check(RegisterAuthorized(financialContext.RegisterId) &&
+            !RegisterAuthorized("different-register") &&
+            !RegisterAuthorized(""),
+            "Host login must bind exact authorized register, not cashier and tender alone");
+        var oldPayment = listVm.PaymentContext;
+        listVm.PaymentContext = new CashierPaymentContext(
+            financialContext.CashierId, financialContext.RegisterId, "EUR", "Cash",
+            financialContext.TenderedAmount);
+        Check(!RegisterAuthorized(financialContext.RegisterId),
+            "MAD cashier must reject a Host context with different currency");
+        listVm.PaymentContext = oldPayment;
         Check(!listWindow.SelectHighlightedProduct() && listSelection.Selected.Count == 0,
             "empty catalogue highlight cannot stage an article");
         listVm.SelectedProduct = items[0];
