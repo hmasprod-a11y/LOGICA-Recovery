@@ -984,6 +984,14 @@ var reviewThread = new System.Threading.Thread(() =>
             !RegisterAuthorized("different-register") &&
             !RegisterAuthorized(""),
             "Host login must bind exact authorized register, not cashier and tender alone");
+        var pinGuard = typeof(Hanouty.Desktop.Wpf.MainWindow).GetMethod(
+            "IsPinContextStillValid", System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.Static);
+        Check(pinGuard is not null, "PIN context guard must be testable on STA");
+        bool PinStable(bool uncertain, bool busy) => (bool)pinGuard!.Invoke(null,
+            new object?[] { listVm, listVm.PaymentContext, listVm.PendingOperationId, uncertain, busy })!;
+        Check(PinStable(false, false), "idle review PIN context remains valid");
+        Check(!PinStable(false, true), "PIN context rejects busy transition after prompt");
         var oldPayment = listVm.PaymentContext;
         listVm.PaymentContext = new CashierPaymentContext(
             financialContext.CashierId, financialContext.RegisterId, "EUR", "Cash",
