@@ -169,6 +169,9 @@ var nestedWindow = new Hanouty.Desktop.Wpf.MainWindow(new EmptyCatalogueReader()
     new RecordingSelection(), new RecordingSubmission(), null, requireFreshPaymentContext: true);
 var nestedVm = (CatalogueViewModel)nestedWindow.DataContext;
 nestedVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "Cash", 12m);
+// The production window starts locked without an initial Host cashier context.
+// Authorize the test session explicitly before exercising trusted readback.
+nestedVm.FinancialSessionActive = true;
 int nestedReads = 0;
 bool nestedDenied = false;
 nestedWindow.ConfigureCashierEntry((_, _, _) => false, () => {
@@ -187,6 +190,7 @@ var readLockWindow = new Hanouty.Desktop.Wpf.MainWindow(new EmptyCatalogueReader
     new RecordingSelection(), new RecordingSubmission(), null, requireFreshPaymentContext: true);
 var readLockVm = (CatalogueViewModel)readLockWindow.DataContext;
 readLockVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "Cash", 19m);
+readLockVm.FinancialSessionActive = true;
 int logoutDuringRead = 0;
 bool deniedLogoutDuringRead = false;
 bool deniedLoginDuringRead = false;
