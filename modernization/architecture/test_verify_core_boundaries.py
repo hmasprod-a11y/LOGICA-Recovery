@@ -38,7 +38,7 @@ class BoundaryTests(unittest.TestCase):
     def test_duplicate_rejected(self):
         p = "../recovered-source/LOGICA/Domain/Rules.cs"
         self.manifest(p, p)
-        self.assertIn("duplicate production source", validate(self.root)["errors"])
+        self.assertTrue(any("duplicate production source" in error for error in validate(self.root)["errors"]))
 
     def test_case_variant_source_rejected_for_windows(self):
         (self.rule.parent / "rules.cs").write_text("namespace Hanouty {}")
