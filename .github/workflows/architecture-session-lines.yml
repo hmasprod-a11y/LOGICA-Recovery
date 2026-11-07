@@ -2,15 +2,19 @@ name: Architecture current-session line snapshot regression
 on:
   push:
     branches: [architecture/master-easy-code-core-boundary-20261103]
-    paths: ['modernization/architecture/Hanouty.ArchitectureBridge/**', 'modernization/architecture/Hanouty.ArchitectureBridge.Tests/**', '.github/workflows/architecture-session-lines.yml']
+    paths: ['modernization/architecture/**', '.github/workflows/architecture-session-lines.yml']
   pull_request:
-    paths: ['modernization/architecture/Hanouty.ArchitectureBridge/**', 'modernization/architecture/Hanouty.ArchitectureBridge.Tests/**', '.github/workflows/architecture-session-lines.yml']
+    paths: ['modernization/architecture/**', '.github/workflows/architecture-session-lines.yml']
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   actual-session:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,5 +22,9 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Verify production shared-source boundaries
+        run: python modernization/architecture/test_verify_core_boundaries.py
+      - name: Verify boundary manifest
+        run: python modernization/architecture/verify_core_boundaries.py
       - name: Execute actual Architecture session and financial gate regressions
         run: dotnet run --project modernization/architecture/Hanouty.ArchitectureBridge.Tests/Hanouty.ArchitectureBridge.Tests.csproj -c Release
