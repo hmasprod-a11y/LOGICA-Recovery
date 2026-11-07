@@ -128,6 +128,10 @@ static class Program
             Assert(ambiguousScan, "snapshot refuses ambiguous barcode");
             Assert(inventory.FindBarcode("Q'42' OR 1=1 --").Count == 0, "snapshot parameterized barcode");
             Assert(inventory.FindStockBelow(1m).Count == 2, "snapshot low stock includes zero and negative stock");
+            var reorder = inventory.PreviewReplenishment(1m, 5m).OrderBy(x => x.ArticleId).ToArray();
+            Assert(reorder.Length == 2 && reorder[0].SuggestedUnits == 5m && reorder[0].EstimatedPurchaseCost == 40m, "replenishment zero stock cost");
+            Assert(reorder[1].ArticleId == "A-4" && reorder[1].SuggestedUnits == 6m && reorder[1].EstimatedPurchaseCost == 24m, "replenishment negative stock cost");
+            Assert(inventory.ReadArticle("A-4").Stock == -1m, "replenishment does not mutate stock");
             Assert(inventory.FindOutOfStock().Select(x => x.ArticleId).OrderBy(x => x).SequenceEqual(new[] { "A-2", "A-4" }), "out-of-stock returns zero and negative articles by stable ID");
             Assert(inventory.FindStockInRange(-1m, 0m).Count == 2, "bounded stock interval includes negative and zero");
             Assert(inventory.FindStockInRange(5.500m, 5.500m).Single().ArticleId == "A-1", "bounded stock interval includes exact decimal boundary");
