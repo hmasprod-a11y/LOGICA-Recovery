@@ -246,7 +246,12 @@ namespace LOGICA.Infrastructure.Checkout
             }
             var staged = Read(connection, transaction,
                 "SELECT ID_ARTICLE,Code,Article,Qté,TOTAL_NET FROM TABLE_" + workstation + " FOR UPDATE");
-            if (staged.Rows.Count != 1 || Number(staged.Rows[0], "Qté") != -line.Quantity ||
+            // The signed staging table is shared with the workstation; verify the
+            // persisted identity as well as the amount before stock is restored.
+            if (staged.Rows.Count != 1 ||
+                !String.Equals(Convert.ToString(staged.Rows[0]["ID_ARTICLE"], CultureInfo.InvariantCulture),
+                    line.ArticleId, StringComparison.Ordinal) ||
+                Number(staged.Rows[0], "Qté") != -line.Quantity ||
                 Number(staged.Rows[0], "TOTAL_NET") != -amount)
                 throw new InvalidOperationException("Signed return staging differs from the original sale.");
             var date = DateTime.Now;
