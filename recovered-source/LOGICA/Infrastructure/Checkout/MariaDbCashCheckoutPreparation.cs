@@ -260,12 +260,12 @@ namespace LOGICA.Infrastructure.Checkout
                     throw new InvalidOperationException("Could not stage the signed original return line.");
             }
             var staged = Read(connection, transaction,
-                "SELECT ID_ARTICLE,Code,Article,PRIX_V,Remise,Qté,TOTAL_NET FROM TABLE_" + workstation + " FOR UPDATE");
+                "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté,TOTAL_NET,TAUX_TVA,GROUPE FROM TABLE_" + workstation + " FOR UPDATE");
             // Re-read the locked original journal as authoritative evidence.
             // A workstation trigger must not silently replace the refunded
             // article description or unit price while preserving its total.
             var original = Read(connection, transaction,
-                "SELECT ID_ARTICLE,Code,Article,PRIX_V,Remise,Qté,Total_NET FROM TABLE_VENTES_JOURNAL " +
+                "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté,Total_NET,TAUX_TVA,GROUPE FROM TABLE_VENTES_JOURNAL " +
                 "WHERE BINARY ID_TICKET=BINARY @original AND BINARY ID_ARTICLE=BINARY @article FOR UPDATE",
                 ("@original", request.OriginalTicketId), ("@article", line.ArticleId));
             if (staged.Rows.Count != 1 || original.Rows.Count != 1 ||
@@ -277,6 +277,13 @@ namespace LOGICA.Infrastructure.Checkout
                     Convert.ToString(original.Rows[0]["Code"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
                 !String.Equals(Convert.ToString(staged.Rows[0]["Article"], CultureInfo.InvariantCulture),
                     Convert.ToString(original.Rows[0]["Article"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
+                !String.Equals(Convert.ToString(staged.Rows[0]["Famille"], CultureInfo.InvariantCulture),
+                    Convert.ToString(original.Rows[0]["Famille"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
+                !String.Equals(Convert.ToString(staged.Rows[0]["GROUPE"], CultureInfo.InvariantCulture),
+                    Convert.ToString(original.Rows[0]["GROUPE"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
+                Number(staged.Rows[0], "PRIX_A") != Number(original.Rows[0], "PRIX_A") ||
+                Number(staged.Rows[0], "PRIX_MP") != Number(original.Rows[0], "PRIX_MP") ||
+                Number(staged.Rows[0], "TAUX_TVA") != Number(original.Rows[0], "TAUX_TVA") ||
                 Number(staged.Rows[0], "PRIX_V") != Number(original.Rows[0], "PRIX_V") ||
                 Number(staged.Rows[0], "Remise") != Number(original.Rows[0], "Remise") ||
                 Number(original.Rows[0], "Qté") != line.Quantity ||
