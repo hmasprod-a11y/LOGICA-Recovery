@@ -247,7 +247,14 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         SelectedProduct = matches[0];
         SelectCurrent();
         // Clear only after an acknowledged selection; retain the code on uncertainty.
-        if (ScanFeedback == "Selection accepted") ScannerText = "";
+        if (ScanFeedback == "Selection accepted" && !CheckoutUncertain)
+        {
+            // An acknowledged scan resets only the input. The public ScannerText
+            // setter intentionally revokes stale selections on cashier edits;
+            // using it here would also erase the newly accepted product.
+            _scannerText = "";
+            OnPropertyChanged(nameof(ScannerText));
+        }
     }
 
     public void SelectCurrent()
