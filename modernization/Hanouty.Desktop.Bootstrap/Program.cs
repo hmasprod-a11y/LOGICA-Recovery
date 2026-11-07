@@ -42,8 +42,10 @@ public static class Program
             args[1] == "--verify-disposable-catalogue" ? Path.GetFullPath(args[2]) : null;
         try
         {
-            if (!(args.Length == 1 && args[0] == "--catalogue-only") && evidence is null)
-                throw new InvalidOperationException("This candidate requires --catalogue-only. Financial posting is not configured.");
+            // A double-click starts the same safe, read-only WPF production graph.
+            // Command-line acceptance remains explicit and financially disabled.
+            if (args.Length != 0 && !(args.Length == 1 && args[0] == "--catalogue-only") && evidence is null)
+                throw new InvalidOperationException("Unsupported startup arguments. Launch without arguments for read-only catalogue mode.");
             var settings = CatalogueSettings.FromEnvironment();
             if (evidence is not null) RequireDisposable(settings);
             var application = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
