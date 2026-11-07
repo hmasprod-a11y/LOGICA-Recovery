@@ -114,7 +114,7 @@ def validate(root):
                         errors.append("platform dependency in " + str(relative) + ": " + prefix)
                 # Ignore line comments: mentioning a forbidden dependency in an explanatory
                 # comment is not a production reference. Keep scanning executable source.
-                executable_lines = "\n".join(line.split("//", 1)[0] for line in code.splitlines())
+                executable_lines = "\n".join("" if line.lstrip().startswith("//") else line for line in code.splitlines())
                 if FORBIDDEN_QUALIFIED_TYPES.search(executable_lines):
                     errors.append("fully qualified platform dependency in " + str(relative))
             paths.append(relative.as_posix())
