@@ -1,6 +1,3 @@
-#if NET10_0_OR_GREATER
-#nullable enable
-#endif
 using System.Data;
 using LOGICA.Domain;
 
@@ -25,20 +22,14 @@ namespace LOGICA.ApplicationLayer.Catalogue
         // The article identifier is editable in LOGICA. On Save, the immutable
         // database row ID selects the original record; ID_ARTICLE is validated
         // separately by the existing duplicate lookup before it is changed.
-        #if NET10_0_OR_GREATER
-        internal static DataRow? ResolveUniqueByDatabaseId(DataTable? table, string? id)
-#else
-        internal static DataRow ResolveUniqueByDatabaseId(DataTable table, string id)
-#endif
+                internal static DataRow ResolveUniqueByDatabaseId(DataTable table, string id)
+
         {
             if (table == null || string.IsNullOrWhiteSpace(id) ||
                 !table.Columns.Contains("ID") || !table.Columns.Contains("ID_ARTICLE"))
                 return null;
-            #if NET10_0_OR_GREATER
-            DataRow? match = null;
-#else
-            DataRow match = null;
-#endif
+                        DataRow match = null;
+
             foreach (DataRow row in table.Rows)
             {
                 if (row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached)
@@ -54,21 +45,15 @@ namespace LOGICA.ApplicationLayer.Catalogue
 
         // The WinForms grid can be sorted or filtered independently of DataTable.Rows.
         // Never identify an edited/deleted product by a displayed row index.
-        #if NET10_0_OR_GREATER
-        internal static DataRow? ResolveUniqueExistingRow(DataTable? table, string? id, string? articleId)
-#else
-        internal static DataRow ResolveUniqueExistingRow(DataTable table, string id, string articleId)
-#endif
+                internal static DataRow ResolveUniqueExistingRow(DataTable table, string id, string articleId)
+
         {
             if (table == null || string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(articleId) ||
                 !table.Columns.Contains("ID") || !table.Columns.Contains("ID_ARTICLE"))
                 return null;
 
-            #if NET10_0_OR_GREATER
-            DataRow? match = null;
-#else
-            DataRow match = null;
-#endif
+                        DataRow match = null;
+
             foreach (DataRow row in table.Rows)
             {
                 if (row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached)
