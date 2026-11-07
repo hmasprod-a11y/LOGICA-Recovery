@@ -352,7 +352,9 @@ public partial class MainWindow : Window
         return vm.FinancialSessionActive && !vm.CheckoutBusy &&
             !vm.CheckoutUncertain && vm.PendingOperationId is null &&
             vm.PaymentContext is { } authorized &&
-            authorized.CashierId == cashier && authorized.TenderedAmount == tender;
+            authorized.CashierId == cashier && authorized.TenderedAmount == tender &&
+            string.Equals(authorized.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(authorized.CurrencyCode, "MAD", StringComparison.Ordinal);
     }
 
     // Double-click on the real catalogue stages the selected article through the
