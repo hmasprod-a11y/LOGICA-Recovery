@@ -505,16 +505,24 @@ public partial class MainWindow : Window
         {
             if (dialog.ShowDialog() != true || vmAtPrompt is null ||
                 !ReferenceEquals(DataContext, vmAtPrompt) ||
-                !vmAtPrompt.FinancialSessionActive ||
-                !ReferenceEquals(vmAtPrompt.PaymentContext, contextAtPrompt) ||
-                vmAtPrompt.CheckoutUncertain != uncertainAtPrompt ||
-                vmAtPrompt.PendingOperationId != pendingAtPrompt ||
-                vmAtPrompt.CheckoutBusy != busyAtPrompt)
+                !IsPinContextStillValid(vmAtPrompt, contextAtPrompt, pendingAtPrompt,
+                    uncertainAtPrompt == true, busyAtPrompt == true))
                 return "";
             return pin.Password;
         }
         finally { pin.Clear(); _pinOpen = false; }
     }
+
+    // A cash posting legitimately holds CheckoutBusy=true while Host requests PIN.
+    // Compare with the state at prompt opening rather than requiring idle state.
+    internal static bool IsPinContextStillValid(CatalogueViewModel vm,
+        CashierPaymentContext? context, string? pendingOperation,
+        bool uncertain, bool busy) =>
+        vm.FinancialSessionActive &&
+        ReferenceEquals(vm.PaymentContext, context) &&
+        vm.CheckoutUncertain == uncertain &&
+        vm.PendingOperationId == pendingOperation &&
+        vm.CheckoutBusy == busy;
 
     // The production host must supply real Application adapters from its composition root.
     // No EmptyCatalogueReader or PreviewProductSelection may silently enter a sale workflow.
