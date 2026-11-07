@@ -16,6 +16,7 @@ public interface IInventorySnapshotReader
     InventorySnapshot ReadUniqueBarcode(string barcode);
     IReadOnlyList<InventorySnapshot> FindStockBelow(decimal threshold);
     IReadOnlyList<InventorySnapshot> FindStockInRange(decimal minimumInclusive, decimal maximumInclusive);
+    IReadOnlyList<InventorySnapshot> FindOutOfStock();
 }
 
 /// <summary>
@@ -71,6 +72,10 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
             throw new ArgumentOutOfRangeException(nameof(threshold), "Stock threshold cannot be negative.");
         return Read("STOCK < @threshold", "@threshold", threshold);
     }
+
+    /// <summary>Read all zero or negative stock articles, preserving stable article identities.</summary>
+    public IReadOnlyList<InventorySnapshot> FindOutOfStock()
+        => Read("STOCK <= @threshold", "@threshold", 0m);
 
     /// <summary>Read a bounded stock interval, including signed historical stock; no mutation or financial writer.</summary>
     public IReadOnlyList<InventorySnapshot> FindStockInRange(decimal minimumInclusive, decimal maximumInclusive)
