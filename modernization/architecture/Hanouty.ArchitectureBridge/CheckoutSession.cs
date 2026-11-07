@@ -124,6 +124,11 @@ public sealed class CheckoutSession
 
     public CheckoutBatchStatus Submit(string operationId)
     {
+        // A lost acknowledgement is not a failed sale. Do not revalidate a
+        // changed catalogue and misreport Invalidated while a durable outcome
+        // is still unknown; reconciliation must precede any new submission.
+        if (_batch.State == CheckoutCommitState.OutcomeUnknown)
+            throw new InvalidOperationException("Reconcile the uncertain checkout outcome before submitting again.");
         if (string.IsNullOrWhiteSpace(operationId))
             throw new ArgumentException("Stable operation ID required.", nameof(operationId));
         if (_operationId is not null && !string.Equals(_operationId, operationId, StringComparison.Ordinal))
