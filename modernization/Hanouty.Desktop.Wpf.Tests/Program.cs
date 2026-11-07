@@ -67,6 +67,15 @@ Check(((System.Windows.Controls.TextBlock)lockedWindow.FindName("TrustedBasketTo
     !lockedWindow.RefreshTrustedBasketTotal() && trustedReads == 1,
     "logout revokes trusted total and blocks another readback");
 lockedWindow.Close();
+var items = new[]
+{
+    new ProductSummary("1", "Milk", "123", "milk.png"),
+    new ProductSummary("2", "Bread", "", null),
+    new ProductSummary("3", "Milk Chocolate", "456", null),
+    new ProductSummary("4", "Duplicate A", "777", "a.png"),
+    new ProductSummary("5", "Duplicate B", "777", null)
+};
+
 // A successful or uncertain checkout must not leave the old basket quote on
 // screen: readback requires a fresh authoritative Host call after resolution.
 var quoteSubmission = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
@@ -132,14 +141,6 @@ Check(!precisionWindow.RefreshTrustedBasketTotal() &&
     "non-cent MAD amount is not rounded into a misleading trusted total");
 precisionWindow.Close();
 
-var items = new[]
-{
-    new ProductSummary("1", "Milk", "123", "milk.png"),
-    new ProductSummary("2", "Bread", "", null),
-    new ProductSummary("3", "Milk Chocolate", "456", null),
-    new ProductSummary("4", "Duplicate A", "777", "a.png"),
-    new ProductSummary("5", "Duplicate B", "777", null)
-};
 // Barcode identity must agree with the production gateway (ordinal comparison).
 // A case-folded scan must never stage an article that has a different live barcode.
 var caseSelection = new RecordingSelection();
