@@ -182,7 +182,18 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         if (CheckoutUncertain) { ScanFeedback = "Checkout status unknown — reconcile before retry"; return; }
         if (!FinancialSessionActive) { ScanFeedback = "Cashier session required"; return; }
         if (!CatalogueAvailable) { ScanFeedback = "Local catalogue unavailable"; return; }
-        var code = ScannerText.Trim();
+        // Barcode identity is exact: silently trimming scanner input could
+        // select a different article from the code actually received.
+        var code = ScannerText;
+        if (code.Length != 0 && !string.Equals(code, code.Trim(), StringComparison.Ordinal))
+        {
+            BarcodeCandidates = Array.Empty<ProductSummary>();
+            SelectedProduct = null;
+            OnPropertyChanged(nameof(BarcodeCandidates));
+            OnPropertyChanged(nameof(HasBarcodeAmbiguity));
+            ScanFeedback = "Barcode contains leading or trailing whitespace";
+            return;
+        }
         if (code.Length == 0) { BarcodeCandidates = Array.Empty<ProductSummary>(); SelectedProduct = null; OnPropertyChanged(nameof(BarcodeCandidates)); OnPropertyChanged(nameof(HasBarcodeAmbiguity)); ScanFeedback = "Empty barcode"; return; }
         // Preserve the exact barcode identity used by the Application checkout gateway.
         // Case-folding here could select a different article than the live catalogue.
