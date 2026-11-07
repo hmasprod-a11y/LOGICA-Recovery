@@ -21,6 +21,10 @@ public sealed record InventoryCountDiscrepancy(string ArticleId, decimal BookUni
 public sealed record InventoryCountPreviewTotals(int ArticleCount, int ShortageArticles, int SurplusArticles,
     int MatchingArticles, decimal SignedUnitDifference, decimal PurchaseCostDifference);
 
+/// <summary>Read-only supplier replenishment suggestion; not a purchase order or stock mutation.</summary>
+public sealed record InventoryReorderSuggestion(string ArticleId, decimal BookUnits, decimal TargetUnits,
+    decimal SuggestedUnits, decimal EstimatedPurchaseCost);
+
 public interface IInventorySnapshotReader
 {
     InventorySnapshot ReadArticle(string articleId);
@@ -35,6 +39,7 @@ public interface IInventorySnapshotReader
     IReadOnlyList<InventorySnapshot> FindStockBelow(decimal threshold);
     IReadOnlyList<InventorySnapshot> FindStockInRange(decimal minimumInclusive, decimal maximumInclusive);
     IReadOnlyList<InventorySnapshot> FindOutOfStock();
+    IReadOnlyList<InventoryReorderSuggestion> PreviewReplenishment(decimal reorderPoint, decimal targetStock);
 }
 
 /// <summary>
@@ -215,6 +220,27 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
     /// <summary>Read all zero or negative stock articles, preserving stable article identities.</summary>
     public IReadOnlyList<InventorySnapshot> FindOutOfStock()
         => Read("STOCK <= @threshold", "@threshold", 0m);
+
+    /// <summary>Calculate read-only purchase quantities for items strictly below a reorder point.</summary>
+    public IReadOnlyList<InventoryReorderSuggestion> PreviewReplenishment(decimal reorderPoint, decimal targetStock)
+    {
+        if (reorderPoint < 0m || targetStock < reorderPoint)
+            throw new ArgumentOutOfRangeException(nameof(targetStock), "Reorder target must be at least a nonnegative reorder point.");
+        var rows = FindStockBelow(reorderPoint);
+        var suggestions = new List<InventoryReorderSuggestion>(rows.Count);
+        foreach (var row in rows)
+        {
+            decimal quantity, cost;
+            checked
+            {
+                quantity = targetStock - row.Stock;
+                cost = quantity * row.PurchasePrice;
+            }
+            if (quantity <= 0m) throw new InvalidOperationException("Invalid replenishment quantity.");
+            suggestions.Add(new InventoryReorderSuggestion(row.ArticleId, row.Stock, targetStock, quantity, cost));
+        }
+        return suggestions;
+    }
 
     /// <summary>Read a bounded stock interval, including signed historical stock; no mutation or financial writer.</summary>
     public IReadOnlyList<InventorySnapshot> FindStockInRange(decimal minimumInclusive, decimal maximumInclusive)
