@@ -493,7 +493,25 @@ public partial class MainWindow : Window
         // and session transitions until the transient secret is cleared.
         if (_pinOpen) return "";
         _pinOpen = true;
-        try { return dialog.ShowDialog() == true ? pin.Password : ""; }
+        // A modal PIN dialog pumps the dispatcher: the Host can revoke the
+        // session or transition into Unknown while the dialog is displayed.
+        // Never release a secret captured under a different cashier context.
+        var vmAtPrompt = DataContext as CatalogueViewModel;
+        var contextAtPrompt = vmAtPrompt?.PaymentContext;
+        var pendingAtPrompt = vmAtPrompt?.PendingOperationId;
+        var uncertainAtPrompt = vmAtPrompt?.CheckoutUncertain;
+        try
+        {
+            if (dialog.ShowDialog() != true || vmAtPrompt is null ||
+                !ReferenceEquals(DataContext, vmAtPrompt) ||
+                !vmAtPrompt.FinancialSessionActive ||
+                !ReferenceEquals(vmAtPrompt.PaymentContext, contextAtPrompt) ||
+                vmAtPrompt.CheckoutUncertain != uncertainAtPrompt ||
+                vmAtPrompt.PendingOperationId != pendingAtPrompt ||
+                vmAtPrompt.CheckoutBusy)
+                return "";
+            return pin.Password;
+        }
         finally { pin.Clear(); _pinOpen = false; }
     }
 
