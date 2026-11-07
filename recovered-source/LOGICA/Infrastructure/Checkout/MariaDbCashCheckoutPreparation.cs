@@ -235,9 +235,12 @@ namespace LOGICA.Infrastructure.Checkout
                 command.CommandText = "INSERT INTO TABLE_" + workstation +
                     " (ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté,Remise,TOTAL_NET,TAUX_TVA,GROUPE) " +
                     "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,-Qté,Remise,-Total_NET,TAUX_TVA,GROUPE " +
-                    "FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @original AND BINARY ID_ARTICLE=BINARY @article";
+                    "FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @original AND BINARY ID_ARTICLE=BINARY @article " +
+                    "AND BINARY OPERATION=BINARY 'VENTE' AND Qté=@quantity AND Total_NET=@amount";
                 command.Parameters.AddWithValue("@original", request.OriginalTicketId);
                 command.Parameters.AddWithValue("@article", line.ArticleId);
+                command.Parameters.AddWithValue("@quantity", line.Quantity);
+                command.Parameters.AddWithValue("@amount", amount);
                 if (command.ExecuteNonQuery() != 1)
                     throw new InvalidOperationException("Could not stage the signed original return line.");
             }
