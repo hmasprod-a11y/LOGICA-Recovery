@@ -1427,6 +1427,16 @@ originalWindow.ReturnQuantity.Text = "0,250";
 Check(originalWindow.ReviewReturnQuantity(originalWindow.ReturnQuantity.Text) &&
     originalWindow.ConfirmReturnDraft(),
     "Moroccan comma decimal quantity can be reviewed explicitly in STA window");
+// A stale ListBox ItemsSource must never confirm a return draft, even if
+// its SelectedItem and the Host context still point at the old receipt.
+var originalResultsSnapshot = originalWindow.OriginalSaleResults.ItemsSource;
+originalWindow.OriginalSaleResults.ItemsSource = new[] { persistedRow };
+Check(!originalWindow.ConfirmReturnDraft(),
+    "return confirmation must reject replaced original-sale result snapshot");
+originalWindow.OriginalSaleResults.ItemsSource = originalResultsSnapshot;
+originalWindow.OriginalSaleResults.SelectedItem = persistedRow;
+Check(originalWindow.SelectOriginalSale(persistedRow),
+    "restored original-sale snapshot requires explicit reselection");
 originalWindow.ReturnQuantity.Text = "0,2500";
 Check(!originalWindow.ConfirmReturnDraft() &&
     !originalWindow.ReviewReturnQuantity(originalWindow.ReturnQuantity.Text),
