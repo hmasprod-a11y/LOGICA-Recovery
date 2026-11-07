@@ -140,8 +140,14 @@ public sealed class CheckoutComposition
             if (string.IsNullOrWhiteSpace(barcode))
                 throw new ArgumentException("A scanned barcode must not be blank.", nameof(barcode));
         }
-        public IReadOnlyList<ArticleCandidate> RefreshArticle(string articleId) =>
-            Convert(_source.RefreshArticle(articleId), null, articleId);
+        public IReadOnlyList<ArticleCandidate> RefreshArticle(string articleId)
+        {
+            // A missing identity must never become an unfiltered catalogue query.
+            // The caller must not be allowed to turn a stale tile into a sale.
+            if (string.IsNullOrWhiteSpace(articleId))
+                throw new ArgumentException("An article identity must not be blank.", nameof(articleId));
+            return Convert(_source.RefreshArticle(articleId), null, articleId);
+        }
 
         private static IReadOnlyList<ArticleCandidate> Convert(
             IReadOnlyList<ProductSummary> products, string? requestedBarcode = null,
