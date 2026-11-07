@@ -105,6 +105,11 @@ public sealed class CheckoutComposition
         {
             if (product is null || string.IsNullOrWhiteSpace(product.ArticleId))
                 throw new InvalidOperationException("Catalogue returned a product without stable identity.");
+            // Legacy DataRow mappings may surface DBNull as null at runtime even
+            // when the modern DTO declares a non-null display name. Refuse a
+            // malformed snapshot rather than passing it into WPF bindings.
+            if (product.DisplayName is null)
+                throw new InvalidOperationException("Catalogue returned a product without a display name.");
             if (!ids.Add(product.ArticleId))
                 throw new InvalidOperationException("Catalogue returned duplicate article identity.");
         }
