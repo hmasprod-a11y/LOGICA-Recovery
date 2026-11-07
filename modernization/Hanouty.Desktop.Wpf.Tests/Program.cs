@@ -909,7 +909,8 @@ var reviewThread = new System.Threading.Thread(() =>
     {
         var submit = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
         var journal = new RecordingReconciliation { Result = CheckoutResolution.Persisted };
-        var window = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items), new RecordingSelection(), submit,
+        var window = new Hanouty.Desktop.Wpf.MainWindow(new Reader(items), new RecordingSelection(),
+            new ReconciledSubmission(submit, journal),
             new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m));
         var viewModel = (CatalogueViewModel)window.DataContext;
         viewModel.CommitCheckout();
