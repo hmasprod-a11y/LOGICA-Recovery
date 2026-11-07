@@ -50,7 +50,7 @@ jobs:
           $script = 'scripts/Package-HanoutyWpf.ps1'
           if (-not (Test-Path -LiteralPath $project) -or -not (Test-Path -LiteralPath $script)) { throw 'Integrated WPF bootstrap/package sources missing' }
           $packager = Get-Content -LiteralPath $script -Raw
-          if ($packager -notmatch "financialAcceptance = \\\$false" -and $packager -notmatch 'financialAcceptance\\s*=\\s*\\$false') { throw 'W2 must remain explicitly unaccepted in engineering candidate manifest' }
+          if ($packager -notmatch 'financialAcceptance\s*=\s*\$false') { throw 'W2 must remain explicitly unaccepted in engineering candidate manifest' }
       - name: Build self-contained independent HANOUTY WPF and verify extracted ZIP
         shell: pwsh
         run: ./scripts/Package-HanoutyWpf.ps1 -OutputDirectory "${{ runner.temp }}/hanouty-wpf-candidate" -Runtime win-x64
