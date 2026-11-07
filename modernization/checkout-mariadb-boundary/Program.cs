@@ -213,6 +213,18 @@ namespace LOGICA.Infrastructure.Checkout
                 using (MySqlCommand cmd = db.CreateCommand())
                 {
                     cmd.Transaction = tx;
+                    bool rejectedSelfReturn = false;
+                    try
+                    {
+                        CashReturnConsumptionClaim.ClaimFullOriginal(
+                            db, tx, "self-refund", "self-refund", 1m);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        rejectedSelfReturn = true;
+                    }
+                    Require(rejectedSelfReturn,
+                        "Direct durable return claim must reject self-referential operation identity.");
                     CheckoutStockWriter.Apply(cmd, db, "SALE-1", "CSharp-Stock", "CODE", "Article", 2m);
                     CheckoutStockWriter.Apply(cmd, db, "RETURN-1", "CSharp-Stock", "CODE", "Article", -1m);
                     tx.Commit();
