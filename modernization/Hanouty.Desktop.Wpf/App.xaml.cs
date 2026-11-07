@@ -23,10 +23,14 @@ public partial class App : Application
         payment?.IsWellFormed == true &&
         string.Equals(payment.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase);
 
+    // Allows Windows STA tests to assert that the diagnostic resolver cannot
+    // unlock a production process, without displaying a modal startup dialog.
+    public static bool HasProductionStartupResolver => ResolveFinancialServices is not null;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        if (ResolveFinancialServices is null)
+        if (!HasProductionStartupResolver)
         {
             MessageBox.Show("Local MariaDB and authorized cashier services are not configured. Launch HANOUTY through its installed local setup; catalogue-only diagnostics cannot process sales.",
                 "Hanouty — startup blocked", MessageBoxButton.OK, MessageBoxImage.Error);
