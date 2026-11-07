@@ -17,6 +17,10 @@ public sealed record InventoryStocktakeTotals(int ArticleCount, decimal SignedUn
 public sealed record InventoryCountDiscrepancy(string ArticleId, decimal BookUnits, decimal CountedUnits,
     decimal DeltaUnits, decimal PurchaseCostDelta);
 
+/// <summary>Read-only aggregate of a physical-count preview; never a posted stock adjustment.</summary>
+public sealed record InventoryCountPreviewTotals(int ArticleCount, int ShortageArticles, int SurplusArticles,
+    int MatchingArticles, decimal SignedUnitDifference, decimal PurchaseCostDifference);
+
 public interface IInventorySnapshotReader
 {
     InventorySnapshot ReadArticle(string articleId);
@@ -25,6 +29,7 @@ public interface IInventorySnapshotReader
     InventoryStocktakeTotals ReadStocktakeTotals();
     InventoryStocktakeTotals ReadStocktakeTotalsForArticles(IReadOnlyList<string> articleIds);
     IReadOnlyList<InventoryCountDiscrepancy> PreviewCountDiscrepancies(IReadOnlyDictionary<string, decimal> countedUnits);
+    InventoryCountPreviewTotals PreviewCountTotals(IReadOnlyDictionary<string, decimal> countedUnits);
     IReadOnlyList<InventorySnapshot> FindBarcode(string barcode);
     InventorySnapshot ReadUniqueBarcode(string barcode);
     IReadOnlyList<InventorySnapshot> FindStockBelow(decimal threshold);
@@ -91,6 +96,26 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
             discrepancies.Add(new InventoryCountDiscrepancy(row.ArticleId, row.Stock, counted, delta, impact));
         }
         return discrepancies;
+    }
+
+    /// <summary>Aggregate one physical-count preview without performing a stock mutation or a second SQL read.</summary>
+    public InventoryCountPreviewTotals PreviewCountTotals(IReadOnlyDictionary<string, decimal> countedUnits)
+    {
+        var rows = PreviewCountDiscrepancies(countedUnits);
+        int shortages = 0, surpluses = 0, matching = 0;
+        decimal units = 0m, cost = 0m;
+        foreach (var row in rows)
+        {
+            if (row.DeltaUnits < 0m) shortages++;
+            else if (row.DeltaUnits > 0m) surpluses++;
+            else matching++;
+            checked
+            {
+                units += row.DeltaUnits;
+                cost += row.PurchaseCostDelta;
+            }
+        }
+        return new InventoryCountPreviewTotals(rows.Count, shortages, surpluses, matching, units, cost);
     }
 
     private static InventoryStocktakeTotals CalculateStocktakeTotals(IReadOnlyList<InventorySnapshot> rows)
