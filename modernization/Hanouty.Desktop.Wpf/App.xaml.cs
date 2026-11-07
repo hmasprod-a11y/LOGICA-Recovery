@@ -15,12 +15,20 @@ public partial class App : Application
     public static Func<(ICatalogueReader Catalogue, IProductSelection Checkout,
         ICheckoutSubmission Submission, CashierPaymentContext Payment)>? ResolveFinancialServices { get; set; }
 
+    public static bool HasAuthorizedFinancialRegistration(ICatalogueReader? catalogue,
+        IProductSelection? checkout, ICheckoutSubmission? submission, CashierPaymentContext? payment) =>
+        catalogue is not null && checkout is not null &&
+        submission is IContextualCheckoutSubmission &&
+        submission is ICheckoutOutcomeReconciliation &&
+        payment?.IsWellFormed == true &&
+        string.Equals(payment.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase);
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         if (ResolveFinancialServices is null && ResolveServices is null)
         {
-            MessageBox.Show("Production catalogue/checkout services are not configured. No sale can be started.",
+            MessageBox.Show("Local MariaDB and authorized cashier services are not configured. Launch HANOUTY through its installed local setup; catalogue-only diagnostics cannot process sales.",
                 "Hanouty — startup blocked", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(2);
             return;
@@ -34,12 +42,8 @@ public partial class App : Application
             // Reject incomplete host registrations without entering a cashier session.
             if (catalogue is null || checkout is null || submission is null)
                 throw new InvalidOperationException("Incomplete production service registration.");
-            // A financial registration must supply a valid authorized cash context.
             if (services is { } configured &&
-                (configured.Payment?.IsWellFormed != true ||
-                 !string.Equals(configured.Payment.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase) ||
-                 submission is not IContextualCheckoutSubmission ||
-                 submission is not ICheckoutOutcomeReconciliation))
+                !HasAuthorizedFinancialRegistration(catalogue, checkout, submission, configured.Payment))
                 throw new InvalidOperationException("Incomplete authorized cash-sale registration.");
             MainWindow = services is { } authorized
                 ? new MainWindow(catalogue, checkout, submission, authorized.Payment)
