@@ -112,7 +112,7 @@ def validate(root):
                 for prefix in FORBIDDEN_IMPORTS:
                     # C# global/alias imports and arbitrary whitespace are still imports.
                     # Do not let a tab or newline bypass the portable-source boundary.
-                    csharp_import = re.compile(r"\b(?:global\s+)?using\s+(?:[A-Za-z_]\w*\s*=\s*)?" + re.escape(prefix))
+                    csharp_import = re.compile(r"\b(?:global\s+)?using\s+(?:(?:static\s+)|(?:[A-Za-z_]\w*\s*=\s*))?(?:global::)?" + re.escape(prefix))
                     vb_import = re.compile(r"\bImports\s+" + re.escape(prefix), re.IGNORECASE)
                     if csharp_import.search(code) or vb_import.search(code):
                         errors.append("platform dependency in " + str(relative) + ": " + prefix)
