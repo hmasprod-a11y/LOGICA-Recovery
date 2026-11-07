@@ -144,10 +144,13 @@ public sealed partial record CatalogueHost
             catch (ArgumentException) { return false; }
             // A staged basket belongs to its current cashier; changing amount
             // is allowed before submission, changing identity is not.
-            if (activeCashierId is not null &&
+            // A fresh financial context is NOT a login operation. The cashier
+            // must first authenticate through the empty-basket PIN entry, or
+            // have been supplied by the explicitly authorized financial factory.
+            // Otherwise an external caller could activate financial UI state
+            // before authentication (even though SQL would reject posting).
+            if (activeCashierId is null ||
                 !string.Equals(frozen.CashierId, activeCashierId, StringComparison.Ordinal))
-                return false;
-            if (binding.Session.PendingCount != 0 && activeCashierId is null)
                 return false;
             captured = frozen;
             activeCashierId = frozen.CashierId;
