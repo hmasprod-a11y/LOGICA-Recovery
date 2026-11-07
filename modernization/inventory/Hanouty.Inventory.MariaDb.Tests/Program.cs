@@ -44,6 +44,10 @@ static class Program
             try { _ = new MariaDbCatalogueReader(remote.ConnectionString, folder); }
             catch (InvalidOperationException) { remoteRejected = true; }
             Assert(remoteRejected, "remote catalogue connection rejected before opening");
+            bool remoteInventoryRejected = false;
+            try { _ = new MariaDbInventorySnapshotReader(remote.ConnectionString); }
+            catch (InvalidOperationException) { remoteInventoryRejected = true; }
+            Assert(remoteInventoryRejected, "remote inventory snapshot connection rejected before opening");
             var inventory = new MariaDbInventorySnapshotReader(connectionString);
             Assert(inventory.ReadArticle("A-1").Stock == 5.500m &&
                    inventory.ReadArticle("A-1").SalePrice == 12.250m &&
@@ -159,6 +163,12 @@ static class Program
             bool duplicateRejected = false;
             try { reader.ListAll(); } catch (InvalidOperationException) { duplicateRejected = true; }
             Assert(duplicateRejected, "duplicate stable article identity rejected");
+            bool duplicateSnapshotRejected = false;
+            try { inventory.ListAll(); } catch (InvalidOperationException) { duplicateSnapshotRejected = true; }
+            Assert(duplicateSnapshotRejected, "snapshot rejects duplicate stable article identity");
+            bool duplicateBatchRejected = false;
+            try { inventory.ReadArticlesByIds(new[] { "A-1" }); } catch (InvalidOperationException) { duplicateBatchRejected = true; }
+            Assert(duplicateBatchRejected, "snapshot batch rejects ambiguous stable article identity");
             using (var db = new MySqlConnection(connectionString))
             {
                 db.Open();
@@ -168,6 +178,9 @@ static class Program
             bool missingRejected = false;
             try { reader.ListAll(); } catch (InvalidOperationException) { missingRejected = true; }
             Assert(missingRejected, "missing stable article identity rejected");
+            bool missingSnapshotRejected = false;
+            try { inventory.ListAll(); } catch (InvalidOperationException) { missingSnapshotRejected = true; }
+            Assert(missingSnapshotRejected, "snapshot rejects missing stable article identity");
             using (var db = new MySqlConnection(connectionString))
             {
                 db.Open();
