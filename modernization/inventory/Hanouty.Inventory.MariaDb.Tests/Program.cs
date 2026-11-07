@@ -132,6 +132,26 @@ static class Program
             Assert(inventory.PreviewReplenishment(1m, 5m).Select(x => x.ArticleId).SequenceEqual(new[] { "A-2", "A-4" }), "replenishment order is stable and ordinal regardless of SQL row order");
             Assert(reorder.Length == 2 && reorder[0].SuggestedUnits == 5m && reorder[0].EstimatedPurchaseCost == 40m, "replenishment zero stock cost");
             Assert(reorder[1].ArticleId == "A-4" && reorder[1].SuggestedUnits == 6m && reorder[1].EstimatedPurchaseCost == 24m, "replenishment negative stock cost");
+            var selectedReorder = inventory.PreviewReplenishmentForArticles(new[] { "A-4", "A-1", "A-2" }, 5m);
+            Assert(selectedReorder.Select(x => x.ArticleId).SequenceEqual(new[] { "A-4", "A-2" }),
+                "selected supplier preview preserves explicit stable ID order and omits sufficient stock");
+            Assert(selectedReorder[0].SuggestedUnits == 6m && selectedReorder[0].EstimatedPurchaseCost == 24m &&
+                   selectedReorder[1].SuggestedUnits == 5m && selectedReorder[1].EstimatedPurchaseCost == 40m,
+                "selected supplier preview preserves signed stock and exact purchase cost");
+            Assert(inventory.PreviewReplenishmentForArticles(Array.Empty<string>(), 5m).Count == 0,
+                "empty supplier selection is valid");
+            bool selectedReorderMissing = false;
+            try { inventory.PreviewReplenishmentForArticles(new[] { "MISSING" }, 5m); }
+            catch (InvalidOperationException) { selectedReorderMissing = true; }
+            Assert(selectedReorderMissing, "supplier preview refuses missing stable article identity");
+            bool selectedReorderDuplicate = false;
+            try { inventory.PreviewReplenishmentForArticles(new[] { "A-2", "A-2" }, 5m); }
+            catch (ArgumentException) { selectedReorderDuplicate = true; }
+            Assert(selectedReorderDuplicate, "supplier preview refuses duplicate article selection");
+            bool selectedReorderNegativeTarget = false;
+            try { inventory.PreviewReplenishmentForArticles(new[] { "A-2" }, -1m); }
+            catch (ArgumentOutOfRangeException) { selectedReorderNegativeTarget = true; }
+            Assert(selectedReorderNegativeTarget, "supplier preview rejects negative target");
             Assert(inventory.ReadArticle("A-4").Stock == -1m, "replenishment does not mutate stock");
             Assert(inventory.FindOutOfStock().Select(x => x.ArticleId).OrderBy(x => x).SequenceEqual(new[] { "A-2", "A-4" }), "out-of-stock returns zero and negative articles by stable ID");
             Assert(inventory.FindStockInRange(-1m, 0m).Count == 2, "bounded stock interval includes negative and zero");
