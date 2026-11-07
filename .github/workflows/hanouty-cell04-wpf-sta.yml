@@ -7,6 +7,11 @@ on:
       - 'modernization/Hanouty.Desktop.Wpf/**'
       - 'modernization/Hanouty.Desktop.Wpf.Tests/**'
       - '.github/workflows/hanouty-cell04-wpf-sta.yml'
+  pull_request:
+    paths:
+      - 'modernization/Hanouty.Desktop.Wpf/**'
+      - 'modernization/Hanouty.Desktop.Wpf.Tests/**'
+      - '.github/workflows/hanouty-cell04-wpf-sta.yml'
   workflow_dispatch:
 permissions:
   contents: read
