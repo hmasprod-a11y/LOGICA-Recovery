@@ -340,8 +340,7 @@ public partial class MainWindow : Window
             // moved this window into Unknown or an in-flight financial operation.
             if (!_setFinancialContext(draft.Cashier, draft.Register, draft.CashMad)) return false;
             return IsAuthorizedEntry(vm, draft.Cashier, draft.CashMad) &&
-                string.Equals(vm.PaymentContext?.RegisterId, draft.Register, StringComparison.Ordinal) &&
-                string.Equals(vm.PaymentContext?.CurrencyCode, "MAD", StringComparison.Ordinal);
+                IsAuthorizedRegister(vm, draft.Register);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         { return false; }
@@ -358,6 +357,12 @@ public partial class MainWindow : Window
 
     // Double-click on the real catalogue stages the selected article through the
     // same Host-owned IProductSelection as the explicit Select button.
+    internal static bool IsAuthorizedRegister(CatalogueViewModel vm, string register) =>
+        vm.FinancialSessionActive && !vm.CheckoutUncertain && !vm.CheckoutBusy &&
+        vm.PendingOperationId is null && vm.PaymentContext is { } context &&
+        string.Equals(context.RegisterId, register, StringComparison.Ordinal) &&
+        string.Equals(context.CurrencyCode, "MAD", StringComparison.Ordinal);
+
     public bool SelectHighlightedProduct()
     {
         if (DataContext is not CatalogueViewModel vm || !vm.CanSelectProduct ||
