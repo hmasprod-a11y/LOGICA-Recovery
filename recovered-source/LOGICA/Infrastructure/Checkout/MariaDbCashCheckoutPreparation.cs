@@ -317,7 +317,7 @@ namespace LOGICA.Infrastructure.Checkout
                     var payment = Read(connection, transaction,
                         "SELECT MONTANT,OPERATION FROM TABLE_VENTES_REGLEMENTS WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
                     var detail = Read(connection, transaction,
-                        "SELECT ID_ARTICLE,Code,Article,PRIX_V,Remise,Qté,Total_NET,OPERATION FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
+                        "SELECT ID_ARTICLE,Code,Article,Famille,GROUPE,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté,Total_NET,TAUX_TVA,OPERATION FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
                     if (receipt.Rows.Count != 1 || payment.Rows.Count != 1 || detail.Rows.Count != 1 ||
                         Number(receipt.Rows[0], "Total_NET") != -amount ||
                         Number(payment.Rows[0], "MONTANT") != -amount ||
@@ -331,6 +331,13 @@ namespace LOGICA.Infrastructure.Checkout
                             Convert.ToString(original.Rows[0]["Article"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
                         Number(detail.Rows[0], "PRIX_V") != Number(original.Rows[0], "PRIX_V") ||
                         Number(detail.Rows[0], "Remise") != Number(original.Rows[0], "Remise") ||
+                        !String.Equals(Convert.ToString(detail.Rows[0]["Famille"], CultureInfo.InvariantCulture),
+                            Convert.ToString(original.Rows[0]["Famille"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
+                        !String.Equals(Convert.ToString(detail.Rows[0]["GROUPE"], CultureInfo.InvariantCulture),
+                            Convert.ToString(original.Rows[0]["GROUPE"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
+                        Number(detail.Rows[0], "PRIX_A") != Number(original.Rows[0], "PRIX_A") ||
+                        Number(detail.Rows[0], "PRIX_MP") != Number(original.Rows[0], "PRIX_MP") ||
+                        Number(detail.Rows[0], "TAUX_TVA") != Number(original.Rows[0], "TAUX_TVA") ||
                         Convert.ToString(receipt.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT" ||
                         Convert.ToString(payment.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT" ||
                         Convert.ToString(detail.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT")
