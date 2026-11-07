@@ -46,8 +46,8 @@ public partial class App : Application
                 !HasAuthorizedFinancialRegistration(catalogue, checkout, submission, configured.Payment))
                 throw new InvalidOperationException("Incomplete authorized cash-sale registration.");
             MainWindow = services is { } authorized
-                ? new MainWindow(catalogue, checkout, submission, authorized.Payment)
-                : new MainWindow(catalogue, checkout, submission);
+                ? new MainWindow(catalogue, checkout, submission, authorized.Payment, requireFreshPaymentContext: true)
+                : new MainWindow(catalogue, checkout, submission, null, requireFreshPaymentContext: true);
             MainWindow.Show();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
