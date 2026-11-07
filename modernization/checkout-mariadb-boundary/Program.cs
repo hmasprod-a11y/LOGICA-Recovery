@@ -843,6 +843,21 @@ namespace LOGICA.Infrastructure.Checkout
                 Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='refund-fr'") == 0 &&
                 Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='refund-fr'") == 0,
                 "Mutated refund journal article identity did not roll back stock, claim and receipt.");
+            // Persisted refund tax must match the locked original sale even when
+            // a journal trigger preserves the refund quantity and amount.
+            Sql("CREATE TRIGGER refund_journal_tax_mutation BEFORE INSERT ON TABLE_VENTES_JOURNAL " +
+                "FOR EACH ROW SET NEW.TAUX_TVA=NEW.TAUX_TVA+1");
+            bool wrongRefundTaxRejected = false;
+            try { correct.Commit(refund); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Signed refund receipt, payment or journal failed verification."))
+            { wrongRefundTaxRejected = true; }
+            finally { Sql("DROP TRIGGER refund_journal_tax_mutation"); }
+            Require(wrongRefundTaxRejected && !journal.IsPersisted("refund-fr") &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-fr-FR'") == 0 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='refund-fr'") == 0 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='refund-fr'") == 0,
+                "Mutated refund VAT did not roll back stock, payment, journal and claim.");
             correct.Commit(refund);
             Require(journal.IsPersisted("refund-fr") &&
                 Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 2m &&
