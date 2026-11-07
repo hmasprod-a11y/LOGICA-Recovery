@@ -246,6 +246,13 @@ var duplicateBatch = new CheckoutComposition(duplicateReader, new RecordingPromp
 try { duplicateBatch.StageBarcode("123"); throw new Exception("duplicate ID accepted"); }
 catch (InvalidOperationException) { Assert(duplicateBatch.PendingCount == 0 && mismatchedCart.Calls.Count == 0,
     "duplicate identity cannot reach checkout"); }
+// Barcode selection must enforce the same null-display guard as WPF catalogue lists.
+var nullNameReader = new FaultyCatalogue { Mode = "null-display" };
+var nullNameCart = new RecordingAtomicBatchPort();
+var nullNameBatch = new CheckoutComposition(nullNameReader, new RecordingPrompt(), nullNameCart, journal).CreateCheckoutBatch();
+try { nullNameBatch.StageBarcode("123"); throw new Exception("null display accepted through barcode"); }
+catch (InvalidOperationException) { Assert(nullNameBatch.PendingCount == 0 && nullNameCart.Calls.Count == 0,
+    "null display barcode selection fails closed before financial staging"); }
 var wrongArticleReader = new FaultyCatalogue { Mode = "wrong-article" };
 var wrongArticleBatch = new CheckoutComposition(wrongArticleReader, new RecordingPrompt(), mismatchedCart, journal).CreateCheckoutBatch();
 try { wrongArticleBatch.StageImage(A("21", "")); throw new Exception("wrong article accepted"); }
@@ -979,6 +986,7 @@ sealed class FaultyCatalogue : ICatalogueReader
     public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => Mode switch
     {
         "wrong-barcode" => new[] { new ProductSummary("11", "other", "Wrong", null) },
+        "null-display" => new[] { new ProductSummary("11", barcode, null!, null) },
         "duplicate-id" => new[] { new ProductSummary("11", barcode, "A", null),
                                   new ProductSummary("11", barcode, "B", null) },
         _ => Array.Empty<ProductSummary>()
