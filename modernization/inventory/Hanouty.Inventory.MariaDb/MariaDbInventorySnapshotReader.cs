@@ -15,6 +15,7 @@ public interface IInventorySnapshotReader
     IReadOnlyList<InventorySnapshot> FindBarcode(string barcode);
     InventorySnapshot ReadUniqueBarcode(string barcode);
     IReadOnlyList<InventorySnapshot> FindStockBelow(decimal threshold);
+    IReadOnlyList<InventorySnapshot> FindStockInRange(decimal minimumInclusive, decimal maximumInclusive);
 }
 
 /// <summary>
@@ -71,6 +72,28 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
         return Read("STOCK < @threshold", "@threshold", threshold);
     }
 
+    /// <summary>Read a bounded stock interval, including signed historical stock; no mutation or financial writer.</summary>
+    public IReadOnlyList<InventorySnapshot> FindStockInRange(decimal minimumInclusive, decimal maximumInclusive)
+    {
+        if (minimumInclusive > maximumInclusive)
+            throw new ArgumentException("Minimum stock must not exceed maximum stock.", nameof(minimumInclusive));
+        return ReadStockRange(minimumInclusive, maximumInclusive);
+    }
+
+    private List<InventorySnapshot> ReadStockRange(decimal minimum, decimal maximum)
+    {
+        var rows = new List<InventorySnapshot>();
+        var identities = new HashSet<string>(StringComparer.Ordinal);
+        using var connection = new MySqlConnection(_connectionString);
+        connection.Open();
+        using var command = new MySqlCommand("SELECT ID_ARTICLE, Code, STOCK, PRIX_V_1, Prix_A FROM TABLE_ARTICLES WHERE STOCK >= @minimum AND STOCK <= @maximum", connection);
+        command.Parameters.AddWithValue("@minimum", minimum);
+        command.Parameters.AddWithValue("@maximum", maximum);
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) rows.Add(MapSnapshot(reader, identities));
+        return rows;
+    }
+
     private List<InventorySnapshot> Read(string predicate, string value)
         => Read(predicate, "@value", value);
 
@@ -88,6 +111,13 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
+            rows.Add(MapSnapshot(reader, identities));
+        }
+        return rows;
+    }
+
+    private static InventorySnapshot MapSnapshot(MySqlDataReader reader, HashSet<string> identities)
+    {
             string id = reader.IsDBNull(0) ? "" : Convert.ToString(reader.GetValue(0)) ?? "";
             if (string.IsNullOrWhiteSpace(id) || !identities.Add(id))
                 throw new InvalidOperationException("Missing or duplicate stable article identity.");
@@ -99,8 +129,7 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
             decimal purchase = Convert.ToDecimal(reader.GetValue(4), System.Globalization.CultureInfo.InvariantCulture);
             if (sale < 0 || purchase < 0)
                 throw new InvalidOperationException("Negative article prices are invalid.");
-            rows.Add(new InventorySnapshot(id, barcode, stock, sale, purchase));
-        }
-        return rows;
+            return new InventorySnapshot(id, barcode, stock, sale, purchase);
     }
+
 }
