@@ -16,6 +16,7 @@ public sealed record InventoryStocktakeTotals(int ArticleCount, decimal SignedUn
 public interface IInventorySnapshotReader
 {
     InventorySnapshot ReadArticle(string articleId);
+    IReadOnlyList<InventorySnapshot> ReadArticlesByIds(IReadOnlyList<string> articleIds);
     IReadOnlyList<InventorySnapshot> ListAll();
     InventoryStocktakeTotals ReadStocktakeTotals();
     IReadOnlyList<InventorySnapshot> FindBarcode(string barcode);
@@ -78,6 +79,43 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
         if (rows.Count != 1)
             throw new InvalidOperationException("Article identity is missing or ambiguous.");
         return rows[0];
+    }
+
+    /// <summary>Resolve an explicit set of stable article IDs for inventory review; never substitute a barcode or grid index.</summary>
+    public IReadOnlyList<InventorySnapshot> ReadArticlesByIds(IReadOnlyList<string> articleIds)
+    {
+        if (articleIds == null) throw new ArgumentNullException(nameof(articleIds));
+        if (articleIds.Count == 0) return Array.Empty<InventorySnapshot>();
+        if (articleIds.Count > 500) throw new ArgumentOutOfRangeException(nameof(articleIds), "Batch is limited to 500 article IDs.");
+        var unique = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < articleIds.Count; i++)
+            if (string.IsNullOrWhiteSpace(articleIds[i]) || !unique.Add(articleIds[i]))
+                throw new ArgumentException("Article IDs must be nonempty and unique.", nameof(articleIds));
+
+        using var connection = new MySqlConnection(_connectionString);
+        connection.Open();
+        using var command = new MySqlCommand { Connection = connection, CommandType = CommandType.Text };
+        var parameters = new List<string>(articleIds.Count);
+        for (int i = 0; i < articleIds.Count; i++)
+        {
+            string name = "@id" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            parameters.Add("BINARY " + name);
+            command.Parameters.AddWithValue(name, articleIds[i]);
+        }
+        command.CommandText = "SELECT ID_ARTICLE, Code, STOCK, PRIX_V_1, Prix_A FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE IN (" + string.Join(",", parameters) + ")";
+        var found = new Dictionary<string, InventorySnapshot>(StringComparer.Ordinal);
+        var identities = new HashSet<string>(StringComparer.Ordinal);
+        using (var reader = command.ExecuteReader())
+            while (reader.Read())
+            {
+                var row = MapSnapshot(reader, identities);
+                found.Add(row.ArticleId, row);
+            }
+        if (found.Count != articleIds.Count)
+            throw new InvalidOperationException("Requested article identity is missing or ambiguous.");
+        var ordered = new List<InventorySnapshot>(articleIds.Count);
+        foreach (var id in articleIds) ordered.Add(found[id]);
+        return ordered;
     }
 
     public IReadOnlyList<InventorySnapshot> FindBarcode(string barcode)
