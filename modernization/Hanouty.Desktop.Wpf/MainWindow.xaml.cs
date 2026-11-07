@@ -339,7 +339,9 @@ public partial class MainWindow : Window
             // A successful callback is not sufficient if a reentrant Host call
             // moved this window into Unknown or an in-flight financial operation.
             if (!_setFinancialContext(draft.Cashier, draft.Register, draft.CashMad)) return false;
-            return IsAuthorizedEntry(vm, draft.Cashier, draft.CashMad);
+            return IsAuthorizedEntry(vm, draft.Cashier, draft.CashMad) &&
+                string.Equals(vm.PaymentContext?.RegisterId, draft.Register, StringComparison.Ordinal) &&
+                string.Equals(vm.PaymentContext?.CurrencyCode, "MAD", StringComparison.Ordinal);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         { return false; }
