@@ -40,6 +40,25 @@ var expiredContext = new CashierPaymentContext("cashier-1", "register-1", "MAD",
 Check(expiredAdapter.Submit("expired-session-operation", expiredContext) == CheckoutSubmissionResult.Invalidated &&
     expiredHostSession.Ids.Count == 0,
     "expired Host cashier context must fail closed without financial posting");
+// Host invalidation is not permission to retry the same operation or draft.
+var invalidatedSubmission = new RecordingSubmission { Result = CheckoutSubmissionResult.Invalidated };
+var invalidatedJournal = new RecordingReconciliation();
+var invalidatedVm = new CatalogueViewModel(
+    new Reader(new[] { new ProductSummary("invalidated-item", "Test", "INV-1") }),
+    new RecordingSelection(), submission: invalidatedSubmission, reconciliation: invalidatedJournal);
+invalidatedVm.PaymentContext = expiredContext;
+invalidatedVm.CommitCheckout();
+var invalidatedOperation = invalidatedVm.PendingOperationId;
+Check(invalidatedVm.CheckoutUncertain && !invalidatedVm.CanCommit &&
+    invalidatedOperation is not null && invalidatedSubmission.Ids.Count == 1,
+    "invalidated Host draft must latch durable review and preserve operation identity");
+invalidatedVm.CommitCheckout();
+Check(invalidatedSubmission.Ids.Count == 1 &&
+    invalidatedVm.PendingOperationId == invalidatedOperation,
+    "invalidated draft cannot be silently submitted a second time");
+invalidatedVm.ReconcileCheckout();
+Check(invalidatedVm.CheckoutUncertain && !invalidatedVm.CanReviewResolvedCheckout,
+    "unknown durable result cannot unlock invalidated cashier draft");
 // Architecture CreateFinancial host registers the same financial adapter and
 // authenticated cash context at WPF startup, without a second host or PIN copy.
 var startupJournal = new FinancialJournal();
