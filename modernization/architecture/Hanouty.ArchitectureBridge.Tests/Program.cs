@@ -365,6 +365,20 @@ try { overflow.Submit("overflow-001"); throw new Exception("quantity overflow ac
 catch (OverflowException) { Assert(overflowCart.Calls.Count == 0,
     "quantity overflow cannot write partial checkout"); }
 
+// A legacy DataRow/DBNull mapping must not leak a null display label into
+// the modern WPF catalogue snapshot, even if its DTO contract says non-null.
+var malformedDisplayReader = new MutablePhotoCatalogue { DisplayName = null! };
+try
+{
+    new CheckoutComposition(malformedDisplayReader, new RecordingPrompt(),
+        new RecordingAtomicBatchPort(), new CompositionJournal()).AllProducts();
+    throw new Exception("null catalogue display name accepted");
+}
+catch (InvalidOperationException ex) when (ex.Message.Contains("display name", StringComparison.Ordinal))
+{
+    Assert(true, "null legacy display name fails closed at modern catalogue boundary");
+}
+
 // Real WPF tile selection must re-read live Inventory identity/photo/variant.
 var photoReader = new MutablePhotoCatalogue();
 var photoPort = new RecordingAtomicBatchPort();
