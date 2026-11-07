@@ -63,6 +63,18 @@ class BoundaryTests(unittest.TestCase):
         self.rule.write_text("global using\tSystem.Windows.Forms;")
         self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
 
+    def test_static_import_winforms_rejected(self):
+        self.rule.write_text("using static System.Windows.Forms.Application;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_global_qualified_static_mysql_import_rejected(self):
+        self.rule.write_text("global using static global::MySql.Data.MySqlClient.MySqlConnection;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_global_qualified_alias_winforms_import_rejected(self):
+        self.rule.write_text("using FormAlias = global::System.Windows.Forms.Form;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
     def test_alias_import_mysql_rejected(self):
         self.rule.write_text("using Db = MySql.Data.MySqlClient;")
         self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
