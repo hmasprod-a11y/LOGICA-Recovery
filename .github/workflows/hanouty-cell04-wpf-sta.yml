@@ -34,7 +34,10 @@ jobs:
           foreach ($dir in @('Hanouty.Desktop.Wpf', 'Hanouty.Desktop.Wpf.Tests')) {
             $source = Join-Path '_wpf_candidate/modernization' $dir
             if (-not (Test-Path $source)) { throw "Missing candidate $dir" }
-            Copy-Item -Path $source -Destination modernization -Recurse -Force
+            $destination = Join-Path 'modernization' $dir
+            if (Test-Path $destination) { Remove-Item $destination -Recurse -Force }
+            Copy-Item -Path $source -Destination $destination -Recurse -Force
+            if (-not (Test-Path (Join-Path $destination 'MainWindow.xaml.cs')) -and $dir -eq 'Hanouty.Desktop.Wpf') { throw 'WPF overlay incomplete' }
           }
           Remove-Item _wpf_candidate -Recurse -Force
       - uses: actions/setup-dotnet@v4
