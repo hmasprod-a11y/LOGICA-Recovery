@@ -1728,7 +1728,7 @@ sealed class ReentrantArticleSelection(ProductSummary other) : IProductSelection
     }
 }
 
-sealed // Legacy-only posting must be rejected before creating a financial operation.
+// Legacy-only posting must be rejected before creating a financial operation.
 sealed class LegacyOnlySubmission : ICheckoutSubmission
 {
     public CheckoutSubmissionResult Submit(string stableOperationId) =>
