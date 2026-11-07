@@ -84,9 +84,13 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
         var ids = new List<string>(countedUnits.Keys);
         var rows = ReadArticlesByIds(ids);
         var discrepancies = new List<InventoryCountDiscrepancy>(rows.Count);
-        foreach (var row in rows)
+        for (int i = 0; i < rows.Count; i++)
         {
-            decimal counted = countedUnits[row.ArticleId];
+            var row = rows[i];
+            // Never let a caller's case-insensitive dictionary alias a distinct durable SQL identity.
+            if (!string.Equals(row.ArticleId, ids[i], StringComparison.Ordinal))
+                throw new InvalidOperationException("Physical count article identity differs from the requested stable ID.");
+            decimal counted = countedUnits[ids[i]];
             decimal delta, impact;
             checked
             {
