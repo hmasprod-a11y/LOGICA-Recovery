@@ -231,6 +231,8 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
         var suggestions = new List<InventoryReorderSuggestion>(rows.Count);
         foreach (var row in rows)
         {
+            if (row.PurchasePrice < 0m)
+                throw new InvalidOperationException("Negative purchase price cannot be used for supplier replenishment.");
             decimal quantity, cost;
             checked
             {
@@ -255,6 +257,8 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
         foreach (var row in rows)
         {
             if (row.Stock >= targetStock) continue;
+            if (row.PurchasePrice < 0m)
+                throw new InvalidOperationException("Negative purchase price cannot be used for supplier replenishment.");
             decimal quantity, cost;
             checked
             {
