@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Windows.Forms;
@@ -21,6 +22,10 @@ public class FormDialog_calc : Form
 	private static List<WeakReference> __ENCList = new List<WeakReference>();
 
 	private IContainer components;
+
+	// Calculating the derived change cell raises CellValueChanged again.
+	// Keep the outer settlement calculation authoritative and non-reentrant.
+	private bool _calculatingPayments;
 
 	[AccessedThroughProperty("Panel_DEVIS")]
 	private Panel _Panel_DEVIS;
@@ -1442,6 +1447,9 @@ public class FormDialog_calc : Form
 		((Form)this).Shown += FormDialog_calc_Shown;
 		__ENCAddToList(this);
 		InitializeComponent();
+		// Keep payment-method buttons visible after runtime DPI/layout changes.
+		((Control)Panel_MODE_P).SizeChanged += Form_Shown;
+		((Control)FlowLayoutPanel_MODE_P).SizeChanged += Form_Shown;
 	}
 
 	[DebuggerNonUserCode]
@@ -2804,7 +2812,11 @@ public class FormDialog_calc : Form
 
 	private void Form_Shown(object sender, EventArgs e)
 	{
-		((Control)FlowLayoutPanel_MODE_P).Left = checked((int)Math.Round((double)((Control)Panel_MODE_P).Width / 2.0 - (double)((Control)FlowLayoutPanel_MODE_P).Width / 2.0));
+		// When many methods or large DPI make the flow wider than the panel,
+		// a negative Left hides the first (often cash) button off-screen.
+		int availableWidth = ((Control)Panel_MODE_P).ClientSize.Width;
+		int flowWidth = ((Control)FlowLayoutPanel_MODE_P).Width;
+		((Control)FlowLayoutPanel_MODE_P).Left = Math.Max(0, (availableWidth - flowWidth) / 2);
 	}
 
 	// Reopening payment must release the previous icon bitmaps and controls.
@@ -2836,6 +2848,26 @@ public class FormDialog_calc : Form
 
 	// A blank/new payment grid row must never count as a chosen settlement.
 	// The actual payment method is in column 3 of the legacy calculation grid.
+	// Preserve legacy VB numeric conversion while rejecting incomplete edits before
+	// recalculation or checkout posting. A blank cell is not a zero payment.
+	private static bool TryGetPaymentNumber(object value, out decimal number)
+	{
+		number = 0m;
+		if (value == null || value == DBNull.Value || string.IsNullOrWhiteSpace(Convert.ToString(value))) return false;
+		try { number = Conversions.ToDecimal(value); return true; }
+		catch (InvalidCastException) { return false; }
+		catch (FormatException) { return false; }
+		catch (OverflowException) { return false; }
+	}
+
+	// Do not round-trip monetary totals through Double (loses cents above 2^53).
+	// Invalid legacy totals remain blank so SOLDER fails closed.
+	private static string NormalizePaymentTotal(object value)
+	{
+		decimal amount;
+		return TryGetPaymentNumber(value, out amount) ? Conversions.ToString(amount) : "";
+	}
+
 	private bool HasSelectedPaymentMethod()
 	{
 		bool hasPayment = false;
@@ -2843,6 +2875,9 @@ public class FormDialog_calc : Form
 		{
 			if (row.IsNewRow) continue;
 			if (row.Cells.Count <= 3) return false;
+			decimal due, paid;
+			if (!TryGetPaymentNumber(row.Cells[0].Value, out due) ||
+				!TryGetPaymentNumber(row.Cells[1].Value, out paid)) return false;
 			object method = row.Cells[3].Value;
 			if (method == null || method == DBNull.Value ||
 				string.IsNullOrWhiteSpace(Convert.ToString(method)))
@@ -2850,6 +2885,28 @@ public class FormDialog_calc : Form
 			hasPayment = true;
 		}
 		return hasPayment;
+	}
+
+	// Payment icons are optional catalogue data, not a prerequisite for checkout.
+	// Path.GetFileName/Path.Combine can throw before Image.FromFile for malformed
+	// legacy settings; keep the method button visible even for invalid paths.
+	private static Image TryLoadPaymentIcon(string root, string imageName)
+	{
+		if (string.IsNullOrWhiteSpace(root) || string.IsNullOrWhiteSpace(imageName)) return null;
+		try
+		{
+			if (imageName != Path.GetFileName(imageName)) return null;
+			string path = Path.Combine(root, "bd", "images", imageName);
+			if (!File.Exists(path)) return null;
+			using (Image source = Image.FromFile(path))
+				return new Bitmap(source);
+		}
+		catch (IOException) { return null; }
+		catch (UnauthorizedAccessException) { return null; }
+		catch (ArgumentException) { return null; }
+		catch (NotSupportedException) { return null; }
+		catch (OutOfMemoryException) { return null; }
+		catch (System.Runtime.InteropServices.ExternalException) { return null; }
 	}
 
 	private void FormDialog_calc_Load(object sender, EventArgs e)
@@ -2866,7 +2923,7 @@ public class FormDialog_calc : Form
 		{
 			try
 			{
-				Text_TOTAL_NET.Text = Conversions.ToString(Conversions.ToDouble(MyProject.Forms.Form_3_VENTE.Text_TOTAL_NET.Text));
+				Text_TOTAL_NET.Text = NormalizePaymentTotal(MyProject.Forms.Form_3_VENTE.Text_TOTAL_NET.Text);
 				ClearPaymentMethodButtons();
 				int num = MyProject.Forms.Form_3_VENTE.DataGridView_MODE_P.Rows.Count - 1;
 				int num2 = 0;
@@ -2896,24 +2953,8 @@ public class FormDialog_calc : Form
 					((Control)val).Height = 94;
 					// A missing image must not prevent payment method buttons from existing.
 					object imageValue = paymentRow.Cells.Count > 1 ? paymentRow.Cells[1].Value : null;
-					string imageName = imageValue == null || imageValue == DBNull.Value ? "" : Convert.ToString(imageValue);
-					if (!string.IsNullOrWhiteSpace(Module1._CHEMIN_FOLDER) && !string.IsNullOrWhiteSpace(imageName) && imageName == Path.GetFileName(imageName))
-					{
-						string imagePath = Path.Combine(Module1._CHEMIN_FOLDER, "bd", "images", imageName);
-						if (File.Exists(imagePath))
-						{
-							try
-							{
-								using (var source = Image.FromFile(imagePath))
-									((ButtonBase)val).Image = new Bitmap(source);
-							}
-							catch (IOException) { }
-							catch (UnauthorizedAccessException) { }
-							catch (ArgumentException) { }
-							catch (OutOfMemoryException) { }
-							catch (System.Runtime.InteropServices.ExternalException) { }
-						}
-					}
+					string imageName = imageValue == null || imageValue == DBNull.Value ? "" : Convert.ToString(imageValue).Trim();
+					((ButtonBase)val).Image = TryLoadPaymentIcon(Module1._CHEMIN_FOLDER, imageName);
 					((ButtonBase)val).ImageAlign = (ContentAlignment)2;
 					((ButtonBase)val).FlatStyle = (FlatStyle)0;
 					((ButtonBase)val).FlatAppearance.BorderSize = 0;
@@ -2959,10 +3000,10 @@ public class FormDialog_calc : Form
 					Bitmap val2 = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 					Graphics val3 = Graphics.FromImage((Image)(object)val2);
 					val3.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-					((Image)val2).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+					((Image)val2).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 					val2 = null;
 					string right = "ERROR | ";
-					File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+					File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 				}
 				catch (Exception ex3)
 				{
@@ -2981,20 +3022,38 @@ public class FormDialog_calc : Form
 		{
 			try
 			{
+				// A pending edit must be committed before reading the remaining balance.
+				// Otherwise a second method inherits a stale amount from the previous row.
+				if (!DataGridView_CALC.EndEdit()) return;
+				Button_calc_Click(sender, e);
 				// Ignore stale or blank controls instead of inserting an unusable payment row.
 				Button selectedMethod = sender as Button;
 				if (selectedMethod == null || string.IsNullOrWhiteSpace(selectedMethod.Text)) return;
+				// Never create a zero-due row from an invalid or stale remainder.
+				// VB Conversion.Val silently truncates comma decimals (e.g. 10,25 -> 10).
+				decimal remainingDue;
+				if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out remainingDue))
+				{
+					Button_calc_Click(sender, e);
+					if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out remainingDue)) return;
+				}
+				decimal transactionTotal;
+				if (!TryGetPaymentNumber(Text_TOTAL_NET.Text, out transactionTotal) ||
+					(transactionTotal >= 0m && remainingDue < 0m) ||
+					(transactionTotal < 0m && remainingDue > 0m) ||
+					(remainingDue == 0m && SelectedPaymentRowCount() > 0))
+					return; // Do not create negative/over-refund or redundant settled rows.
 				int insertedRow = DataGridView_CALC.Rows.Add(new object[4]
 				{
-					Conversion.Val(((ButtonBase)Button_RESTE).Text),
-					0,
-					0,
+					remainingDue,
+					0m,
+					0m,
 					selectedMethod.Text
 				});
 				Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 				DataGridView_CALC.CurrentCell = DataGridView_CALC.Rows[insertedRow].Cells[1];
 				((Control)DataGridView_CALC).Focus();
-				if (!string.Equals(selectedMethod.Text, "ESPECES", StringComparison.Ordinal))
+				if (!string.Equals(selectedMethod.Text.Trim(), "ESPECES", StringComparison.OrdinalIgnoreCase))
 				{
 					Button_RESTE.PerformClick();
 					((Control)Panel_REMARQUE).Visible = true;
@@ -3033,11 +3092,18 @@ public class FormDialog_calc : Form
 		//IL_00c1: Unknown result type (might be due to invalid IL or missing references)
 		try
 		{
-			if (!HasSelectedPaymentMethod())
+			// Commit the cashier's active editor before checking amounts and methods.
+			// Otherwise a previous valid cell value can be posted while the editor
+			// displays an incomplete replacement amount.
+			if (!DataGridView_CALC.EndEdit()) return;
+			Button_calc_Click(sender, e);
+			if (!((Control)Button_SOLDER).Enabled || !HasSelectedPaymentMethod())
 			{
 				MessageBox.Show("Choisissez une mode de paiement", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 				return;
 			}
+			decimal outstanding;
+			if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out outstanding)) return;
 			if (Operators.CompareString(((ButtonBase)MyProject.Forms.Form_3_VENTE.Button_OPERATION).Text, "RETOUR REMBOURSEMENT", TextCompare: false) == 0)
 			{
 				if (SelectedPaymentRowCount() > 1)
@@ -3045,13 +3111,13 @@ public class FormDialog_calc : Form
 					MessageBox.Show("Choisissez un seul mode de paiement pour le retour", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Conversions.ToDouble(((ButtonBase)Button_RESTE).Text) != 0.0)
+				if (outstanding != 0m)
 				{
 					MessageBox.Show("Le Reste doit être à zéro (0)", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
 			}
-			if (decimal.Compare(Conversions.ToDecimal(((ButtonBase)Button_RESTE).Text), 0m) > 0)
+			if (outstanding > 0m)
 			{
 				MessageBox.Show("Solder le Reste", "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 				return;
@@ -3073,10 +3139,10 @@ public class FormDialog_calc : Form
 				Bitmap val = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 				Graphics val2 = Graphics.FromImage((Image)(object)val);
 				val2.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-				((Image)val).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+				((Image)val).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 				val = null;
 				string right = "ERROR | ";
-				File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+				File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 			}
 			catch (Exception ex3)
 			{
@@ -3091,7 +3157,17 @@ public class FormDialog_calc : Form
 	// The cash method is optional; missing icons must not affect availability.
 	private Button CashPaymentButton()
 	{
-		return ((Control)FlowLayoutPanel_MODE_P).Controls["Button_ESPECES"] as Button;
+		Button exact = ((Control)FlowLayoutPanel_MODE_P).Controls["Button_ESPECES"] as Button;
+		if (exact != null) return exact;
+		// Older payment settings may spell cash with different casing or spaces.
+		// The icon file name is unrelated to the method's identity.
+		foreach (Control control in FlowLayoutPanel_MODE_P.Controls)
+		{
+			Button candidate = control as Button;
+			if (candidate != null && string.Equals((candidate.Text ?? "").Trim(), "ESPECES", StringComparison.OrdinalIgnoreCase))
+				return candidate;
+		}
+		return null;
 	}
 
 	private void Button_DEVIS_Click(object sender, EventArgs e)
@@ -3102,7 +3178,10 @@ public class FormDialog_calc : Form
 		//IL_0036: Expected Obj, but got Unknown
 		try
 		{
-			if (DataGridView_CALC.Rows.Count == 0)
+			// Cash denominations must use the latest edited amount, not the old cell.
+			if (!DataGridView_CALC.EndEdit()) return;
+			Button_calc_Click(sender, e);
+			if (SelectedPaymentRowCount() == 0)
 			{
 				Button val = CashPaymentButton();
 				if (val == null)
@@ -3113,9 +3192,20 @@ public class FormDialog_calc : Form
 				val.PerformClick();
 				Button_REFRESH.PerformClick();
 			}
-			if (DataGridView_CALC.CurrentRow == null) return;
+			if (DataGridView_CALC.CurrentRow == null || DataGridView_CALC.CurrentRow.IsNewRow) return;
 			int rowIndex = DataGridView_CALC.CurrentRow.Index;
-			DataGridView_CALC.Rows[rowIndex].Cells[1].Value = Operators.AddObject(DataGridView_CALC.Rows[rowIndex].Cells[1].Value, Conversion.Val(RuntimeHelpers.GetObjectValue(NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null))));
+			// The 0.5 denomination caption uses an invariant dot, even on fr-FR
+			// workstations. VB Val/AddObject can truncate or concatenate money.
+			Button denominationButton = sender as Button;
+			decimal denomination, paid;
+			if (denominationButton == null ||
+				!decimal.TryParse(denominationButton.Text, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out denomination) ||
+				denomination <= 0m ||
+				!TryGetPaymentNumber(DataGridView_CALC.Rows[rowIndex].Cells[1].Value, out paid)) return;
+			decimal updated;
+			try { updated = checked(paid + denomination); }
+			catch (OverflowException) { return; }
+			DataGridView_CALC.Rows[rowIndex].Cells[1].Value = updated;
 			Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 			((Control)DataGridView_CALC).Focus();
 		}
@@ -3133,10 +3223,10 @@ public class FormDialog_calc : Form
 				Bitmap val2 = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 				Graphics val3 = Graphics.FromImage((Image)(object)val2);
 				val3.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-				((Image)val2).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+				((Image)val2).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 				val2 = null;
 				string right = "ERROR | ";
-				File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+				File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 			}
 			catch (Exception ex3)
 			{
@@ -3172,34 +3262,77 @@ public class FormDialog_calc : Form
 
 	private void Button_calc_Click(object sender, EventArgs e)
 	{
-		//IL_001d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0023: Expected Obj, but got Unknown
+		if (_calculatingPayments) return;
+		_calculatingPayments = true;
+		try
+		{
 		checked
 		{
+			// A missing or unfinished total is not a zero-value sale.
+			decimal total;
+			if (!TryGetPaymentNumber(Text_TOTAL_NET.Text, out total))
+			{
+				((ButtonBase)Button_RESTE).Text = "";
+				((Control)Button_SOLDER).Enabled = false;
+				return;
+			}
+			// CellValueChanged fires while the cashier is still editing. Never
+			// recalculate from a null/partial amount or leave SOLDER enabled.
+			foreach (DataGridViewRow row in DataGridView_CALC.Rows)
+			{
+				if (row.IsNewRow) continue;
+				decimal due, paid;
+				if (row.Cells.Count < 4 ||
+					!TryGetPaymentNumber(row.Cells[0].Value, out due) ||
+					!TryGetPaymentNumber(row.Cells[1].Value, out paid) ||
+					row.Cells[3].Value == null || row.Cells[3].Value == DBNull.Value ||
+					string.IsNullOrWhiteSpace(Convert.ToString(row.Cells[3].Value)))
+				{
+					// A partial payment edit must not leave a previously valid remainder visible.
+					((ButtonBase)Button_RESTE).Text = "";
+					((Control)Button_SOLDER).Enabled = false;
+					return;
+				}
+			}
 			// DataGridView may expose an uncommitted placeholder row when adding
 			// rows is enabled. It is not a payment and has no numeric cell values.
 			int paymentCount = 0;
 			foreach (DataGridViewRow row in DataGridView_CALC.Rows)
 				if (!row.IsNewRow) paymentCount++;
-			double num5 = 0.0;
-			double num6 = 0.0;
+			// Keep monetary arithmetic decimal and culture-aware throughout the
+			// cashier UI; Conversion.Val truncates comma decimals in French locales.
+			decimal paidTotal = 0m;
 			foreach (DataGridViewRow row in DataGridView_CALC.Rows)
 			{
 				if (row.IsNewRow) continue;
 				row.Height = Math.Max(24, (int)Math.Round((double)(((Control)DataGridView_CALC).Height - DataGridView_CALC.ColumnHeadersHeight - 3) / Math.Max(1, paymentCount)));
-				row.Cells[2].Value = Module1.FLOUSS(Conversions.ToDecimal(Operators.SubtractObject(row.Cells[1].Value, row.Cells[0].Value)));
-				num5 = Conversions.ToDouble(Operators.AddObject(num5, row.Cells[1].Value));
-				num6 = Conversions.ToDouble(Operators.AddObject(num6, row.Cells[2].Value));
+				decimal due = Conversions.ToDecimal(row.Cells[0].Value);
+				decimal paid = Conversions.ToDecimal(row.Cells[1].Value);
+				try
+				{
+					row.Cells[2].Value = Module1.FLOUSS(checked(paid - due));
+					paidTotal = checked(paidTotal + paid);
+				}
+				catch (OverflowException)
+				{
+					((ButtonBase)Button_RESTE).Text = "";
+					((Control)Button_SOLDER).Enabled = false;
+					return;
+				}
 			}
-			((ButtonBase)Button_RESTE).Text = Conversions.ToString(Module1.FLOUSS(new decimal(Conversion.Val(Text_TOTAL_NET.Text) - Conversion.Val(num5))));
-			if (Conversion.Val(((ButtonBase)Button_RESTE).Text) > 0.0)
+			decimal remainder;
+			try { remainder = Module1.FLOUSS(checked(total - paidTotal)); }
+			catch (OverflowException)
 			{
+				((ButtonBase)Button_RESTE).Text = "";
 				((Control)Button_SOLDER).Enabled = false;
+				return;
 			}
-			else if (Conversion.Val(((ButtonBase)Button_RESTE).Text) <= 0.0)
-			{
-				((Control)Button_SOLDER).Enabled = true;
-			}
+			((ButtonBase)Button_RESTE).Text = Conversions.ToString(remainder);
+			// A zero/negative total alone is not a settlement: at least one complete
+			// payment method must be present before SOLDER can be clicked.
+			((Control)Button_SOLDER).Enabled = paymentCount > 0 &&
+				HasSelectedPaymentMethod() && remainder <= 0m;
 			if (paymentCount > 0)
 			{
 				foreach (DataGridViewRow row in DataGridView_CALC.Rows)
@@ -3210,6 +3343,8 @@ public class FormDialog_calc : Form
 				}
 			}
 		}
+		}
+		finally { _calculatingPayments = false; }
 	}
 
 	private void DataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
@@ -3239,10 +3374,10 @@ public class FormDialog_calc : Form
 				Bitmap val = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 				Graphics val2 = Graphics.FromImage((Image)(object)val);
 				val2.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-				((Image)val).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+				((Image)val).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 				val = null;
 				string right = "ERROR | ";
-				File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+				File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 			}
 			catch (Exception ex3)
 			{
@@ -3262,15 +3397,14 @@ public class FormDialog_calc : Form
 		{
 			try
 			{
-				if (e.RowIndex >= 0 && e.RowIndex < DataGridView_CALC.Rows.Count && ((e.ColumnIndex == 0) | (e.ColumnIndex == 2) | (e.ColumnIndex == 3)))
+				if (e.RowIndex >= 0 && e.RowIndex < DataGridView_CALC.Rows.Count &&
+					(e.ColumnIndex == 0 || e.ColumnIndex == 2 || e.ColumnIndex == 3))
 				{
-					// The last grid row may be an uncommitted new-row placeholder.
-					for (int i = DataGridView_CALC.Rows.Count - 1; i >= 0; i--)
-					{
-						if (DataGridView_CALC.Rows[i].IsNewRow) continue;
-						DataGridView_CALC.CurrentCell = DataGridView_CALC.Rows[i].Cells[1];
-						break;
-					}
+					// Editing the clicked method must never jump to the last row:
+					// split cash/card settlements otherwise change the wrong amount.
+					DataGridViewRow clicked = DataGridView_CALC.Rows[e.RowIndex];
+					if (!clicked.IsNewRow)
+						DataGridView_CALC.CurrentCell = clicked.Cells[1];
 				}
 			}
 			catch (Exception ex)
@@ -3287,10 +3421,10 @@ public class FormDialog_calc : Form
 					Bitmap val = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 					Graphics val2 = Graphics.FromImage((Image)(object)val);
 					val2.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-					((Image)val).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+					((Image)val).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 					val = null;
 					string right = "ERROR | ";
-					File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+					File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 				}
 				catch (Exception ex3)
 				{
@@ -3318,20 +3452,21 @@ public class FormDialog_calc : Form
 	private void TextBox_keyPress(object sender, KeyPressEventArgs e)
 	{
 		TextBox input = sender as TextBox;
-		if (input != null && (e.KeyChar == '.' || e.KeyChar == '-'))
-		{
-			string remaining = input.Text.Remove(input.SelectionStart, input.SelectionLength);
-			if ((e.KeyChar == '.' && remaining.IndexOf('.') >= 0) ||
-				(e.KeyChar == '-' && (input.SelectionStart != 0 || remaining.IndexOf('-') >= 0)))
-			{
-				e.Handled = true;
-				return;
-			}
-		}
-		if (((Operators.CompareString(Conversions.ToString(e.KeyChar), "0", TextCompare: false) < 0) | (Operators.CompareString(Conversions.ToString(e.KeyChar), "9", TextCompare: false) > 0)) & (e.KeyChar != '\b') & (e.KeyChar != '.') & (e.KeyChar != '-'))
-		{
+		if (input == null) return;
+		char separator = CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator[0];
+		// Both the physical numeric keypad (.) and the French comma must
+		// produce a value understood by the current cashier culture.
+		if (e.KeyChar == '.' || e.KeyChar == ',') e.KeyChar = separator;
+		string remaining = input.Text.Remove(input.SelectionStart, input.SelectionLength);
+		if (e.KeyChar == separator &&
+			(remaining.IndexOf(separator) >= 0 || remaining.IndexOf('.') >= 0 || remaining.IndexOf(',') >= 0))
 			e.Handled = true;
-		}
+		else if (e.KeyChar == '-' &&
+			(input.SelectionStart != 0 || remaining.IndexOf('-') >= 0))
+			e.Handled = true;
+		else if ((e.KeyChar < '0' || e.KeyChar > '9') &&
+			e.KeyChar != '\b' && e.KeyChar != separator && e.KeyChar != '-')
+			e.Handled = true;
 	}
 
 	private void DataGridView1_CellValueChanged(object sender, DataGridViewCellEventArgs e)
@@ -3341,7 +3476,7 @@ public class FormDialog_calc : Form
 
 	private void Button_NUMERIQUE_Click(object sender, EventArgs e)
 	{
-		if (DataGridView_CALC.Rows.Count != 0)
+		if (SelectedPaymentRowCount() > 0)
 		{
 			((Control)Panel_CLAVIER).Visible = true;
 			((Control)Panel_CLAVIER).BringToFront();
@@ -3356,7 +3491,7 @@ public class FormDialog_calc : Form
 		//IL_00fb: Expected Obj, but got Unknown
 		try
 		{
-			if (DataGridView_CALC.Rows.Count != 0 && DataGridView_CALC.CurrentRow != null)
+			if (SelectedPaymentRowCount() > 0 && DataGridView_CALC.CurrentRow != null && !DataGridView_CALC.CurrentRow.IsNewRow)
 			{
 				DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = "0";
 				((Control)DataGridView_CALC).Focus();
@@ -3376,10 +3511,10 @@ public class FormDialog_calc : Form
 				Bitmap val = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 				Graphics val2 = Graphics.FromImage((Image)(object)val);
 				val2.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-				((Image)val).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+				((Image)val).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 				val = null;
 				string right = "ERROR | ";
-				File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+				File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 			}
 			catch (Exception ex3)
 			{
@@ -3399,7 +3534,21 @@ public class FormDialog_calc : Form
 		//IL_0036: Expected Obj, but got Unknown
 		try
 		{
-			if (DataGridView_CALC.Rows.Count == 0)
+			// Blank/invalid remainder is a fail-closed edit state. Do not
+			// manufacture a valid remainder from an incomplete display.
+			decimal remainder;
+			if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out remainder)) return;
+			// A valid displayed remainder may still predate the active editor.
+			// Commit and recalculate before applying RESTE to the chosen method.
+			if (!DataGridView_CALC.EndEdit()) return;
+			Button_calc_Click(sender, e);
+			if (!TryGetPaymentNumber(((ButtonBase)Button_RESTE).Text, out remainder)) return;
+			decimal transactionTotal;
+			if (!TryGetPaymentNumber(Text_TOTAL_NET.Text, out transactionTotal) ||
+				(transactionTotal >= 0m && remainder <= 0m) ||
+				(transactionTotal < 0m && remainder >= 0m))
+				return; // RESTE must never erase change or hide an over-refund.
+			if (SelectedPaymentRowCount() == 0)
 			{
 				Button val = CashPaymentButton();
 				if (val == null)
@@ -3410,8 +3559,16 @@ public class FormDialog_calc : Form
 				val.PerformClick();
 				Button_REFRESH.PerformClick();
 			}
-			if (DataGridView_CALC.CurrentRow == null) return;
-			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = Conversion.Val(((ButtonBase)Button_RESTE).Text);
+			if (DataGridView_CALC.CurrentRow == null || DataGridView_CALC.CurrentRow.IsNewRow) return;
+			DataGridViewCell paidCell = DataGridView_CALC.CurrentRow.Cells[1];
+			decimal alreadyPaid;
+			// RESTE fills the outstanding balance, it must not overwrite a partial
+			// amount already entered for this method (including negative returns).
+			if (!TryGetPaymentNumber(paidCell.Value, out alreadyPaid)) return;
+			decimal completedPayment;
+			try { completedPayment = checked(alreadyPaid + remainder); }
+			catch (OverflowException) { return; } // Preserve the cashier's existing amount.
+			paidCell.Value = completedPayment;
 			Button_calc_Click(RuntimeHelpers.GetObjectValue(sender), e);
 			((Control)DataGridView_CALC).Focus();
 		}
@@ -3429,10 +3586,10 @@ public class FormDialog_calc : Form
 				Bitmap val2 = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 				Graphics val3 = Graphics.FromImage((Image)(object)val2);
 				val3.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-				((Image)val2).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+				((Image)val2).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 				val2 = null;
 				string right = "ERROR | ";
-				File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+				File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 			}
 			catch (Exception ex3)
 			{
@@ -3456,84 +3613,40 @@ public class FormDialog_calc : Form
 
 	private void Butt_Click(object sender, EventArgs e)
 	{
-		Label_NUM.Text = Conversions.ToString(Operators.AddObject(Label_NUM.Text, NewLateBinding.LateGet(sender, null, "text", new object[0], null, null, null)));
+		Button key = sender as Button;
+		if (key == null || string.IsNullOrEmpty(key.Text) || key.Text.Length != 1) return;
+		char character = key.Text[0];
+		string current = Label_NUM.Text ?? "";
+		if (character >= '0' && character <= '9')
+			Label_NUM.Text = current + character;
+		else if (character == '.' && current.IndexOf('.') < 0 && current.IndexOf(',') < 0)
+			Label_NUM.Text = (current.Length == 0 || current == "-" ? current + "0" : current) +
+				CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator;
+		else if (character == '-' && current.Length == 0)
+			Label_NUM.Text = "-";
+		// Reject duplicate decimal points, misplaced minus and nonnumeric captions.
 	}
 
 	private void Butt_BACK_Click(object sender, EventArgs e)
 	{
-		int try0001_dispatch = -1;
-		int num3 = default;
-		int num = default;
-		int num2 = default;
-		while (true)
-		{
-			try
-			{
-				/*Note: ILSpy has introduced the following switch to emulate a goto from catch-block to try-block*/;
-				switch (try0001_dispatch)
-				{
-				default:
-					ProjectData.ClearProjectError();
-					num3 = -2;
-					break;
-				case 90:
-					{
-						num = num2;
-						switch ((num3 <= -2) ? 1 : num3)
-						{
-						case 1:
-							break;
-						default:
-							goto end_IL_0001;
-						}
-						int num4 = num + 1;
-						num = 0;
-						switch (num4)
-						{
-						case 1:
-							break;
-						case 2:
-							goto end_IL_0001_2;
-						default:
-							goto end_IL_0001;
-						case 3:
-							goto end_IL_0001_3;
-						}
-						goto default;
-					}
-					end_IL_0001_2:
-					break;
-				}
-				num2 = 2;
-				Label_NUM.Text = Label_NUM.Text.Remove(checked(Label_NUM.Text.Length - 1));
-				break;
-				end_IL_0001:;
-			}
-			catch (Exception ex) when ((num3 != 0) & (num == 0))
-			{
-				ProjectData.SetProjectError(ex);
-				try0001_dispatch = 90;
-				continue;
-			}
-			throw ProjectData.CreateProjectError(-2146828237);
-			continue;
-			end_IL_0001_3:
-			break;
-		}
-		if (num != 0)
-		{
-			ProjectData.ClearProjectError();
-		}
+		if (!string.IsNullOrEmpty(Label_NUM.Text))
+			Label_NUM.Text = Label_NUM.Text.Substring(0, Label_NUM.Text.Length - 1);
 	}
 
 	private void Button_CLAVIER_NOSELECT1_Click(object sender, EventArgs e)
 	{
 		try
 		{
-			if (DataGridView_CALC.CurrentRow == null) return;
-			DataGridView_CALC.Rows[DataGridView_CALC.CurrentRow.Index].Cells[1].Value = Conversion.Val(Label_NUM.Text);
+			if (DataGridView_CALC.CurrentRow == null || DataGridView_CALC.CurrentRow.IsNewRow) return;
+			decimal entered;
+			if (!TryGetPaymentNumber(Label_NUM.Text, out entered)) return;
+			// The on-screen keypad replaces the editor deliberately. Cancel the
+			// old text editor first so its focus-loss cannot overwrite the new sum.
+			int rowIndex = DataGridView_CALC.CurrentRow.Index;
+			DataGridView_CALC.CancelEdit();
+			DataGridView_CALC.Rows[rowIndex].Cells[1].Value = entered;
+			Button_calc_Click(sender, e);
 			((Control)DataGridView_CALC).Focus();
-			SendKeys.Send("{RIGHT}{LEFT}");
 			Label_NUM.Text = "";
 			((Control)Panel_CLAVIER).Visible = false;
 		}
@@ -3575,7 +3688,7 @@ public class FormDialog_calc : Form
 	{
 		try
 		{
-			Interaction.Shell(Application.StartupPath + "\\CLAVIER.exe");
+			Interaction.Shell(global::System.Windows.Forms.Application.StartupPath + "\\CLAVIER.exe");
 		}
 		catch (Exception ex)
 		{

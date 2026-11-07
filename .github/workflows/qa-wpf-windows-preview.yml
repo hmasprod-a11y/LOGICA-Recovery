@@ -1,0 +1,186 @@
+name: QA WPF .NET 10 Windows preview acceptance
+on:
+  push:
+    branches:
+      - integration/hanouty-qa-desktop-inventory-20261102
+    paths:
+      - '.github/workflows/qa-wpf-windows-preview.yml'
+      - 'scripts/verify-beta-rc.ps1'
+      - '.github/workflows/qa-w1-real-catalogue-readiness.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/qa-wpf-windows-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wpf-preview:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout QA integration source at triggering SHA
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: integration-source
+      - name: Checkout reviewed WPF preview exact SHA
+        uses: actions/checkout@v4
+        with:
+          # WPF belongs to Track 04; validate without merging preview into QA.
+          ref: 214397051162dd673ec20bbbeb6dab8638b5b254
+          persist-credentials: false
+          path: wpf-preview
+      - name: Checkout exact Architecture source required by current WPF adapter
+        uses: actions/checkout@v4
+        with:
+          ref: 88c8c498998ef115d8fe1fadef28fa12dce27cec
+          path: architecture-source
+          persist-credentials: false
+      - name: Compose approved Architecture and its linked production sources
+        shell: pwsh
+        run: |
+          $architectureSha = (git -C architecture-source rev-parse HEAD).Trim()
+          if ($architectureSha -ne '88c8c498998ef115d8fe1fadef28fa12dce27cec') { throw 'Architecture source mismatch' }
+          New-Item -ItemType Directory -Force wpf-preview/modernization/architecture | Out-Null
+          Copy-Item architecture-source/modernization/architecture/* wpf-preview/modernization/architecture -Recurse -Force
+          Copy-Item architecture-source/recovered-source/* wpf-preview/recovered-source -Recurse -Force
+          if (-not (Test-Path wpf-preview/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj)) { throw 'Required real Architecture project absent' }
+          Write-Host 'Composed exact reviewed WPF + Architecture + Architecture-linked production sources; no repository merge'
+      - name: Assert QA and WPF source provenance
+        shell: pwsh
+        run: |
+          $qa = (git -C integration-source rev-parse HEAD).Trim()
+          if ($qa -ne '${{ github.sha }}') { throw "QA integration SHA mismatch: $qa" }
+          $preview = (git -C wpf-preview rev-parse HEAD).Trim()
+          if ($preview -ne '214397051162dd673ec20bbbeb6dab8638b5b254') { throw "WPF preview SHA mismatch: $preview" }
+          "qa=$qa`nwpf=$preview`narchitecture=88c8c498998ef115d8fe1fadef28fa12dce27cec" | Set-Content -LiteralPath source-provenance.txt
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Reject legacy desktop dependencies and SQL in WPF presentation
+        shell: pwsh
+        run: |
+          $project = Get-Content wpf-preview/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj -Raw
+          if ($project -notmatch '<TargetFramework>net10\.0-windows</TargetFramework>' -or $project -notmatch '<UseWPF>true</UseWPF>') { throw 'WPF host must target net10.0-windows with WPF enabled' }
+          $source = Get-ChildItem wpf-preview/modernization/Hanouty.Desktop.Wpf -Recurse -File | Where-Object { $_.Extension -in @('.cs','.xaml') }
+          foreach ($file in $source) {
+            $text = Get-Content -LiteralPath $file.FullName -Raw
+            if ($text -match '(?i)System\.Windows\.Forms|Microsoft\.VisualBasic|MySqlConnection|MySqlCommand|DbConnection|SELECT\s+.+\s+FROM|INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM') {
+              throw "Legacy desktop or inline SQL dependency in WPF presentation: $($file.FullName)"
+            }
+          }
+          Write-Host 'PASS: preview WPF host uses .NET10; no detected WinForms/VB/MySQL SQL presentation dependencies'
+      - name: Scope known nullable compatibility diagnostics to imported legacy sources
+        shell: pwsh
+        run: |
+          # These five observed nullable diagnostics are in recovered-source only.
+          # New WPF/Architecture sources and all other diagnostics remain strict.
+          @(
+            'root = false',
+            '[*.cs]',
+            'dotnet_diagnostic.CS8618.severity = none',
+            'dotnet_diagnostic.CS8603.severity = none',
+            'dotnet_diagnostic.CS8625.severity = none',
+            'dotnet_diagnostic.CS8600.severity = none',
+            'dotnet_diagnostic.CS8604.severity = none'
+          ) | Set-Content -LiteralPath wpf-preview/recovered-source/LOGICA/.editorconfig
+      - name: Restore and build WPF executable
+        shell: pwsh
+        run: |
+          dotnet restore wpf-preview/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj
+          dotnet build wpf-preview/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj --no-restore -c Release -warnaserror
+      - name: Run WPF MVVM regression on Windows
+        shell: pwsh
+        run: dotnet run --project wpf-preview/modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj -c Release
+      - name: Run new WPF catalogue and barcode executable smoke
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $smoke = 'wpf-preview/modernization/Hanouty.Desktop.Wpf.Smoke/Hanouty.Desktop.Wpf.Smoke.csproj'
+          if (-not (Test-Path -LiteralPath $smoke -PathType Leaf)) { throw "Missing executable WPF smoke project: $smoke" }
+          dotnet run --project $smoke -c Release
+      - name: Verify WPF presentation dependency boundary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = 'wpf-preview/modernization/Hanouty.Desktop.Wpf'
+          $files = @(Get-ChildItem $root -Recurse -File | Where-Object { $_.Extension -in @('.cs','.xaml') -and $_.FullName -notmatch '[\/]obj[\/]|[\/]bin[\/]' })
+          if ($files.Count -eq 0) { throw 'No WPF presentation sources available for dependency inspection' }
+          $violations = @()
+          foreach ($file in $files) {
+            $body = Get-Content -LiteralPath $file.FullName -Raw
+            if ($body -match '(?i)System\.Windows\.Forms|Microsoft\.VisualBasic|MySqlConnection|MySqlCommand|DbConnection|\bSELECT\s+.+\bFROM\b|\bINSERT\s+INTO\b|\bUPDATE\s+\w+\s+SET\b|\bDELETE\s+FROM\b') { $violations += $file.FullName }
+          }
+          if ($violations.Count -gt 0) { throw "WPF dependency boundary violated: $($violations -join ', ')" }
+          Write-Host "PASS: $($files.Count) WPF presentation files checked for legacy UI/SQL coupling"
+      - name: Assert real WPF executable was produced
+        shell: pwsh
+        run: |
+          $exe = 'wpf-preview/modernization/Hanouty.Desktop.Wpf/bin/Release/net10.0-windows/Hanouty.Desktop.Wpf.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "WPF host EXE missing: $exe" }
+          Write-Host "PASS WPF executable built from pinned source SHA; not a licensed sale or peripheral acceptance"
+
+      - name: Publish WPF runtime and inventory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish wpf-preview/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj -c Release -r win-x64 --self-contained false -o wpf-publish
+          if (-not (Test-Path wpf-publish/Hanouty.Desktop.Wpf.exe)) { throw 'Published EXE missing' }
+          $runtime = Get-Content wpf-publish/Hanouty.Desktop.Wpf.runtimeconfig.json -Raw
+          if ($runtime -notmatch 'Microsoft.WindowsDesktop.App') { throw 'Windows desktop runtime missing' }
+          $inventory = @(Get-ChildItem wpf-publish -Recurse -File | ForEach-Object {
+            [pscustomobject]@{ path=$_.FullName.Substring((Resolve-Path wpf-publish).Path.Length + 1).Replace([IO.Path]::DirectorySeparatorChar,'/'); bytes=$_.Length; sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash }
+          })
+          if ($inventory.Count -eq 0) { throw 'Published WPF runtime inventory empty' }
+          $inventory | ConvertTo-Json -Depth 4 | Set-Content wpf-publish-inventory.json
+          Get-ChildItem wpf-preview -Recurse -File | Where-Object { $_.Extension -in @('.rdlc','.rpt','.dll','.ocx') } |
+            Select-Object FullName,Extension | ConvertTo-Json | Set-Content peripheral-compatibility-inventory.json
+      - name: Extract preview ZIP and reject private files
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Compress-Archive -Path wpf-publish/* -DestinationPath wpf-preview.zip -Force
+          Expand-Archive -LiteralPath wpf-preview.zip -DestinationPath wpf-extracted -Force
+          if (-not (Test-Path wpf-extracted/Hanouty.Desktop.Wpf.exe)) { throw 'Extracted EXE missing' }
+          if (-not (Test-Path wpf-extracted/Hanouty.Desktop.Wpf.runtimeconfig.json)) { throw 'Extracted runtimeconfig missing' }
+          $bad = Get-ChildItem wpf-extracted -Recurse -File | Where-Object {
+            ($_.Name.StartsWith('.env')) -or
+            ($_.Name -in @('id_rsa','id_ed25519','credentials.json','hash_licence.sni')) -or
+            ($_.Extension -in @('.sql','.pfx','.pem','.key','.kdbx'))
+          }
+          if ($bad) { throw 'Sensitive payload found in WPF preview ZIP' }
+          $expected = @(Get-Content wpf-publish-inventory.json -Raw | ConvertFrom-Json)
+          $actual = @(Get-ChildItem wpf-extracted -Recurse -File)
+          $unique = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+          foreach ($file in $actual) {
+            $relative = $file.FullName.Substring((Resolve-Path wpf-extracted).Path.Length + 1).Replace([IO.Path]::DirectorySeparatorChar, '/')
+            if (-not $unique.Add($relative)) { throw "Windows case-colliding ZIP entry: $relative" }
+          }
+          if ($expected.Count -ne $unique.Count) { throw "Extracted ZIP file count differs from publish inventory: $($actual.Count) vs $($expected.Count)" }
+          foreach ($item in $expected) {
+            $relative = [string]$item.path
+            if ($relative -match '(^|/)\.\.(?:/|$)' -or [IO.Path]::IsPathRooted($relative)) { throw "Unsafe publish inventory path: $relative" }
+            $target = Join-Path wpf-extracted ($relative.Replace('/', [IO.Path]::DirectorySeparatorChar))
+            if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { throw "Extracted file missing: $relative" }
+            $file = Get-Item -LiteralPath $target
+            if ($file.Length -ne [long]$item.bytes) { throw "Extracted file size mismatch: $relative" }
+            if ((Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash -ne [string]$item.sha256) { throw "Extracted file SHA256 mismatch: $relative" }
+          }
+          Write-Host "PASS: extracted ZIP matches all $($expected.Count) published file hashes"
+          Write-Host 'PASS extracted preview layout and secret exclusion; licensed startup and devices remain unverified'
+      - name: Upload WPF preview and compatibility evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hanouty-wpf-net10-preview-${{ github.run_id }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            source-provenance.txt
+            wpf-publish-inventory.json
+            peripheral-compatibility-inventory.json
+            wpf-preview.zip
+            wpf-publish/**

@@ -1,6 +1,13 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-$compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
+# The inbox .NET Framework compiler cannot parse modern shared checkout C# models.
+# Keep x86, exact sources, framework references and executable assertions.
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio vswhere.exe missing; modern C# compiler required.' }
+$vs = (& $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -property installationPath | Select-Object -First 1)
+if (-not $vs) { throw 'Visual Studio MSBuild installation missing; cannot compile checkout tests.' }
+$compiler = Join-Path $vs 'MSBuild/Current/Bin/Roslyn/csc.exe'
+if (-not (Test-Path -LiteralPath $compiler)) { throw 'Visual Studio Roslyn csc.exe missing.' }
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('logica-checkout-core-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temporary | Out-Null
 try {

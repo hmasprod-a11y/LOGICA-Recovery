@@ -1,6 +1,14 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-$compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
+# Use the same Roslyn compiler as the other isolated domain gates. The
+# framework inbox compiler cannot parse #nullable in shared catalogue models.
+# Keep the original x86 target, source list and isolation assertions unchanged.
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio vswhere.exe missing; modern C# compiler required.' }
+$vs = (& $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -property installationPath | Select-Object -First 1)
+if (-not $vs) { throw 'Visual Studio MSBuild installation missing; cannot compile catalogue tests.' }
+$compiler = Join-Path $vs 'MSBuild/Current/Bin/Roslyn/csc.exe'
+if (-not (Test-Path -LiteralPath $compiler)) { throw 'Visual Studio Roslyn csc.exe missing.' }
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('logica-catalogue-core-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temporary | Out-Null
 try {
@@ -19,6 +27,7 @@ try {
         'tests/PurchaseReceiptStockProjectionSmoke.cs',
         'recovered-source/LOGICA/Application/Purchasing/ReceiptArticleSelectionService.cs',
         'tests/ReceiptArticleSelectionSmoke.cs',
+        'tests/CatalogueArticleIdentitySmoke.cs',
         'recovered-source/LOGICA/Application/Purchasing/PurchaseReceiptSupplierValidationService.cs',
         'recovered-source/LOGICA/Application/Inventory/StockCountFreshnessService.cs',
         'tests/BusinessSnapshotFreshnessSmoke.cs',

@@ -1,0 +1,60 @@
+name: QA standalone HANOUTY WPF net10 package
+on:
+  push:
+    branches: [integration/hanouty-qa-desktop-inventory-20261102]
+    paths:
+      - 'modernization/Hanouty.Desktop.Wpf/**'
+      - 'modernization/Hanouty.Desktop.Bootstrap/**'
+      - 'modernization/architecture/**'
+      - 'modernization/inventory/Hanouty.Inventory.MariaDb/**'
+      - 'recovered-source/LOGICA/Application/**'
+      - 'scripts/Package-HanoutyWpf.ps1'
+      - 'scripts/Test-HanoutyExtractedWpf.ps1'
+      - 'scripts/test-w1-bootstrap.ps1'
+      - '.github/workflows/qa-hanouty-wpf-package.yml'
+  pull_request:
+    paths:
+      - 'modernization/Hanouty.Desktop.Wpf/**'
+      - 'modernization/Hanouty.Desktop.Bootstrap/**'
+      - 'modernization/architecture/**'
+      - 'modernization/inventory/Hanouty.Inventory.MariaDb/**'
+      - 'recovered-source/LOGICA/Application/**'
+      - 'scripts/Package-HanoutyWpf.ps1'
+      - 'scripts/Test-HanoutyExtractedWpf.ps1'
+      - 'scripts/test-w1-bootstrap.ps1'
+      - '.github/workflows/qa-hanouty-wpf-package.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-package-extract:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build self-contained independent HANOUTY WPF and verify extracted ZIP
+        shell: pwsh
+        run: ./scripts/Package-HanoutyWpf.ps1 -OutputDirectory "${{ runner.temp }}/hanouty-wpf-candidate" -Runtime win-x64
+      - name: Execute extracted WPF EXE with disposable MariaDB and real catalogue
+        shell: pwsh
+        run: |
+          ./scripts/Test-HanoutyExtractedWpf.ps1 `
+            -ExtractedDirectory "${{ runner.temp }}/hanouty-wpf-candidate/extracted-verification" `
+            -EvidenceDirectory "${{ runner.temp }}/hanouty-wpf-candidate/runtime-evidence"
+      - name: Preserve extracted Windows WPF and MariaDB runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: HANOUTY-WPF-extracted-runtime-evidence
+          path: ${{ runner.temp }}/hanouty-wpf-candidate/runtime-evidence/wpf-extracted-runtime/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload HANOUTY WPF engineering candidate (not Beta 1)
+        uses: actions/upload-artifact@v4
+        with:
+          name: HANOUTY-WPF-net10-CATALOGUE-ONLY
+          path: ${{ runner.temp }}/hanouty-wpf-candidate/HANOUTY-WPF-net10-CATALOGUE-ONLY-win-x64.zip
+          if-no-files-found: error
+          retention-days: 7

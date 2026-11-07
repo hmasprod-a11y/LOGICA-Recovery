@@ -1,3 +1,4 @@
+#nullable enable annotations
 using System;
 using System.Data;
 
@@ -5,7 +6,12 @@ namespace LOGICA.ApplicationLayer.Catalogue
 {
     internal static class CollectionDuplicatePrecheck
     {
-        public static DataRow FindFirst(int lastIndex, Func<int, object> readCode,
+        #if NET10_0_OR_GREATER
+        public static DataRow? FindFirst(int lastIndex,
+#else
+        public static DataRow FindFirst(int lastIndex,
+#endif
+            Func<int, object> readCode,
             Func<object, DataTable> lookup, Action afterNoMatch)
         {
             checked

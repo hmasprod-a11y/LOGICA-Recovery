@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>Hanouty.ArchitectureBridge</AssemblyName>
+  </PropertyGroup>
+  <Import Project="CoreSources.ArchitectureBridge.props" />
+  <ItemGroup><Compile Include="CheckoutSelectionGateway.cs" /><Compile Include="CheckoutSelectionWorkflow.cs" /><Compile Include="CheckoutSelectionController.cs" /><Compile Include="CheckoutBatchController.cs" /><Compile Include="CheckoutComposition.cs" /><Compile Include="CheckoutSession.cs" /><Compile Include="AuthorizedCheckoutContract.cs" /><Compile Include="AuthorizedCheckoutCommitGate.cs" /><Compile Include="AuthorizedCheckoutBatchAdapter.cs" /><Compile Include="FinancialAndStockAuthorizationBoundaries.cs" /></ItemGroup>
+</Project>

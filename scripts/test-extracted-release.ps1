@@ -25,6 +25,33 @@ $server = Get-ChildItem (Join-Path $env:RUNNER_TEMP 'logica-mariadb/server') -Re
 if (-not $server) { throw 'Isolated CI MariaDB binary missing: no network fallback permitted' }
 $extract = Join-Path $env:RUNNER_TEMP ('logica-rc1-field-smoke-' + [Guid]::NewGuid().ToString('N'))
 # Inspect only the disposable extracted copy; never mutate an installed shop.
+# A failed cleanup previously hid successful startup checks and prevented
+# release publication. Stop only processes whose executable/launcher belongs
+# to this unique CI extraction, never an installed store process.
+function Stop-ExtractedTestProcesses {
+    $expectedExe = Join-Path $extract 'LOGICA.exe'
+    foreach ($candidate in @(Get-Process -Name LOGICA -ErrorAction SilentlyContinue)) {
+        try {
+            $candidate.Refresh()
+            if (-not $candidate.HasExited -and $candidate.Path -ieq $expectedExe) {
+                $candidate.Kill()
+                if (-not $candidate.WaitForExit(10000)) { throw 'Extracted EXE did not exit' }
+            }
+        } catch {
+            Write-Warning "Disposable extracted EXE cleanup failed for PID $($candidate.Id): $($_.Exception.GetType().Name)"
+        }
+    }
+    # A direct EXE may delegate to a PowerShell/CMD launcher whose working
+    # directory keeps the extraction locked after its LOGICA child exits.
+    # Scope by the unique extraction path in the command line; never kill
+    # unrelated powershell.exe, cmd.exe or MariaDB instances.
+    foreach ($candidate in @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='cmd.exe'" -ErrorAction SilentlyContinue)) {
+        if ($candidate.ProcessId -eq $PID -or [string]::IsNullOrEmpty($candidate.CommandLine)) { continue }
+        if ($candidate.CommandLine.IndexOf($extract, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+        try { Stop-Process -Id $candidate.ProcessId -Force -ErrorAction Stop }
+        catch { Write-Warning "Disposable launcher cleanup failed for PID $($candidate.ProcessId): $($_.Exception.GetType().Name)" }
+    }
+}
 # A responsive WinForms window is not enough if startup rewrites a license,
 # peripheral configuration, executable, library, or recovery SQL file.
 function Get-RuntimeHashes([string]$directory, [string[]]$relativePaths) {
@@ -91,18 +118,22 @@ function Assert-LoginScreen([object]$report, [string]$entrypoint) {
     }
     Write-Host "PASS: extracted $entrypoint exposes cashier PIN login screen (license and cashier access NOT verified)"
 }
-# Compare actual article and ticket contents across all three customer entrypoints.
-# Counts alone miss edits, deleted/reinserted rows, or duplicate sales. Hashes are
-# kept only in memory; no shop data or recovered fixture rows enter artifacts.
+# Compare the full checkout persistence footprint across all three customer entrypoints.
+# A ticket header can remain unchanged while payment, journal or stock rows change.
+# Sort serialized rows ordinally (including duplicates) to avoid false differences
+# from MySQL's unspecified ordering when the first column is not unique.
+# Only disposable CI fixtures are queried; never persist row contents in artifacts.
+$script:transactionFingerprintTables = @('TABLE_ARTICLES', 'TABLE_VENTES_ENTETE', 'TABLE_VENTES_JOURNAL', 'TABLE_VENTES_REGLEMENTS', 'TABLE_MOUVEMENTS_STOCK')
 $script:isolatedSalesDigestBaseline = $null
 $script:isolatedSalesDigestChecks = 0
 function Get-IsolatedSalesDigest([string]$entrypoint, [string]$clientExe, [string]$clientConfig, [string]$database = 'logica_recovered') {
     $pieces = New-Object 'System.Collections.Generic.List[string]'
-    foreach ($table in @('TABLE_ARTICLES', 'TABLE_VENTES_ENTETE')) {
-        # --batch escapes embedded newlines/tabs. ORDER BY the original identity
-        # keeps the canonical representation stable between independent queries.
-        $rows = @(& $clientExe "--defaults-extra-file=$clientConfig" '--batch' '--skip-column-names' $database '-e' "SELECT * FROM $table ORDER BY 1;" 2>&1)
+    foreach ($table in $script:transactionFingerprintTables) {
+        # --batch escapes tabs/newlines, preserving each row's full serialized values.
+        # Sort rows ordinally because ORDER BY the first column alone is not unique.
+        [string[]]$rows = @(& $clientExe "--defaults-extra-file=$clientConfig" '--batch' '--skip-column-names' $database '-e' "SELECT * FROM $table;" 2>&1)
         if ($LASTEXITCODE -ne 0) { throw "Could not fingerprint isolated $table after $entrypoint" }
+        [Array]::Sort($rows, [StringComparer]::Ordinal)
         $pieces.Add("$table`n$($rows.Count)`n$($rows -join "`n")")
     }
     $sha = [Security.Cryptography.SHA256]::Create()
@@ -130,10 +161,10 @@ function Assert-OriginalFixtureContents([string]$clientExe, [string]$clientConfi
         }
         $expected = Get-IsolatedSalesDigest 'original SQL reference' $clientExe $clientConfig $reference
         if ($actualDigest -ne $expected) {
-            throw 'First extracted startup changed original article/ticket contents despite unchanged row counts'
+            throw 'First extracted startup changed original checkout table contents despite unchanged article/ticket counts'
         }
         $script:originalFixtureContentsVerified = $true
-        Write-Host 'PASS: first extracted startup matches independent original SQL article/ticket content fingerprints'
+        Write-Host 'PASS: first extracted startup matches independent original SQL checkout-table fingerprints'
     } finally {
         if ($created) {
             & $clientExe "--defaults-extra-file=$clientConfig" '-e' "DROP DATABASE $reference" | Out-Null
@@ -161,10 +192,10 @@ function Assert-IsolatedStartupCounts([string]$entrypoint) {
         Assert-OriginalFixtureContents $clientExe $clientConfig $digest
         $script:isolatedSalesDigestBaseline = $digest
     } elseif ($digest -ne $script:isolatedSalesDigestBaseline) {
-        throw "Isolated article/ticket CONTENT changed across extracted entrypoints at $entrypoint (counts alone would miss this)"
+        throw "Isolated checkout TABLE CONTENT changed across extracted entrypoints at $entrypoint (counts alone would miss this)"
     }
     $script:isolatedSalesDigestChecks++
-    Write-Host "PASS: $entrypoint preserved 120 articles, 11 ticket headers, and their canonical contents across entrypoints"
+    Write-Host "PASS: $entrypoint preserved articles, tickets, journal, payments and stock movements across entrypoints"
 }
 $app = $null
 $started = [Diagnostics.Stopwatch]::StartNew()
@@ -237,21 +268,69 @@ try {
     } finally { Remove-Item -LiteralPath $inventoryProbe -Recurse -Force -ErrorAction Stop }
     Write-Host 'PASS: newly injected executable rejected in isolated extracted-code fixture'
 
-    # Launch the packaged real Windows executable with the isolated CI database.
-    # A live process alone is not sufficient: require a responsive WinForms main window.
-    $app = Start-Process -FilePath (Join-Path $extract 'LOGICA.exe') -WorkingDirectory $extract -PassThru
-    $windowReady = $false
-    $timer = [Diagnostics.Stopwatch]::StartNew()
-    do {
-        Start-Sleep -Seconds 2
-        $app.Refresh()
-        if ($app.HasExited) { break }
-        if ($app.MainWindowHandle -ne 0 -and $app.Responding) { $windowReady = $true; break }
-    } while ($timer.Elapsed.TotalSeconds -lt 30)
-    if (-not $windowReady) { throw 'Extracted LOGICA.exe did not open a responsive main window' }
-    Write-Host 'PASS: extracted LOGICA.exe opened a responsive WinForms window'
-    if (-not $app.HasExited) { $app.Kill(); $app.WaitForExit(10000) | Out-Null }
-    $app = $null
+    # A single green cold start previously masked an intermittent 30s
+    # unresponsive-window failure. Exercise three independent EXE lifetimes.
+    # Require TWO consecutive responsive polls, never pass on a live PID alone.
+    # All attempts must pass; do not silently retry a failure into acceptance.
+    # This remains a disposable CI MariaDB smoke, not licensed field acceptance.
+    $startupTrials = @()
+    for ($trial = 1; $trial -le 3; $trial++) {
+        $app = $null
+        $trialReady = $false
+        $windowObserved = $false
+        $consecutiveResponsive = 0
+        $earlyExit = $false
+        $trialError = $null
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        try {
+            $app = Start-Process -FilePath (Join-Path $extract 'LOGICA.exe') -WorkingDirectory $extract -PassThru
+            do {
+                Start-Sleep -Seconds 2
+                $app.Refresh()
+                if ($app.HasExited) { $earlyExit = $true; break }
+                if ($app.MainWindowHandle -ne 0) { $windowObserved = $true }
+                if ($app.MainWindowHandle -ne 0 -and $app.Responding) {
+                    $consecutiveResponsive++
+                    if ($consecutiveResponsive -ge 2) { $trialReady = $true; break }
+                } else {
+                    $consecutiveResponsive = 0
+                }
+            } while ($timer.Elapsed.TotalSeconds -lt 30)
+        } catch {
+            # Do not put process command lines, environment or DB credentials in diagnostics.
+            $trialError = $_.Exception.GetType().Name
+        } finally {
+            if ($app) {
+                try {
+                    $app.Refresh()
+                    if (-not $app.HasExited) {
+                        $app.Kill()
+                        if (-not $app.WaitForExit(10000)) { throw 'Process cleanup timed out' }
+                    }
+                } catch {
+                    $trialError = 'ProcessCleanupFailed'
+                }
+            }
+            $app = $null
+            Stop-ExtractedTestProcesses
+        }
+        $startupTrials += [pscustomobject]@{
+            attempt = $trial
+            responsive = $trialReady
+            windowObserved = $windowObserved
+            earlyExit = $earlyExit
+            elapsedSeconds = [math]::Round($timer.Elapsed.TotalSeconds, 1)
+            error = $trialError
+        }
+        Write-Host "Extracted EXE startup attempt $trial/3: responsive=$trialReady windowObserved=$windowObserved earlyExit=$earlyExit elapsed=$([math]::Round($timer.Elapsed.TotalSeconds,1))s error=$trialError"
+    }
+    $startupTrials | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $results 'extracted-exe-startup-trials.json') -Encoding UTF8
+    $startupSoakPass = ($startupTrials.Count -eq 3 -and
+        @($startupTrials | Where-Object { -not $_.responsive -or -not $_.windowObserved -or $_.earlyExit -or $null -ne $_.error }).Count -eq 0)
+    if (-not $startupSoakPass) {
+        throw 'Extracted LOGICA.exe cold-start stability failed: all three independent launches must be responsive; see extracted-exe-startup-trials.json'
+    }
+    Write-Host 'PASS: extracted LOGICA.exe opened three consecutive stable responsive WinForms windows'
     Assert-RuntimeHashes $extract $baseline
     Assert-PackagedCodeHashes $extract $codeBaseline
     Write-Host "PASS: extracted EXE startup preserved $($baseline.Count) immutable runtime files"
@@ -465,7 +544,9 @@ try {
     Write-Host "PASS: offline launcher preserved $($baseline.Count) immutable files and cleaned temporary credentials"
     [pscustomobject]@{
         sourceCommit = $commit
-        extractedExeResponsive = $true
+        extractedExeResponsive = $startupSoakPass
+        extractedExeStartupSoakAllResponsive = $startupSoakPass
+        extractedExeStartupTrials = @($startupTrials)
         extractedLauncherVerified = $true
         extractedLauncherActualExeResponsive = $launcherResponsive
         extractedStartCmdActualExeResponsive = $cmdResponsive
@@ -487,6 +568,8 @@ try {
         doubleSolderClickIdempotencyVerified = $false
         startupReadOnlyDatabaseCountsVerified = $true
         isolatedArticleTicketContentStableAcrossEntrypoints = ($script:isolatedSalesDigestChecks -eq 3)
+        transactionTableContentsStableAcrossEntrypoints = ($script:isolatedSalesDigestChecks -eq 3)
+        fingerprintedTransactionTables = @($script:transactionFingerprintTables)
         originalFixtureContentMatchesFirstStartupVerified = $script:originalFixtureContentsVerified
         isolatedSalesDigestCheckCount = $script:isolatedSalesDigestChecks
         returnPostedViaUiVerified = $false
@@ -532,6 +615,21 @@ try {
     # The extracted launcher creates a temporary DB and local credentials; neither
     # must survive this CI run or enter any uploaded release artifact.
     if (Test-Path -LiteralPath $extract) {
-        Remove-Item -LiteralPath $extract -Recurse -Force -ErrorAction Stop
+        $cleaned = $false
+        for ($cleanupAttempt = 1; $cleanupAttempt -le 5; $cleanupAttempt++) {
+            Stop-ExtractedTestProcesses
+            try {
+                Remove-Item -LiteralPath $extract -Recurse -Force -ErrorAction Stop
+                $cleaned = $true
+                break
+            } catch [System.IO.IOException] {
+                # Windows can briefly retain an image/working-directory handle
+                # after a child process exits. Never silently ignore a lock.
+                Start-Sleep -Seconds 2
+            }
+        }
+        if (-not $cleaned) {
+            throw 'Disposable extracted Windows package remained locked after scoped process cleanup and five retries'
+        }
     }
 }

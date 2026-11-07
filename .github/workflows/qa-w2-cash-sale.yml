@@ -1,0 +1,199 @@
+name: QA W2 cash-sale production graph and acceptance
+on:
+  push:
+    branches: [integration/hanouty-qa-desktop-inventory-20261102]
+    paths: ['.github/workflows/qa-w2-cash-sale.yml', 'modernization/Hanouty.Desktop.Bootstrap/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  w2-financial-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root-test-only
+          MARIADB_DATABASE: checkout_disposable
+          MARIADB_USER: checkout_test
+          MARIADB_PASSWORD: checkout-test-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: qa
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 38c598da86e51c15d880397877a89ff06df87589
+          path: checkout
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 5e6e4257cdea5aa7bb4199ce982b3afa327c1a63
+          path: architecture
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Initialize disposable operation ledger using reviewed Checkout fixture
+        env:
+          DB_HOST: 127.0.0.1
+          DB_NAME: checkout_disposable
+          DB_USER: checkout_test
+          MYSQL_PWD: checkout-test-only
+        working-directory: checkout
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mariadb-client
+          bash scripts/test-checkout-atomic-mariadb.sh
+      - name: Execute production financial boundary against disposable MariaDB with QA Architecture
+        env:
+          CHECKOUT_TEST_CONNECTION: Server=127.0.0.1;Port=3306;Database=checkout_disposable;Uid=checkout_test;Pwd=checkout-test-only;SslMode=Disabled;
+        run: |
+          set -euo pipefail
+          test "$(git -C checkout rev-parse HEAD)" = 38c598da86e51c15d880397877a89ff06df87589
+          cp -a architecture/modernization/architecture/. qa/modernization/architecture/
+          cp -a architecture/recovered-source/. qa/recovered-source/
+          test -f qa/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj
+          arch="$PWD/qa/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj"
+          dotnet run --project checkout/modernization/checkout-mariadb-boundary/CheckoutMariaDbBoundary.csproj --configuration Release --property:ArchitectureProject="$arch"
+          echo 'FINANCIAL_BOUNDARY_ONLY: real SQL exercised; WPF authorization and E2E remain unaccepted'
+  w2-cash-sale:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: qa
+      - uses: actions/checkout@v4
+        with:
+          ref: 38c598da86e51c15d880397877a89ff06df87589
+          path: checkout
+      - uses: actions/checkout@v4
+        with:
+          ref: 5e6e4257cdea5aa7bb4199ce982b3afa327c1a63
+          path: architecture
+      - uses: actions/checkout@v4
+        with:
+          ref: f7c5d36a3acacdebb9afa68e74f9a9fad1eb382c
+          path: wpf
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build real checkout production library with one Architecture assembly
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory evidence -Force | Out-Null
+          foreach($name in @('qa','checkout','architecture','wpf')) {
+            "$name=$((git -C $name rev-parse HEAD).Trim())" | Add-Content evidence/source-manifest.txt
+          }
+          # Compose one executable project graph. Do not build the independent WPF checkout:
+          # its relative Architecture reference is absent in that checkout and would
+          # compile a different Architecture assembly from the financial library.
+          $qa=(Resolve-Path qa).Path
+          $wpf=(Resolve-Path wpf/modernization/Hanouty.Desktop.Wpf).Path
+          # Exact PR95 contracts and linked production sources form one assembly.
+          Copy-Item architecture/modernization/architecture qa/modernization -Recurse -Force
+          Copy-Item architecture/recovered-source qa -Recurse -Force
+          Copy-Item wpf/modernization/Hanouty.Desktop.Wpf.Tests qa/modernization -Recurse -Force
+          $wpfDestination=Join-Path $qa 'modernization/Hanouty.Desktop.Wpf'
+          New-Item -ItemType Directory $wpfDestination -Force | Out-Null
+          Copy-Item (Join-Path $wpf '*') $wpfDestination -Recurse -Force
+          $architectureProject=(Resolve-Path (Join-Path $qa 'modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj')).Path
+          $checkoutProject=(Resolve-Path checkout/modernization/checkout-mariadb-production/CheckoutMariaDbProduction.csproj).Path
+          dotnet build $checkoutProject -c Release --nologo "-p:ArchitectureProject=$architectureProject"
+          if($LASTEXITCODE -ne 0) { throw 'CHECKOUT_OWNER: production Checkout failed against the single QA Architecture project' }
+          dotnet build (Join-Path $wpfDestination 'Hanouty.Desktop.Wpf.csproj') -c Release --nologo
+          if($LASTEXITCODE -ne 0) { throw 'WPF_OWNER: actual WPF project failed against composed QA Architecture project' }
+          dotnet build (Join-Path $qa 'modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj') -c Release --nologo "-p:ArchitectureProject=$architectureProject" "-p:CheckoutProductionProject=$checkoutProject"
+          if($LASTEXITCODE -ne 0) { throw 'ARCHITECTURE_OWNER: composed QA Host failed build' }
+          dotnet run --project qa/modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj -c Release
+          if($LASTEXITCODE -ne 0) { throw 'WPF_OWNER: full actual WPF test suite failed' }
+          dotnet run --project qa/modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj -c Release
+          if($LASTEXITCODE -ne 0) { throw 'ARCHITECTURE_OWNER: financial reconciliation adapter regressions failed' }
+          dotnet run --project qa/modernization/stock-authorization-acceptance/StockAuthorizationAcceptance.csproj -c Release -- --no-database
+          if($LASTEXITCODE -ne 0) { throw 'INVENTORY_OWNER: unverified manual write boundary is not closed' }
+          # Verify the actual build inputs, not merely independent passing checkouts.
+          $manifest=@('architecture='+((git -C architecture rev-parse HEAD).Trim()),'checkout='+((git -C checkout rev-parse HEAD).Trim()),'wpf='+((git -C wpf rev-parse HEAD).Trim()),'qa='+((git -C qa rev-parse HEAD).Trim()))
+          $manifest | Set-Content evidence/composed-source-manifest.txt
+      - name: Start checksum-verified disposable MariaDB without installing a service
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dbRoot = Join-Path $env:RUNNER_TEMP 'hanouty-w2-cash-mariadb'
+          New-Item -ItemType Directory -Force $dbRoot | Out-Null
+          $url = 'https://archive.mariadb.org/mariadb-10.11.14/winx64-packages'
+          Invoke-WebRequest "$url/mariadb-10.11.14-winx64.zip" -OutFile "$dbRoot/server.zip"
+          $checks = (Invoke-WebRequest "$url/sha256sums.txt").Content
+          $expected = (($checks -split "`n" | Where-Object { $_ -match 'mariadb-10.11.14-winx64.zip\s*$' }) -split '\s+')[0]
+          if ((Get-FileHash "$dbRoot/server.zip" -Algorithm SHA256).Hash -ne $expected) { throw 'MariaDB checksum mismatch' }
+          Expand-Archive "$dbRoot/server.zip" "$dbRoot/server"
+          $bin = (Get-ChildItem "$dbRoot/server" -Recurse -Filter mariadb-install-db.exe | Select-Object -First 1).Directory.FullName
+          & "$bin/mariadb-install-db.exe" "--datadir=$dbRoot/data" --password=logica-ci-only --port=3307
+          if ($LASTEXITCODE -ne 0) { throw 'Disposable MariaDB initialization failed' }
+          $server = Start-Process "$bin/mariadbd.exe" -ArgumentList @("--defaults-file=`"$dbRoot/data/my.ini`"", '--bind-address=127.0.0.1', '--port=3307') -WindowStyle Hidden -PassThru
+          "HANOUTY_W2_SERVER_PID=$($server.Id)" | Out-File $env:GITHUB_ENV -Append
+          "HANOUTY_W2_MARIADB_BIN=$bin" | Out-File $env:GITHUB_ENV -Append
+          $ready = $false
+          for ($i=0; $i -lt 30; $i++) {
+            & "$bin/mariadb-admin.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only ping 2>$null
+            if ($LASTEXITCODE -eq 0) { $ready=$true; break }
+            Start-Sleep -Seconds 1
+          }
+          if (-not $ready) { throw 'Disposable MariaDB did not become ready' }
+      - name: Configure isolated cash-sale database account and empty fixture directory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bin = $env:HANOUTY_W2_MARIADB_BIN
+          "CREATE DATABASE logica_ci CHARACTER SET utf8mb4; CREATE USER 'w2_test'@'localhost' IDENTIFIED BY 'w2-disposable-only'; GRANT ALL ON logica_ci.* TO 'w2_test'@'localhost';" | & "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only
+          if ($LASTEXITCODE -ne 0) { throw 'Disposable W2 account/schema setup failed' }
+          $data = Join-Path $env:RUNNER_TEMP 'hanouty-w2-data'
+          New-Item -ItemType Directory -Force $data | Out-Null
+          "HANOUTY_CATALOGUE_CONNECTION=Server=127.0.0.1;Port=3307;Database=logica_ci;Uid=w2_test;Pwd=w2-disposable-only;SslMode=Disabled;" | Out-File $env:GITHUB_ENV -Append
+          "HANOUTY_DATA_DIRECTORY=$data" | Out-File $env:GITHUB_ENV -Append
+          "HANOUTY_W2_TEST_PIN=1234" | Out-File $env:GITHUB_ENV -Append
+      - name: Execute cash-sale acceptance starting with empty TABLE_XX
+        shell: pwsh
+        run: |
+          # Execute the newly compiled actual financial Host, not a text-based readiness check.
+          # The disposable MariaDB/fixture is mandatory: missing setup must fail this gate.
+          $hostExe = Join-Path (Resolve-Path qa).Path 'modernization/Hanouty.Desktop.Bootstrap/bin/Release/net10.0-windows/Hanouty.Desktop.Bootstrap.exe'
+          if (-not (Test-Path $hostExe)) { throw 'QA_OWNER: financial Host executable missing' }
+          $env:HANOUTY_W2_DISPOSABLE_MARKER = 'I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY'
+          $acceptance = Join-Path (Resolve-Path evidence).Path 'w2'
+          $process = Start-Process -FilePath $hostExe -ArgumentList @('--verify-disposable-cash-sale', ('"' + $acceptance + '"')) -PassThru -Wait
+          if ($process.ExitCode -ne 0) {
+            Get-Content evidence/w2/*failure*.txt -ErrorAction SilentlyContinue | Write-Host
+            throw 'QA_OWNER W2_NOT_ACCEPTED: real WPF cash-sale runner failed; see w2-failure.txt'
+          }
+      - name: Verify executed cash-slice evidence without promoting full W2
+        shell: pwsh
+        run: |
+          $report = Get-Content evidence/w2/w2-cash-sale.json -Raw | ConvertFrom-Json
+          foreach ($field in @('CashierDialogProductionBound','TrustedQuoteDisplayed','DialogTwoSalesSameHost','LogoutLoginUi','ModalPriceChangeRejected','WindowLoaded','EditedContextRejected','SingleSessionBinding','ReviewCallbackAuthenticated','WrongReviewPinRejected','UnknownReviewBlocked','NoFinancialReplayOnReview','ExplicitReviewedUiReset','PinDialogRenderedAndCleared','InitialCashierPinUi','InitialPinCancelAndWrongRejected','CashChangeSql','SameHostDifferentTotals','PaymentContextConsumed','StaleContextBoundaryRejected','DirectSessionStaleRejected','ContextFrozenDuringPin','CashierSwitchAuthenticated','UnknownContextChangeBlocked','ChangeRowRollback','EmptyBasket','TicketPaymentStockSql','Duplicate','ProcessRestart','WrongPinRejected','WrongTotalRejected','StalePriceRejected','AfterPaymentRollback','UnknownJournalLocked','LostAcknowledgementPersisted','Reconciliation')) {
+            if ($report.$field -ne $true) { throw "Missing executed acceptance assertion: $field" }
+          }
+          if ($report.W2Accepted -ne $false) { throw 'Cash-slice evidence must not promote full W2 or commercial payment readiness' }
+          Write-Host 'PASS real WPF/SQL cash slice; full W2 and cashier rollout remain unaccepted'
+      - name: Upload source manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-w2-production-source-manifest
+          path: evidence/
+          if-no-files-found: warn
+      - name: Stop only this workflow's disposable cash-sale server
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:HANOUTY_W2_SERVER_PID) {
+            $server = Get-Process -Id ([int]$env:HANOUTY_W2_SERVER_PID) -ErrorAction SilentlyContinue
+            if ($server -and $server.ProcessName -eq 'mariadbd') { Stop-Process -Id $server.Id }
+          }
