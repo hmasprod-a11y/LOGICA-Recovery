@@ -19,6 +19,7 @@ public interface IInventorySnapshotReader
     IReadOnlyList<InventorySnapshot> ReadArticlesByIds(IReadOnlyList<string> articleIds);
     IReadOnlyList<InventorySnapshot> ListAll();
     InventoryStocktakeTotals ReadStocktakeTotals();
+    InventoryStocktakeTotals ReadStocktakeTotalsForArticles(IReadOnlyList<string> articleIds);
     IReadOnlyList<InventorySnapshot> FindBarcode(string barcode);
     InventorySnapshot ReadUniqueBarcode(string barcode);
     IReadOnlyList<InventorySnapshot> FindStockBelow(decimal threshold);
@@ -53,7 +54,15 @@ public sealed class MariaDbInventorySnapshotReader : IInventorySnapshotReader
     /// <summary>Compute stocktake totals from one read-only query snapshot, retaining negative stock.</summary>
     public InventoryStocktakeTotals ReadStocktakeTotals()
     {
-        var rows = ListAll();
+        return CalculateStocktakeTotals(ListAll());
+    }
+
+    /// <summary>Stocktake valuation for an explicitly selected stable-ID batch, never inferred from barcode or grid order.</summary>
+    public InventoryStocktakeTotals ReadStocktakeTotalsForArticles(IReadOnlyList<string> articleIds)
+        => CalculateStocktakeTotals(ReadArticlesByIds(articleIds));
+
+    private static InventoryStocktakeTotals CalculateStocktakeTotals(IReadOnlyList<InventorySnapshot> rows)
+    {
         decimal units = 0m, cost = 0m, sale = 0m;
         int positive = 0, zero = 0, negative = 0;
         foreach (var row in rows)
