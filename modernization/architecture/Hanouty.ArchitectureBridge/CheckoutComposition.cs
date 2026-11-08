@@ -92,6 +92,8 @@ public sealed class CheckoutComposition
         if (id is null) throw new InvalidOperationException("No uncertain checkout operation.");
         var outcome = _journal.Lookup(id);
         if (outcome == CheckoutOperationOutcome.Unknown) return outcome;
+        if (outcome != CheckoutOperationOutcome.Persisted && outcome != CheckoutOperationOutcome.Absent)
+            throw new InvalidOperationException("Checkout journal returned an unsupported durable outcome.");
         batch.ReconcileUnknownOutcome(id, outcome == CheckoutOperationOutcome.Persisted);
         return outcome;
     }
@@ -104,6 +106,8 @@ public sealed class CheckoutComposition
         {
             if (product is null || string.IsNullOrWhiteSpace(product.ArticleId))
                 throw new InvalidOperationException("Catalogue returned a product without stable identity.");
+            if (string.IsNullOrWhiteSpace(product.DisplayName))
+                throw new InvalidOperationException("Catalogue returned a product without a usable display name.");
             if (!ids.Add(product.ArticleId))
                 throw new InvalidOperationException("Catalogue returned duplicate article identity.");
         }
@@ -116,12 +120,27 @@ public sealed class CheckoutComposition
     {
         private readonly ICatalogueReader _source;
         public CatalogueSelectionAdapter(ICatalogueReader source) => _source = source;
-        public IReadOnlyList<ArticleCandidate> FindBarcode(string barcode) =>
-            Convert(_source.FindBarcode(barcode), barcode);
-        public IReadOnlyList<ArticleCandidate> RefreshBarcode(string barcode) =>
-            Convert(_source.RefreshBarcode(barcode), barcode);
-        public IReadOnlyList<ArticleCandidate> RefreshArticle(string articleId) =>
-            Convert(_source.RefreshArticle(articleId), null, articleId);
+        public IReadOnlyList<ArticleCandidate> FindBarcode(string barcode)
+        {
+            RequireBarcode(barcode);
+            return Convert(_source.FindBarcode(barcode), barcode);
+        }
+        public IReadOnlyList<ArticleCandidate> RefreshBarcode(string barcode)
+        {
+            RequireBarcode(barcode);
+            return Convert(_source.RefreshBarcode(barcode), barcode);
+        }
+        public IReadOnlyList<ArticleCandidate> RefreshArticle(string articleId)
+        {
+            if (string.IsNullOrWhiteSpace(articleId))
+                throw new ArgumentException("An article identity must not be blank.", nameof(articleId));
+            return Convert(_source.RefreshArticle(articleId), null, articleId);
+        }
+        private static void RequireBarcode(string barcode)
+        {
+            if (string.IsNullOrWhiteSpace(barcode))
+                throw new ArgumentException("A scanned barcode must not be blank.", nameof(barcode));
+        }
 
         private static IReadOnlyList<ArticleCandidate> Convert(
             IReadOnlyList<ProductSummary> products, string? requestedBarcode = null,
@@ -135,6 +154,8 @@ public sealed class CheckoutComposition
                 if (product is null || string.IsNullOrWhiteSpace(product.ArticleId) ||
                     !ids.Add(product.ArticleId))
                     throw new InvalidOperationException("Catalogue returned invalid or duplicate article identity.");
+                if (string.IsNullOrWhiteSpace(product.DisplayName))
+                    throw new InvalidOperationException("Catalogue returned a product without a display name.");
                 if (requestedBarcode is not null &&
                     !string.Equals(product.Barcode, requestedBarcode, StringComparison.Ordinal))
                     throw new InvalidOperationException("Catalogue returned an article for a different barcode.");
@@ -143,7 +164,7 @@ public sealed class CheckoutComposition
                     throw new InvalidOperationException("Catalogue returned an article for a different identity.");
                 result.Add(new ArticleCandidate(product.ArticleId, product.Barcode ?? ""));
             }
-            return result;
+            return Array.AsReadOnly(result.ToArray());
         }
     }
 }
