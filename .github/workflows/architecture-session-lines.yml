@@ -49,8 +49,20 @@ jobs:
           status=$?
           set -e
           cat merge-tree-result.txt
+          if [ "$status" -eq 1 ]; then
+            echo "Conflicted paths (Git merge-tree):"
+            git merge-tree --write-tree --name-only HEAD FETCH_HEAD || true
+          fi
           if [ "$status" -ne 0 ]; then
             echo "::error::Architecture/QA merge-tree reports conflicts or an execution error (exit $status). Review paths above; do not auto-merge."
             exit "$status"
           fi
           echo "No Git merge-tree conflicts on the checked SHAs."
+
+      - name: Upload exact merge-tree diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: architecture-qa-merge-tree
+          path: merge-tree-result.txt
+          if-no-files-found: warn
