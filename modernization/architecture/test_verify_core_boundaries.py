@@ -65,7 +65,7 @@ class BoundaryTests(unittest.TestCase):
         self.assertTrue(result["ok"], result["errors"])
 
     def test_similar_prefix_imports_do_not_trigger_false_positive(self):
-        self.rule.write_text("using BunifuExtras;\\nusing Microsoft.VisualBasicExtensions;")
+        self.rule.write_text("using BunifuExtras;\nusing Microsoft.VisualBasicExtensions;")
         result = validate(self.root)
         self.assertTrue(result["ok"], result["errors"])
 
