@@ -28,7 +28,7 @@ public sealed class OriginalSaleSelection
             string.IsNullOrWhiteSpace(s.ReceiptLabel) || s.PaidMad < 0m) ||
             result.GroupBy(s => s.SaleId, StringComparer.Ordinal).Any(g => g.Count() > 1))
             throw new InvalidOperationException("Invalid or duplicate persisted sale identity.");
-        _activeSnapshot = result.ToArray();
+        // Never expose a mutable array: callers must not replace trusted Host rows.\n        _activeSnapshot = Array.AsReadOnly(result.ToArray());
         return _activeSnapshot;
     }
     public bool Select(OriginalSaleCandidate candidate, IReadOnlyList<OriginalSaleCandidate> current)
