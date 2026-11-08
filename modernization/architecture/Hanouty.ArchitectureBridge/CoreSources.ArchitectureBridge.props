@@ -18,7 +18,7 @@
     <Compile Include="../../../recovered-source/LOGICA/Application/Checkout/CheckoutPaymentPostingService.cs" Link="Application/Checkout/CheckoutPaymentPostingService.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Application/Checkout/CheckoutTransactionFinalizationService.cs" Link="Application/Checkout/CheckoutTransactionFinalizationService.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Application/Checkout/CheckoutTransactionBoundaryService.cs" Link="Application/Checkout/CheckoutTransactionBoundaryService.cs" />
-    <Compile Include="../../../recovered-source/LOGICA/Application/Catalogue/CollectionDuplicatePrecheck.cs" Link="Application/Catalogue/CollectionDuplicatePrecheck.cs" />
+    <!-- Legacy-only nullable DataRow precheck: excluded from modern net10 bridge. -->
     <Compile Include="../../../recovered-source/LOGICA/Domain/ILegacyStockMovementQuerySemantics.cs" Link="Domain/ILegacyStockMovementQuerySemantics.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Infrastructure/Inventory/StockMovementQueryText.cs" Link="Infrastructure/Inventory/StockMovementQueryText.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Domain/ILegacyCheckoutCompletionSemantics.cs" Link="Domain/ILegacyCheckoutCompletionSemantics.cs" />
