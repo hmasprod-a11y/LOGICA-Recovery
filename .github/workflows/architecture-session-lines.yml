@@ -34,7 +34,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          persist-credentials: false
+          # The next step fetches QA from origin; retain the scoped checkout token.
+          persist-credentials: true
       - name: Identify exact Architecture vs QA merge conflicts without changing either branch
         shell: bash
         run: |
