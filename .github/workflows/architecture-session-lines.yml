@@ -33,6 +33,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # PR events otherwise checkout a synthetic refs/pull/*/merge commit,
+          # which is not the Architecture owner HEAD being compared to QA.
+          ref: architecture/master-easy-code-core-boundary-20261103
           fetch-depth: 0
           # The next step fetches QA from origin; retain the scoped checkout token.
           persist-credentials: true
