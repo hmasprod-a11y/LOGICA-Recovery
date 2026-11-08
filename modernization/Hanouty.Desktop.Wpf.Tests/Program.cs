@@ -1598,6 +1598,12 @@ var originalSelection = new OriginalSaleSelection(originalLookup);
 Check(originalSelection.Search("").Count == 0 && originalLookup.Calls == 0,
     "empty original receipt query must not call Host");
 var originalRows = originalSelection.Search("  receipt-1  ");
+Check(originalRows is not OriginalSaleCandidate[],
+    "trusted persisted-sale search must not expose a mutable array");
+Check(originalRows is not IList<OriginalSaleCandidate> mutableOriginalRows ||
+    mutableOriginalRows.IsReadOnly,
+    "trusted persisted-sale rows must be read-only to callers");
+
 Check(originalLookup.LastQuery == "receipt-1" && originalRows.Count == 1 &&
     originalSelection.Select(originalRows[0], originalRows) &&
     originalSelection.Selected == originalRows[0],
