@@ -28,3 +28,28 @@ jobs:
         run: python modernization/architecture/verify_core_boundaries.py
       - name: Execute actual Architecture session and financial gate regressions
         run: dotnet run --project modernization/architecture/Hanouty.ArchitectureBridge.Tests/Hanouty.ArchitectureBridge.Tests.csproj -c Release
+  qa-merge-conflict-inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Identify exact Architecture vs QA merge conflicts without changing either branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin refs/heads/integration/hanouty-qa-desktop-inventory-20261102
+          echo "Architecture SHA: $(git rev-parse HEAD)"
+          echo "QA SHA: $(git rev-parse FETCH_HEAD)"
+          echo "Merge base: $(git merge-base HEAD FETCH_HEAD)"
+          set +e
+          git merge-tree --write-tree HEAD FETCH_HEAD > merge-tree-result.txt 2>&1
+          status=$?
+          set -e
+          cat merge-tree-result.txt
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Architecture/QA merge-tree reports conflicts or an execution error (exit $status). Review paths above; do not auto-merge."
+            exit "$status"
+          fi
+          echo "No Git merge-tree conflicts on the checked SHAs."
