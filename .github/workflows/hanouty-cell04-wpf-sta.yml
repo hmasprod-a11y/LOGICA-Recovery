@@ -20,8 +20,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      # The standalone Cell04 branch does not carry ArchitectureBridge.
-      # Test the exact WPF candidate against the latest QA integration branch.\n      # Record both SHAs: this overlay is NOT the same as integrated QA acceptance.
+      # Test current WPF candidate over resolved QA HEAD; not integrated acceptance.
       - uses: actions/checkout@v4
         with:
           ref: integration/hanouty-qa-desktop-inventory-20261102
@@ -29,42 +28,23 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: _wpf_candidate
-      - name: Verify candidate SHA and overlay WPF production sources
+      - name: Verify exact SHAs and overlay WPF production sources
         shell: pwsh
         run: |
-          $qaSha = (git rev-parse HEAD).Trim()\n          Write-Host "QA baseline exact SHA: $qaSha"\n          if ($qaSha -notmatch '^[0-9a-f]{40}
+          $qaSha = (git rev-parse HEAD).Trim()
+          Write-Host "QA baseline exact SHA: $qaSha"
+          if ($qaSha -notmatch '^[0-9a-f]{40}$') { throw 'Invalid QA baseline SHA' }
+          $candidateSha = (git -C _wpf_candidate rev-parse HEAD).Trim()
           Write-Host "WPF candidate exact SHA: $candidateSha"
-          if ($candidateSha -ne $env:GITHUB_SHA) { throw "WPF candidate SHA mismatch" }
-          if (-not (Test-Path modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj)) { throw "Missing pinned ArchitectureBridge" }
+          if ($candidateSha -ne $env:GITHUB_SHA) { throw 'WPF candidate SHA mismatch' }
+          if (-not (Test-Path modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj)) { throw 'Missing ArchitectureBridge' }
           foreach ($dir in @('Hanouty.Desktop.Wpf', 'Hanouty.Desktop.Wpf.Tests')) {
             $source = Join-Path '_wpf_candidate/modernization' $dir
             if (-not (Test-Path $source)) { throw "Missing candidate $dir" }
             $destination = Join-Path 'modernization' $dir
             if (Test-Path $destination) { Remove-Item $destination -Recurse -Force }
             Copy-Item -Path $source -Destination $destination -Recurse -Force
-            if (-not (Test-Path (Join-Path $destination 'MainWindow.xaml.cs')) -and $dir -eq 'Hanouty.Desktop.Wpf') { throw 'WPF overlay incomplete' }
-          }
-          Remove-Item _wpf_candidate -Recurse -Force
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-      - name: Build real WPF executable
-        shell: pwsh
-        run: dotnet build modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj --configuration Release --warnaserror
-      - name: Run actual WPF STA executable assertions
-        shell: pwsh
-        run: dotnet run --project modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj --configuration Release
-) { throw 'Invalid QA baseline SHA' }\n          $candidateSha = (git -C _wpf_candidate rev-parse HEAD).Trim()
-          Write-Host "WPF candidate exact SHA: $candidateSha"
-          if ($candidateSha -ne $env:GITHUB_SHA) { throw "WPF candidate SHA mismatch" }
-          if (-not (Test-Path modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj)) { throw "Missing pinned ArchitectureBridge" }
-          foreach ($dir in @('Hanouty.Desktop.Wpf', 'Hanouty.Desktop.Wpf.Tests')) {
-            $source = Join-Path '_wpf_candidate/modernization' $dir
-            if (-not (Test-Path $source)) { throw "Missing candidate $dir" }
-            $destination = Join-Path 'modernization' $dir
-            if (Test-Path $destination) { Remove-Item $destination -Recurse -Force }
-            Copy-Item -Path $source -Destination $destination -Recurse -Force
-            if (-not (Test-Path (Join-Path $destination 'MainWindow.xaml.cs')) -and $dir -eq 'Hanouty.Desktop.Wpf') { throw 'WPF overlay incomplete' }
+            if ($dir -eq 'Hanouty.Desktop.Wpf' -and -not (Test-Path (Join-Path $destination 'MainWindow.xaml.cs'))) { throw 'WPF overlay incomplete' }
           }
           Remove-Item _wpf_candidate -Recurse -Force
       - uses: actions/setup-dotnet@v4
