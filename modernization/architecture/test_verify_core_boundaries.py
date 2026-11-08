@@ -69,6 +69,14 @@ class BoundaryTests(unittest.TestCase):
         result = validate(self.root)
         self.assertTrue(result["ok"], result["errors"])
 
+    def test_vb_alias_mysql_import_rejected(self):
+        self.rule.write_text("Imports Db = MySql.Data.MySqlClient")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_vb_similar_prefix_not_rejected(self):
+        self.rule.write_text("Imports Microsoft.VisualBasicExtensions")
+        self.assertTrue(validate(self.root)["ok"], validate(self.root)["errors"])
+
     def test_exact_bunifu_import_remains_rejected(self):
         self.rule.write_text("using Bunifu.Framework.UI;")
         self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
