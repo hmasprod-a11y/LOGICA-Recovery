@@ -64,6 +64,15 @@ class BoundaryTests(unittest.TestCase):
         result = validate(self.root)
         self.assertTrue(result["ok"], result["errors"])
 
+    def test_similar_prefix_imports_do_not_trigger_false_positive(self):
+        self.rule.write_text("using BunifuExtras;\\nusing Microsoft.VisualBasicExtensions;")
+        result = validate(self.root)
+        self.assertTrue(result["ok"], result["errors"])
+
+    def test_exact_bunifu_import_remains_rejected(self):
+        self.rule.write_text("using Bunifu.Framework.UI;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
     def test_real_import_after_comment_still_rejected(self):
         self.rule.write_text("// using System.Windows.Forms;\nusing MySql.Data.MySqlClient;")
         self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
