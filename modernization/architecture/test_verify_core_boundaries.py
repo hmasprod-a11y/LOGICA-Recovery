@@ -105,7 +105,7 @@ class BoundaryTests(unittest.TestCase):
         self.rule.write_text("using Db = MySql.Data.MySqlClient;")
         self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
 
-    def test_newline_import_winforms_rejected(self):
+    def test_spaced_namespace_import_winforms_rejected(self):\n        self.rule.write_text("using System . Windows . Forms;")\n        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))\n\n    def test_spaced_namespace_import_mysql_rejected(self):\n        self.rule.write_text("using Db = MySql . Data . MySqlClient;")\n        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))\n\n    def test_spaced_namespace_import_similar_prefix_allowed(self):\n        self.rule.write_text("using Microsoft . VisualBasicExtensions;")\n        self.assertTrue(validate(self.root)["ok"], validate(self.root)["errors"])\n\n    def test_newline_import_winforms_rejected(self):
         self.rule.write_text("using\nSystem.Windows.Forms;")
         self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
 
