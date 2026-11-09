@@ -6,7 +6,7 @@ namespace Hanouty.Desktop.Wpf;
 
 public partial class App : Application
 {
-    // Registered by the approved production composition root, never a demo fallback.
+    // Diagnostic seam only; never authorizes production startup.
     public static Func<(ICatalogueReader Catalogue, IProductSelection Checkout, ICheckoutSubmission Submission)>? ResolveServices { get; set; }
 
     // Financial host registers a fresh authenticated cash context together with
@@ -14,10 +14,20 @@ public partial class App : Application
     public static Func<(ICatalogueReader Catalogue, IProductSelection Checkout,
         ICheckoutSubmission Submission, CashierPaymentContext Payment)>? ResolveFinancialServices { get; set; }
 
+    public static bool HasProductionStartupResolver => ResolveFinancialServices is not null;
+
+    public static bool HasAuthorizedFinancialRegistration(ICatalogueReader? catalogue,
+        IProductSelection? checkout, ICheckoutSubmission? submission, CashierPaymentContext? payment) =>
+        catalogue is not null && checkout is not null &&
+        submission is IContextualCheckoutSubmission &&
+        submission is ICheckoutOutcomeReconciliation &&
+        payment?.IsWellFormed == true &&
+        string.Equals(payment.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase);
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        if (ResolveServices is null && ResolveFinancialServices is null)
+        if (!HasProductionStartupResolver)
         {
             MessageBox.Show("Production catalogue/checkout services are not configured. No sale can be started.",
                 "Hanouty — startup blocked", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -27,22 +37,12 @@ public partial class App : Application
         try
         {
             var financial = ResolveFinancialServices?.Invoke();
-            var (catalogue, checkout, submission) = financial is { } authorized
-                ? (authorized.Catalogue, authorized.Checkout, authorized.Submission)
-                : ResolveServices!();
-            if (catalogue is null || checkout is null || submission is null)
-                throw new InvalidOperationException("Incomplete production host registration.");
-            // A contextual cash adapter cannot silently fall back to a context-free
-            // sale path. A durable journal is mandatory for financial sessions.
-            if (financial is { } registered &&
-                (registered.Payment?.IsWellFormed != true ||
-                 !string.Equals(registered.Payment.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase) ||
-                 submission is not IContextualCheckoutSubmission ||
-                 submission is not ICheckoutOutcomeReconciliation))
+            if (financial is not { } authorized ||
+                !HasAuthorizedFinancialRegistration(authorized.Catalogue, authorized.Checkout,
+                    authorized.Submission, authorized.Payment))
                 throw new InvalidOperationException("Authorized cash registration is incomplete.");
-            if (financial is null && submission is IContextualCheckoutSubmission)
-                throw new InvalidOperationException("Financial host context is required.");
-            MainWindow = new MainWindow(catalogue, checkout, submission, financial?.Payment);
+            MainWindow = new MainWindow(authorized.Catalogue, authorized.Checkout,
+                authorized.Submission, authorized.Payment);
             MainWindow.Show();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
