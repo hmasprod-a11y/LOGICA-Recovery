@@ -115,9 +115,11 @@ def validate(root):
                 for prefix in FORBIDDEN_IMPORTS:
                     # C# global/alias imports and arbitrary whitespace are still imports.
                     # Do not let a tab or newline bypass the portable-source boundary.
-                    # C# permits whitespace around namespace separators; never let\n                    # spaced dotted imports evade the portable boundary gate.
+                    # C# permits whitespace around namespace separators; never let
+                    # spaced dotted imports evade the portable boundary gate.
                     import_prefix = r"\s*\.\s*".join(map(re.escape, prefix.rstrip(".").split(".")))
-                    if prefix.endswith("."):\n                        import_prefix += r"\s*\."
+                    if prefix.endswith("."):
+                        import_prefix += r"\s*\."
                     csharp_import = re.compile(r"\b(?:global\s+)?using\s+(?:(?:static\s+)|(?:[A-Za-z_]\w*\s*=\s*))?(?:global::)?" + import_prefix + r"(?![A-Za-z0-9_])")
                     vb_import = re.compile(r"\bImports\s+(?:(?:[A-Za-z_]\w*\s*=\s*))?" + import_prefix + r"(?![A-Za-z0-9_])", re.IGNORECASE)
                     if csharp_import.search(executable_lines) or vb_import.search(executable_lines):
