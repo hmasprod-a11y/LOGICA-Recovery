@@ -48,12 +48,13 @@ public sealed class CheckoutComposition
 
     public IReadOnlyList<ProductSummary> AllProducts() => Validate(_reader.ListAll());
     public IReadOnlyList<ProductSummary> ImageProducts() =>
-        AllProducts().Where(p => p.HasImage).ToArray();
+        Array.AsReadOnly(AllProducts().Where(p => p.HasImage).ToArray());
 
     // The tile is a UI snapshot, not authority to sell. Inventory must confirm
     // the exact article, variant and photo are still present before staging.
     internal bool IsCurrentImage(ProductSummary tile)
     {
+        if (tile is null || string.IsNullOrWhiteSpace(tile.ArticleId)) return false;
         var live = Validate(_reader.RefreshArticle(tile.ArticleId));
         return live.Count == 1 && live[0].HasImage &&
             string.Equals(live[0].ArticleId, tile.ArticleId, StringComparison.Ordinal) &&
@@ -64,6 +65,7 @@ public sealed class CheckoutComposition
 
     internal bool IsCurrentArticle(ProductSummary selected)
     {
+        if (selected is null || string.IsNullOrWhiteSpace(selected.ArticleId)) return false;
         var live = Validate(_reader.RefreshArticle(selected.ArticleId));
         return live.Count == 1 && live[0] == selected;
     }
@@ -72,10 +74,11 @@ public sealed class CheckoutComposition
     // A stale UI snapshot cannot authorize a different, now-unique article.
     internal bool IsCurrentDuplicateVariant(ProductSummary selected)
     {
-        if (string.IsNullOrWhiteSpace(selected.Barcode) || !IsCurrentArticle(selected))
+        if (selected is null || string.IsNullOrWhiteSpace(selected.ArticleId) ||
+            string.IsNullOrWhiteSpace(selected.Barcode) || !IsCurrentArticle(selected))
             return false;
         var candidates = Validate(_reader.RefreshBarcode(selected.Barcode));
-        return candidates.Count >= 2 && candidates.Any(p => p == selected) &&
+        return candidates.Count >= 2 && candidates.Count(p => p == selected) == 1 &&
             candidates.All(p => string.Equals(p.Barcode, selected.Barcode, StringComparison.Ordinal));
     }
 
