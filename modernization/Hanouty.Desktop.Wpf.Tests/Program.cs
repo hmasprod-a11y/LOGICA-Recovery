@@ -4,6 +4,12 @@ static void Check(bool value, string reason)
 {
     if (!value) throw new Exception(reason);
 }
+// Production startup must not accept the diagnostic catalogue-only resolver.
+Hanouty.Desktop.Wpf.App.ResolveFinancialServices = null;
+Check(!Hanouty.Desktop.Wpf.App.HasProductionStartupResolver,
+    "diagnostic-only registration must not unlock production startup");
+Check(!Hanouty.Desktop.Wpf.App.HasAuthorizedFinancialRegistration(null, null, null, null),
+    "missing cashier context and durable submission must fail closed");
 var items = new[]
 {
     new ProductSummary("1", "Milk", "123", "milk.png"),
