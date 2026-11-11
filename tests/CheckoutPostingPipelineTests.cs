@@ -108,8 +108,8 @@ internal static class CheckoutPostingPipelineTests
         nullStockInput.ReadStock = delegate { nullStock.Mark("stock.read"); return null; };
         bool stockNull = false;
         try { CheckoutPostingService.Post(nullStock, nullStockInput); }
-        catch (NullReferenceException) { stockNull = true; }
-        if (!stockNull) throw new Exception("Null stock enumeration must fail before header");
+        catch (InvalidOperationException ex) { stockNull = ex.Message == "Checkout stock reader returned no collection."; }
+        if (!stockNull) throw new Exception("Null stock enumeration must fail closed before header");
         Same(nullStock.Events, new[] { "stock.read" }, "null stock enumeration");
 
         var nullPayments = new Scenario();
