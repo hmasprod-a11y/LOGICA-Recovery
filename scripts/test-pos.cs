@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 class PosSmoke {
+ static volatile string LastDismissedDialogText;
  const BindingFlags Flags=BindingFlags.Public|BindingFlags.NonPublic|BindingFlags.Instance|BindingFlags.Static;
  static object Get(object o,string name){return o.GetType().GetProperty(name,Flags).GetValue(o,null);}
  static void Eq(decimal actual,decimal expected,string label){if(actual!=expected)throw new Exception(label+" expected="+expected+" actual="+actual);Console.WriteLine("PASS "+label+" = "+actual);}
@@ -183,15 +184,16 @@ class PosSmoke {
   EnumThreadWindows(threadId,delegate(IntPtr window,IntPtr unused) {
    var name=new StringBuilder(256);GetClassName(window,name,name.Capacity);
    if(name.ToString()!="#32770")return true;
-   if(expectedText!=null) {
-    bool matched=false;
-    EnumChildWindows(window,delegate(IntPtr child,IntPtr parameter) {
-     var text=new StringBuilder(4096);GetWindowText(child,text,text.Capacity);
-     if(text.ToString().Contains(expectedText))matched=true;
-     return true;
-    },IntPtr.Zero);
-    if(!matched)return true;
-   }
+   bool matched=expectedText==null;
+   var dialogText=new StringBuilder();
+   EnumChildWindows(window,delegate(IntPtr child,IntPtr parameter) {
+    var text=new StringBuilder(4096);GetWindowText(child,text,text.Capacity);
+    if(text.Length>0){if(dialogText.Length>0)dialogText.Append(" | ");dialogText.Append(text);}
+    if(expectedText!=null && text.ToString().Contains(expectedText))matched=true;
+    return true;
+   },IntPtr.Zero);
+   if(!matched)return true;
+   LastDismissedDialogText=dialogText.ToString();
    // Scoped to the isolated test thread during the injected-failure call.
    // A nontransactional fixture marker separately proves that our trigger was reached.
    dismissed=PostMessage(window,0x0010,IntPtr.Zero,IntPtr.Zero) || dismissed;
@@ -337,7 +339,7 @@ class PosSmoke {
       Sql(connection,"CREATE TRIGGER CI_ROLLBACK_PROBE BEFORE "+(lateFailure?"UPDATE ON TABLE_NUM":"INSERT ON TABLE_VENTES_JOURNAL")+" FOR EACH ROW BEGIN UPDATE TABLE_CI_ROLLBACK_PROBE SET Attempts=Attempts+1, PaymentRows=(SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS), BasketRows=(SELECT COUNT(*) FROM TABLE_CI_TEST); SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'CI_ROLLBACK_PROBE'; END");
       connection.Close();
      }
-     if(injectFailure || (rejected && settlement!="reject-empty")) {
+     if(injectFailure || (rejected && settlement!="reject-empty") || (!rejected && !selection)) {
       string expectedDialog=rejected?(settlement=="reject-sale"?"Positif":(settlement=="reject-total"?"Le Total Net":(settlement.StartsWith("reject-stock")?"stock insuffisant":"(RETOUR)"))):null;
       watcher=new Thread(delegate() {
        while(!stopWatcher.WaitOne(100)) {
@@ -364,6 +366,8 @@ class PosSmoke {
      }
     }
     if(connection.State!=ConnectionState.Open)connection.Open();
+    if(!injectFailure && !rejected && !selection && dismissedErrors>0)
+     throw new Exception("Unexpected modal interrupted "+settlement+" checkout: "+LastDismissedDialogText);
     if(rejected || selection) {
      if(!senderEnabled)throw new Exception("Rejected checkout did not re-enable sender");
      if(rejected && (settlement=="reject-empty"?dismissedErrors!=0:dismissedErrors==0))throw new Exception("Unexpected rejection dialog behavior");
