@@ -996,6 +996,9 @@ namespace LOGICA.Infrastructure.Checkout
             correct.Commit(MultiLineRequest("multi-original", false));
             decimal soldStockA = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
             decimal soldStockB = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'");
+            decimal originalSaleTotal = Scalar("SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-original'");
+            Require(originalSaleTotal == 13.50m,
+                "Multi-line fixture sale total must remain 13.50 MAD; actual " + originalSaleTotal + ".");
             Require(soldStockA == originalStockA - 2m && soldStockB == originalStockB - 1m &&
                 Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-original' AND OPERATION='VENTE'") == 2m,
                 "Multi-line original sale must persist two exact lines and decrement each stock once.");
@@ -1025,7 +1028,8 @@ namespace LOGICA.Infrastructure.Checkout
             Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund'") == 1,
                 "Multi-line refund header identity is missing.");
             Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund' AND Total_NET=-13.50") == 1,
-                "Multi-line refund header amount is incorrect.");
+                "Multi-line refund header amount is incorrect; original total was " + originalSaleTotal +
+                " and refund total was " + Scalar("SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund'") + ".");
             Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund' AND OPERATION='RETOUR REMBOURSEMENT'") == 1,
                 "Multi-line refund header operation is incorrect.");
             Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='multi-refund' AND MONTANT=-13.50 AND MODE_P='ESPECES'") == 1,
