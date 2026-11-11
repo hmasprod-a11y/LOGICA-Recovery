@@ -1016,15 +1016,19 @@ namespace LOGICA.Infrastructure.Checkout
                 "Partial line set must be rejected without claim, receipt, or stock mutation.");
 
             correct.Commit(refund);
-            Require(journal.IsPersisted("multi-refund") &&
-                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == originalStockA &&
-                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == originalStockB &&
-                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original' AND return_operation_id='multi-refund' AND consumed_quantity=3") == 1 &&
-                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund' AND Total_NET=-13.50 AND OPERATION='RETOUR REMBOURSEMENT'") == 1 &&
-                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='multi-refund' AND MONTANT=-13.50 AND MODE_P='ESPECES'") == 1 &&
-                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-refund' AND OPERATION='RETOUR REMBOURSEMENT'") == 2 &&
+            Require(journal.IsPersisted("multi-refund"), "Multi-line refund operation was not durably claimed.");
+            Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == originalStockA &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == originalStockB,
+                "Multi-line refund did not restore each article's stock exactly once.");
+            Require(Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original' AND return_operation_id='multi-refund' AND consumed_quantity=3") == 1,
+                "Multi-line refund consumption claim did not preserve the full aggregate quantity.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund' AND Total_NET=-13.50 AND OPERATION='RETOUR REMBOURSEMENT'") == 1,
+                "Multi-line refund header amount or operation is incorrect.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='multi-refund' AND MONTANT=-13.50 AND MODE_P='ESPECES'") == 1,
+                "Multi-line refund payment amount or cash mode is incorrect.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-refund' AND OPERATION='RETOUR REMBOURSEMENT'") == 2 &&
                 Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-refund' AND ((ID_ARTICLE='CSharp-Stock' AND Qté=-2 AND Total_NET=-10.50) OR (ID_ARTICLE='CSharp-Other' AND Qté=-1 AND Total_NET=-3.00))") == 2,
-                "Full multi-line return must atomically persist signed receipt, payment, claim, and per-item stock.");
+                "Multi-line refund journal is missing an exact signed original line.");
             correct.Commit(refund);
             Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == originalStockA &&
                 Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == originalStockB,
