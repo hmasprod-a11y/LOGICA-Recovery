@@ -1,0 +1,47 @@
+name: Hanouty QA read-only inventory snapshot
+on:
+  pull_request:
+    paths:
+      - 'modernization/inventory/Hanouty.Inventory.MariaDb/**'
+      - 'modernization/inventory/Hanouty.Inventory.Snapshot.Tests/**'
+      - '.github/workflows/hanouty-qa-inventory-snapshot.yml'
+  push:
+    branches:
+      - 'rescue/eng06-inventory-snapshot-qa-20261111'
+    paths:
+      - 'modernization/inventory/Hanouty.Inventory.MariaDb/**'
+      - 'modernization/inventory/Hanouty.Inventory.Snapshot.Tests/**'
+      - '.github/workflows/hanouty-qa-inventory-snapshot.yml'
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: snapshot-disposable-root
+          MARIADB_DATABASE: snapshot_ci
+          MARIADB_USER: snapshot_ci
+          MARIADB_PASSWORD: snapshot-disposable-password
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      HANOUTY_INVENTORY_SNAPSHOT_TEST_DB: Server=127.0.0.1;Port=3307;Database=snapshot_ci;Uid=snapshot_ci;Pwd=snapshot-disposable-password;SslMode=None;
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build inventory snapshot acceptance
+        run: dotnet build modernization/inventory/Hanouty.Inventory.Snapshot.Tests/Hanouty.Inventory.Snapshot.Tests.csproj --configuration Release --warnaserror
+      - name: Run production snapshot reader against disposable MariaDB
+        run: dotnet run --project modernization/inventory/Hanouty.Inventory.Snapshot.Tests/Hanouty.Inventory.Snapshot.Tests.csproj --configuration Release --no-build
