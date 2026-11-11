@@ -35,8 +35,9 @@ namespace LOGICA.Infrastructure.Checkout
             foreach (CheckoutBatchLine line in requestedLines)
             {
                 if (line == null || string.IsNullOrWhiteSpace(line.ArticleId) || line.Quantity <= 0 ||
-                    !requested.TryAdd(line.ArticleId, line.Quantity))
+                    requested.ContainsKey(line.ArticleId))
                     throw new InvalidOperationException("Refund request contains an invalid or duplicate article line.");
+                requested.Add(line.ArticleId, line.Quantity);
             }
 
             decimal amount = 0m;
