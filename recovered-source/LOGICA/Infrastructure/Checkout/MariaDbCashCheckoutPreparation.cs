@@ -355,7 +355,7 @@ namespace LOGICA.Infrastructure.Checkout
                         Convert.ToString(payment.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT" ||
                         !string.Equals(Convert.ToString(payment.Rows[0]["MODE_P"], CultureInfo.InvariantCulture),
                             "ESPECES", StringComparison.Ordinal))
-                        throw new InvalidOperationException("Signed refund header or payment failed verification.");
+                        throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
 
                     decimal signedTotal = 0m;
                     var returned = new HashSet<string>(StringComparer.Ordinal);
@@ -367,18 +367,18 @@ namespace LOGICA.Infrastructure.Checkout
                             Number(row, "Qté") != -Number(source, "Qté") ||
                             Number(row, "line_amount") != -Number(source, "line_amount") ||
                             Convert.ToString(row["OPERATION"]) != "RETOUR REMBOURSEMENT")
-                            throw new InvalidOperationException("Signed refund journal line failed verification.");
+                            throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
                         foreach (string field in new[] { "Code", "Article", "Famille", "GROUPE" })
                             if (!string.Equals(Convert.ToString(row[field], CultureInfo.InvariantCulture),
                                 Convert.ToString(source[field], CultureInfo.InvariantCulture), StringComparison.Ordinal))
-                                throw new InvalidOperationException("Refund journal article identity changed.");
+                                throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
                         foreach (string field in new[] { "PRIX_A", "PRIX_MP", "PRIX_V", "Remise", "TAUX_TVA" })
                             if (Number(row, field) != Number(source, field))
-                                throw new InvalidOperationException("Refund journal price or tax changed.");
+                                throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
                         signedTotal = checked(signedTotal + Number(row, "line_amount"));
                     }
                     if (returned.Count != original.Rows.Count || signedTotal != -amount)
-                        throw new InvalidOperationException("Refund journal is not the exact signed original ticket.");
+                        throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
                 },
                 ReadCompletion = () => new CheckoutCompletionRecord { Workstation = workstation, TicketNumber = ticket }
             };
