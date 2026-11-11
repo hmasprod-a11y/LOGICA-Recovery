@@ -1022,8 +1022,12 @@ namespace LOGICA.Infrastructure.Checkout
                 "Multi-line refund did not restore each article's stock exactly once.");
             Require(Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original' AND return_operation_id='multi-refund' AND consumed_quantity=3") == 1,
                 "Multi-line refund consumption claim did not preserve the full aggregate quantity.");
-            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund' AND Total_NET=-13.50 AND OPERATION='RETOUR REMBOURSEMENT'") == 1,
-                "Multi-line refund header amount or operation is incorrect.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund'") == 1,
+                "Multi-line refund header identity is missing.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund' AND Total_NET=-13.50") == 1,
+                "Multi-line refund header amount is incorrect.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund' AND OPERATION='RETOUR REMBOURSEMENT'") == 1,
+                "Multi-line refund header operation is incorrect.");
             Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='multi-refund' AND MONTANT=-13.50 AND MODE_P='ESPECES'") == 1,
                 "Multi-line refund payment amount or cash mode is incorrect.");
             Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-refund' AND OPERATION='RETOUR REMBOURSEMENT'") == 2 &&
