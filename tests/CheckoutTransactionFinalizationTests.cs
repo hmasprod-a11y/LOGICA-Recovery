@@ -26,12 +26,17 @@ internal static class CheckoutTransactionFinalizationTests
             yield return new CheckoutStockLine { ArticleCode = "2" };
         }
 
+        private TicketPaymentContext PaymentContext()
+        {
+            return new TicketPaymentContext { TicketId = "finalization", TicketNumber = "1", SaleDate = new DateTime(2026, 1, 1), Cashier = "finalization", ClientId = "0", ClientCode = "0", ClientName = "Client", Workstation = "01", Operation = "VENTE", Remark = "" };
+        }
+
         private IEnumerable<TicketPaymentWrite> PaymentRows()
         {
             Mark("payment.next.1");
-            yield return new TicketPaymentWrite { AmountText = "1" };
+            yield return new TicketPaymentWrite { Kind = TicketPaymentKind.Cash, Context = PaymentContext(), AmountText = "1" };
             Mark("payment.next.2");
-            yield return new TicketPaymentWrite { AmountText = "2" };
+            yield return new TicketPaymentWrite { Kind = TicketPaymentKind.Cash, Context = PaymentContext(), AmountText = "2" };
         }
 
         internal CheckoutPostingInput Input()

@@ -24,12 +24,17 @@ internal static class CheckoutPostingPipelineTests
             yield return new CheckoutStockLine { ArticleCode = "2" };
         }
 
+        private TicketPaymentContext PaymentContext()
+        {
+            return new TicketPaymentContext { TicketId = "pipeline", TicketNumber = "1", SaleDate = new DateTime(2026, 1, 1), Cashier = "pipeline", ClientId = "0", ClientCode = "0", ClientName = "Client", Workstation = "01", Operation = "VENTE", Remark = "" };
+        }
+
         private IEnumerable<TicketPaymentWrite> PaymentRows()
         {
             Mark("payment.next.1");
-            yield return new TicketPaymentWrite { AmountText = "1" };
+            yield return new TicketPaymentWrite { Kind = TicketPaymentKind.Cash, Context = PaymentContext(), AmountText = "1" };
             Mark("payment.next.2");
-            yield return new TicketPaymentWrite { AmountText = "2" };
+            yield return new TicketPaymentWrite { Kind = TicketPaymentKind.Cash, Context = PaymentContext(), AmountText = "2" };
         }
 
         internal CheckoutPostingInput BuildInput()
@@ -112,8 +117,8 @@ internal static class CheckoutPostingPipelineTests
         nullPaymentsInput.ReadPayments = delegate { nullPayments.Mark("payment.read"); return null; };
         bool paymentNull = false;
         try { CheckoutPostingService.Post(nullPayments, nullPaymentsInput); }
-        catch (NullReferenceException) { paymentNull = true; }
-        if (!paymentNull) throw new Exception("Null payment enumeration must fail before printing");
+        catch (InvalidOperationException ex) { paymentNull = ex.Message == "Checkout payment reader returned no collection."; }
+        if (!paymentNull) throw new Exception("Null payment enumeration must fail closed before printing");
         Same(nullPayments.Events, new[] {
             "stock.read", "stock.next.1", "stock.write.1", "stock.next.2", "stock.write.2",
             "header.read", "header.write", "journal.read", "journal.write", "payment.read"
