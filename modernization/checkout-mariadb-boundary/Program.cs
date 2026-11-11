@@ -452,6 +452,7 @@ namespace LOGICA.Infrastructure.Checkout
             Sql("ALTER TABLE TABLE_NUM ADD ID INT NOT NULL DEFAULT 0");
             Sql("ALTER TABLE TABLE_ARTICLES ADD Code VARCHAR(64), ADD Article VARCHAR(128), ADD Famille VARCHAR(64), ADD PRIX_A DECIMAL(16,3), ADD PRIX_MP DECIMAL(16,3), ADD PRIX_V_1 DECIMAL(16,3), ADD TAUX_TVA DECIMAL(16,3), ADD GROUPE VARCHAR(64), ADD PROMOTION DECIMAL(16,3) DEFAULT 0, ADD PRIX_QTE DECIMAL(16,3) DEFAULT 0");
             Sql("UPDATE TABLE_ARTICLES SET STOCK=100,Code='CODE''1',Article='Lait d''été',Famille='Food',PRIX_A=1,PRIX_MP=1,PRIX_V_1=5.25,TAUX_TVA=20,GROUPE='G' WHERE ID_ARTICLE='CSharp-Stock'");
+            Sql("INSERT INTO TABLE_ARTICLES (ID_ARTICLE,STOCK,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V_1,TAUX_TVA,GROUPE,PROMOTION,PRIX_QTE) VALUES ('CSharp-Other',100,'CODE-2','Other item','Food',2,2,3,20,'G2',0,0)");
             Sql("DELETE FROM TABLE_01");
             var headers = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE");
             var payments = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS");
@@ -961,9 +962,143 @@ namespace LOGICA.Infrastructure.Checkout
             }
             finally { Sql("ALTER TABLE hanouty_checkout_operations ENGINE=InnoDB"); }
             Require(!journal.IsPersisted("trusted-invalid-ledger"), "Rejected ledger left a durable claim.");
+            VerifyMultiLineCashReturn(correct, journal);
             Console.WriteLine("PASS read-only authoritative price preview, shared posting rounding and no basket/claim/stock mutation.");
             Console.WriteLine("PASS REAL TABLE_PASS authentication + authoritative empty-basket staging; occupied basket preserved; denied PIN/category/stale price/underpayment roll back; quoted cashier/article and fr-FR/en-US exact cash persist once. WPF registration and broader V1 policy remain pending.");
         }
+
+        private static Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest MultiLineRequest(
+            string operation, bool isReturn, string originalTicketId = null)
+        {
+            Hanouty.ArchitectureBridge.CheckoutBatchLine[] lines = isReturn
+                ? new[] {
+                    new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Other", 1),
+                    new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2) }
+                : new[] {
+                    new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2),
+                    new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Other", 1) };
+            return new Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest(
+                operation, "O'Neil", "MAD", isReturn, lines,
+                new[] { new Hanouty.ArchitectureBridge.CheckoutPayment(
+                    Hanouty.ArchitectureBridge.CheckoutPaymentKind.Cash, 13.50m) },
+                13.50m, originalTicketId);
+        }
+
+        private static void VerifyMultiLineCashReturn(AuthorizedCheckoutMariaDbPort correct,
+            MySqlCheckoutOperationJournal journal)
+        {
+            decimal originalStockA = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            decimal originalStockB = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'");
+            correct.Commit(MultiLineRequest("multi-original", false));
+            decimal soldStockA = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            decimal soldStockB = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'");
+            Require(soldStockA == originalStockA - 2m && soldStockB == originalStockB - 1m &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-original' AND OPERATION='VENTE'") == 2m,
+                "Multi-line original sale must persist two exact lines and decrement each stock once.");
+
+            var refund = MultiLineRequest("multi-refund", true, "multi-original");
+            var partial = refund with
+            {
+                OperationId = "multi-partial",
+                Lines = new[] { new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2) }
+            };
+            bool partialRejected = false;
+            try { correct.Commit(partial); }
+            catch (InvalidOperationException) { partialRejected = true; }
+            Require(partialRejected && !journal.IsPersisted("multi-partial") &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == soldStockA &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == soldStockB &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0,
+                "Partial line set must be rejected without claim, receipt, or stock mutation.");
+
+            correct.Commit(refund);
+            Require(journal.IsPersisted("multi-refund") &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == originalStockA &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == originalStockB &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original' AND return_operation_id='multi-refund' AND consumed_quantity=3") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund' AND Total_NET=-13.50 AND OPERATION='RETOUR REMBOURSEMENT'") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='multi-refund' AND MONTANT=-13.50 AND MODE_P='ESPECES'") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-refund' AND OPERATION='RETOUR REMBOURSEMENT'") == 2 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-refund' AND ((ID_ARTICLE='CSharp-Stock' AND Qté=-2 AND Total_NET=-10.50) OR (ID_ARTICLE='CSharp-Other' AND Qté=-1 AND Total_NET=-3.00))") == 2,
+                "Full multi-line return must atomically persist signed receipt, payment, claim, and per-item stock.");
+            correct.Commit(refund);
+            Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == originalStockA &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == originalStockB,
+                "Replay of the same multi-line refund operation must be exactly once.");
+
+            bool secondOperationRejected = false;
+            try { correct.Commit(refund with { OperationId = "multi-refund-again" }); }
+            catch (InvalidOperationException) { secondOperationRejected = true; }
+            Require(secondOperationRejected && !journal.IsPersisted("multi-refund-again") &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == originalStockA &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == originalStockB,
+                "A second operation cannot consume the original ticket again.");
+
+            decimal beforeRollbackA = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            decimal beforeRollbackB = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'");
+            correct.Commit(MultiLineRequest("multi-rollback-original", false));
+            decimal afterRollbackSaleA = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            decimal afterRollbackSaleB = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'");
+            Sql("CREATE TRIGGER multi_refund_payment_failure AFTER INSERT ON TABLE_VENTES_REGLEMENTS FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected-multi-refund-payment'");
+            bool paymentFailed = false;
+            try { correct.Commit(MultiLineRequest("multi-rollback-refund", true, "multi-rollback-original")); }
+            catch (MySqlException ex) when (ex.Number == 1644) { paymentFailed = true; }
+            finally { Sql("DROP TRIGGER multi_refund_payment_failure"); }
+            Require(paymentFailed && !journal.IsPersisted("multi-rollback-refund") &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-rollback-original'") == 0 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == afterRollbackSaleA &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == afterRollbackSaleB &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-rollback-refund'") == 0 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-rollback-refund'") == 0,
+                "Failure after both stock writes must roll back every multi-line return side effect.");
+            correct.Commit(MultiLineRequest("multi-rollback-refund", true, "multi-rollback-original"));
+            Require(journal.IsPersisted("multi-rollback-refund") &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == beforeRollbackA &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == beforeRollbackB,
+                "Same refund operation must succeed after a verified full rollback.");
+
+            decimal beforeConcurrentA = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            decimal beforeConcurrentB = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'");
+            correct.Commit(MultiLineRequest("multi-concurrent-original", false));
+            int successes = 0, rejected = 0;
+            Exception unexpected = null;
+            using (var start = new System.Threading.ManualResetEventSlim(false))
+            {
+                Action<string> contender = operation =>
+                {
+                    start.Wait();
+                    try
+                    {
+                        correct.Commit(MultiLineRequest(operation, true, "multi-concurrent-original"));
+                        System.Threading.Interlocked.Increment(ref successes);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        System.Threading.Interlocked.Increment(ref rejected);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Threading.Interlocked.CompareExchange(ref unexpected, ex, null);
+                    }
+                };
+                var first = new System.Threading.Thread(() => contender("multi-concurrent-refund-a"));
+                var second = new System.Threading.Thread(() => contender("multi-concurrent-refund-b"));
+                first.IsBackground = true;
+                second.IsBackground = true;
+                first.Start();
+                second.Start();
+                start.Set();
+                Require(first.Join(30000) && second.Join(30000), "Concurrent return transactions did not settle.");
+            }
+            Require(unexpected == null && successes == 1 && rejected == 1 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == beforeConcurrentA &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == beforeConcurrentB &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-concurrent-original'") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE OPERATION='RETOUR REMBOURSEMENT' AND ID_TICKET IN ('multi-concurrent-refund-a','multi-concurrent-refund-b')") == 1,
+                "Two concurrent refund operations must have one winner and one complete loser.");
+            Console.WriteLine("PASS full multi-line refund: exact line set, atomic signed stock/payment/journal/claim, duplicate, rollback/retry, and concurrency.");
+        }
+
 
     }
 }
