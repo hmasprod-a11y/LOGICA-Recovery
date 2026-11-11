@@ -984,7 +984,7 @@ namespace LOGICA.Infrastructure.Checkout
                 13.50m, originalTicketId);
         }
 
-        private static void VerifyMultiLineCashReturn(AuthorizedCheckoutMariaDbPort correct,
+        private static void VerifyMultiLineCashReturn(Hanouty.ArchitectureBridge.IAuthorizedCheckoutPort correct,
             MySqlCheckoutOperationJournal journal)
         {
             decimal originalStockA = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
