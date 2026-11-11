@@ -27,6 +27,7 @@ namespace LOGICA.Infrastructure.Checkout
                 "Acceptance is restricted to the disposable loopback schema.");
             Require(typeof(AuthorizedCheckoutMariaDbPort).GetInterface("IAuthorizedCheckoutPort") != null,
                 "Actual authorized financial port must compile against Architecture.");
+            InitializeDisposableSchema();
             string key = "csharp-boundary-" + Guid.NewGuid().ToString("N");
             using (MySqlConnection connection = NewConnection())
             {
@@ -265,6 +266,33 @@ namespace LOGICA.Infrastructure.Checkout
             Console.WriteLine("PASS production C# stock sale/return, movement, missing article and rollback.");
             Console.WriteLine("PASS production C# MariaDB boundary: commit, replay, rollback, invalid ID and unknown reconciliation.");
         }
+        private static void InitializeDisposableSchema()
+        {
+            // The connection string has already been restricted to an explicitly
+            // named local disposable schema. Create only the two durable test ledgers.
+            using (var db = NewConnection())
+            {
+                db.Open();
+                using (var cmd = db.CreateCommand())
+                {
+                    cmd.CommandText = "CREATE TABLE IF NOT EXISTS hanouty_checkout_operations (" +
+                        "operation_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL," +
+                        "created_utc TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)," +
+                        "PRIMARY KEY (operation_id)) ENGINE=InnoDB";
+                    cmd.ExecuteNonQuery();
+                    cmd.CommandText = "CREATE TABLE IF NOT EXISTS hanouty_cash_return_consumption (" +
+                        "original_ticket_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL," +
+                        "return_operation_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL," +
+                        "consumed_quantity DECIMAL(18,4) NOT NULL," +
+                        "created_utc TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)," +
+                        "PRIMARY KEY (original_ticket_id)," +
+                        "UNIQUE KEY uq_cash_return_operation (return_operation_id)," +
+                        "CONSTRAINT chk_cash_return_quantity CHECK (consumed_quantity > 0)) ENGINE=InnoDB";
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
         private static void Sql(string sql)
         {
             using (var db = NewConnection())
