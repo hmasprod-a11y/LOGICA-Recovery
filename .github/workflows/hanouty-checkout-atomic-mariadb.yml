@@ -41,3 +41,5 @@ jobs:
         run: dotnet run --project modernization/checkout-mariadb-boundary/CheckoutMariaDbBoundary.csproj --configuration Release
       - name: Compile integrated production checkout against QA ArchitectureBridge
         run: dotnet build modernization/checkout-mariadb-production/CheckoutMariaDbProduction.csproj --configuration Release --no-incremental
+      - name: Compile the QA ArchitectureBridge with nullable warnings as errors
+        run: dotnet build modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj --configuration Release --no-incremental --warnaserror
