@@ -13061,6 +13061,10 @@ public class Form_3_VENTE : Form
 					}
 				}
 				MySqlCommand val4 = new MySqlCommand();
+				// Bind the connection before BeginTransaction. MySqlCommand clears its
+				// Transaction association when Connection is assigned from null; the
+				// ticket-sequence reader reuses this command later in the same transaction.
+				val4.Connection = Module1.cn_SQL;
 				var checkoutBoundary = new LOGICA.Infrastructure.Checkout.MySqlCheckoutTransactionBoundary(Module1.cn_SQL, val4);
 				LOGICA.ApplicationLayer.Checkout.CheckoutTransactionBoundaryService.Begin(checkoutBoundary);
 				_N_TICKET_SOLDER = LOGICA.ApplicationLayer.Checkout.CheckoutTicketSequenceService.ReadCurrent(
