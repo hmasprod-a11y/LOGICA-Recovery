@@ -8,12 +8,26 @@ public sealed record CashierPaymentContext(
     string CashierId, string RegisterId, string CurrencyCode,
     string TenderCode, decimal TenderedAmount)
 {
+    private static bool IsCleanIdentifier(string? value, int maximumLength) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Length <= maximumLength &&
+        string.Equals(value, value.Trim(), StringComparison.Ordinal) &&
+        !ContainsControlOrSurrogate(value);
+
+    private static bool ContainsControlOrSurrogate(string value)
+    {
+        foreach (var character in value)
+            if (char.IsControl(character) || char.IsSurrogate(character)) return true;
+        return false;
+    }
+
     public bool IsWellFormed =>
-        !string.IsNullOrWhiteSpace(CashierId) &&
-        !string.IsNullOrWhiteSpace(RegisterId) &&
-        !string.IsNullOrWhiteSpace(CurrencyCode) &&
-        !string.IsNullOrWhiteSpace(TenderCode) &&
-        TenderedAmount >= 0m;
+        IsCleanIdentifier(CashierId, 64) &&
+        IsCleanIdentifier(RegisterId, 64) &&
+        IsCleanIdentifier(CurrencyCode, 8) &&
+        IsCleanIdentifier(TenderCode, 32) &&
+        TenderedAmount >= 0m &&
+        decimal.Round(TenderedAmount, 2) == TenderedAmount;
 }
 
 // An opt-in production submission seam: the UI supplies context, never grants
