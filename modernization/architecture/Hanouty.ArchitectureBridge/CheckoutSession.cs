@@ -11,6 +11,7 @@ public sealed class CheckoutSession
     private readonly CheckoutComposition _composition;
     private readonly CheckoutBatchController _batch;
     private string? _operationId;
+    private bool _invalidatedSubmission;
     private readonly List<ProductSummary> _stagedImages = new();
     private readonly List<ProductSummary> _stagedExplicitVariants = new();
     private readonly List<ProductSummary> _stagedArticles = new();
@@ -24,15 +25,18 @@ public sealed class CheckoutSession
     // A single catalogue snapshot backs both the list and image grid. Refresh
     // explicitly after Inventory updates; never mix two independently read lists.
     private IReadOnlyList<ProductSummary>? _snapshot;
+    private IReadOnlyList<ProductSummary>? _imageSnapshot;
     public IReadOnlyList<ProductSummary> Products => _snapshot ??= _composition.AllProducts();
     public IReadOnlyList<ProductSummary> ImageProducts =>
-        Array.AsReadOnly(System.Linq.Enumerable.ToArray(
+        _imageSnapshot ??= Array.AsReadOnly(System.Linq.Enumerable.ToArray(
             System.Linq.Enumerable.Where(Products, p => p.HasImage)));
 
     public void RefreshCatalogue()
     {
         EnsureNoSubmission();
-        _snapshot = _composition.AllProducts();
+        var refreshed = _composition.AllProducts();
+        _snapshot = refreshed;
+        _imageSnapshot = null;
     }
     public int PendingCount => _batch.PendingCount;
 
@@ -57,11 +61,11 @@ public sealed class CheckoutSession
         EnsureNoSubmission();
         ArgumentNullException.ThrowIfNull(product);
         // Reject forged/stale tiles that were never in the visible image grid.
-        var visible = System.Linq.Enumerable.FirstOrDefault(ImageProducts,
-            p => string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal));
-        if (visible is null || !string.Equals(visible.Barcode, product.Barcode, StringComparison.Ordinal) ||
-            !string.Equals(visible.ImagePath, product.ImagePath, StringComparison.Ordinal) ||
-            !string.Equals(visible.VariantId, product.VariantId, StringComparison.Ordinal) ||
+        // A duplicated article identity is ambiguous even when one tile matches.
+        // Never stage the first match from an inconsistent catalogue snapshot.
+        var matching = System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Where(ImageProducts,
+            p => string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal)));
+        if (matching.Length != 1 || matching[0] != product ||
             !_composition.IsCurrentImage(product))
             return new SelectionResponse(SelectionOutcome.InvalidCandidates, null);
         var selected = _batch.StageImage(new ArticleCandidate(product.ArticleId, product.Barcode ?? ""), quantity);
@@ -76,6 +80,8 @@ public sealed class CheckoutSession
         EnsureNoSubmission();
         ArgumentNullException.ThrowIfNull(product);
         if (string.IsNullOrWhiteSpace(product.Barcode) ||
+            System.Linq.Enumerable.Count(Products, p =>
+                string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal)) != 1 ||
             !System.Linq.Enumerable.Any(Products, p =>
                 string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal) &&
                 p == product) ||
@@ -97,6 +103,8 @@ public sealed class CheckoutSession
         EnsureNoSubmission();
         ArgumentNullException.ThrowIfNull(product);
         if (string.IsNullOrWhiteSpace(product.ArticleId) ||
+            System.Linq.Enumerable.Count(Products, p =>
+                string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal)) != 1 ||
             !System.Linq.Enumerable.Any(Products, p =>
                 string.Equals(p.ArticleId, product.ArticleId, StringComparison.Ordinal) && p == product) ||
             !_composition.IsCurrentArticle(product))
@@ -117,6 +125,13 @@ public sealed class CheckoutSession
 
     public CheckoutBatchStatus Submit(string operationId)
     {
+        // A lost acknowledgement is not a failed sale. Do not revalidate a
+        // changed catalogue and misreport Invalidated while a durable outcome
+        // is still unknown; reconciliation must precede any new submission.
+        if (_batch.State == CheckoutCommitState.OutcomeUnknown)
+            throw new InvalidOperationException("Reconcile the uncertain checkout outcome before submitting again.");
+        if (_invalidatedSubmission)
+            throw new InvalidOperationException("Discard and rebuild the invalidated checkout before retrying.");
         if (string.IsNullOrWhiteSpace(operationId))
             throw new ArgumentException("Stable operation ID required.", nameof(operationId));
         if (_operationId is not null && !string.Equals(_operationId, operationId, StringComparison.Ordinal))
@@ -125,11 +140,23 @@ public sealed class CheckoutSession
         // A photo/variant can change after the operator stages it but before
         // payment. Refuse the entire operation before any durable write.
         foreach (var image in _stagedImages)
-            if (!_composition.IsCurrentImage(image)) return CheckoutBatchStatus.Invalidated;
+            if (!_composition.IsCurrentImage(image))
+            {
+                _invalidatedSubmission = true;
+                return CheckoutBatchStatus.Invalidated;
+            }
         foreach (var variant in _stagedExplicitVariants)
-            if (!_composition.IsCurrentDuplicateVariant(variant)) return CheckoutBatchStatus.Invalidated;
+            if (!_composition.IsCurrentDuplicateVariant(variant))
+            {
+                _invalidatedSubmission = true;
+                return CheckoutBatchStatus.Invalidated;
+            }
         foreach (var article in _stagedArticles)
-            if (!_composition.IsCurrentArticle(article)) return CheckoutBatchStatus.Invalidated;
+            if (!_composition.IsCurrentArticle(article))
+            {
+                _invalidatedSubmission = true;
+                return CheckoutBatchStatus.Invalidated;
+            }
         var result = _batch.Commit(operationId);
         if (result == CheckoutBatchStatus.Committed || result == CheckoutBatchStatus.Empty)
         {
@@ -138,7 +165,8 @@ public sealed class CheckoutSession
             _stagedExplicitVariants.Clear();
         _stagedArticles.Clear();
         }
-        // Invalidated retains operation ID until the operator clears/rebuilds.
+        // An invalidated draft must never silently become payable on retry.
+        if (result == CheckoutBatchStatus.Invalidated) _invalidatedSubmission = true;
         return result;
     }
 
@@ -169,6 +197,7 @@ public sealed class CheckoutSession
         _stagedExplicitVariants.Clear();
         _stagedArticles.Clear();
         _operationId = null;
+        _invalidatedSubmission = false;
     }
 
     private void EnsureNoSubmission()
