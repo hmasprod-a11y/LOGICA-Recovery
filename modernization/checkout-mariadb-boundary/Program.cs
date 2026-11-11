@@ -991,6 +991,11 @@ namespace LOGICA.Infrastructure.Checkout
         private static void VerifyMultiLineCashReturn(Hanouty.ArchitectureBridge.IAuthorizedCheckoutPort correct,
             MySqlCheckoutOperationJournal journal)
         {
+            // Earlier authorization/preview cases intentionally mutate prices.
+            // Restore this disposable fixture explicitly so the multi-line
+            // acceptance starts from its asserted 5.25 + 3.00 price state.
+            Sql("UPDATE TABLE_ARTICLES SET PRIX_V_1=5.25,PROMOTION=0,PRIX_QTE=0 WHERE ID_ARTICLE='CSharp-Stock'");
+            Sql("UPDATE TABLE_ARTICLES SET PRIX_V_1=3.00,PROMOTION=0,PRIX_QTE=0 WHERE ID_ARTICLE='CSharp-Other'");
             decimal originalStockA = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
             decimal originalStockB = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'");
             correct.Commit(MultiLineRequest("multi-original", false));
