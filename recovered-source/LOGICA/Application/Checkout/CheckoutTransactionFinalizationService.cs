@@ -85,11 +85,13 @@ namespace LOGICA.ApplicationLayer.Checkout
     // In-memory protection only: durable DB idempotency remains unproven.
     internal sealed class CheckoutAttemptGate
     {
-        private CheckoutCommitProgress active;
+        // A non-null sentinel represents the idle gate state. This avoids nullable annotations in code also compiled by the legacy desktop project.
+        private static readonly CheckoutCommitProgress Inactive = new CheckoutCommitProgress();
+        private CheckoutCommitProgress active = Inactive;
 
         public bool IsBlocked
         {
-            get { return Interlocked.CompareExchange(ref active, null, null) != null; }
+            get { return !Object.ReferenceEquals(Interlocked.CompareExchange(ref active, Inactive, Inactive), Inactive); }
         }
 
         internal bool TryBegin(CheckoutCommitProgress progress)
@@ -97,7 +99,7 @@ namespace LOGICA.ApplicationLayer.Checkout
             if (progress == null) throw new ArgumentNullException("progress");
             if (progress.Stage != CheckoutCommitStage.NotStarted)
                 throw new InvalidOperationException("Checkout commit progress cannot be reused.");
-            if (Interlocked.CompareExchange(ref active, progress, null) != null)
+            if (!Object.ReferenceEquals(Interlocked.CompareExchange(ref active, progress, Inactive), Inactive))
                 return false;
             // Claim the progress token while this gate is held. Two cashier
             // gates can otherwise accept the same token concurrently; the
@@ -106,7 +108,7 @@ namespace LOGICA.ApplicationLayer.Checkout
             {
                 // This gate has not invoked any posting callback. Only this
                 // failed reservation may be released without DB reconciliation.
-                Interlocked.CompareExchange(ref active, null, progress);
+                Interlocked.CompareExchange(ref active, Inactive, progress);
                 throw new InvalidOperationException("Checkout commit progress cannot be reused.");
             }
             return true;
@@ -117,7 +119,7 @@ namespace LOGICA.ApplicationLayer.Checkout
             if (progress == null) throw new ArgumentNullException("progress");
             if (!valid)
                 throw new InvalidOperationException("Checkout attempt outcome has not been reconciled.");
-            if (Interlocked.CompareExchange(ref active, null, progress) != progress)
+            if (Interlocked.CompareExchange(ref active, Inactive, progress) != progress)
                 throw new InvalidOperationException("Checkout attempt is not active on this cashier.");
         }
 
