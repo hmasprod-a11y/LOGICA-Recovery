@@ -977,11 +977,15 @@ namespace LOGICA.Infrastructure.Checkout
                 : new[] {
                     new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2),
                     new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Other", 1) };
+            // Use the same authoritative DB price policy as real preparation.
+            // The separate SQL assertions below still pin expected signed values.
+            decimal amount = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                .ReadCashSaleTotal(NewConnection, lines);
             return new Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest(
                 operation, "O'Neil", "MAD", isReturn, lines,
                 new[] { new Hanouty.ArchitectureBridge.CheckoutPayment(
-                    Hanouty.ArchitectureBridge.CheckoutPaymentKind.Cash, 13.50m) },
-                13.50m, originalTicketId);
+                    Hanouty.ArchitectureBridge.CheckoutPaymentKind.Cash, amount) },
+                amount, originalTicketId);
         }
 
         private static void VerifyMultiLineCashReturn(Hanouty.ArchitectureBridge.IAuthorizedCheckoutPort correct,
