@@ -14,6 +14,7 @@
     <Page Include="App.xaml" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Hanouty.Desktop.Wpf.Tests" />
     <ProjectReference Include="../architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj" />
   </ItemGroup>
 </Project>

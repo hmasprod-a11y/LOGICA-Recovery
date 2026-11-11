@@ -37,7 +37,14 @@ public sealed class SessionBoundCashCheckoutSubmission :
         // Re-read the host's authenticated context on every attempt; never trust
         // a stale or UI-edited cashier, workstation, currency or tender amount.
         // Checkout independently validates PIN, pricing, payment and cart atomically.
-        var trusted = _authorizedContext();
+        CashierPaymentContext? trusted;
+        try { trusted = _authorizedContext(); }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            // A failed/expired Host session lookup is never authorization.
+            // No posting is attempted and the PIN is not inspected by WPF.
+            return CheckoutSubmissionResult.Invalidated;
+        }
         if (trusted?.IsWellFormed != true ||
             !string.Equals(trusted.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(context.CashierId, trusted.CashierId, StringComparison.Ordinal) ||

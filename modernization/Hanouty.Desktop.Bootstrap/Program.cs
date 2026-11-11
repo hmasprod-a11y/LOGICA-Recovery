@@ -119,8 +119,10 @@ public static class Program
         vm.SelectCommand.Execute(vm.PhotoProducts.Single());
         Require(host.Session.PendingCount == 3, "Barcode-free image selection failed.");
         vm.CommitCommand.Execute(null);
-        Require(!vm.CheckoutUncertain && vm.CommitFeedback == "Checkout submission unavailable",
-            "A read-only candidate attempted financial posting.");
+        Require(!vm.CanCommit && !vm.CheckoutUncertain && vm.PendingOperationId is null &&
+                vm.CommitFeedback is "Cashier session required" or
+                    "Cashier and payment context required" or "Authorized payment adapter unavailable",
+            "A read-only candidate must reject checkout before allocating or posting an operation.");
         vm.SearchText = "Image-only";
         Require(vm.VisibleProducts.Count == 1, "Real catalogue search failed.");
         vm.SearchText = "";

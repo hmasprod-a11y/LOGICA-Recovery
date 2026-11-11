@@ -29,35 +29,63 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private string _scannerText = "";
     private string _scanFeedback = "";
     private bool _checkoutUncertain;
-    public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); OnPropertyChanged(nameof(CanCommit)); } }
+    public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); OnPropertyChanged(nameof(CanCommit)); OnPropertyChanged(nameof(CanReviewResolvedCheckout)); } }
     private readonly IProductSelection _selection;
     private bool _selectionInFlight;
-    private readonly ICheckoutSubmission? _submission;
-    private CashierPaymentContext? _paymentContext;
-    // WPF payment context is never an authorization grant: the production adapter
-    // checks it against authenticated cashier/session data on every commit.
-    public CashierPaymentContext? PaymentContext
-    {
-        get => _paymentContext;
-        set
-        {
+    public bool CheckoutBusy => _selectionInFlight;
+    public bool RequireFreshPaymentContext { get; init; }
+    private bool _financialSessionActive = true;
+    public bool FinancialSessionActive {
+        get => _financialSessionActive;
+        set {
             if (_selectionInFlight || CheckoutUncertain) return;
-            _paymentContext = value;
+            _financialSessionActive = value;
+            // A fresh-session host must reissue the authorized payment context.
+            // Logging out must not leave a previously authorized tender reusable on login.
+            if (!value)
+            {
+                ClearConsumedPaymentContext();
+                // Logout invalidates the selection/variant choice from the old cashier.
+                // Never allow a re-login to submit a previously staged article.
+                _selectedProduct = null;
+                OnPropertyChanged(nameof(SelectedProduct));
+                BarcodeCandidates = Array.Empty<ProductSummary>();
+                OnPropertyChanged(nameof(BarcodeCandidates));
+                OnPropertyChanged(nameof(HasBarcodeAmbiguity));
+                _scannerText = "";
+                OnPropertyChanged(nameof(ScannerText));
+            }
             OnPropertyChanged();
             OnPropertyChanged(nameof(CanCommit));
+            OnPropertyChanged(nameof(CanSelectProduct));
         }
     }
+    private void ClearConsumedPaymentContext()
+    {
+        if (!RequireFreshPaymentContext) return;
+        _paymentContext = null;
+        OnPropertyChanged(nameof(PaymentContext));
+        OnPropertyChanged(nameof(CanCommit));
+    }
+    private readonly ICheckoutSubmission? _submission;
     private string? _pendingOperationId;
     private string _commitFeedback = "Checkout submission unavailable";
+    private CashierPaymentContext? _paymentContext;
+    public CashierPaymentContext? PaymentContext { get => _paymentContext; set { if (_selectionInFlight || CheckoutUncertain) return; _paymentContext = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanCommit)); } }
+    public string? PendingOperationId => _pendingOperationId;
+    private CheckoutResolution _reviewedResolution = CheckoutResolution.Unknown;
+    // A durable result is evidence for a cashier review, never permission to retry.
+    public CheckoutResolution ReviewedResolution { get => _reviewedResolution; private set { _reviewedResolution = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanReviewResolvedCheckout)); } }
+    public bool CanReviewResolvedCheckout => CheckoutUncertain && ReviewedResolution != CheckoutResolution.Unknown;
+
+    public System.Windows.Input.ICommand ReconcileCommand { get; }
+    private readonly ICheckoutOutcomeReconciliation? _reconciliation;
     public string CommitFeedback { get => _commitFeedback; private set { _commitFeedback = value; OnPropertyChanged(); } }
-    public bool CanCommit => _submission is not null && CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight &&
-        (_submission is not IContextualCheckoutSubmission ||
-         (_paymentContext?.IsWellFormed == true &&
-          string.Equals(_paymentContext.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase)));
+    public bool CanCommit => FinancialSessionActive && _submission is IContextualCheckoutSubmission && PaymentContext?.IsWellFormed == true && CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
     public System.Windows.Input.ICommand CommitCommand { get; }
     private readonly IProductImageAvailability _images;
 
-    public CatalogueViewModel(ICatalogueReader reader, IProductSelection selection, IProductImageAvailability? images = null, ICheckoutSubmission? submission = null)
+    public CatalogueViewModel(ICatalogueReader reader, IProductSelection selection, IProductImageAvailability? images = null, ICheckoutSubmission? submission = null, ICheckoutOutcomeReconciliation? reconciliation = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         _reader = reader;
@@ -65,10 +93,24 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
         _images = images ?? new LocalProductImageAvailability();
         _submission = submission;
+        _reconciliation = reconciliation;
+        ReconcileCommand = new DelegateCommand(_ => ReconcileCheckout());
         CommitCommand = new DelegateCommand(_ => CommitCheckout());
         ScanCommand = new DelegateCommand(_ => ScanBarcode());
         SelectCommand = new DelegateCommand(product =>
         {
+            // A nested touch event must not replace the in-flight article.
+            if (_selectionInFlight) { ScanFeedback = "Selection already in progress"; return; }
+            if (CheckoutUncertain) { ScanFeedback = "Checkout status unknown — reconcile before retry"; return; }
+            if (!FinancialSessionActive) { ScanFeedback = "Cashier session required"; return; }
+            if (!CatalogueAvailable) { ScanFeedback = "Local catalogue unavailable"; return; }
+            // A non-null command parameter must be a catalogue article.
+            // Never fall back to a previously selected row on malformed input.
+            if (product is not null && product is not ProductSummary)
+            {
+                ScanFeedback = "Invalid product selection";
+                return;
+            }
             if (product is ProductSummary article) SelectedProduct = article;
             SelectCurrent();
         });
@@ -83,7 +125,34 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public System.Windows.Input.ICommand ScanCommand { get; }
     public System.Windows.Input.ICommand SelectCommand { get; }
     public System.Windows.Input.ICommand ReloadCommand { get; }
-    public string ScannerText { get => _scannerText; set { if (_selectionInFlight || CheckoutUncertain) return; _scannerText = value ?? ""; OnPropertyChanged(); } }
+    public string ScannerText {
+        get => _scannerText;
+        set {
+            if (_selectionInFlight || CheckoutUncertain) return;
+            var next = value ?? "";
+            if (string.Equals(_scannerText, next, StringComparison.Ordinal)) return;
+            _scannerText = next;
+            // A variant chosen for an earlier barcode must not remain selectable
+            // after the cashier edits or replaces the scanner input.
+            if (BarcodeCandidates.Count != 0)
+            {
+                BarcodeCandidates = Array.Empty<ProductSummary>();
+                SelectedProduct = null;
+                OnPropertyChanged(nameof(BarcodeCandidates));
+                OnPropertyChanged(nameof(HasBarcodeAmbiguity));
+            }
+            // A new scan query must not leave the previous scan's accepted or
+            // ambiguous feedback visible as though it described the new code.
+            if (!string.IsNullOrEmpty(_scanFeedback) &&
+                (_scanFeedback == "Ambiguous barcode" ||
+                 _scanFeedback == "Product not found" ||
+                 _scanFeedback == "Empty barcode" ||
+                 _scanFeedback == "Barcode contains control characters" ||
+                 _scanFeedback == "Barcode contains leading or trailing whitespace"))
+                ScanFeedback = "";
+            OnPropertyChanged();
+        }
+    }
     public string ScanFeedback { get => _scanFeedback; private set { _scanFeedback = value; OnPropertyChanged(); } }
     private bool _isRightToLeft;
     public bool IsRightToLeft
@@ -94,7 +163,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public System.Windows.FlowDirection LayoutDirection => IsRightToLeft ? System.Windows.FlowDirection.RightToLeft : System.Windows.FlowDirection.LeftToRight;
     public IReadOnlyList<ProductSummary> BarcodeCandidates { get; private set; } = Array.Empty<ProductSummary>();
     public bool HasBarcodeAmbiguity => BarcodeCandidates.Count > 1;
-    public bool CanSelectProduct => CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
+    public bool CanSelectProduct => FinancialSessionActive && CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
 
     public void ReloadCatalogue()
     {
@@ -138,10 +207,34 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     {
         if (_selectionInFlight) { ScanFeedback = "Selection already in progress"; return; }
         if (CheckoutUncertain) { ScanFeedback = "Checkout status unknown — reconcile before retry"; return; }
+        if (!FinancialSessionActive) { ScanFeedback = "Cashier session required"; return; }
         if (!CatalogueAvailable) { ScanFeedback = "Local catalogue unavailable"; return; }
-        var code = ScannerText.Trim();
+        // Barcode identity is exact: silently trimming scanner input could
+        // select a different article from the code actually received.
+        var code = ScannerText;
+        if (code.Length != 0 && !string.Equals(code, code.Trim(), StringComparison.Ordinal))
+        {
+            BarcodeCandidates = Array.Empty<ProductSummary>();
+            SelectedProduct = null;
+            OnPropertyChanged(nameof(BarcodeCandidates));
+            OnPropertyChanged(nameof(HasBarcodeAmbiguity));
+            ScanFeedback = "Barcode contains leading or trailing whitespace";
+            return;
+        }
+        // Never normalize scanner control characters into another article identity.
+        if (code.Any(char.IsControl))
+        {
+            BarcodeCandidates = Array.Empty<ProductSummary>();
+            SelectedProduct = null;
+            OnPropertyChanged(nameof(BarcodeCandidates));
+            OnPropertyChanged(nameof(HasBarcodeAmbiguity));
+            ScanFeedback = "Barcode contains control characters";
+            return;
+        }
         if (code.Length == 0) { BarcodeCandidates = Array.Empty<ProductSummary>(); SelectedProduct = null; OnPropertyChanged(nameof(BarcodeCandidates)); OnPropertyChanged(nameof(HasBarcodeAmbiguity)); ScanFeedback = "Empty barcode"; return; }
-        var matches = _all.Where(p => string.Equals(p.Barcode, code, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(p.Barcode)).ToArray();
+        // Preserve the exact barcode identity used by the Application checkout gateway.
+        // Case-folding here could select a different article than the live catalogue.
+        var matches = _all.Where(p => string.Equals(p.Barcode, code, StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(p.Barcode)).ToArray();
         BarcodeCandidates = matches;
         OnPropertyChanged(nameof(BarcodeCandidates));
         OnPropertyChanged(nameof(HasBarcodeAmbiguity));
@@ -154,11 +247,19 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         SelectedProduct = matches[0];
         SelectCurrent();
         // Clear only after an acknowledged selection; retain the code on uncertainty.
-        if (ScanFeedback == "Selection accepted") ScannerText = "";
+        if (ScanFeedback == "Selection accepted" && !CheckoutUncertain)
+        {
+            // An acknowledged scan resets only the input. The public ScannerText
+            // setter intentionally revokes stale selections on cashier edits;
+            // using it here would also erase the newly accepted product.
+            _scannerText = "";
+            OnPropertyChanged(nameof(ScannerText));
+        }
     }
 
     public void SelectCurrent()
     {
+        if (!FinancialSessionActive) { ScanFeedback = "Cashier session required"; return; }
         if (CheckoutUncertain) { ScanFeedback = "Checkout status unknown — reconcile before retry"; return; }
         if (_selectionInFlight) { ScanFeedback = "Selection already in progress"; return; }
         if (!CatalogueAvailable) { ScanFeedback = "Local catalogue unavailable"; return; }
@@ -173,6 +274,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         if (!CatalogueAvailable || !_all.Any(p => ReferenceEquals(p, SelectedProduct))) { ScanFeedback = "Product no longer in catalogue"; SelectedProduct = null; return; }
         if (string.IsNullOrWhiteSpace(SelectedProduct.Id)) { ScanFeedback = "Invalid product identity"; return; }
         // Selection is delegated to the injected Application boundary; WPF never posts directly.
+        var clearAcknowledgedVariantScan = false;
         try
         {
             _selectionInFlight = true;
@@ -184,10 +286,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
                 BarcodeCandidates = Array.Empty<ProductSummary>();
                 OnPropertyChanged(nameof(BarcodeCandidates));
                 OnPropertyChanged(nameof(HasBarcodeAmbiguity));
-                // The public setter intentionally rejects edits while selection
-                // is in flight. Clear our acknowledged scan internally instead.
-                _scannerText = "";
-                OnPropertyChanged(nameof(ScannerText));
+                // ScannerText setter is intentionally locked while the port is running.
+                // Clear only after the acknowledged call has finished.
+                clearAcknowledgedVariantScan = true;
             }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
@@ -199,21 +300,99 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         finally
         {
             _selectionInFlight = false;
+            if (clearAcknowledgedVariantScan && !CheckoutUncertain)
+            {
+                // Internal acknowledgement owns the reset; external scanner edits
+                // remain blocked during selection and unknown checkout states.
+                _scannerText = "";
+                OnPropertyChanged(nameof(ScannerText));
+            }
             OnPropertyChanged(nameof(CanSelectProduct));
             OnPropertyChanged(nameof(CanCommit));
+        }
+    }
+
+    public void ReconcileCheckout()
+    {
+        if (!CheckoutUncertain || _pendingOperationId is null || _reconciliation is null || _selectionInFlight) return;
+        try
+        {
+            var resolution = _reconciliation.Reconcile(_pendingOperationId);
+            ReviewedResolution = resolution;
+            CommitFeedback = resolution switch
+            {
+                CheckoutResolution.Persisted => "Sale persisted — cashier review required before a new checkout",
+                CheckoutResolution.Absent => "Sale absent — cashier review required before a new checkout",
+                _ => "Checkout status unknown — reconcile before retry"
+            };
+            // A journal result is informational until Application supplies an
+            // explicit safe session reset. Never unlock or replay here.
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            ReviewedResolution = CheckoutResolution.Unknown;
+            CommitFeedback = "Checkout status unknown — reconcile before retry";
+        }
+    }
+
+    // Called only by the explicit review UI. A journal read alone never unlocks.
+    // Authorization must recheck the durable outcome and clear the same draft.
+    public bool TryReviewResolvedCheckout(Func<string, CheckoutResolution, bool> authorize)
+    {
+        if (authorize is null || _selectionInFlight || !CanReviewResolvedCheckout ||
+            _pendingOperationId is null) return false;
+        var operation = _pendingOperationId;
+        var resolution = ReviewedResolution;
+        try
+        {
+            _selectionInFlight = true;
+            OnPropertyChanged(nameof(CanCommit));
+            OnPropertyChanged(nameof(CanSelectProduct));
+            if (!authorize(operation, resolution) ||
+                _pendingOperationId != operation || ReviewedResolution != resolution ||
+                !CheckoutUncertain) return false;
+            // Discard the old UI identity too: never retry the resolved operation.
+            _pendingOperationId = null;
+            OnPropertyChanged(nameof(PendingOperationId));
+            _selectedProduct = null;
+            OnPropertyChanged(nameof(SelectedProduct));
+            _scannerText = "";
+            OnPropertyChanged(nameof(ScannerText));
+            BarcodeCandidates = Array.Empty<ProductSummary>();
+            OnPropertyChanged(nameof(BarcodeCandidates));
+            OnPropertyChanged(nameof(HasBarcodeAmbiguity));
+            ReviewedResolution = CheckoutResolution.Unknown;
+            ClearConsumedPaymentContext();
+            CheckoutUncertain = false;
+            CommitFeedback = resolution == CheckoutResolution.Persisted
+                ? "Persisted sale reviewed — select products for a new checkout"
+                : "Absent sale reviewed — select products for a new checkout";
+            return true;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            CommitFeedback = "Cashier review failed — checkout remains locked";
+            return false;
+        }
+        finally
+        {
+            _selectionInFlight = false;
+            OnPropertyChanged(nameof(CanCommit));
+            OnPropertyChanged(nameof(CanSelectProduct));
         }
     }
 
     public void CommitCheckout()
     {
         if (_selectionInFlight) { CommitFeedback = "Checkout already in progress"; return; }
-        if (_submission is null) { CommitFeedback = "Checkout submission unavailable"; return; }
-        if (_submission is IContextualCheckoutSubmission &&
-            (_paymentContext?.IsWellFormed != true ||
-             !string.Equals(_paymentContext.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase)))
-        { CommitFeedback = "Authorized cash payment context required"; return; }
+        // ICommand.Execute can be invoked while the visual button is disabled.
+        // Logout must fail closed at the ViewModel boundary, before allocating an operation ID.
+        if (!FinancialSessionActive) { CommitFeedback = "Cashier session required"; return; }
+        if (_submission is not IContextualCheckoutSubmission contextual) { CommitFeedback = "Authorized payment adapter unavailable"; return; }
+        if (PaymentContext?.IsWellFormed != true) { CommitFeedback = "Cashier and payment context required"; return; }
         if (CheckoutUncertain) { CommitFeedback = "Checkout status unknown — reconcile before retry"; return; }
         if (!CatalogueAvailable) { CommitFeedback = "Local catalogue unavailable"; return; }
+        ReviewedResolution = CheckoutResolution.Unknown;
         // Stable operation identity is retained for invalidation and unknown outcomes.
         _pendingOperationId ??= Guid.NewGuid().ToString("N");
         try
@@ -221,9 +400,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             _selectionInFlight = true;
             OnPropertyChanged(nameof(CanSelectProduct));
             OnPropertyChanged(nameof(CanCommit));
-            var result = _submission is IContextualCheckoutSubmission contextual
-                ? contextual.Submit(_pendingOperationId, _paymentContext!)
-                : _submission.Submit(_pendingOperationId);
+            var result = contextual.Submit(_pendingOperationId, PaymentContext);
             CommitFeedback = result switch
             {
                 CheckoutSubmissionResult.Committed => "Checkout committed",
@@ -234,15 +411,14 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             if (result is CheckoutSubmissionResult.Committed or CheckoutSubmissionResult.Empty)
             {
                 _pendingOperationId = null;
-                if (_submission is IContextualCheckoutSubmission)
-                {
-                    _paymentContext = null; // fresh authenticated tender required for next sale
-                    OnPropertyChanged(nameof(PaymentContext));
-                }
+                OnPropertyChanged(nameof(PendingOperationId));
+                ClearConsumedPaymentContext();
             }
-            // Unknown and future/unrecognized result values are both indeterminate.
-            // Never silently leave the checkout button enabled after a protocol mismatch.
-            if (result is not (CheckoutSubmissionResult.Committed or CheckoutSubmissionResult.Empty or CheckoutSubmissionResult.Invalidated))
+            // Invalidated means the Host rejected the previously authorized draft.
+            // Keep its stable operation ID locked for explicit durable reconciliation:
+            // never silently resubmit the same stale cashier/basket context.
+            // Unknown and future/unrecognized results are likewise fail-closed.
+            if (result is not (CheckoutSubmissionResult.Committed or CheckoutSubmissionResult.Empty))
                 CheckoutUncertain = true;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
@@ -276,6 +452,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         set
         {
             if (ReferenceEquals(_selectedProduct, value)) return;
+            if (_selectionInFlight) return;
             _selectedProduct = value;
             OnPropertyChanged();
         }

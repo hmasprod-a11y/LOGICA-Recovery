@@ -6,15 +6,14 @@ namespace Hanouty.Desktop.Wpf;
 
 public partial class App : Application
 {
-    // Diagnostic seam only; never authorizes production startup.
+    // Legacy diagnostic seam only; production startup must not fall back to this registration.
     public static Func<(ICatalogueReader Catalogue, IProductSelection Checkout, ICheckoutSubmission Submission)>? ResolveServices { get; set; }
 
-    // Financial host registers a fresh authenticated cash context together with
-    // its durable transaction adapter. No PIN or payment authority lives in WPF.
+    // Architecture-owned CreateFinancial host registers this existing WPF startup
+    // seam with its trusted cashier/payment context. PIN stays inside Checkout
+    // preparation callback; never pass or retain it in WPF.
     public static Func<(ICatalogueReader Catalogue, IProductSelection Checkout,
         ICheckoutSubmission Submission, CashierPaymentContext Payment)>? ResolveFinancialServices { get; set; }
-
-    public static bool HasProductionStartupResolver => ResolveFinancialServices is not null;
 
     public static bool HasAuthorizedFinancialRegistration(ICatalogueReader? catalogue,
         IProductSelection? checkout, ICheckoutSubmission? submission, CashierPaymentContext? payment) =>
@@ -24,29 +23,36 @@ public partial class App : Application
         payment?.IsWellFormed == true &&
         string.Equals(payment.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase);
 
+    // Allows Windows STA tests to assert that the diagnostic resolver cannot
+    // unlock a production process, without displaying a modal startup dialog.
+    public static bool HasProductionStartupResolver => ResolveFinancialServices is not null;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         if (!HasProductionStartupResolver)
         {
-            MessageBox.Show("Production catalogue/checkout services are not configured. No sale can be started.",
+            MessageBox.Show("Local MariaDB and authorized cashier services are not configured. Launch HANOUTY through its installed local setup; catalogue-only diagnostics cannot process sales.",
                 "Hanouty — startup blocked", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(2);
             return;
         }
         try
         {
-            var financial = ResolveFinancialServices?.Invoke();
-            if (financial is not { } authorized ||
-                !HasAuthorizedFinancialRegistration(authorized.Catalogue, authorized.Checkout,
-                    authorized.Submission, authorized.Payment))
-                throw new InvalidOperationException("Authorized cash registration is incomplete.");
-            MainWindow = new MainWindow(authorized.Catalogue, authorized.Checkout,
-                authorized.Submission, authorized.Payment);
+            var services = ResolveFinancialServices?.Invoke();
+            // A diagnostic catalogue registration is not a production startup path.
+            // QA Bootstrap must provide the authorized local financial composition.
+            if (services is not { } financial ||
+                !HasAuthorizedFinancialRegistration(financial.Catalogue, financial.Checkout,
+                    financial.Submission, financial.Payment))
+                throw new InvalidOperationException("Incomplete authorized local checkout registration.");
+            MainWindow = new MainWindow(financial.Catalogue, financial.Checkout,
+                financial.Submission, financial.Payment, requireFreshPaymentContext: true);
             MainWindow.Show();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
+            // Never reveal connection strings, credentials or database internals on a POS terminal.
             MessageBox.Show("Unable to start authorized local services. Contact the administrator.",
                 "Hanouty — startup blocked", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(2);
