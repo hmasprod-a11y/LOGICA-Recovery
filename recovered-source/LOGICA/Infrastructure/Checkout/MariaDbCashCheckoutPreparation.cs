@@ -235,7 +235,9 @@ namespace LOGICA.Infrastructure.Checkout
             if (request.Lines.Count == 0 || string.IsNullOrWhiteSpace(request.OriginalTicketId))
                 throw new InvalidOperationException("A complete original ticket and line set are required.");
             decimal amount = CashReturnConsumptionClaim.VerifyAndClaimFullOriginal(
-                connection, transaction, request.OriginalTicketId, request.OperationId, request.Lines);
+                connection, transaction, request.OriginalTicketId, request.OperationId,
+                request.Lines.Select(line => new CashReturnConsumptionClaim.RequestedLine(
+                    line.ArticleId, line.Quantity)).ToArray());
             if (request.ExpectedTotal != amount || request.Payments.Count != 1 ||
                 request.Payments[0].Amount != amount ||
                 request.Payments[0].Kind != CheckoutPaymentKind.Cash)
