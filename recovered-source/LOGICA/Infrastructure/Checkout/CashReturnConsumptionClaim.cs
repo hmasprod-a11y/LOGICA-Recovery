@@ -1,7 +1,6 @@
 using System;
 using System.Data;
 using System.Collections.Generic;
-using Hanouty.ArchitectureBridge;
 using MySql.Data.MySqlClient;
 
 namespace LOGICA.Infrastructure.Checkout
@@ -11,6 +10,18 @@ namespace LOGICA.Infrastructure.Checkout
     // No schema creation or migration occurs on a shop database.
     internal static class CashReturnConsumptionClaim
     {
+        // Infrastructure remains compatible with the legacy .NET Framework build.
+        internal sealed class RequestedLine
+        {
+            internal string ArticleId { get; private set; }
+            internal decimal Quantity { get; private set; }
+            internal RequestedLine(string articleId, decimal quantity)
+            {
+                ArticleId = articleId;
+                Quantity = quantity;
+            }
+        }
+
         // The only supported full-ticket return preflight: authoritative original
         // journal and settlement are locked before the durable consumption claim.
         // Call inside the SAME transaction that posts signed refund/payment/stock.
@@ -19,7 +30,7 @@ namespace LOGICA.Infrastructure.Checkout
         internal static decimal VerifyAndClaimFullOriginal(
             MySqlConnection connection, MySqlTransaction transaction,
             string originalTicketId, string returnOperationId,
-            IReadOnlyList<CheckoutBatchLine> requestedLines)
+            IReadOnlyList<RequestedLine> requestedLines)
         {
             if (string.Equals(originalTicketId, returnOperationId, StringComparison.Ordinal))
                 throw new InvalidOperationException("A refund cannot reuse the original sale operation.");
@@ -32,7 +43,7 @@ namespace LOGICA.Infrastructure.Checkout
                 throw new InvalidOperationException("Refund request must contain every original sale line.");
 
             var requested = new Dictionary<string, decimal>(StringComparer.Ordinal);
-            foreach (CheckoutBatchLine line in requestedLines)
+            foreach (RequestedLine line in requestedLines)
             {
                 if (line == null || string.IsNullOrWhiteSpace(line.ArticleId) || line.Quantity <= 0 ||
                     requested.ContainsKey(line.ArticleId))
