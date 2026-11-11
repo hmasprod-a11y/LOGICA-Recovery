@@ -20,6 +20,12 @@ public partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(catalogue);
         ArgumentNullException.ThrowIfNull(checkout);
         ArgumentNullException.ThrowIfNull(submission);
+        // Direct window construction must not bypass the production startup gate.
+        // A supplied payment context is authority-sensitive and requires the same
+        // durable, contextual and reconcilable checkout contracts as App.OnStartup.
+        if (paymentContext is not null &&
+            !App.HasAuthorizedFinancialRegistration(catalogue, checkout, submission, paymentContext))
+            throw new InvalidOperationException("Authorized financial checkout services are incomplete.");
         InitializeComponent();
         DataContext = new CatalogueViewModel(catalogue, checkout, submission: submission)
         {
