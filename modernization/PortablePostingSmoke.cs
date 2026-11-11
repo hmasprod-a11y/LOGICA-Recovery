@@ -25,8 +25,16 @@ internal static class PortablePostingSmoke
     }
     private static IEnumerable<TicketPaymentWrite> Payments()
     {
-        yield return new TicketPaymentWrite { AmountText = "1" };
-        yield return new TicketPaymentWrite { AmountText = "2" };
+        yield return Payment("1");
+        yield return Payment("2");
+    }
+    private static TicketPaymentWrite Payment(string amount)
+    {
+        return new TicketPaymentWrite {
+            Kind = TicketPaymentKind.Cash,
+            Context = new TicketPaymentContext { TicketId = "portable-posting", TicketNumber = "1", SaleDate = new DateTime(2026, 1, 1), Cashier = "portable-posting", ClientId = "0", ClientCode = "0", ClientName = "Client", Workstation = "01", Operation = "VENTE", Remark = "" },
+            AmountText = amount
+        };
     }
     private static CheckoutPostingInput Input(Store store)
     {
@@ -56,7 +64,15 @@ internal static class PortablePostingSmoke
         catch (InvalidOperationException ex) { propagated = ex.Message == "payment"; }
         if (!propagated) throw new Exception("Payment failure must propagate to the caller-owned transaction");
         Assert(failed, "readStock,stock:A,stock:B,readHeader,header,readJournal,journal,readPayments,payment:1,payment:2");
-        Console.WriteLine("PASS portable checkout posting: ordered stock/ticket/payment, failure before print and completion");
+        var invalid = new Store();
+        var invalidInput = Input(invalid);
+        invalidInput.ReadPayments = delegate { invalid.Events.Add("readPayments"); return new[] { new TicketPaymentWrite { Kind = TicketPaymentKind.Cash, AmountText = "1" } }; };
+        bool missingContextRejected = false;
+        try { CheckoutPostingService.Post(invalid, invalidInput); }
+        catch (InvalidOperationException ex) { missingContextRejected = ex.Message == "Checkout payment line has no context."; }
+        if (!missingContextRejected) throw new Exception("Checkout payment without context must fail closed.");
+        Assert(invalid, "readStock,stock:A,stock:B,readHeader,header,readJournal,journal,readPayments");
+        Console.WriteLine("PASS portable checkout posting: ordered stock/ticket/payment, missing context denial, failure before print and completion");
         return 0;
     }
 }

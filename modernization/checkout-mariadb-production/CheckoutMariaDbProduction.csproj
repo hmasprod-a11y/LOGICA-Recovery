@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>Hanouty.Checkout.MariaDb</AssemblyName>
+    <ArchitectureProject Condition="'$(ArchitectureProject)' == ''">../architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj</ArchitectureProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MySql.Data" Version="9.5.0" />
+    <ProjectReference Include="$(ArchitectureProject)" />
+    <Compile Include="MariaDbCashCheckoutServices.cs" />
+    <Compile Include="AssemblyInfo.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/CashReturnConsumptionClaim.cs" Link="Production/recovered-source/LOGICA/Infrastructure/Checkout/CashReturnConsumptionClaim.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/CashReturnOriginalSaleEvidence.cs" Link="Production/recovered-source/LOGICA/Infrastructure/Checkout/CashReturnOriginalSaleEvidence.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/MariaDbCashCheckoutPreparation.cs" Link="Production/recovered-source/LOGICA/Infrastructure/Checkout/MariaDbCashCheckoutPreparation.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Domain/SalesLinePricing.cs" Link="Production/recovered-source/LOGICA/Domain/SalesLinePricing.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Domain/ILegacyCheckoutSemantics.cs" Link="Production/recovered-source/LOGICA/Domain/ILegacyCheckoutSemantics.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Application/Checkout/CheckoutPostingModels.cs" Link="Production/Application/Checkout/CheckoutPostingModels.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Application/Checkout/CheckoutPostingService.cs" Link="Production/Application/Checkout/CheckoutPostingService.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Application/Checkout/CheckoutStockPostingService.cs" Link="Production/Application/Checkout/CheckoutStockPostingService.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Application/Checkout/CheckoutTicketPostingService.cs" Link="Production/Application/Checkout/CheckoutTicketPostingService.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Application/Checkout/CheckoutPaymentPostingService.cs" Link="Production/Application/Checkout/CheckoutPaymentPostingService.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Application/Checkout/CheckoutTransactionBoundaryService.cs" Link="Production/Application/Checkout/CheckoutTransactionBoundaryService.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Application/Checkout/CheckoutTransactionFinalizationService.cs" Link="Production/Application/Checkout/CheckoutTransactionFinalizationService.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/AuthorizedCheckoutMariaDbPort.cs" Link="Production/Infrastructure/Checkout/AuthorizedCheckoutMariaDbPort.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/MySqlCheckoutAtomicPostingBoundary.cs" Link="Production/Infrastructure/Checkout/MySqlCheckoutAtomicPostingBoundary.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/MySqlCheckoutPostingStore.cs" Link="Production/Infrastructure/Checkout/MySqlCheckoutPostingStore.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/CheckoutStockWriter.cs" Link="Production/Infrastructure/Checkout/CheckoutStockWriter.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/StockMovementWriter.cs" Link="Production/Infrastructure/Checkout/StockMovementWriter.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/TicketHeaderWriter.cs" Link="Production/Infrastructure/Checkout/TicketHeaderWriter.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/TicketJournalWriter.cs" Link="Production/Infrastructure/Checkout/TicketJournalWriter.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/TicketPaymentWriter.cs" Link="Production/Infrastructure/Checkout/TicketPaymentWriter.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/CheckoutCompletionWriter.cs" Link="Production/Infrastructure/Checkout/CheckoutCompletionWriter.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/CheckoutTicketPostingSql.cs" Link="Production/Infrastructure/Checkout/CheckoutTicketPostingSql.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Checkout/CheckoutCompletionSql.cs" Link="Production/Infrastructure/Checkout/CheckoutCompletionSql.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Compatibility/VisualBasicTicketPostingSemantics.cs" Link="Production/Infrastructure/Compatibility/VisualBasicTicketPostingSemantics.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Compatibility/VisualBasicCheckoutCompletionSemantics.cs" Link="Production/Infrastructure/Compatibility/VisualBasicCheckoutCompletionSemantics.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Domain/ILegacyTicketPostingSemantics.cs" Link="Production/Domain/ILegacyTicketPostingSemantics.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Domain/ILegacyCheckoutCompletionSemantics.cs" Link="Production/Domain/ILegacyCheckoutCompletionSemantics.cs" />
+  </ItemGroup>
+</Project>
