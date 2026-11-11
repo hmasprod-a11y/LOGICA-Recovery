@@ -259,8 +259,9 @@ namespace LOGICA.Infrastructure.Checkout
             foreach (DataRow row in original.Rows)
             {
                 string id = Convert.ToString(row["ID_ARTICLE"], CultureInfo.InvariantCulture);
-                if (string.IsNullOrWhiteSpace(id) || !originalById.TryAdd(id, row))
+                if (string.IsNullOrWhiteSpace(id) || originalById.ContainsKey(id))
                     throw new InvalidOperationException("Original sale contains ambiguous article identity.");
+                originalById.Add(id, row);
                 decimal quantity = Number(row, "Qté");
                 decimal lineAmount = Number(row, "line_amount");
                 if (quantity <= 0m || lineAmount <= 0m || Number(row, "Remise") != 0m)
