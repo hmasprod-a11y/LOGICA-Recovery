@@ -12,6 +12,8 @@ on:
       - 'modernization/architecture/**'
       - 'recovered-source/LOGICA/Application/Checkout/**'
       - 'recovered-source/LOGICA/Infrastructure/Checkout/**'
+      - 'scripts/Package-HanoutyWpf.ps1'
+      - 'scripts/Test-HanoutyFinancialPackage.ps1'
   pull_request:
     branches: [integration/hanouty-qa-desktop-inventory-20261102]
     paths:
@@ -24,6 +26,8 @@ on:
       - 'modernization/architecture/**'
       - 'recovered-source/LOGICA/Application/Checkout/**'
       - 'recovered-source/LOGICA/Infrastructure/Checkout/**'
+      - 'scripts/Package-HanoutyWpf.ps1'
+      - 'scripts/Test-HanoutyFinancialPackage.ps1'
   workflow_dispatch:
 permissions:
   contents: read
@@ -132,19 +136,21 @@ jobs:
           "HANOUTY_CATALOGUE_CONNECTION=Server=127.0.0.1;Port=3307;Database=logica_ci;Uid=w2_test;Pwd=w2-disposable-only;SslMode=Disabled;" | Out-File $env:GITHUB_ENV -Append
           "HANOUTY_DATA_DIRECTORY=$data" | Out-File $env:GITHUB_ENV -Append
           "HANOUTY_W2_TEST_PIN=1234" | Out-File $env:GITHUB_ENV -Append
-      - name: Execute actual WPF cash sale and full-ticket refund
+      - name: Publish self-contained financial WPF package from this SHA
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $hostExe = Join-Path (Get-Location).Path 'modernization/Hanouty.Desktop.Bootstrap/bin/Release/net10.0-windows/Hanouty.Desktop.Bootstrap.exe'
-          if (-not (Test-Path $hostExe)) { throw 'Current SHA financial Host executable missing' }
+          $package = Join-Path $env:RUNNER_TEMP 'hanouty-financial-package'
+          ./scripts/Package-HanoutyWpf.ps1 -OutputDirectory $package -Runtime win-x64 -Mode financial
+          if ($LASTEXITCODE -ne 0) { throw 'Financial WPF package publish failed' }
+      - name: Test extracted financial package and double-click startup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
           $env:HANOUTY_W2_DISPOSABLE_MARKER = 'I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY'
-          $acceptance = Join-Path (Get-Location).Path 'evidence/w2'
-          $process = Start-Process -FilePath $hostExe -ArgumentList @('--verify-disposable-cash-sale', ('"' + $acceptance + '"')) -PassThru -Wait
-          if ($process.ExitCode -ne 0) {
-            Get-Content evidence/w2/*failure*.txt -ErrorAction SilentlyContinue | Write-Host
-            throw 'W2_NOT_ACCEPTED: actual WPF + MariaDB cash-sale/refund acceptance failed'
-          }
+          $package = Join-Path $env:RUNNER_TEMP 'hanouty-financial-package'
+          ./scripts/Test-HanoutyFinancialPackage.ps1 -PackageDirectory $package -EvidenceDirectory './evidence/package' -SourceSha $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Extracted financial package acceptance failed' }
       - name: Require executed same-SHA cash-sale and full-ticket refund proof
         shell: pwsh
         run: |
@@ -162,6 +168,15 @@ jobs:
           name: qa-w2-same-sha-financial-evidence
           path: evidence/
           if-no-files-found: warn
+          retention-days: 14
+      - name: Upload accepted standalone financial WPF package
+        uses: actions/upload-artifact@v4
+        with:
+          name: HANOUTY-WPF-financial-accepted
+          path: |
+            evidence/package/HANOUTY-WPF-net10-FINANCIAL-ACCEPTED-win-x64.zip
+            evidence/package/financial-package-acceptance.json
+          if-no-files-found: error
           retention-days: 14
       - name: Stop only this workflow's disposable MariaDB server
         if: always()

@@ -1,79 +1,57 @@
 param(
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
-    [ValidateSet('win-x64','win-x86')][string]$Runtime = 'win-x64'
+    [ValidateSet('win-x64','win-x86')][string]$Runtime = 'win-x64',
+    [ValidateSet('catalogue-only','financial')][string]$Mode = 'catalogue-only'
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $project = Join-Path $root 'modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj'
+$architecture = Join-Path $root 'modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj'
+$checkout = Join-Path $root 'modernization/checkout-mariadb-production/CheckoutMariaDbProduction.csproj'
 $dest = [IO.Path]::GetFullPath($OutputDirectory)
 $publish = Join-Path $dest 'publish'
 $extract = Join-Path $dest 'extracted-verification'
-$zip = Join-Path $dest "HANOUTY-WPF-net10-CATALOGUE-ONLY-$Runtime.zip"
-if (-not (Test-Path -LiteralPath $project)) { throw "WPF bootstrap project is missing." }
+$zip = Join-Path $dest ("HANOUTY-WPF-net10-" + $Mode.ToUpperInvariant() + "-$Runtime.zip")
+if (-not (Test-Path $project) -or -not (Test-Path $architecture)) { throw 'WPF or Architecture project missing.' }
+if ($Mode -eq 'financial' -and -not (Test-Path $checkout)) { throw 'Financial mode requires production Checkout.' }
 New-Item -ItemType Directory -Path $dest -Force | Out-Null
 foreach ($dir in @($publish,$extract)) {
-    if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }
+    if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
     New-Item -ItemType Directory -Path $dir | Out-Null
 }
-& dotnet publish $project -c Release -r $Runtime --self-contained true -p:PublishSingleFile=false -p:HanoutyWpfAsLibrary=true -o $publish
-if ($LASTEXITCODE -ne 0) { throw "HANOUTY WPF .NET 10 publish failed." }
-$exe = Join-Path $publish 'Hanouty.Desktop.Bootstrap.exe'
-if (-not (Test-Path -LiteralPath $exe)) { throw "Actual WPF bootstrap EXE is missing." }
-if (Test-Path -LiteralPath (Join-Path $publish 'LOGICA.exe')) { throw "Legacy WinForms executable is forbidden." }
-$wpfAssembly = Join-Path $publish 'Hanouty.Desktop.Wpf.dll'
-if (-not (Test-Path -LiteralPath $wpfAssembly)) { throw "HANOUTY WPF assembly is missing." }
-if (-not (Test-Path -LiteralPath (Join-Path $publish 'Hanouty.ArchitectureBridge.dll'))) {
-    throw "Shared Architecture bridge is missing."
+$args = @('publish',$project,'-c','Release','-r',$Runtime,'--self-contained','true',
+    '-p:PublishSingleFile=false','-p:HanoutyWpfAsLibrary=true',
+    "-p:ArchitectureProject=$architecture",'-o',$publish)
+if ($Mode -eq 'financial') { $args += "-p:CheckoutProductionProject=$checkout" }
+& dotnet @args
+if ($LASTEXITCODE -ne 0) { throw "WPF $Mode publish failed." }
+foreach ($name in @('Hanouty.Desktop.Bootstrap.exe','Hanouty.Desktop.Wpf.dll','Hanouty.ArchitectureBridge.dll')) {
+    if (-not (Test-Path (Join-Path $publish $name))) { throw "Published package missing $name." }
 }
-$readme = @'
-HANOUTY POS — .NET 10 WPF catalogue-only engineering candidate
-This archive contains the independent WPF bootstrap, not LOGICA WinForms.
-It is NOT Beta 1 and it is NOT authorized for retail financial transactions.
-Run only on a disposable local MariaDB with a test catalogue, following
-modernization/Hanouty.Desktop.Bootstrap/README.md.
-This build requires --catalogue-only. Financial posting deliberately fails closed.
-No real shop databases, credentials or license state are included.
-'@
-Set-Content -LiteralPath (Join-Path $publish 'HANOUTY-CANDIDATE-STATUS.txt') -Value $readme -Encoding UTF8
-$files = @(Get-ChildItem -LiteralPath $publish -Recurse -File | Where-Object {
-    $_.Extension -notin @('.pdb','.mdb')
-})
+if (Test-Path (Join-Path $publish 'LOGICA.exe')) { throw 'Legacy WinForms executable is forbidden.' }
+$status = if ($Mode -eq 'financial') {
+    'Financial engineering candidate; cashier login required; extracted W2 acceptance pending; not a commercial release.'
+} else {
+    'Catalogue-only read-only diagnostic candidate; not W2 acceptance or a commercial release.'
+}
+Set-Content (Join-Path $publish 'HANOUTY-CANDIDATE-STATUS.txt') $status -Encoding UTF8
+$files = @(Get-ChildItem $publish -Recurse -File | Where-Object { $_.Extension -notin @('.pdb','.mdb') })
 foreach ($f in $files) {
     if ($f.Name -match '(?i)(password|credential|secret|\.env)' -or $f.Name -eq 'LOGICA.exe') {
-        throw "Unsafe file detected in WPF package: $($f.Name)"
+        throw "Unsafe file in package: $($f.Name)"
     }
 }
 $hashes = @($files | Sort-Object FullName | ForEach-Object {
-    [pscustomobject]@{
-        file = [IO.Path]::GetRelativePath($publish, $_.FullName).Replace('\\','/')
-        sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-    }
+    [pscustomobject]@{ file=[IO.Path]::GetRelativePath($publish,$_.FullName).Replace('\','/'); sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
 })
-$manifest = [ordered]@{
-    application = 'HANOUTY POS WPF'
-    runtime = $Runtime
-    framework = 'net10.0-windows'
-    financialAcceptance = $false
-    candidate = 'catalogue-only'
-    files = $hashes
+$manifest = [ordered]@{ application='HANOUTY POS WPF'; runtime=$Runtime; framework='net10.0-windows'; mode=$Mode; financialAcceptance=$false; candidate=$(if($Mode -eq 'financial'){'financial-pending-extracted-acceptance'}else{'catalogue-only'}); files=$hashes }
+$manifest | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $publish 'HANOUTY-MANIFEST.json') -Encoding UTF8
+Compress-Archive (Join-Path $publish '*') $zip
+Expand-Archive $zip $extract
+$check = Get-Content (Join-Path $extract 'HANOUTY-MANIFEST.json') -Raw | ConvertFrom-Json
+foreach ($entry in $check.files) {
+    $file=Join-Path $extract ([string]$entry.file)
+    if (-not (Test-Path $file) -or (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant() -cne $entry.sha256) { throw "Extracted package hash mismatch: $($entry.file)" }
 }
-$manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $publish 'HANOUTY-MANIFEST.json') -Encoding UTF8
-if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
-Compress-Archive -Path (Join-Path $publish '*') -DestinationPath $zip
-Expand-Archive -LiteralPath $zip -DestinationPath $extract
-foreach ($required in @('Hanouty.Desktop.Bootstrap.exe','Hanouty.Desktop.Wpf.dll','Hanouty.ArchitectureBridge.dll','HANOUTY-MANIFEST.json')) {
-    if (-not (Test-Path -LiteralPath (Join-Path $extract $required))) {
-        throw "Extracted package missing $required"
-    }
-}
-$checked = Get-Content -LiteralPath (Join-Path $extract 'HANOUTY-MANIFEST.json') -Raw | ConvertFrom-Json
-foreach ($entry in $checked.files) {
-    $file = Join-Path $extract ([string]$entry.file)
-    if (-not (Test-Path -LiteralPath $file) -or
-        (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $entry.sha256) {
-        throw "Extracted package hash mismatch: $($entry.file)"
-    }
-}
-Write-Host "VERIFIED extracted HANOUTY WPF package: $zip"
-Write-Host "FINANCIAL ACCEPTANCE: FALSE — real cashier/MariaDB E2E still required."
+Write-Host "VERIFIED extracted WPF package: $zip"
