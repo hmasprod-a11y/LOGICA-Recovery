@@ -59,8 +59,7 @@ var wpfReturnConfirmed = wpfReturnWindow.ConfirmReturnDraft();
 Check(wpfReturnConfirmed,
     "WPF full-ticket confirm must submit through Checkout: " +
     wpfReturnVm.CommitFeedback + "; draft=" + wpfReturnWindow.ReturnDraftStatus.Text);
-Check(wpfReturnPort.Writes == 1 && wpfReturnJournal.Persisted.Contains(wpfReturnVm.PendingOperationId ?? "wpf-return") ||
-    wpfReturnPort.Writes == 1 && wpfReturnJournal.Persisted.Count == 1,
+Check(wpfReturnPort.Writes == 1 && wpfReturnJournal.Persisted.Count == 1,
     "WPF full-ticket confirm must write exactly once and persist its stable operation");
 Check(wpfReturnWindow.FindName("ReturnQuantity") is null,
     "WPF return UI must not expose unsupported partial quantities");
