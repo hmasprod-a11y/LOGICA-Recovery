@@ -66,7 +66,7 @@ internal static class DisposableCashSaleAcceptance
         host.ViewModel.ScanCommand.Execute(null);
         Require(host.ViewModel.ScanFeedback == "Selection accepted" &&
             host.ViewModel.ScannerText == "" && host.Session.PendingCount == 1,
-            "Actual WPF scanner command did not stage and acknowledge the real SQL article.");
+            $"Actual WPF scanner failed: feedback='{host.ViewModel.ScanFeedback}', scanner='{host.ViewModel.ScannerText}', pending={host.Session.PendingCount}, state={host.Session.State}, catalogue={host.ViewModel.CatalogueAvailable}, cashierActive={host.ViewModel.FinancialSessionActive}, canSelect={host.ViewModel.CanSelectProduct}.");
         Require(host.ViewModel.CanCommit, "Actual contextual Host did not enable test cash command.");
     }
 
