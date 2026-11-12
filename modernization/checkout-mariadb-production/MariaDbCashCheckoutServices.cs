@@ -113,6 +113,14 @@ namespace Hanouty.Checkout.MariaDb
                         if (header.ExecuteScalar() is null)
                             throw new InvalidOperationException("Persisted original cash sale was not found.");
                     }
+                    using (var claim = new MySqlCommand(
+                        "SELECT COUNT(*) FROM hanouty_cash_return_consumption " +
+                        "WHERE BINARY original_ticket_id=BINARY @ticket", connection, transaction))
+                    {
+                        claim.Parameters.AddWithValue("@ticket", originalTicketId);
+                        if (Convert.ToInt64(claim.ExecuteScalar()) != 0)
+                            throw new InvalidOperationException("Original cash ticket was already returned.");
+                    }
                     var lines = CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLines(
                         connection, transaction, originalTicketId);
                     var amount = lines.Sum(line => line.Amount);
