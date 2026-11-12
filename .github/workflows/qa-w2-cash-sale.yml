@@ -195,6 +195,12 @@ jobs:
           Copy-Item 'scripts/Start-Hanouty-Test.ps1' $bundle
           Copy-Item 'scripts/Start-Hanouty-Test.cmd' $bundle
           Copy-Item 'scripts/HANOUTY-TEST-START-HERE.txt' (Join-Path $bundle 'LE-MOI-DEMARRER.txt')
+      - name: Run the bundled one-click test setup on Windows before download
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = Join-Path $env:RUNNER_TEMP 'HANOUTY-WPF-TEST-BUNDLE'
+          & (Join-Path $bundle 'Start-Hanouty-Test.ps1') -VerifyOnly
       - name: Upload one-click Windows test bundle
         uses: actions/upload-artifact@v4
         with:
