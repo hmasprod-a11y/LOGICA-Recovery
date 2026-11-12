@@ -445,6 +445,8 @@ class PosSmoke {
      !fixture.ContainsKey("port") || Convert.ToInt32(fixture["port"])!=3307)
    throw new Exception("Movement search fixture requires exactly 127.0.0.1:3307/logica_ci");
   connection.Open();
+  // The real persistence guard reads the unique authorization rows from the same disposable InnoDB database as the article write.
+  Sql(connection,"DROP TABLE IF EXISTS TABLE_PARAMETRES; CREATE TABLE TABLE_PARAMETRES (OBJET VARCHAR(100) PRIMARY KEY, VALEUR VARCHAR(32)) ENGINE=InnoDB; INSERT INTO TABLE_PARAMETRES VALUES ('AJOUT_STOCK_MANUEL','True'),('MODIF_STOCK_MANUEL','True')");
   Sql(connection,"DROP TABLE IF EXISTS TABLE_MOUVEMENTS_STOCK; CREATE TABLE TABLE_MOUVEMENTS_STOCK (ID INT PRIMARY KEY,DATES DATE,CODE_ARTICLE VARCHAR(50),ARTICLE VARCHAR(100)) ENGINE=InnoDB; INSERT INTO TABLE_MOUVEMENTS_STOCK VALUES (1,'2026-01-01','ABC','Alpha'),(2,'2026-01-02','ABCX','Alpha extra'),(3,'2026-01-03','XYZ','Beta'),(4,'2026-01-04','ABC','Alpha')");
   connection.Close();
   using(var form=(Form)Activator.CreateInstance(assembly.GetType("LOGICA.Form_6_MOUVEMENTS_STOCK",true))) {
