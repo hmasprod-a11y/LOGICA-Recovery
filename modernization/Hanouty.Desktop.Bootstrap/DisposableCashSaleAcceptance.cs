@@ -280,7 +280,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Require(!host.ViewModel.CheckoutUncertain && host.Session.PendingCount == 0 &&
                 host.ViewModel.PendingOperationId is null && Snapshot(settings) == basketBeforeEditedContexts,
                 "Authenticated UI review failed to discard only the rejected draft.");
-            Require(host.TrySetFinancialContext(originalContext),
+            Require(host.TrySetFinancialContext(CashContext(originalContext.TenderedAmount, originalContext.TenderedAmount, originalContext.CashierId)),
                 "Fresh cashier authorization could not be issued after reviewed rejection.");
         }
         Select(host);
