@@ -223,6 +223,14 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $bundle = Join-Path $env:RUNNER_TEMP 'HANOUTY-WPF-TEST-BUNDLE'
           & (Join-Path $bundle 'Start-Hanouty-Test.ps1') -VerifyOnly
+      - name: Remove verified temporary extraction from download bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $extracted = Join-Path (Join-Path $env:RUNNER_TEMP 'HANOUTY-WPF-TEST-BUNDLE') 'hanouty-app'
+          $marker = Join-Path $extracted '.hanouty-test-package'
+          if (-not (Test-Path -LiteralPath $marker -PathType Leaf)) { throw 'Temporary extraction ownership marker missing; refusing cleanup.' }
+          Remove-Item -LiteralPath $extracted -Recurse -Force
       - name: Upload one-click Windows test bundle
         uses: actions/upload-artifact@v4
         with:
