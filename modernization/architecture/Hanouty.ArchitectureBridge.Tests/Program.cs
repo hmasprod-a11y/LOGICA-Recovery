@@ -863,7 +863,7 @@ sealed class StubManualStockPermissionReader : IManualStockPermissionReader
     public bool ThrowOnRead { get; set; }
     public Action? OnRead { get; set; }
     public int Calls { get; private set; }
-    public bool CanAdjustStock(VerifiedStockActor actor) { Calls++; if (ThrowOnRead) throw new InvalidOperationException("permission backend unavailable"); return Allowed; }
+    public bool CanAdjustStock(VerifiedStockActor actor) { Calls++; OnRead?.Invoke(); if (ThrowOnRead) throw new InvalidOperationException("permission backend unavailable"); return Allowed; }
 }
 
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
