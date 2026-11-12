@@ -48,31 +48,33 @@ namespace Hanouty.Checkout.MariaDb
                     RequireInnoDb(connection, transaction, "TABLE_VENTES_REGLEMENTS");
                     RequireInnoDb(connection, transaction, "hanouty_cash_return_consumption");
                     var result = new List<PersistedCashSaleCandidate>();
+                    string? saleId = null;
                     using (var command = new MySqlCommand(
                         "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE " +
-                        "WHERE BINARY ID_TICKET=BINARY @ticket AND BINARY OPERATION=BINARY 'VENTE'",
+                        "WHERE BINARY ID_TICKET=BINARY @ticket AND BINARY OPERATION=BINARY 'VENTE' LIMIT 2",
                         connection, transaction))
                     {
                         command.Parameters.AddWithValue("@ticket", receiptId);
                         using (var reader = command.ExecuteReader())
                         {
                             if (reader.Read() && !reader.IsDBNull(0))
-                            {
-                                var saleId = Convert.ToString(reader.GetValue(0));
-                                if (reader.Read())
-                                    throw new InvalidOperationException("Original ticket identity is ambiguous.");
-                                var lines = CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLines(
-                                    connection, transaction, saleId);
-                                var paid = lines.Sum(line => line.Amount);
-                                using (var claim = new MySqlCommand(
-                                    "SELECT COUNT(*) FROM hanouty_cash_return_consumption " +
-                                    "WHERE BINARY original_ticket_id=BINARY @ticket", connection, transaction))
-                                {
-                                    claim.Parameters.AddWithValue("@ticket", saleId);
-                                    if (Convert.ToInt64(claim.ExecuteScalar()) == 0)
-                                        result.Add(new PersistedCashSaleCandidate(saleId, paid));
-                                }
-                            }
+                                saleId = Convert.ToString(reader.GetValue(0));
+                            if (reader.Read())
+                                throw new InvalidOperationException("Original ticket identity is ambiguous.");
+                        }
+                    }
+                    if (!string.IsNullOrWhiteSpace(saleId))
+                    {
+                        var lines = CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLines(
+                            connection, transaction, saleId);
+                        var paid = lines.Sum(line => line.Amount);
+                        using (var claim = new MySqlCommand(
+                            "SELECT COUNT(*) FROM hanouty_cash_return_consumption " +
+                            "WHERE BINARY original_ticket_id=BINARY @ticket", connection, transaction))
+                        {
+                            claim.Parameters.AddWithValue("@ticket", saleId);
+                            if (Convert.ToInt64(claim.ExecuteScalar()) == 0)
+                                result.Add(new PersistedCashSaleCandidate(saleId, paid));
                         }
                     }
                     transaction.Commit();
