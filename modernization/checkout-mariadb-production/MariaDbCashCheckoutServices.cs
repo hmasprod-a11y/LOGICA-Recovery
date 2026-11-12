@@ -123,11 +123,17 @@ namespace Hanouty.Checkout.MariaDb
                     }
                     var lines = CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLines(
                         connection, transaction, originalTicketId);
+                    // CheckoutBatchLine is the existing whole-unit contract. Never
+                    // round or truncate a persisted fractional sale during refund.
+                    if (lines.Any(line => line.Quantity != decimal.Truncate(line.Quantity) ||
+                        line.Quantity < int.MinValue || line.Quantity > int.MaxValue))
+                        throw new InvalidOperationException(
+                            "Original sale quantity cannot be represented by the checkout return contract.");
                     var amount = lines.Sum(line => line.Amount);
                     var request = new AuthorizedCheckoutRequest(
                         operationId, cashierId, currency, true,
                         Array.AsReadOnly(lines.Select(line =>
-                            new CheckoutBatchLine(line.ArticleId, line.Quantity)).ToArray()),
+                            new CheckoutBatchLine(line.ArticleId, checked((int)line.Quantity))).ToArray()),
                         Array.AsReadOnly(new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, amount) }),
                         amount, originalTicketId);
                     request.Validate();
