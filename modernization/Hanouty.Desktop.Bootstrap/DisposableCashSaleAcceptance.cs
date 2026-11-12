@@ -709,7 +709,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         {
             Require(refundHost.Window.ConfirmReturnDraft(),
                 "Actual WPF full-ticket confirmation did not submit through the production Checkout gate: " +
-                refundHost.ViewModel.CommitFeedback + "; " + refundHost.Window.ReturnDraftStatus.Text);
+                refundHost.ViewModel.CommitFeedback + "; session=" + refundHost.Session.State);
             Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == headersBeforeFullRefund + 1 &&
                 Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL") == journalBeforeFullRefund + 1 &&
                 Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == paymentsBeforeFullRefund + 1 &&
@@ -737,7 +737,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         {
             duplicateRefundHost.Window.Show();
             Require(!duplicateRefundHost.Window.SearchOriginalSales(operation) &&
-                duplicateRefundHost.Window.OriginalSaleResults.Items.Count == 0 &&
+                (duplicateRefundHost.Window.FindName("OriginalSaleResults") as System.Windows.Controls.ListBox)?.Items.Count == 0 &&
                 Snapshot(settings) == beforeDuplicateRefund,
                 "Already-returned receipt remained available or a second WPF refund changed SQL.");
         }
@@ -763,10 +763,11 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         {
             Require(host.Window.SearchOriginalSales(originalTicket),
                 "Actual WPF Host did not find the persisted original cash ticket.");
-            var row = host.Window.OriginalSaleResults.Items
-                .Cast<OriginalSaleCandidate>()
+            var resultList = host.Window.FindName("OriginalSaleResults") as System.Windows.Controls.ListBox ??
+                throw new InvalidOperationException("WPF persisted-sale results control is missing.");
+            var row = resultList.Items.Cast<OriginalSaleCandidate>()
                 .Single(candidate => candidate.SaleId == originalTicket);
-            host.Window.OriginalSaleResults.SelectedItem = row;
+            resultList.SelectedItem = row;
             Require(host.Window.SelectOriginalSale(row),
                 "Actual WPF Host refused the selected persisted original ticket.");
             return host;
