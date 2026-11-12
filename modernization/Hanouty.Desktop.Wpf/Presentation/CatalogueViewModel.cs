@@ -456,10 +456,16 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
                 ClearConsumedPaymentContext();
                 return true;
             }
+            if (result == CheckoutSubmissionResult.Invalidated)
+            {
+                // Preparation failed before the financial gate; no write was attempted.
+                _pendingOperationId = null;
+                OnPropertyChanged(nameof(PendingOperationId));
+                CommitFeedback = "Cash return refused before posting — review the original ticket";
+                return false;
+            }
             CheckoutUncertain = true;
-            CommitFeedback = result == CheckoutSubmissionResult.Invalidated
-                ? "Cash return invalidated — durable cashier review required"
-                : "Cash return outcome unknown — reconcile before retry";
+            CommitFeedback = "Cash return outcome unknown — reconcile before retry";
             return false;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
