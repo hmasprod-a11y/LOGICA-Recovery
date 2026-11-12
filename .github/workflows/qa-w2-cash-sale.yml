@@ -14,6 +14,9 @@ on:
       - 'recovered-source/LOGICA/Infrastructure/Checkout/**'
       - 'scripts/Package-HanoutyWpf.ps1'
       - 'scripts/Test-HanoutyFinancialPackage.ps1'
+      - 'scripts/Start-Hanouty-Test.ps1'
+      - 'scripts/Start-Hanouty-Test.cmd'
+      - 'scripts/HANOUTY-TEST-START-HERE.txt'
   pull_request:
     branches: [integration/hanouty-qa-desktop-inventory-20261102]
     paths:
@@ -28,6 +31,9 @@ on:
       - 'recovered-source/LOGICA/Infrastructure/Checkout/**'
       - 'scripts/Package-HanoutyWpf.ps1'
       - 'scripts/Test-HanoutyFinancialPackage.ps1'
+      - 'scripts/Start-Hanouty-Test.ps1'
+      - 'scripts/Start-Hanouty-Test.cmd'
+      - 'scripts/HANOUTY-TEST-START-HERE.txt'
   workflow_dispatch:
 permissions:
   contents: read
@@ -176,6 +182,24 @@ jobs:
           path: |
             evidence/HANOUTY-WPF-net10-FINANCIAL-ACCEPTED-win-x64.zip
             evidence/financial-package-acceptance.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Assemble one-click Windows test bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = Join-Path $env:RUNNER_TEMP 'HANOUTY-WPF-TEST-BUNDLE'
+          New-Item -ItemType Directory -Force $bundle | Out-Null
+          Copy-Item 'evidence/HANOUTY-WPF-net10-FINANCIAL-ACCEPTED-win-x64.zip' $bundle
+          Copy-Item 'evidence/financial-package-acceptance.json' $bundle
+          Copy-Item 'scripts/Start-Hanouty-Test.ps1' $bundle
+          Copy-Item 'scripts/Start-Hanouty-Test.cmd' $bundle
+          Copy-Item 'scripts/HANOUTY-TEST-START-HERE.txt' (Join-Path $bundle 'LE-MOI-DEMARRER.txt')
+      - name: Upload one-click Windows test bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: HANOUTY-WPF-TEST-BUNDLE
+          path: ${{ runner.temp }}/HANOUTY-WPF-TEST-BUNDLE/
           if-no-files-found: error
           retention-days: 14
       - name: Stop only this workflow's disposable MariaDB server
