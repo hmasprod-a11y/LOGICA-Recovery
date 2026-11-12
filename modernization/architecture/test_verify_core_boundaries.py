@@ -52,6 +52,68 @@ class BoundaryTests(unittest.TestCase):
         self.rule.write_text("using System.Windows.Forms;")
         self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
 
+    def test_commented_import_does_not_fail_portable_source(self):
+        self.rule.write_text("// using System.Windows.Forms;\n// Imports MySql.Data\nnamespace Hanouty {}")
+        result = validate(self.root)
+        self.assertTrue(result["ok"], result["errors"])
+
+    def test_similar_prefix_imports_do_not_trigger_false_positive(self):
+        self.rule.write_text("using BunifuExtras;\nusing Microsoft.VisualBasicExtensions;")
+        result = validate(self.root)
+        self.assertTrue(result["ok"], result["errors"])
+
+    def test_vb_alias_mysql_import_rejected(self):
+        self.rule.write_text("Imports Db = MySql.Data.MySqlClient")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_vb_similar_prefix_not_rejected(self):
+        self.rule.write_text("Imports Microsoft.VisualBasicExtensions")
+        self.assertTrue(validate(self.root)["ok"], validate(self.root)["errors"])
+
+    def test_exact_bunifu_import_remains_rejected(self):
+        self.rule.write_text("using Bunifu.Framework.UI;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_real_import_after_comment_still_rejected(self):
+        self.rule.write_text("// using System.Windows.Forms;\nusing MySql.Data.MySqlClient;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_global_using_winforms_with_tab_rejected(self):
+        self.rule.write_text("global using\tSystem.Windows.Forms;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_static_import_winforms_rejected(self):
+        self.rule.write_text("using static System.Windows.Forms.Application;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_global_qualified_static_mysql_import_rejected(self):
+        self.rule.write_text("global using static global::MySql.Data.MySqlClient.MySqlConnection;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_global_qualified_alias_winforms_import_rejected(self):
+        self.rule.write_text("using FormAlias = global::System.Windows.Forms.Form;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_alias_import_mysql_rejected(self):
+        self.rule.write_text("using Db = MySql.Data.MySqlClient;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_spaced_namespace_import_winforms_rejected(self):
+        self.rule.write_text("using System . Windows . Forms;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_spaced_namespace_import_mysql_rejected(self):
+        self.rule.write_text("using Db = MySql . Data . MySqlClient;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_spaced_namespace_import_similar_prefix_allowed(self):
+        self.rule.write_text("using Microsoft . VisualBasicExtensions;")
+        self.assertTrue(validate(self.root)["ok"], validate(self.root)["errors"])
+
+    def test_newline_import_winforms_rejected(self):
+        self.rule.write_text("using\nSystem.Windows.Forms;")
+        self.assertTrue(any("platform dependency" in e for e in validate(self.root)["errors"]))
+
     def test_fully_qualified_winforms_rejected(self):
         self.rule.write_text("namespace Hanouty { class X { global::System.Windows.Forms.Form form; } }")
         self.assertTrue(any("fully qualified platform dependency" in e for e in validate(self.root)["errors"]))
@@ -59,6 +121,20 @@ class BoundaryTests(unittest.TestCase):
     def test_fully_qualified_mysql_rejected(self):
         self.rule.write_text("namespace Hanouty { class X { MySql.Data.MySqlClient.MySqlConnection db; } }")
         self.assertTrue(any("fully qualified platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_string_double_slash_cannot_hide_platform_type(self):
+        self.rule.write_text('namespace Hanouty { class X { string url = "https://localhost"; global::System.Windows.Forms.Form form; } }')
+        self.assertTrue(any("fully qualified platform dependency" in e for e in validate(self.root)["errors"]))
+
+    def test_whitespace_separated_qualified_winforms_rejected(self):
+        self.rule.write_text("namespace Hanouty { class X { System . Windows . Forms . Form form; } }")
+        self.assertTrue(any("fully qualified platform dependency" in e
+                            for e in validate(self.root)["errors"]))
+
+    def test_whitespace_separated_global_mysql_rejected(self):
+        self.rule.write_text("namespace Hanouty { class X { global :: MySql . Data . MySqlClient . MySqlConnection db; } }")
+        self.assertTrue(any("fully qualified platform dependency" in e
+                            for e in validate(self.root)["errors"]))
 
     def test_missing_default_compile_opt_out_rejected(self):
         p = self.root / "modernization/LOGICA.CorePortability.csproj"
