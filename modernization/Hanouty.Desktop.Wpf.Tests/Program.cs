@@ -23,6 +23,37 @@ static void Check(bool value, string reason)
 {
     if (!value) throw new Exception(reason);
 }
+// Full-ticket returns use the same production gate, and an unknown outcome
+// must be resolved through that gate so its latch is cleared only by the journal.
+var returnJournal = new FinancialJournal();
+var returnPort = new FinancialPort(returnJournal);
+var returnGate = new AuthorizedCheckoutCommitGate(returnPort, returnJournal);
+var returnAdapter = new AuthorizedWpfCheckoutAdapter(new FinancialPreparation(),
+    returnGate, returnJournal, new FullReturnPreparation());
+var returnContext = new CashierPaymentContext("cashier-1", "register-1", "MAD", "Cash", 100m);
+Check(returnAdapter.SubmitFullCashReturn("wpf-return-ok", "persisted-sale-1", returnContext) ==
+    CheckoutSubmissionResult.Committed && returnPort.Writes == 1 &&
+    returnJournal.Persisted.Contains("wpf-return-ok"),
+    "trusted full cash return must use the existing durable checkout gate");
+var mismatchedReturnJournal = new FinancialJournal();
+var mismatchedReturnPort = new FinancialPort(mismatchedReturnJournal);
+var mismatchedGate = new AuthorizedCheckoutCommitGate(mismatchedReturnPort, mismatchedReturnJournal);
+var mismatchedAdapter = new AuthorizedWpfCheckoutAdapter(new FinancialPreparation(),
+    mismatchedGate, mismatchedReturnJournal, new FullReturnPreparation { ForceTicketId = "other-sale" });
+Check(mismatchedAdapter.SubmitFullCashReturn("wpf-return-mismatch", "persisted-sale-1", returnContext) ==
+    CheckoutSubmissionResult.Invalidated && mismatchedReturnPort.Writes == 0,
+    "return preparation cannot switch the selected original ticket");
+var unknownJournal = new FinancialJournal();
+var unknownGate = new AuthorizedCheckoutCommitGate(new ThrowAfterWritePort(unknownJournal), unknownJournal);
+var unknownReturn = new AuthorizedWpfCheckoutAdapter(new FinancialPreparation(),
+    unknownGate, unknownJournal, new FullReturnPreparation());
+Check(unknownReturn.SubmitFullCashReturn("wpf-return-unknown", "persisted-sale-1", returnContext) ==
+    CheckoutSubmissionResult.Unknown && unknownGate.UncertainOperationId == "wpf-return-unknown",
+    "lost return acknowledgement must latch the operation as unknown");
+Check(unknownReturn.Reconcile("wpf-return-unknown") == CheckoutResolution.Persisted &&
+    unknownGate.UncertainOperationId is null,
+    "return reconciliation must resolve the same gate latch from durable evidence");
+
 // A catalogue-only diagnostic resolver must never make the installed WPF app
 // start a cashier process. The QA-owned Bootstrap must supply financial services.
 Hanouty.Desktop.Wpf.App.ResolveFinancialServices = null;
@@ -1824,6 +1855,26 @@ sealed class FinancialPort(FinancialJournal journal) : IAuthorizedCheckoutPort
         journal.Persisted.Add(request.OperationId);
     }
 }
+sealed class FullReturnPreparation : ITrustedWpfFullCashReturnPreparation
+{
+    public string? ForceTicketId { get; init; }
+    public AuthorizedCheckoutRequest PrepareFullCashReturn(string operationId,
+        string originalTicketId, CashierPaymentContext context) =>
+        new(operationId, context.CashierId, context.CurrencyCode, true,
+            new[] { new CheckoutBatchLine("article-1", 2), new CheckoutBatchLine("article-2", 1) },
+            new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 13.50m) },
+            13.50m, ForceTicketId ?? originalTicketId);
+}
+
+sealed class ThrowAfterWritePort(FinancialJournal journal) : IAuthorizedCheckoutPort
+{
+    public void Commit(AuthorizedCheckoutRequest request)
+    {
+        journal.Persisted.Add(request.OperationId);
+        throw new InvalidOperationException("Lost acknowledgement after durable write");
+    }
+}
+
 sealed class FinancialPreparation : ITrustedWpfCheckoutPreparation
 {
     public int Calls { get; private set; }
