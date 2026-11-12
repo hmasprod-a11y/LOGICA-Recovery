@@ -13957,6 +13957,24 @@ public class Form_2_ARTICLES : Form
 		return fallback;
 	}
 
+	private bool CollectionHasManualStockRequest()
+	{
+		decimal quantity;
+		if (!decimal.TryParse(Text_QTE_COLLECTION.Text, NumberStyles.Number, CultureInfo.CurrentCulture, out quantity) || quantity != 0m)
+			return true;
+		foreach (DataGridViewRow row in DataGrid_COLLECTION.Rows)
+		{
+			if (row.IsNewRow || !DataGrid_COLLECTION.Columns.Contains("Qté_LISTE"))
+				continue;
+			object value = row.Cells["Qté_LISTE"].Value;
+			if (value == null || value == DBNull.Value)
+				continue;
+			if (!decimal.TryParse(Convert.ToString(value, CultureInfo.CurrentCulture), NumberStyles.Number, CultureInfo.CurrentCulture, out quantity) || quantity != 0m)
+				return true;
+		}
+		return false;
+	}
+
 	private void Form_Me_Load(object sender, EventArgs e)
 	{
 		//IL_01eb: Unknown result type (might be due to invalid IL or missing references)
@@ -17611,6 +17629,9 @@ public class Form_2_ARTICLES : Form
 					MySqlTransaction val3 = (val2.Transaction = Module1.cn_SQL.BeginTransaction());
 					try
 					{
+						if (CollectionHasManualStockRequest())
+							LOGICA.Infrastructure.Catalogue.CatalogueRowPersistence.RequireManualStockPermission(
+								Module1.cn_SQL, val3, "AJOUT_STOCK_MANUEL");
 						int num6 = DataGrid_COLLECTION.Rows.Count - 1;
 						int num7 = 0;
 						while (true)

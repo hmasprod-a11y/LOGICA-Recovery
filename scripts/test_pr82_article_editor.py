@@ -232,3 +232,20 @@ assert "DataRow selected" in f
 assert "ReplaceArticlePreview(selectedImage);" in f
 assert "TryPersistArticleImage()" in f
 print("QA Desktop/Inventory article identity + photo + deletion SQL integration checks passed")
+
+
+# Manual stock permissions must be enforced at the persistence boundary using
+# the current database setting row held locked through each stock write.
+stock_persistence = Path("recovered-source/LOGICA/Infrastructure/Catalogue/CatalogueRowPersistence.cs").read_text(encoding="utf-8")
+assert 'RequireManualStockPermission(connection, transaction, change.Permission);' in stock_persistence
+assert 'SELECT VALEUR FROM TABLE_PARAMETRES WHERE BINARY OBJET=BINARY @setting FOR UPDATE' in stock_persistence
+assert 'TABLE_ARTICLES' in stock_persistence and 'TABLE_PARAMETRES' in stock_persistence
+assert 'VerifyPersistedStock(connection, transaction, change);' in stock_persistence
+assert 'transaction.Commit();' in stock_persistence and 'table.AcceptChanges();' in stock_persistence
+assert 'CatalogueRowPersistence.UpdateAndAccept(DA, DT);' in f
+assert 'CollectionHasManualStockRequest()' in f
+collection_save = f.split('private void Button_SAVE_COLLECTION_Click(', 1)[1].split('\n\tprivate void ', 1)[0]
+assert 'RequireManualStockPermission(' in collection_save
+assert collection_save.index('RequireManualStockPermission(') < collection_save.index('INSERT  INTO   TABLE_ARTICLES')
+assert 'val3.Rollback();' in collection_save
+print("Manual stock database permission guard regression checks passed")
