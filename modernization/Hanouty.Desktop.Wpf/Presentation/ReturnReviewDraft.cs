@@ -15,7 +15,7 @@ public sealed class ReturnReviewDraft
         OriginalSaleId = string.IsNullOrWhiteSpace(saleId) ? null : saleId;
         Quantity = 0m;
         Confirmed = false;
-        Status = OriginalSaleId is null ? "Select a persisted original sale" : "Enter return quantity";
+        Status = OriginalSaleId is null ? "Select a persisted original sale" : "Review the complete original ticket for a full cash refund";
     }
     public bool SetQuantity(string text)
     {
@@ -63,6 +63,15 @@ public sealed class ReturnReviewDraft
         Quantity = 0m;
         Confirmed = false;
         Status = reason;
+    }
+    public bool ConfirmFullTicket(bool cashierActive, bool unresolvedOperation)
+    {
+        Quantity = 0m;
+        Confirmed = cashierActive && !unresolvedOperation && OriginalSaleId is not null;
+        Status = Confirmed
+            ? "Full-ticket cash refund confirmed for checkout authorization"
+            : "Refund confirmation refused — verify cashier and reconciliation";
+        return Confirmed;
     }
     public bool Confirm(bool cashierActive, bool unresolvedOperation)
     {
