@@ -13,6 +13,7 @@ public partial class MainWindow : Window
     // Existing Host owns context authorization and trusted price readback.
     // The UI only collects a draft and never grants financial authority.
     private bool _cashierEntryOpen;
+    private string? _entryPinCashier;
     private bool _reviewOpen;
     private bool _logoutOpen;
     private bool _pinOpen;
@@ -343,10 +344,13 @@ public partial class MainWindow : Window
             if (vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
                 _readTrustedCashTotal() != total || _readBasketIdentity?.Invoke() != identity)
                 return false;
-            // Host authenticates the cashier and checks the trusted quote.
-            // A successful callback is not sufficient if a reentrant Host call
-            // moved this window into Unknown or an in-flight financial operation.
-            if (!_setFinancialContext(draft.Cashier, draft.Register, draft.CashMad)) return false;
+            // The Host may request a fresh PIN while authorizing this explicit
+            // cashier-entry draft. Scope that prompt to this cashier and modal call.
+            bool accepted;
+            _entryPinCashier = draft.Cashier;
+            try { accepted = _setFinancialContext(draft.Cashier, draft.Register, draft.CashMad); }
+            finally { _entryPinCashier = null; }
+            if (!accepted) return false;
             return IsAuthorizedEntry(vm, draft.Cashier, draft.CashMad) &&
                 IsAuthorizedRegister(vm, draft.Register);
         }
@@ -453,15 +457,21 @@ public partial class MainWindow : Window
     public string PromptCashierPin() => PromptCashierPin((DataContext as CatalogueViewModel)?.PaymentContext?.CashierId ?? "");
     public string PromptCashierPin(string cashier)
     {
-        // Host may synchronously ask for PIN while a modal login/logout or
-        // durable-outcome review is active. Never prompt for a competing sale.
-        if (_cashierEntryOpen || _logoutOpen || _reviewOpen || _pinOpen || _originalSaleLookupBusy ||
-            DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
-            vm.CheckoutUncertain || (vm.PendingOperationId is not null && !vm.CheckoutBusy) ||
-            vm.PaymentContext is null || vm.PaymentContext.CashierId != cashier)
+        var cashierEntryPin = _cashierEntryOpen &&
+            string.Equals(_entryPinCashier, cashier, StringComparison.Ordinal);
+        if ((_cashierEntryOpen && !cashierEntryPin) || _logoutOpen || _reviewOpen ||
+            _pinOpen || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
+            vm.CheckoutUncertain ||
+            (cashierEntryPin
+                ? vm.CheckoutBusy || vm.PendingOperationId is not null
+                : !vm.FinancialSessionActive ||
+                  (vm.PendingOperationId is not null && !vm.CheckoutBusy) ||
+                  vm.PaymentContext is null ||
+                  !string.Equals(vm.PaymentContext.CashierId, cashier, StringComparison.Ordinal)))
             return "";
-        return ReadPin("Authorize cash checkout",
-            $"Cashier: {cashier}\nConfirm this cashier session for the displayed cash payment.");
+        return ReadPin(cashierEntryPin ? "Authorize cashier session" : "Authorize cash checkout",
+            $"Cashier: {cashier}\nConfirm this cashier session for the displayed cash payment.",
+            cashierEntryPin ? cashier : null);
     }
 
     private string ReadReviewPin()
@@ -471,7 +481,7 @@ public partial class MainWindow : Window
             $"Cashier: {vm.PaymentContext?.CashierId}\nOperation: {vm.PendingOperationId}\nResult: {vm.ReviewedResolution}\nConfirm this result to discard the old basket.");
     }
 
-    private string ReadPin(string title, string message)
+    private string ReadPin(string title, string message, string? cashierEntryPin = null)
     {
         var pin = new System.Windows.Controls.PasswordBox {
             Margin = new Thickness(0, 12, 0, 12), MaxLength = 256
@@ -506,15 +516,28 @@ public partial class MainWindow : Window
         // Never release a secret captured under a different cashier context.
         var vmAtPrompt = DataContext as CatalogueViewModel;
         var contextAtPrompt = vmAtPrompt?.PaymentContext;
+        var sessionAtPrompt = vmAtPrompt?.FinancialSessionActive;
         var pendingAtPrompt = vmAtPrompt?.PendingOperationId;
         var uncertainAtPrompt = vmAtPrompt?.CheckoutUncertain;
         var busyAtPrompt = vmAtPrompt?.CheckoutBusy;
         try
         {
             if (dialog.ShowDialog() != true || vmAtPrompt is null ||
-                !ReferenceEquals(DataContext, vmAtPrompt) ||
-                !IsPinContextStillValid(vmAtPrompt, contextAtPrompt, pendingAtPrompt,
-                    uncertainAtPrompt == true, busyAtPrompt == true))
+                !ReferenceEquals(DataContext, vmAtPrompt))
+                return "";
+            if (cashierEntryPin is not null)
+            {
+                if (!_cashierEntryOpen ||
+                    !string.Equals(_entryPinCashier, cashierEntryPin, StringComparison.Ordinal) ||
+                    !ReferenceEquals(vmAtPrompt.PaymentContext, contextAtPrompt) ||
+                    vmAtPrompt.FinancialSessionActive != sessionAtPrompt ||
+                    vmAtPrompt.PendingOperationId != pendingAtPrompt ||
+                    vmAtPrompt.CheckoutUncertain != uncertainAtPrompt ||
+                    vmAtPrompt.CheckoutBusy != busyAtPrompt)
+                    return "";
+            }
+            else if (!IsPinContextStillValid(vmAtPrompt, contextAtPrompt, pendingAtPrompt,
+                uncertainAtPrompt == true, busyAtPrompt == true))
                 return "";
             return pin.Password;
         }
