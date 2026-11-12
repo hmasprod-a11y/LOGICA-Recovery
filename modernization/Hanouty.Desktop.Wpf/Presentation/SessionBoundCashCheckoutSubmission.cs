@@ -6,7 +6,7 @@ namespace Hanouty.Desktop.Wpf.Presentation;
 // posting port, journal and trusted preparation. This adapter is UI plumbing only:
 // it never creates a second basket, prices articles or handles a PIN.
 public sealed class SessionBoundCashCheckoutSubmission :
-    IContextualCheckoutSubmission, ICheckoutOutcomeReconciliation
+    IContextualCheckoutSubmission, IContextualWpfCashReturnSubmission, ICheckoutOutcomeReconciliation
 {
     private readonly ICheckoutSubmission _session;
     private readonly ICheckoutOutcomeReconciliation _reconciliation;
@@ -55,6 +55,27 @@ public sealed class SessionBoundCashCheckoutSubmission :
 
         // This is the same financial CheckoutSession populated by WPF selection.
         return _session.Submit(stableOperationId);
+    }
+
+    public CheckoutSubmissionResult SubmitFullCashReturn(string stableOperationId,
+        string originalTicketId, CashierPaymentContext context)
+    {
+        if (string.IsNullOrWhiteSpace(stableOperationId) ||
+            string.IsNullOrWhiteSpace(originalTicketId) || context?.IsWellFormed != true ||
+            !string.Equals(context.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase) ||
+            _session is not IContextualWpfCashReturnSubmission returnSubmission)
+            return CheckoutSubmissionResult.Invalidated;
+        CashierPaymentContext? trusted;
+        try { trusted = _authorizedContext(); }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        { return CheckoutSubmissionResult.Invalidated; }
+        if (trusted?.IsWellFormed != true ||
+            !string.Equals(context.CashierId, trusted.CashierId, StringComparison.Ordinal) ||
+            !string.Equals(context.RegisterId, trusted.RegisterId, StringComparison.Ordinal) ||
+            !string.Equals(context.CurrencyCode, trusted.CurrencyCode, StringComparison.Ordinal) ||
+            !string.Equals(context.TenderCode, trusted.TenderCode, StringComparison.Ordinal))
+            return CheckoutSubmissionResult.Invalidated;
+        return returnSubmission.SubmitFullCashReturn(stableOperationId, originalTicketId, context);
     }
 
     public CheckoutResolution Reconcile(string stableOperationId) =>

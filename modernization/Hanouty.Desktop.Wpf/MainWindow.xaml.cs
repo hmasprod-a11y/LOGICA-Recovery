@@ -13,6 +13,7 @@ public partial class MainWindow : Window
     // Existing Host owns context authorization and trusted price readback.
     // The UI only collects a draft and never grants financial authority.
     private bool _cashierEntryOpen;
+    private string? _entryPinCashier;
     private bool _reviewOpen;
     private bool _logoutOpen;
     private bool _pinOpen;
@@ -120,7 +121,7 @@ public partial class MainWindow : Window
             _originalSaleLookupContext = context;
             OriginalSaleResults.ItemsSource = _originalSaleResults;
             OriginalSaleStatus.Text = _originalSaleResults.Count == 0 ? "No persisted sale found" :
-                "Select a persisted sale for review; refund posting is not enabled";
+                "Select a persisted full-cash sale; only full-ticket refunds are supported";
             return _originalSaleResults.Count > 0;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
@@ -148,7 +149,7 @@ public partial class MainWindow : Window
         _returnDraft.SetOriginalSale(accepted ? candidate.SaleId : null);
         ReturnDraftStatus.Text = _returnDraft.Status;
         OriginalSaleStatus.Text = accepted ?
-            $"Original sale: {candidate.SaleId} — read-only, refund not authorized" :
+            $"Original sale: {candidate.SaleId} — full-ticket cash refund only" :
             "Invalid original-sale selection";
         return accepted;
     }
@@ -197,22 +198,24 @@ public partial class MainWindow : Window
             ReturnDraftStatus.Text = _returnDraft.Status;
             return false;
         }
-        var confirmed = _returnDraft.Confirm(vm.FinancialSessionActive && !vm.CheckoutBusy,
-            vm.CheckoutUncertain || vm.PendingOperationId is not null);
+        if (!_returnDraft.ConfirmFullTicket(vm.FinancialSessionActive && !vm.CheckoutBusy,
+            vm.CheckoutUncertain || vm.PendingOperationId is not null))
+        { ReturnDraftStatus.Text = _returnDraft.Status; return false; }
         ReturnDraftStatus.Text = _returnDraft.Status;
-        return confirmed;
+        var committed = vm.CommitFullCashReturn(_originalSaleSelection.Selected.SaleId);
+        if (committed)
+        {
+            _returnDraft.Invalidate("Full-ticket refund submitted");
+            _originalSaleSelection.Clear();
+            _originalSaleLookupContext = null;
+            _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
+            OriginalSaleResults.ItemsSource = null;
+            OriginalSaleStatus.Text = "Refund submitted";
+        }
+        else ReturnDraftStatus.Text = vm.CommitFeedback;
+        return committed;
     }
 
-    private void ReturnQuantity_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
-    {
-        // Editing the quantity after confirmation invalidates the reviewed
-        // amount. The cashier must explicitly review and confirm the new value.
-        _returnDraft.ClearQuantity("Return quantity edited — review again");
-        ReturnDraftStatus.Text = _returnDraft.Status;
-    }
-
-    private void ReviewReturnQuantity_Click(object sender, RoutedEventArgs e) =>
-        ReviewReturnQuantity(ReturnQuantity.Text);
     private void ConfirmReturnDraft_Click(object sender, RoutedEventArgs e) => ConfirmReturnDraft();
 
     private void OriginalSaleSearch_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
@@ -341,10 +344,13 @@ public partial class MainWindow : Window
             if (vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
                 _readTrustedCashTotal() != total || _readBasketIdentity?.Invoke() != identity)
                 return false;
-            // Host authenticates the cashier and checks the trusted quote.
-            // A successful callback is not sufficient if a reentrant Host call
-            // moved this window into Unknown or an in-flight financial operation.
-            if (!_setFinancialContext(draft.Cashier, draft.Register, draft.CashMad)) return false;
+            // The Host may request a fresh PIN while authorizing this explicit
+            // cashier-entry draft. Scope that prompt to this cashier and modal call.
+            bool accepted;
+            _entryPinCashier = draft.Cashier;
+            try { accepted = _setFinancialContext(draft.Cashier, draft.Register, draft.CashMad); }
+            finally { _entryPinCashier = null; }
+            if (!accepted) return false;
             return IsAuthorizedEntry(vm, draft.Cashier, draft.CashMad) &&
                 IsAuthorizedRegister(vm, draft.Register);
         }
@@ -451,15 +457,21 @@ public partial class MainWindow : Window
     public string PromptCashierPin() => PromptCashierPin((DataContext as CatalogueViewModel)?.PaymentContext?.CashierId ?? "");
     public string PromptCashierPin(string cashier)
     {
-        // Host may synchronously ask for PIN while a modal login/logout or
-        // durable-outcome review is active. Never prompt for a competing sale.
-        if (_cashierEntryOpen || _logoutOpen || _reviewOpen || _pinOpen || _originalSaleLookupBusy ||
-            DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
-            vm.CheckoutUncertain || vm.PendingOperationId is not null ||
-            vm.PaymentContext is null || vm.PaymentContext.CashierId != cashier)
+        var cashierEntryPin = _cashierEntryOpen &&
+            string.Equals(_entryPinCashier, cashier, StringComparison.Ordinal);
+        if ((_cashierEntryOpen && !cashierEntryPin) || _logoutOpen || _reviewOpen ||
+            _pinOpen || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
+            vm.CheckoutUncertain ||
+            (cashierEntryPin
+                ? vm.CheckoutBusy || vm.PendingOperationId is not null
+                : !vm.FinancialSessionActive ||
+                  (vm.PendingOperationId is not null && !vm.CheckoutBusy) ||
+                  vm.PaymentContext is null ||
+                  !string.Equals(vm.PaymentContext.CashierId, cashier, StringComparison.Ordinal)))
             return "";
-        return ReadPin("Authorize cash checkout",
-            $"Cashier: {cashier}\nConfirm this cashier session for the displayed cash payment.");
+        return ReadPin(cashierEntryPin ? "Authorize cashier session" : "Authorize cash checkout",
+            $"Cashier: {cashier}\nConfirm this cashier session for the displayed cash payment.",
+            cashierEntryPin ? cashier : null);
     }
 
     private string ReadReviewPin()
@@ -469,7 +481,7 @@ public partial class MainWindow : Window
             $"Cashier: {vm.PaymentContext?.CashierId}\nOperation: {vm.PendingOperationId}\nResult: {vm.ReviewedResolution}\nConfirm this result to discard the old basket.");
     }
 
-    private string ReadPin(string title, string message)
+    private string ReadPin(string title, string message, string? cashierEntryPin = null)
     {
         var pin = new System.Windows.Controls.PasswordBox {
             Margin = new Thickness(0, 12, 0, 12), MaxLength = 256
@@ -504,15 +516,28 @@ public partial class MainWindow : Window
         // Never release a secret captured under a different cashier context.
         var vmAtPrompt = DataContext as CatalogueViewModel;
         var contextAtPrompt = vmAtPrompt?.PaymentContext;
+        var sessionAtPrompt = vmAtPrompt?.FinancialSessionActive;
         var pendingAtPrompt = vmAtPrompt?.PendingOperationId;
         var uncertainAtPrompt = vmAtPrompt?.CheckoutUncertain;
         var busyAtPrompt = vmAtPrompt?.CheckoutBusy;
         try
         {
             if (dialog.ShowDialog() != true || vmAtPrompt is null ||
-                !ReferenceEquals(DataContext, vmAtPrompt) ||
-                !IsPinContextStillValid(vmAtPrompt, contextAtPrompt, pendingAtPrompt,
-                    uncertainAtPrompt == true, busyAtPrompt == true))
+                !ReferenceEquals(DataContext, vmAtPrompt))
+                return "";
+            if (cashierEntryPin is not null)
+            {
+                if (!_cashierEntryOpen ||
+                    !string.Equals(_entryPinCashier, cashierEntryPin, StringComparison.Ordinal) ||
+                    !ReferenceEquals(vmAtPrompt.PaymentContext, contextAtPrompt) ||
+                    vmAtPrompt.FinancialSessionActive != sessionAtPrompt ||
+                    vmAtPrompt.PendingOperationId != pendingAtPrompt ||
+                    vmAtPrompt.CheckoutUncertain != uncertainAtPrompt ||
+                    vmAtPrompt.CheckoutBusy != busyAtPrompt)
+                    return "";
+            }
+            else if (!IsPinContextStillValid(vmAtPrompt, contextAtPrompt, pendingAtPrompt,
+                uncertainAtPrompt == true, busyAtPrompt == true))
                 return "";
             return pin.Password;
         }

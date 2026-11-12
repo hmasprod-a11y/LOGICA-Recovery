@@ -36,6 +36,47 @@ catch (InvalidOperationException) { directWindowRejected = true; }
 Check(directWindowRejected,
     "direct MainWindow construction rejects an unauthorized payment context");
 Hanouty.Desktop.Wpf.MainWindow.TestOnlyAllowUnauthorizedPaymentContext = true;
+// Full-ticket WPF return action: exact original ID and trusted preparation
+// flow through the existing financial gate, with no partial-quantity control.
+var wpfReturnJournal = new FinancialJournal();
+var wpfReturnPort = new FinancialPort(wpfReturnJournal);
+var wpfReturnGate = new AuthorizedCheckoutCommitGate(wpfReturnPort, wpfReturnJournal);
+var wpfReturnAdapter = new AuthorizedWpfCheckoutAdapter(new FinancialPreparation(),
+    wpfReturnGate, wpfReturnJournal, new FullReturnPreparation());
+var wpfReturnContext = new CashierPaymentContext("cashier-1", "register-1", "MAD", "Cash", 0m);
+var wpfReturnWindow = new Hanouty.Desktop.Wpf.MainWindow(new EmptyCatalogueReader(),
+    new RecordingSelection(), wpfReturnAdapter, wpfReturnContext, requireFreshPaymentContext: true);
+wpfReturnWindow.ConfigureOriginalSaleLookup(new PersistedCashSaleLookup());
+Check(wpfReturnWindow.SearchOriginalSales("persisted-sale-1"),
+    "WPF must find an exact persisted original cash sale");
+var returnList = (System.Windows.Controls.ListBox)wpfReturnWindow.FindName("OriginalSaleResults");
+var returnCandidate = (OriginalSaleCandidate)returnList.Items[0];
+returnList.SelectedItem = returnCandidate;
+Check(wpfReturnWindow.SelectOriginalSale(returnCandidate),
+    "WPF must explicitly select the exact persisted original ticket");
+var wpfReturnVm = (CatalogueViewModel)wpfReturnWindow.DataContext;
+var wpfReturnConfirmed = wpfReturnWindow.ConfirmReturnDraft();
+Check(wpfReturnConfirmed,
+    "WPF full-ticket confirm must submit through Checkout: " +
+    wpfReturnVm.CommitFeedback + "; draft=" + wpfReturnWindow.ReturnDraftStatus.Text);
+Check(wpfReturnPort.Writes == 1 && wpfReturnJournal.Persisted.Count == 1,
+    "WPF full-ticket confirm must write exactly once and persist its stable operation");
+Check(wpfReturnWindow.FindName("ReturnQuantity") is null,
+    "WPF return UI must not expose unsupported partial quantities");
+wpfReturnWindow.Close();
+
+var lostReturnJournal = new FinancialJournal();
+var lostReturnGate = new AuthorizedCheckoutCommitGate(
+    new ThrowAfterWritePort(lostReturnJournal), lostReturnJournal);
+var lostReturnAdapter = new AuthorizedWpfCheckoutAdapter(new FinancialPreparation(),
+    lostReturnGate, lostReturnJournal, new FullReturnPreparation());
+Check(lostReturnAdapter.SubmitFullCashReturn("lost-return", "persisted-sale-1", wpfReturnContext) ==
+    CheckoutSubmissionResult.Unknown && lostReturnGate.UncertainOperationId == "lost-return",
+    "lost return acknowledgement must latch the durable operation");
+Check(lostReturnAdapter.Reconcile("lost-return") == CheckoutResolution.Persisted &&
+    lostReturnGate.UncertainOperationId is null,
+    "return reconciliation must clear the same gate latch from durable evidence");
+
 // A catalogue-only diagnostic resolver must never make the installed WPF app
 // start a cashier process. The QA-owned Bootstrap must supply financial services.
 Hanouty.Desktop.Wpf.App.ResolveFinancialServices = null;
@@ -1442,62 +1483,21 @@ foreach (var modalFieldName in new[] { "_cashierEntryOpen", "_reviewOpen", "_log
         "receipt selection resumes only after modal exits: " + modalFieldName);
 }
 
-// Real STA TextBox event: incomplete quantity input must never inherit a
-// previously reviewed return amount after a keyboard edit.
-originalWindow.ReturnQuantity.Text = "1.";
-Check(!originalWindow.ReviewReturnQuantity(originalWindow.ReturnQuantity.Text) &&
-    !originalWindow.ConfirmReturnDraft(),
-    "unfinished decimal separator must not confirm a return in real WPF window");
-originalWindow.ReturnQuantity.Text = "0,250";
-Check(originalWindow.ReviewReturnQuantity(originalWindow.ReturnQuantity.Text) &&
-    originalWindow.ConfirmReturnDraft(),
-    "Moroccan comma decimal quantity can be reviewed explicitly in STA window");
-// A stale ListBox ItemsSource must never confirm a return draft, even if
-// its SelectedItem and the Host context still point at the old receipt.
-var originalResultsSnapshot = originalWindow.OriginalSaleResults.ItemsSource;
-originalWindow.OriginalSaleResults.ItemsSource = new[] { persistedRow };
+// The WPF production UI supports complete persisted tickets only. It must
+// expose no editable partial quantity, and a lookup-only submission must fail
+// closed when asked to post a refund.
+Check(originalWindow.FindName("ReturnQuantity") is null,
+    "WPF production UI must not expose unsupported partial quantities");
 Check(!originalWindow.ConfirmReturnDraft(),
-    "return confirmation must reject replaced original-sale result snapshot");
-originalWindow.OriginalSaleResults.ItemsSource = originalResultsSnapshot;
-originalWindow.OriginalSaleResults.SelectedItem = persistedRow;
-Check(originalWindow.SelectOriginalSale(persistedRow),
-    "restored original-sale snapshot requires explicit reselection");
-originalWindow.ReturnQuantity.Text = "0,2500";
-Check(!originalWindow.ConfirmReturnDraft() &&
-    !originalWindow.ReviewReturnQuantity(originalWindow.ReturnQuantity.Text),
-    "editing reviewed quantity to overprecision revokes confirmation in STA window");
+    "receipt review without Checkout full-return authorization must not post");
 
-// Actual STA ListBox interaction: changing highlighted receipt invalidates the
-// previously reviewed quantity even before a second Select button click.
-Check(originalWindow.ReviewReturnQuantity("1") && originalWindow.ConfirmReturnDraft(),
-    "trusted receipt can prepare a non-posting return draft");
-originalWindow.OriginalSaleResults.SelectedItem = null;
-Check(!originalWindow.ConfirmReturnDraft() &&
-    !originalWindow.ReviewReturnQuantity("1"),
-    "clearing highlighted receipt revokes previously confirmed return");
-originalWindow.OriginalSaleResults.SelectedItem = persistedRow;
-Check(originalWindow.SelectOriginalSale(persistedRow) &&
-    originalWindow.ReviewReturnQuantity("1"),
-    "fresh explicit receipt selection restores quantity review");
-modalPinField.SetValue(originalWindow, true);
-Check(!originalWindow.ConfirmReturnDraft() && !originalWindow.ReviewReturnQuantity("1"),
-    "transient PIN modal blocks return review and confirmation");
-modalPinField.SetValue(originalWindow, false);
-
-// A rejected cash checkout still changes financial state. The same real
-// MainWindow must revoke an already reviewed original-sale return draft.
-Check(originalWindow.SearchOriginalSales("receipt-1"),
-    "return evidence available before checkout outcome");
-persistedRow = (OriginalSaleCandidate)originalWindow.OriginalSaleResults.Items[0];
-originalWindow.OriginalSaleResults.SelectedItem = persistedRow;
-Check(originalWindow.SelectOriginalSale(persistedRow) &&
-    originalWindow.ReviewReturnQuantity("1") && originalWindow.ConfirmReturnDraft(),
-    "original sale and quantity reviewed before checkout state transition");
-originalWindowVm.CommitCheckout(); // no contextual port: fail closed, not posted
+// A checkout attempt changes the cashier's financial context. The same real
+// MainWindow must revoke previously selected original-sale evidence.
+originalWindowVm.CommitCheckout(); // legacy-only submission: fail closed
 Check(originalWindow.OriginalSaleResults.Items.Count == 0 &&
     !originalWindow.ConfirmReturnDraft() &&
     !originalWindow.SelectOriginalSale(persistedRow),
-    "cash checkout rejection revokes previously reviewed return evidence");
+    "checkout context transition revokes original-sale evidence");
 
 // Actual WPF TextChanged must invalidate the previous receipt evidence.
 originalWindow.OriginalSaleSearch.Text = "different-receipt";
@@ -1837,6 +1837,33 @@ sealed class FinancialPort(FinancialJournal journal) : IAuthorizedCheckoutPort
         journal.Persisted.Add(request.OperationId);
     }
 }
+sealed class PersistedCashSaleLookup : IOriginalSaleLookup
+{
+    public IReadOnlyList<OriginalSaleCandidate> FindPersistedSales(string receiptSearch) =>
+        receiptSearch == "persisted-sale-1"
+            ? new[] { new OriginalSaleCandidate("persisted-sale-1", "persisted-sale-1", 13.50m) }
+            : Array.Empty<OriginalSaleCandidate>();
+}
+
+sealed class FullReturnPreparation : ITrustedWpfFullCashReturnPreparation
+{
+    public AuthorizedCheckoutRequest PrepareFullCashReturn(string operationId,
+        string originalTicketId, CashierPaymentContext context) =>
+        new(operationId, context.CashierId, context.CurrencyCode, true,
+            new[] { new CheckoutBatchLine("article-1", 2), new CheckoutBatchLine("article-2", 1) },
+            new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 13.50m) },
+            13.50m, originalTicketId);
+}
+
+sealed class ThrowAfterWritePort(FinancialJournal journal) : IAuthorizedCheckoutPort
+{
+    public void Commit(AuthorizedCheckoutRequest request)
+    {
+        journal.Persisted.Add(request.OperationId);
+        throw new InvalidOperationException("Lost acknowledgement after durable write");
+    }
+}
+
 sealed class FinancialPreparation : ITrustedWpfCheckoutPreparation
 {
     public int Calls { get; private set; }

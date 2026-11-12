@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using LOGICA.ApplicationLayer.Checkout;
 using LOGICA.Infrastructure.Checkout;
 using MySql.Data.MySqlClient;
@@ -1007,6 +1008,21 @@ namespace LOGICA.Infrastructure.Checkout
             decimal originalSaleTotal = Scalar("SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-original'");
             Require(originalSaleTotal == 13.50m,
                 "Multi-line fixture sale total must remain 13.50 MAD; actual " + originalSaleTotal + ".");
+            var candidates = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                .FindFullCashReturnCandidates(NewConnection, "multi-original");
+            Require(candidates.Count == 1 && candidates[0].SaleId == "multi-original" &&
+                candidates[0].PaidMad == 13.50m,
+                "Host lookup must expose only the exact persisted full cash ticket and amount.");
+            var hostPrepared = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                .PrepareFullCashReturnRequest(NewConnection, "wpf-preview-return", "O'Neil",
+                    "MAD", "multi-original");
+            Require(hostPrepared.IsReturn && hostPrepared.Lines.Count == 2 &&
+                hostPrepared.Lines.Any(line => line.ArticleId == "CSharp-Stock" && line.Quantity == 2m) &&
+                hostPrepared.Lines.Any(line => line.ArticleId == "CSharp-Other" && line.Quantity == 1m) &&
+                hostPrepared.ExpectedTotal == 13.50m &&
+                hostPrepared.Payments.Count == 1 &&
+                hostPrepared.Payments[0].Kind == Hanouty.ArchitectureBridge.CheckoutPaymentKind.Cash,
+                "Read-only Host preparation must return the complete original line set and exact cash amount.");
             Require(soldStockA == originalStockA - 2m && soldStockB == originalStockB - 1m &&
                 Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-original' AND OPERATION='VENTE'") == 2m,
                 "Multi-line original sale must persist two exact lines and decrement each stock once.");
@@ -1033,6 +1049,18 @@ namespace LOGICA.Infrastructure.Checkout
                 "Multi-line refund did not restore each article's stock exactly once.");
             Require(Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original' AND return_operation_id='multi-refund' AND consumed_quantity=3") == 1,
                 "Multi-line refund consumption claim did not preserve the full aggregate quantity.");
+            Require(Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                .FindFullCashReturnCandidates(NewConnection, "multi-original").Count == 0,
+                "A consumed original ticket must disappear from WPF return lookup.");
+            bool consumedPreparationRejected = false;
+            try
+            {
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                    NewConnection, "wpf-preview-replay", "O'Neil", "MAD", "multi-original");
+            }
+            catch (InvalidOperationException) { consumedPreparationRejected = true; }
+            Require(consumedPreparationRejected,
+                "Host preparation must refuse a ticket whose original return claim is already consumed.");
             Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund'") == 1,
                 "Multi-line refund header identity is missing.");
             Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund' AND Total_NET=-13.50") == 1,

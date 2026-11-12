@@ -111,17 +111,21 @@ public sealed partial record CatalogueHost
             afterCommitAcknowledgementFault?.Invoke();
         }, postingFailureDiagnostic);
         var journal = MariaDbCashCheckoutServices.CreateOperationJournal(connections);
+        var returnHost = new MariaDbFullCashReturnHost(connections, twoDigitWorkstation);
         var binding = ProductionWpfServices.CreateFinancial(
             new MariaDbCatalogueReader(settings.ConnectionString, settings.DataDirectory),
             new ExplicitVariantChoice(), posting, journal, () => !contextConsumed && captured is not null
-                ? captured : throw new InvalidOperationException("Fresh payment context required."));
+                ? captured : throw new InvalidOperationException("Fresh payment context required."),
+            returnHost);
         CashierPaymentContext? context = captured is null ? null : new CashierPaymentContext(captured.CashierId,
             twoDigitWorkstation, captured.Currency, "Cash", captured.Payments[0].Amount);
         // Reuse WPF's single-session adapter rather than maintain a second
         // contextual implementation in the Host. SQL still authenticates on commit.
         var services = AuthorizedWpfServiceRegistration.CreateSessionBound(
-            binding.Catalogue, binding.Checkout, binding.Submission, () => contextConsumed ? null! : context!);
+            binding.Catalogue, binding.Checkout, binding.Submission,
+            () => contextConsumed && context?.TenderedAmount != 0m ? null! : context!);
         var window = new MainWindow(services.Catalogue, services.Checkout, services.Submission, context, requireFreshPaymentContext: true);
+        window.ConfigureOriginalSaleLookup(returnHost);
         var vm = (CatalogueViewModel)window.DataContext;
         vm.FinancialSessionActive = captured is not null;
         if (!vm.CatalogueAvailable)
@@ -225,8 +229,11 @@ public sealed partial record CatalogueHost
                 activeCashierId = cashier;
                 captured = null;
                 contextConsumed = true;
-                context = null;
-                vm.PaymentContext = null;
+                // A zero-tender context proves the authenticated cashier session
+                // for read-only receipt selection. It can never authorize a sale;
+                // Checkout sale preparation requires a positive cash settlement.
+                context = new CashierPaymentContext(cashier, twoDigitWorkstation, "MAD", "Cash", 0m);
+                vm.PaymentContext = context;
                 vm.FinancialSessionActive = true;
                 return true;
             }
@@ -237,6 +244,31 @@ public sealed partial record CatalogueHost
             () => System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines));
         window.ConfigureReviewedCheckout(result.TryReviewResolvedCheckout);
         return result;
+    }
+
+    private sealed class MariaDbFullCashReturnHost(
+        Func<MySqlConnection> connections, string workstation) :
+        IOriginalSaleLookup, ITrustedWpfFullCashReturnPreparation
+    {
+        public IReadOnlyList<OriginalSaleCandidate> FindPersistedSales(string receiptSearch) =>
+            MariaDbCashCheckoutServices.FindFullCashReturnCandidates(connections, receiptSearch)
+                .Select(sale => new OriginalSaleCandidate(sale.SaleId,
+                    sale.SaleId + " — full cash ticket", sale.PaidMad))
+                .ToArray();
+
+        public AuthorizedCheckoutRequest PrepareFullCashReturn(
+            string stableOperationId, string originalTicketId, CashierPaymentContext cashierContext)
+        {
+            ArgumentNullException.ThrowIfNull(cashierContext);
+            if (!cashierContext.IsWellFormed ||
+                !string.Equals(cashierContext.RegisterId, workstation, StringComparison.Ordinal) ||
+                !string.Equals(cashierContext.CurrencyCode, "MAD", StringComparison.Ordinal) ||
+                !string.Equals(cashierContext.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Authorized local cashier context required.");
+            return MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                connections, stableOperationId, cashierContext.CashierId,
+                cashierContext.CurrencyCode, originalTicketId);
+        }
     }
 
     private sealed class AcknowledgementFaultPort(
