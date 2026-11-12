@@ -444,8 +444,13 @@ namespace LOGICA.Infrastructure.Checkout
 
         private static decimal Number(DataRow row, string column)
         {
-            if (!row.Table.Columns.Contains(column) || row.IsNull(column))
-                throw new InvalidOperationException("Required authoritative numeric field is unavailable: " + column + ".");
+            bool present = row.Table.Columns.Contains(column);
+            bool isNull = present && row.IsNull(column);
+            if (!present || isNull)
+                throw new InvalidOperationException(
+                    "Required authoritative numeric field is unavailable: " + column +
+                    " (present=" + present + ", databaseNull=" + isNull + ", queryColumns=" +
+                    string.Join(",", row.Table.Columns.Cast<DataColumn>().Select(item => item.ColumnName)) + ").");
             return Convert.ToDecimal(row[column], CultureInfo.CurrentCulture);
         }
         private static decimal OptionalNumber(DataRow row, string column) =>
