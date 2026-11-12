@@ -625,6 +625,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 !workstation.ViewModel.FinancialSessionActive && Snapshot(settings) == before,
                 "Wrong PIN activated signed-out cashier session.");
             var emptySessionAccepted = CashierEntry(workstation, "O'Neil", "01", "0", 0m, pin);
+            workstation.ViewModel.CommitCommand.Execute(null);
             var emptySessionSnapshot = Snapshot(settings);
             var emptySessionContext = workstation.ViewModel.PaymentContext;
             Require(emptySessionAccepted &&
