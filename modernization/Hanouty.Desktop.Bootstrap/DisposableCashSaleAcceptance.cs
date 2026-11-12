@@ -624,13 +624,16 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Require(!CashierEntry(workstation, "O'Neil", "01", "0", 0m, "incorrect") &&
                 !workstation.ViewModel.FinancialSessionActive && Snapshot(settings) == before,
                 "Wrong PIN activated signed-out cashier session.");
-            Require(CashierEntry(workstation, "O'Neil", "01", "0", 0m, pin) &&
+            var emptySessionAccepted = CashierEntry(workstation, "O'Neil", "01", "0", 0m, pin);
+            var emptySessionSnapshot = Snapshot(settings);
+            var emptySessionContext = workstation.ViewModel.PaymentContext;
+            Require(emptySessionAccepted &&
                 workstation.ViewModel.FinancialSessionActive &&
-                workstation.ViewModel.PaymentContext?.TenderedAmount == 0m &&
+                emptySessionContext?.TenderedAmount == 0m &&
                 workstation.ViewModel.PendingOperationId is null &&
                 workstation.ViewModel.CanSelectProduct && !workstation.ViewModel.CanCommit &&
-                Snapshot(settings) == before,
-                "Authenticated zero-tender session created a financial operation, enabled payment, or changed SQL.");
+                emptySessionSnapshot == before,
+                $"Authenticated zero-tender session failed safety: accepted={emptySessionAccepted}, active={workstation.ViewModel.FinancialSessionActive}, tender={emptySessionContext?.TenderedAmount.ToString(CultureInfo.InvariantCulture) ?? "null"}, operation={workstation.ViewModel.PendingOperationId ?? "null"}, canSelect={workstation.ViewModel.CanSelectProduct}, canCommit={workstation.ViewModel.CanCommit}, sqlUnchanged={emptySessionSnapshot == before}.");
 
             void Stage(int count) {
                 for (int n = 0; n < count; n++) {
