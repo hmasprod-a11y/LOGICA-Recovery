@@ -434,6 +434,52 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         }
     }
 
+    public bool CommitFullCashReturn(string originalTicketId)
+    {
+        if (_selectionInFlight || CheckoutUncertain || !FinancialSessionActive ||
+            PaymentContext?.IsWellFormed != true || string.IsNullOrWhiteSpace(originalTicketId) ||
+            _submission is not IContextualWpfCashReturnSubmission returnSubmission)
+        {
+            CommitFeedback = "Authorized full-ticket cash return unavailable";
+            return false;
+        }
+        ReviewedResolution = CheckoutResolution.Unknown;
+        _pendingOperationId ??= Guid.NewGuid().ToString("N");
+        try
+        {
+            _selectionInFlight = true;
+            OnPropertyChanged(nameof(CanSelectProduct));
+            OnPropertyChanged(nameof(CanCommit));
+            var result = returnSubmission.SubmitFullCashReturn(
+                _pendingOperationId, originalTicketId, PaymentContext);
+            if (result == CheckoutSubmissionResult.Committed)
+            {
+                CommitFeedback = "Full-ticket cash return committed";
+                _pendingOperationId = null;
+                OnPropertyChanged(nameof(PendingOperationId));
+                ClearConsumedPaymentContext();
+                return true;
+            }
+            CheckoutUncertain = true;
+            CommitFeedback = result == CheckoutSubmissionResult.Invalidated
+                ? "Cash return invalidated — durable cashier review required"
+                : "Cash return outcome unknown — reconcile before retry";
+            return false;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            CheckoutUncertain = true;
+            CommitFeedback = "Cash return outcome unknown — reconcile before retry";
+            return false;
+        }
+        finally
+        {
+            _selectionInFlight = false;
+            OnPropertyChanged(nameof(CanSelectProduct));
+            OnPropertyChanged(nameof(CanCommit));
+        }
+    }
+
     public string SearchText
     {
         get => _searchText;
