@@ -201,6 +201,6 @@ public static class ProductionWpfServices
         return new WpfProductionBinding(session,
             new ProductionWpfCatalogueReader(session),
             new ProductionWpfProductSelection(session),
-            new ProductionWpfCheckoutSubmission(session, financialGate, returnSubmission));
+            new ProductionWpfCheckoutSubmission(session, financialGate, returnSubmission, journal));
     }
 }
