@@ -18,7 +18,10 @@
     <Compile Include="../../../recovered-source/LOGICA/Application/Checkout/CheckoutPaymentPostingService.cs" Link="Application/Checkout/CheckoutPaymentPostingService.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Application/Checkout/CheckoutTransactionFinalizationService.cs" Link="Application/Checkout/CheckoutTransactionFinalizationService.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Application/Checkout/CheckoutTransactionBoundaryService.cs" Link="Application/Checkout/CheckoutTransactionBoundaryService.cs" />
-    <!-- Legacy-only nullable DataRow precheck: excluded from modern net10 bridge. -->
+    <!-- The historical duplicate precheck is a V1 WinForms-only workflow. It is
+         not consumed by the production checkout/session bridge. Keep it in
+         recovered-source for the legacy build; do not compile its deliberately
+         nullable DataRow lookup into the net10 production boundary. -->
     <Compile Include="../../../recovered-source/LOGICA/Domain/ILegacyStockMovementQuerySemantics.cs" Link="Domain/ILegacyStockMovementQuerySemantics.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Infrastructure/Inventory/StockMovementQueryText.cs" Link="Infrastructure/Inventory/StockMovementQueryText.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Domain/ILegacyCheckoutCompletionSemantics.cs" Link="Domain/ILegacyCheckoutCompletionSemantics.cs" />
@@ -52,7 +55,8 @@
     <Compile Include="../../../recovered-source/LOGICA/Domain/CatalogueBarcodeChecksum.cs" Link="Domain/CatalogueBarcodeChecksum.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Application/Catalogue/ICatalogueRowInput.cs" Link="Application/Catalogue/ICatalogueRowInput.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Application/Catalogue/ICatalogueCreationStore.cs" Link="Application/Catalogue/ICatalogueCreationStore.cs" />
-    <Compile Include="../../../recovered-source/LOGICA/Application/Catalogue/CatalogueRowMapper.cs" Link="Application/Catalogue/CatalogueRowMapper.cs" />
+    <!-- The net10-only mapper retains V1 semantics with nullable-correct lookup results. -->
+    <Compile Include="ModernCatalogueRowMapper.cs" Link="Application/Catalogue/CatalogueRowMapper.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Application/Catalogue/CatalogueCreationService.cs" Link="Application/Catalogue/CatalogueCreationService.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Domain/ILegacyCheckoutSemantics.cs" Link="Domain/ILegacyCheckoutSemantics.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Domain/CheckoutAmountGuards.cs" Link="Domain/CheckoutAmountGuards.cs" />

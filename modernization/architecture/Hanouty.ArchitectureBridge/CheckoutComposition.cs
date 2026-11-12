@@ -56,6 +56,8 @@ public sealed class CheckoutComposition
     {
         if (tile is null || string.IsNullOrWhiteSpace(tile.ArticleId)) return false;
         var live = Validate(_reader.RefreshArticle(tile.ArticleId));
+        // A display-name rename is not an identity, variant or photo change.
+        // Preserve QA's accepted live-tile contract without trusting the UI snapshot.
         return live.Count == 1 && live[0].HasImage &&
             string.Equals(live[0].ArticleId, tile.ArticleId, StringComparison.Ordinal) &&
             string.Equals(live[0].Barcode, tile.Barcode, StringComparison.Ordinal) &&
@@ -94,8 +96,11 @@ public sealed class CheckoutComposition
         var id = batch.UncertainOperationId;
         if (id is null) throw new InvalidOperationException("No uncertain checkout operation.");
         var outcome = _journal.Lookup(id);
+        // An invalid journal value is not proof of absence. Never unlock an
+        // uncertain payment unless durable storage explicitly says Persisted or Absent.
         if (outcome == CheckoutOperationOutcome.Unknown) return outcome;
-        if (outcome != CheckoutOperationOutcome.Persisted && outcome != CheckoutOperationOutcome.Absent)
+        if (outcome != CheckoutOperationOutcome.Persisted &&
+            outcome != CheckoutOperationOutcome.Absent)
             throw new InvalidOperationException("Checkout journal returned an unsupported durable outcome.");
         batch.ReconcileUnknownOutcome(id, outcome == CheckoutOperationOutcome.Persisted);
         return outcome;
@@ -109,6 +114,9 @@ public sealed class CheckoutComposition
         {
             if (product is null || string.IsNullOrWhiteSpace(product.ArticleId))
                 throw new InvalidOperationException("Catalogue returned a product without stable identity.");
+            // Legacy DataRow mappings may surface DBNull as null at runtime even
+            // when the modern DTO declares a non-null display name. Refuse a
+            // malformed snapshot rather than passing it into WPF bindings.
             if (string.IsNullOrWhiteSpace(product.DisplayName))
                 throw new InvalidOperationException("Catalogue returned a product without a usable display name.");
             if (!ids.Add(product.ArticleId))
@@ -133,16 +141,18 @@ public sealed class CheckoutComposition
             RequireBarcode(barcode);
             return Convert(_source.RefreshBarcode(barcode), barcode);
         }
-        public IReadOnlyList<ArticleCandidate> RefreshArticle(string articleId)
-        {
-            if (string.IsNullOrWhiteSpace(articleId))
-                throw new ArgumentException("An article identity must not be blank.", nameof(articleId));
-            return Convert(_source.RefreshArticle(articleId), null, articleId);
-        }
         private static void RequireBarcode(string barcode)
         {
             if (string.IsNullOrWhiteSpace(barcode))
                 throw new ArgumentException("A scanned barcode must not be blank.", nameof(barcode));
+        }
+        public IReadOnlyList<ArticleCandidate> RefreshArticle(string articleId)
+        {
+            // A missing identity must never become an unfiltered catalogue query.
+            // The caller must not be allowed to turn a stale tile into a sale.
+            if (string.IsNullOrWhiteSpace(articleId))
+                throw new ArgumentException("An article identity must not be blank.", nameof(articleId));
+            return Convert(_source.RefreshArticle(articleId), null, articleId);
         }
 
         private static IReadOnlyList<ArticleCandidate> Convert(
@@ -150,6 +160,10 @@ public sealed class CheckoutComposition
             string? requestedArticleId = null)
         {
             ArgumentNullException.ThrowIfNull(products);
+            // A scan must never turn an empty/whitespace barcode into a
+            // catalogue-wide lookup or an accidental sale of the first item.
+            if (requestedBarcode is not null && string.IsNullOrWhiteSpace(requestedBarcode))
+                throw new ArgumentException("A scanned barcode must not be blank.", nameof(requestedBarcode));
             var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var result = new List<ArticleCandidate>(products.Count);
             foreach (var product in products)
@@ -157,6 +171,9 @@ public sealed class CheckoutComposition
                 if (product is null || string.IsNullOrWhiteSpace(product.ArticleId) ||
                     !ids.Add(product.ArticleId))
                     throw new InvalidOperationException("Catalogue returned invalid or duplicate article identity.");
+                // Selection and display snapshots share the same fail-closed
+                // catalogue boundary: a malformed legacy display name must not
+                // be accepted merely because the caller used barcode selection.
                 if (string.IsNullOrWhiteSpace(product.DisplayName))
                     throw new InvalidOperationException("Catalogue returned a product without a display name.");
                 if (requestedBarcode is not null &&
@@ -167,6 +184,7 @@ public sealed class CheckoutComposition
                     throw new InvalidOperationException("Catalogue returned an article for a different identity.");
                 result.Add(new ArticleCandidate(product.ArticleId, product.Barcode ?? ""));
             }
+            // Do not expose a mutable selection buffer across the checkout boundary.
             return Array.AsReadOnly(result.ToArray());
         }
     }

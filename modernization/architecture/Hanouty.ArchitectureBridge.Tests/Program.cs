@@ -161,8 +161,30 @@ var sharedCart = new RecordingAtomicBatchPort();
 var journal = new CompositionJournal();
 var composition = new CheckoutComposition(sharedReader, new RecordingPrompt { Choice = 1 }, sharedCart, journal);
 Assert(composition.AllProducts().Count == 3, "composition lists all catalogue articles");
+Assert(composition.AllProducts().Select(p => p.ArticleId).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 3,
+       "production catalogue snapshot preserves unique article identities");
 Assert(composition.ImageProducts().Count == 1 &&
        composition.ImageProducts()[0].ArticleId == "21", "photo grid excludes products without actual image path");
+var detachedPhotos = composition.ImageProducts();
+Assert(detachedPhotos is not IList<ProductSummary> writablePhotos || writablePhotos.IsReadOnly,
+       "photo grid cannot be modified through IList");
+if (detachedPhotos is IList<ProductSummary> immutablePhotos)
+{
+    try { immutablePhotos[0] = new ProductSummary("forged", "", "Forged", "images/forged.png");
+          throw new Exception("photo grid mutation accepted"); }
+    catch (NotSupportedException) { Assert(composition.ImageProducts()[0].ArticleId == "21",
+        "photo grid mutation rejected without changing catalogue"); }
+}
+
+// A variant prompt receives read-only candidates; it must never rewrite article
+// identity in the bridge's selection buffer before the live revalidation.
+var guardedPrompt = new CandidateMutationPrompt();
+var guardedCart = new RecordingAtomicBatchPort();
+var guardedBatch = new CheckoutComposition(sharedReader, guardedPrompt, guardedCart, journal).CreateCheckoutBatch();
+Assert(guardedBatch.StageBarcode("123").Outcome == SelectionOutcome.Selected &&
+       guardedPrompt.MutationRejected && guardedBatch.PendingCount == 1 &&
+       guardedCart.Calls.Count == 0,
+       "variant prompt cannot mutate bridge selection candidates");
 var composedBatch = composition.CreateCheckoutBatch();
 Assert(composedBatch.StageBarcode("123", 2).Article?.ArticleId == "12", "composition selects explicit duplicate barcode");
 Assert(composedBatch.StageImage(A("21", ""), 1).Outcome == SelectionOutcome.Selected,
@@ -191,6 +213,14 @@ catch (ApplicationException) { }
 Assert(uncertainComposition.Reconcile(uncertainBatch) == CheckoutOperationOutcome.Unknown &&
        uncertainBatch.State == CheckoutCommitState.OutcomeUnknown,
        "unknown durable journal outcome leaves cart blocked");
+journal.Outcome = (CheckoutOperationOutcome)999;
+try { uncertainComposition.Reconcile(uncertainBatch); throw new Exception("invalid journal outcome accepted"); }
+catch (InvalidOperationException ex) when (ex.Message.Contains("unsupported durable outcome")) {
+    Assert(uncertainBatch.State == CheckoutCommitState.OutcomeUnknown &&
+           uncertainBatch.UncertainOperationId == "composed-002" &&
+           uncertainBatch.PendingCount == 1 && uncertainCart.Attempts == 1,
+           "invalid durable journal outcome preserves unknown lock and never reposts");
+}
 journal.Outcome = CheckoutOperationOutcome.Persisted;
 Assert(uncertainComposition.Reconcile(uncertainBatch) == CheckoutOperationOutcome.Persisted &&
        uncertainBatch.PendingCount == 0 && uncertainBatch.State == CheckoutCommitState.Ready,
@@ -216,6 +246,13 @@ var duplicateBatch = new CheckoutComposition(duplicateReader, new RecordingPromp
 try { duplicateBatch.StageBarcode("123"); throw new Exception("duplicate ID accepted"); }
 catch (InvalidOperationException) { Assert(duplicateBatch.PendingCount == 0 && mismatchedCart.Calls.Count == 0,
     "duplicate identity cannot reach checkout"); }
+// Barcode selection must enforce the same null-display guard as WPF catalogue lists.
+var nullNameReader = new FaultyCatalogue { Mode = "null-display" };
+var nullNameCart = new RecordingAtomicBatchPort();
+var nullNameBatch = new CheckoutComposition(nullNameReader, new RecordingPrompt(), nullNameCart, journal).CreateCheckoutBatch();
+try { nullNameBatch.StageBarcode("123"); throw new Exception("null display accepted through barcode"); }
+catch (InvalidOperationException) { Assert(nullNameBatch.PendingCount == 0 && nullNameCart.Calls.Count == 0,
+    "null display barcode selection fails closed before financial staging"); }
 var wrongArticleReader = new FaultyCatalogue { Mode = "wrong-article" };
 var wrongArticleBatch = new CheckoutComposition(wrongArticleReader, new RecordingPrompt(), mismatchedCart, journal).CreateCheckoutBatch();
 try { wrongArticleBatch.StageImage(A("21", "")); throw new Exception("wrong article accepted"); }
@@ -231,20 +268,20 @@ var sessionComposition = new CheckoutComposition(new CompositionCatalogue(),
 var session = sessionComposition.CreateSession();
 Assert(session.Products.Count == 3 && session.ImageProducts.Count == 1,
        "session exposes all products and only image products");
-// WPF must never be able to mutate the photo grid through an IList cast.
-var imageSnapshot = session.ImageProducts;
-Assert(imageSnapshot is System.Collections.Generic.IList<ProductSummary>,
-       "image grid exposes a read-only IList for mutation rejection");
+var sessionImages = session.ImageProducts;
+Assert(ReferenceEquals(sessionImages, session.ImageProducts),
+       "image grid uses one immutable snapshot for its catalogue generation");
+Assert(sessionImages is IList<ProductSummary>, "session image catalogue has a guarded list surface");
 try
 {
-    ((System.Collections.Generic.IList<ProductSummary>)imageSnapshot)[0] =
-        new ProductSummary("forged", "", "Forged", "fake/path.png");
-    throw new Exception("image grid permitted identity mutation");
+    ((IList<ProductSummary>)sessionImages)[0] =
+        new ProductSummary("forged", "", "Forged tile", "fake/path.png");
+    throw new Exception("session image catalogue mutation accepted");
 }
 catch (NotSupportedException)
 {
     Assert(session.ImageProducts.Count == 1 && session.ImageProducts[0].ArticleId == "21",
-           "image grid retains authoritative article identity after mutation attempt");
+           "session photo-grid snapshot rejects mutation without changing catalogue identity");
 }
 
 // Both WPF catalogue views use the same immutable snapshot; tile selection
@@ -275,6 +312,9 @@ try {
 }
 catch (NotSupportedException) { Assert(true, "catalogue snapshot rejects mutation"); }
 session.RefreshCatalogue();
+Assert(!ReferenceEquals(sessionImages, session.ImageProducts) &&
+       ReferenceEquals(session.ImageProducts, session.ImageProducts),
+       "explicit catalogue refresh replaces image snapshot atomically");
 Assert(session.Products.Count == 3 && session.ImageProducts.Count == 1,
        "explicit catalogue refresh preserves list/photo membership");
 Assert(session.Scan("123", 2).Article?.ArticleId == "12" &&
@@ -304,10 +344,19 @@ sessionJournal.Outcome = CheckoutOperationOutcome.Persisted;
 Assert(failedSession.Reconcile() == CheckoutOperationOutcome.Persisted &&
        failedSession.PendingCount == 0 && failedSession.OperationId is null,
        "durably persisted session clears without duplicate posting");
-var invalidSession = new CheckoutComposition(new MutableCompositionCatalogue(),
-    new RecordingPrompt(), new RecordingAtomicBatchPort(), new CompositionJournal()).CreateSession();
-Assert(invalidSession.Scan("999").Outcome == SelectionOutcome.Selected,
-       "session stages mutable catalogue product");
+var mutableInvalidCatalogue = new MutableCompositionCatalogue();
+var invalidPort = new RecordingAtomicBatchPort();
+var invalidSession = new CheckoutComposition(mutableInvalidCatalogue,
+    new RecordingPrompt(), invalidPort, new CompositionJournal()).CreateSession();
+Assert(invalidSession.SelectArticle(invalidSession.Products[0]).Outcome == SelectionOutcome.Selected,
+       "session stages an article with stable identity");
+mutableInvalidCatalogue.ChangeIdentity = true;
+Assert(invalidSession.Submit("invalidated-001") == CheckoutBatchStatus.Invalidated &&
+       invalidPort.Calls.Count == 0, "stale article refuses financial posting");
+mutableInvalidCatalogue.ChangeIdentity = false;
+try { invalidSession.Submit("invalidated-001"); throw new Exception("invalidated retry accepted"); }
+catch (InvalidOperationException) { Assert(invalidPort.Calls.Count == 0,
+    "restored catalogue cannot silently retry invalidated financial operation"); }
 invalidSession.DiscardInvalidated();
 Assert(invalidSession.PendingCount == 0, "explicit discard resets pending session");
 
@@ -333,6 +382,36 @@ try { overflow.Submit("overflow-001"); throw new Exception("quantity overflow ac
 catch (OverflowException) { Assert(overflowCart.Calls.Count == 0,
     "quantity overflow cannot write partial checkout"); }
 
+// A legacy DataRow/DBNull mapping must not leak a null display label into
+// the modern WPF catalogue snapshot, even if its DTO contract says non-null.
+var malformedDisplayReader = new MutablePhotoCatalogue { DisplayName = null! };
+try
+{
+    new CheckoutComposition(malformedDisplayReader, new RecordingPrompt(),
+        new RecordingAtomicBatchPort(), new CompositionJournal()).AllProducts();
+    throw new Exception("null catalogue display name accepted");
+}
+catch (InvalidOperationException ex) when (ex.Message.Contains("display name", StringComparison.Ordinal))
+{
+    Assert(true, "null legacy display name fails closed at modern catalogue boundary");
+}
+
+// Empty or whitespace-only labels are not usable cashier-facing catalogue names.
+foreach (var invalidLabel in new[] { "", "   ", "\t" })
+{
+    var invalidReader = new MutablePhotoCatalogue { DisplayName = invalidLabel };
+    try
+    {
+        new CheckoutComposition(invalidReader, new RecordingPrompt(),
+            new RecordingAtomicBatchPort(), new CompositionJournal()).AllProducts();
+        throw new Exception("blank catalogue display name accepted");
+    }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("display name", StringComparison.Ordinal))
+    {
+        Assert(true, "blank legacy display name fails closed at modern catalogue boundary");
+    }
+}
+
 // Real WPF tile selection must re-read live Inventory identity/photo/variant.
 var photoReader = new MutablePhotoCatalogue();
 var photoPort = new RecordingAtomicBatchPort();
@@ -350,6 +429,7 @@ photoReader.ImagePath = "images/replaced.png";
 Assert(photoSession.SelectImage(originalTile).Outcome == SelectionOutcome.InvalidCandidates &&
        photoSession.PendingCount == 0, "replaced photo cannot stage stale WPF tile");
 photoReader.ImagePath = "images/original.png";
+photoReader.DisplayName = "Renamed article";
 Assert(photoSession.SelectImage(originalTile).Outcome == SelectionOutcome.Selected &&
        photoSession.Submit("photo-current-001") == CheckoutBatchStatus.Committed &&
        photoPort.Calls.Count == 1, "current WPF photo stages and posts exactly once");
@@ -495,13 +575,27 @@ static bool InvalidW2(AuthorizedCheckoutRequest request)
     try { request.Validate(); return false; }
     catch (ArgumentException) { return true; }
 }
+// Durable original-ticket identity is mandatory for returns but forbidden on sales.
+// The financial port still owns real refund authorization and remains fail-closed.
+var returnEnvelope = W2(id: "refund-contract-001") with {
+    IsReturn = true, OriginalTicketId = "persisted-ticket-001"
+};
+returnEnvelope.Validate();
+Assert(returnEnvelope.OriginalTicketId == "persisted-ticket-001",
+    "return envelope carries the durable original ticket identity");
+Assert(InvalidW2(W2() with { IsReturn = true }),
+    "return envelope denies missing original ticket identity");
+Assert(InvalidW2(W2() with { IsReturn = true, OriginalTicketId = "  " }),
+    "return envelope denies blank original ticket identity");
+Assert(InvalidW2(W2() with { OriginalTicketId = "persisted-ticket-001" }),
+    "sale envelope rejects injected original ticket identity");
 Assert(InvalidW2(W2(id: "")), "W2 rejects missing operation ID");
 Assert(InvalidW2(W2() with { Currency = " " }), "W2 rejects missing currency");
 Assert(InvalidW2(W2(lines: Array.Empty<CheckoutBatchLine>())), "W2 rejects empty sale lines");
 Assert(InvalidW2(W2(lines: new[] { new CheckoutBatchLine("article-1", 0) })), "W2 rejects zero quantity");
 Assert(InvalidW2(W2() with { ExpectedTotal = 0m }), "W2 rejects zero expected total");
-(W2() with { IsReturn = true }).Validate();
-Assert(true, "W2 allows non-credit return pending real Checkout policy");
+(W2() with { IsReturn = true, OriginalTicketId = "persisted-ticket-001" }).Validate();
+Assert(true, "W2 allows referenced non-credit return pending real Checkout policy");
 Assert(InvalidW2(W2(cashier: "")), "W2 rejects unauthenticated cashier");
 Assert(InvalidW2(W2(lines: new[] { new CheckoutBatchLine("A", 1), new CheckoutBatchLine("a", 2) })),
     "W2 rejects case-colliding article identities");
@@ -629,6 +723,12 @@ catch (ApplicationException) { }
 try { _ = unknownSnapshot.PendingLines; throw new Exception("unknown snapshot exposed"); }
 catch (InvalidOperationException) { }
 Assert(unknownSnapshotPort.Attempts == 1, "unknown session snapshot cannot authorize retry");
+try { unknownSnapshot.Submit("snapshot-unknown"); throw new Exception("uncertain operation retried"); }
+catch (InvalidOperationException ex) when (ex.Message.Contains("Reconcile the uncertain checkout outcome")) { }
+Assert(unknownSnapshotPort.Attempts == 1 &&
+    unknownSnapshot.State == CheckoutCommitState.OutcomeUnknown &&
+    unknownSnapshot.OperationId == "snapshot-unknown",
+    "repeat submit stays fail-closed until durable reconciliation, without second financial write");
 var overflowSnapshotPort = new RecordingAtomicBatchPort();
 var overflowSnapshot = new CheckoutComposition(new CompositionCatalogue(),
     new RecordingPrompt { Choice = 0 }, overflowSnapshotPort, new CompositionJournal()).CreateSession();
@@ -713,6 +813,32 @@ catch (UnauthorizedAccessException) { anonymousDenied = true; }
 Assert(unauthorizedDenied && anonymousDenied && verifiedPermissions.Calls == 2,
     "manual stock authorization denies missing actor and explicit permission denial");
 
+// A cashier logout/login during the durable permission read must not grant
+// the previous actor's permission to the new session.
+verifiedActorSource.Actor = trustedActor;
+var changedSessionPermission = new StubManualStockPermissionReader {
+    Allowed = true,
+    OnRead = () => verifiedActorSource.Actor = new VerifiedStockActor("session-2", "actor-2")
+};
+var switchedSessionDenied = false;
+try { ManualStockAuthorizationBoundary.RequireAuthorized(verifiedActorSource, changedSessionPermission); }
+catch (UnauthorizedAccessException) { switchedSessionDenied = true; }
+Assert(switchedSessionDenied && changedSessionPermission.Calls == 1,
+    "manual stock authorization rejects session change during permission lookup");
+verifiedActorSource.Actor = trustedActor;
+// Session and actor identifiers are opaque tokens: case changes are NOT
+// equivalent identities even when a permission backend uses case-insensitive SQL.
+var caseChangedPermission = new StubManualStockPermissionReader {
+    Allowed = true,
+    OnRead = () => verifiedActorSource.Actor = new VerifiedStockActor("SESSION-1", "actor-1")
+};
+var caseChangedSessionDenied = false;
+try { ManualStockAuthorizationBoundary.RequireAuthorized(verifiedActorSource, caseChangedPermission); }
+catch (UnauthorizedAccessException) { caseChangedSessionDenied = true; }
+Assert(caseChangedSessionDenied && caseChangedPermission.Calls == 1,
+    "manual stock authorization rejects case-changed opaque session token");
+verifiedActorSource.Actor = trustedActor;
+
 var failingPermissionSource = new StubManualStockPermissionReader { ThrowOnRead = true };
 verifiedActorSource.Actor = trustedActor;
 var permissionBackendDenied = false;
@@ -735,8 +861,9 @@ sealed class StubManualStockPermissionReader : IManualStockPermissionReader
 {
     public bool Allowed { get; set; }
     public bool ThrowOnRead { get; set; }
+    public Action? OnRead { get; set; }
     public int Calls { get; private set; }
-    public bool CanAdjustStock(VerifiedStockActor actor) { Calls++; if (ThrowOnRead) throw new InvalidOperationException("permission backend unavailable"); return Allowed; }
+    public bool CanAdjustStock(VerifiedStockActor actor) { Calls++; OnRead?.Invoke(); if (ThrowOnRead) throw new InvalidOperationException("permission backend unavailable"); return Allowed; }
 }
 
 sealed class RecordingCheckoutPort : ICheckoutArticlePort
@@ -778,6 +905,21 @@ sealed class RecordingCatalogue : ICheckoutSelectionCatalogue
         return new[] { new ArticleCandidate(ReplaceImage ? "22" : articleId, "") };
     }
 }
+sealed class CandidateMutationPrompt : ICheckoutVariantPrompt
+{
+    public bool MutationRejected { get; private set; }
+    public int Choose(IReadOnlyList<ArticleCandidate> candidates)
+    {
+        try
+        {
+            ((System.Collections.Generic.IList<ArticleCandidate>)candidates)[0] =
+                new ArticleCandidate("forged", "123");
+        }
+        catch (NotSupportedException) { MutationRejected = true; }
+        return 1;
+    }
+}
+
 sealed class RecordingPrompt : ICheckoutVariantPrompt
 {
     public int Choice { get; set; }
@@ -851,7 +993,8 @@ sealed class MutablePhotoCatalogue : ICatalogueReader
 {
     public string? ImagePath { get; set; } = "images/original.png";
     public string? VariantId { get; set; } = "v1";
-    private ProductSummary Current => new("photo-1", "", "Image article", ImagePath, VariantId);
+    public string? DisplayName { get; set; } = "Image article";
+    private ProductSummary Current => new("photo-1", "", DisplayName!, ImagePath, VariantId);
     public IReadOnlyList<ProductSummary> ListAll() => new[] { Current };
     public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => Array.Empty<ProductSummary>();
     public IReadOnlyList<ProductSummary> RefreshBarcode(string barcode) => Array.Empty<ProductSummary>();
@@ -865,6 +1008,7 @@ sealed class FaultyCatalogue : ICatalogueReader
     public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => Mode switch
     {
         "wrong-barcode" => new[] { new ProductSummary("11", "other", "Wrong", null) },
+        "null-display" => new[] { new ProductSummary("11", barcode, null!, null) },
         "duplicate-id" => new[] { new ProductSummary("11", barcode, "A", null),
                                   new ProductSummary("11", barcode, "B", null) },
         _ => Array.Empty<ProductSummary>()

@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 PROJECTS = ("LOGICA.CoreCompatibility.csproj", "LOGICA.CorePortability.csproj")
 FORBIDDEN_DIRS = {"forms", "winforms", "bunifu", "obj", "bin"}
 FORBIDDEN_IMPORTS = ("System.Windows.Forms", "Bunifu", "MySql.", "Microsoft.VisualBasic")
-FORBIDDEN_QUALIFIED_TYPES = re.compile(r"(?<![A-Za-z0-9_])(?:global::)?(?:System\.Windows\.Forms|Bunifu(?:\.[A-Za-z_][A-Za-z0-9_]*)?|MySql(?:\.[A-Za-z_][A-Za-z0-9_]*)?|Microsoft\.VisualBasic)(?:\.|::)")
+FORBIDDEN_QUALIFIED_TYPES = re.compile(r"(?<![A-Za-z0-9_])(?:global\s*::\s*)?(?:System\s*\.\s*Windows\s*\.\s*Forms|Bunifu(?:\s*\.\s*[A-Za-z_]\w*)?|MySql(?:\s*\.\s*[A-Za-z_]\w*)?|Microsoft\s*\.\s*VisualBasic)\s*(?:\.|::)")
 FORBIDDEN_REFERENCES = ("System.Windows.Forms", "Bunifu", "MySql", "Microsoft.VisualBasic")
 
 def local_name(tag):
@@ -109,18 +109,32 @@ def validate(root):
                 errors.append("missing source: " + str(relative))
             else:
                 code = source.read_text(encoding="utf-8-sig")
+                # Scan executable lines for imports too: a commented-out using must not
+                # make an otherwise portable source fail its boundary check.
+                executable_lines = "\n".join("" if line.lstrip().startswith("//") else line for line in code.splitlines())
                 for prefix in FORBIDDEN_IMPORTS:
-                    if "using " + prefix in code or "Imports " + prefix in code:
+                    # C# global/alias imports and arbitrary whitespace are still imports.
+                    # Do not let a tab or newline bypass the portable-source boundary.
+                    # C# permits whitespace around namespace separators; never let
+                    # spaced dotted imports evade the portable boundary gate.
+                    import_prefix = r"\s*\.\s*".join(map(re.escape, prefix.rstrip(".").split(".")))
+                    if prefix.endswith("."):
+                        import_prefix += r"\s*\."
+                    csharp_import = re.compile(r"\b(?:global\s+)?using\s+(?:(?:static\s+)|(?:[A-Za-z_]\w*\s*=\s*))?(?:global::)?" + import_prefix + r"(?![A-Za-z0-9_])")
+                    vb_import = re.compile(r"\bImports\s+(?:(?:[A-Za-z_]\w*\s*=\s*))?" + import_prefix + r"(?![A-Za-z0-9_])", re.IGNORECASE)
+                    if csharp_import.search(executable_lines) or vb_import.search(executable_lines):
                         errors.append("platform dependency in " + str(relative) + ": " + prefix)
-                if FORBIDDEN_QUALIFIED_TYPES.search(code):
+                # Ignore line comments: mentioning a forbidden dependency in an explanatory
+                # comment is not a production reference. Keep scanning executable source.
+                if FORBIDDEN_QUALIFIED_TYPES.search(executable_lines):
                     errors.append("fully qualified platform dependency in " + str(relative))
             paths.append(relative.as_posix())
     except (OSError, ET.ParseError) as exc:
         errors.append("CoreSources.props: " + str(exc))
     if not paths:
         errors.append("manifest has no production sources")
-    if len(paths) != len(set(paths)):
-        errors.append("duplicate production source")
+    if len(paths) != len({path.casefold() for path in paths}):
+        errors.append("duplicate production source (case-insensitive Windows path identity)")
     return {"ok": not errors, "source_count": len(paths),
             "source_paths": sorted(set(paths)), "targets": targets, "errors": errors}
 
