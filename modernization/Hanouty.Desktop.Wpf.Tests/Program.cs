@@ -1478,62 +1478,21 @@ foreach (var modalFieldName in new[] { "_cashierEntryOpen", "_reviewOpen", "_log
         "receipt selection resumes only after modal exits: " + modalFieldName);
 }
 
-// Real STA TextBox event: incomplete quantity input must never inherit a
-// previously reviewed return amount after a keyboard edit.
-originalWindow.ReturnQuantity.Text = "1.";
-Check(!originalWindow.ReviewReturnQuantity(originalWindow.ReturnQuantity.Text) &&
-    !originalWindow.ConfirmReturnDraft(),
-    "unfinished decimal separator must not confirm a return in real WPF window");
-originalWindow.ReturnQuantity.Text = "0,250";
-Check(originalWindow.ReviewReturnQuantity(originalWindow.ReturnQuantity.Text) &&
-    originalWindow.ConfirmReturnDraft(),
-    "Moroccan comma decimal quantity can be reviewed explicitly in STA window");
-// A stale ListBox ItemsSource must never confirm a return draft, even if
-// its SelectedItem and the Host context still point at the old receipt.
-var originalResultsSnapshot = originalWindow.OriginalSaleResults.ItemsSource;
-originalWindow.OriginalSaleResults.ItemsSource = new[] { persistedRow };
+// The WPF production UI supports complete persisted tickets only. It must
+// expose no editable partial quantity, and a lookup-only submission must fail
+// closed when asked to post a refund.
+Check(originalWindow.FindName("ReturnQuantity") is null,
+    "WPF production UI must not expose unsupported partial quantities");
 Check(!originalWindow.ConfirmReturnDraft(),
-    "return confirmation must reject replaced original-sale result snapshot");
-originalWindow.OriginalSaleResults.ItemsSource = originalResultsSnapshot;
-originalWindow.OriginalSaleResults.SelectedItem = persistedRow;
-Check(originalWindow.SelectOriginalSale(persistedRow),
-    "restored original-sale snapshot requires explicit reselection");
-originalWindow.ReturnQuantity.Text = "0,2500";
-Check(!originalWindow.ConfirmReturnDraft() &&
-    !originalWindow.ReviewReturnQuantity(originalWindow.ReturnQuantity.Text),
-    "editing reviewed quantity to overprecision revokes confirmation in STA window");
+    "receipt review without Checkout full-return authorization must not post");
 
-// Actual STA ListBox interaction: changing highlighted receipt invalidates the
-// previously reviewed quantity even before a second Select button click.
-Check(originalWindow.ReviewReturnQuantity("1") && originalWindow.ConfirmReturnDraft(),
-    "trusted receipt can prepare a non-posting return draft");
-originalWindow.OriginalSaleResults.SelectedItem = null;
-Check(!originalWindow.ConfirmReturnDraft() &&
-    !originalWindow.ReviewReturnQuantity("1"),
-    "clearing highlighted receipt revokes previously confirmed return");
-originalWindow.OriginalSaleResults.SelectedItem = persistedRow;
-Check(originalWindow.SelectOriginalSale(persistedRow) &&
-    originalWindow.ReviewReturnQuantity("1"),
-    "fresh explicit receipt selection restores quantity review");
-modalPinField.SetValue(originalWindow, true);
-Check(!originalWindow.ConfirmReturnDraft() && !originalWindow.ReviewReturnQuantity("1"),
-    "transient PIN modal blocks return review and confirmation");
-modalPinField.SetValue(originalWindow, false);
-
-// A rejected cash checkout still changes financial state. The same real
-// MainWindow must revoke an already reviewed original-sale return draft.
-Check(originalWindow.SearchOriginalSales("receipt-1"),
-    "return evidence available before checkout outcome");
-persistedRow = (OriginalSaleCandidate)originalWindow.OriginalSaleResults.Items[0];
-originalWindow.OriginalSaleResults.SelectedItem = persistedRow;
-Check(originalWindow.SelectOriginalSale(persistedRow) &&
-    originalWindow.ReviewReturnQuantity("1") && originalWindow.ConfirmReturnDraft(),
-    "original sale and quantity reviewed before checkout state transition");
-originalWindowVm.CommitCheckout(); // no contextual port: fail closed, not posted
+// A checkout attempt changes the cashier's financial context. The same real
+// MainWindow must revoke previously selected original-sale evidence.
+originalWindowVm.CommitCheckout(); // legacy-only submission: fail closed
 Check(originalWindow.OriginalSaleResults.Items.Count == 0 &&
     !originalWindow.ConfirmReturnDraft() &&
     !originalWindow.SelectOriginalSale(persistedRow),
-    "cash checkout rejection revokes previously reviewed return evidence");
+    "checkout context transition revokes original-sale evidence");
 
 // Actual WPF TextChanged must invalidate the previous receipt evidence.
 originalWindow.OriginalSaleSearch.Text = "different-receipt";
