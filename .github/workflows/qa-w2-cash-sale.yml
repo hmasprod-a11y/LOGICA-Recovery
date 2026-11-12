@@ -149,7 +149,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $env:HANOUTY_W2_DISPOSABLE_MARKER = 'I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY'
           $package = Join-Path $env:RUNNER_TEMP 'hanouty-financial-package'
-          ./scripts/Test-HanoutyFinancialPackage.ps1 -PackageDirectory $package -EvidenceDirectory './evidence/package' -SourceSha $env:GITHUB_SHA
+          ./scripts/Test-HanoutyFinancialPackage.ps1 -PackageDirectory $package -EvidenceDirectory './evidence' -SourceSha $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw 'Extracted financial package acceptance failed' }
       - name: Require executed same-SHA cash-sale and full-ticket refund proof
         shell: pwsh
@@ -174,8 +174,8 @@ jobs:
         with:
           name: HANOUTY-WPF-financial-accepted
           path: |
-            evidence/package/HANOUTY-WPF-net10-FINANCIAL-ACCEPTED-win-x64.zip
-            evidence/package/financial-package-acceptance.json
+            evidence/HANOUTY-WPF-net10-FINANCIAL-ACCEPTED-win-x64.zip
+            evidence/financial-package-acceptance.json
           if-no-files-found: error
           retention-days: 14
       - name: Stop only this workflow's disposable MariaDB server
