@@ -28,7 +28,7 @@ public interface IContextualWpfCashReturnSubmission
 // No local DB reads, pricing, posting implementation, or implicit host registration.
 public sealed class AuthorizedWpfCheckoutAdapter : IContextualCheckoutSubmission, IContextualWpfCashReturnSubmission, ICheckoutOutcomeReconciliation
 {
-    private readonly ITrustedWpfCheckoutPreparation _preparation;
+    private readonly ITrustedWpfCheckoutPreparation? _preparation;
     private readonly AuthorizedCheckoutCommitGate _gate;
     private readonly ICheckoutOperationJournal _journal;
     private readonly ITrustedWpfFullCashReturnPreparation? _returnPreparation;
@@ -43,6 +43,14 @@ public sealed class AuthorizedWpfCheckoutAdapter : IContextualCheckoutSubmission
         _returnPreparation = returnPreparation;
     }
 
+    public AuthorizedWpfCheckoutAdapter(AuthorizedCheckoutCommitGate gate,
+        ICheckoutOperationJournal journal, ITrustedWpfFullCashReturnPreparation returnPreparation)
+    {
+        _gate = gate ?? throw new ArgumentNullException(nameof(gate));
+        _journal = journal ?? throw new ArgumentNullException(nameof(journal));
+        _returnPreparation = returnPreparation ?? throw new ArgumentNullException(nameof(returnPreparation));
+    }
+
     public CheckoutSubmissionResult Submit(string stableOperationId) =>
         throw new InvalidOperationException("Cashier/payment context and trusted preparation are required.");
 
@@ -53,6 +61,7 @@ public sealed class AuthorizedWpfCheckoutAdapter : IContextualCheckoutSubmission
             return CheckoutSubmissionResult.Invalidated;
 
         // No posting until the application's trusted preparation exists.
+        if (_preparation is null) return CheckoutSubmissionResult.Invalidated;
         var request = _preparation.Prepare(stableOperationId, context);
         if (request is null || request.OperationId != stableOperationId ||
             request.CashierId != context.CashierId ||
