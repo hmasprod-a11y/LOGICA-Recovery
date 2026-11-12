@@ -56,7 +56,13 @@ public sealed class CheckoutComposition
     {
         if (tile is null || string.IsNullOrWhiteSpace(tile.ArticleId)) return false;
         var live = Validate(_reader.RefreshArticle(tile.ArticleId));
-        return live.Count == 1 && live[0].HasImage && live[0] == tile;
+        // A display-name rename is not an identity, variant or photo change.
+        // Preserve QA's accepted live-tile contract without trusting the UI snapshot.
+        return live.Count == 1 && live[0].HasImage &&
+            string.Equals(live[0].ArticleId, tile.ArticleId, StringComparison.Ordinal) &&
+            string.Equals(live[0].Barcode, tile.Barcode, StringComparison.Ordinal) &&
+            string.Equals(live[0].VariantId, tile.VariantId, StringComparison.Ordinal) &&
+            string.Equals(live[0].ImagePath, tile.ImagePath, StringComparison.Ordinal);
     }
 
     internal bool IsCurrentArticle(ProductSummary selected)
