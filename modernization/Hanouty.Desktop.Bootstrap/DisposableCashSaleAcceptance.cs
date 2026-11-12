@@ -248,8 +248,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         Select(host);
         var originalContext = host.ViewModel.PaymentContext ??
             throw new InvalidOperationException("Host cash context missing.");
-        var staged = Snapshot(settings);
-        string? rejectedOperation = null;
+        var basketBeforeEditedContexts = Snapshot(settings);
         foreach (var edited in new[] {
             originalContext with { CashierId = "forged-cashier" },
             originalContext with { RegisterId = "02" },
@@ -258,25 +257,36 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             originalContext with { TenderCode = "Card" }
         })
         {
+            Select(host);
+            var staged = Snapshot(settings);
             host.ViewModel.PaymentContext = edited;
             host.ViewModel.CommitCommand.Execute(null);
-            rejectedOperation ??= host.ViewModel.PendingOperationId;
-            var editedSnapshot = Snapshot(settings);
-            var editedFeedback = host.ViewModel.CommitFeedback;
-            var editedUncertain = host.ViewModel.CheckoutUncertain;
-            var editedPending = host.Session.PendingCount;
-            var editedState = host.Session.State;
-            var editedOperation = host.ViewModel.PendingOperationId;
-            Require(editedFeedback == "Cart invalidated — cashier must review" &&
-                !editedUncertain && editedPending == 1 &&
-                editedState == CheckoutCommitState.Ready &&
-                rejectedOperation is not null &&
-                editedOperation == rejectedOperation && editedSnapshot == staged,
-                $"Edited cashier context: feedback='{editedFeedback}', uncertain={editedUncertain}, pending={editedPending}, state={editedState}, operation='{editedOperation}', expected='{rejectedOperation}', sqlUnchanged={editedSnapshot == staged}.");
+            var rejectedOperation = host.ViewModel.PendingOperationId;
+            var rejectedSnapshot = Snapshot(settings);
+            Require(host.ViewModel.CommitFeedback == "Cart invalidated — cashier must review" &&
+                host.ViewModel.CheckoutUncertain && !host.ViewModel.CanCommit &&
+                host.Session.PendingCount == 1 && host.Session.State == CheckoutCommitState.Ready &&
+                rejectedOperation is not null && rejectedSnapshot == staged,
+                $"Edited cashier context was not fail-closed: feedback='{host.ViewModel.CommitFeedback}', uncertain={host.ViewModel.CheckoutUncertain}, pending={host.Session.PendingCount}, state={host.Session.State}, operation='{rejectedOperation}', sqlUnchanged={rejectedSnapshot == staged}.");
+            host.ViewModel.CommitCommand.Execute(null);
+            Require(host.ViewModel.CheckoutUncertain && !host.ViewModel.CanCommit &&
+                host.ViewModel.PendingOperationId == rejectedOperation && Snapshot(settings) == staged,
+                "Locked edited-context operation was replayed or changed SQL.");
+            host.ViewModel.ReconcileCommand.Execute(null);
+            Require(host.ViewModel.ReviewedResolution == CheckoutResolution.Absent &&
+                host.ViewModel.CheckoutUncertain && Snapshot(settings) == staged,
+                "Rejected edited context must reconcile as absent while remaining locked for cashier review.");
+            ReviewThroughDialog(host, pin, true);
+            Require(!host.ViewModel.CheckoutUncertain && host.Session.PendingCount == 0 &&
+                host.ViewModel.PendingOperationId is null && Snapshot(settings) == basketBeforeEditedContexts,
+                "Authenticated UI review failed to discard only the rejected draft.");
+            Require(host.TrySetFinancialContext(originalContext),
+                "Fresh cashier authorization could not be issued after reviewed rejection.");
         }
-        // Explicitly restore the captured context after deterministic local
-        // rejection, preserving the SAME basket and operation ID (no blind retry).
-        host.ViewModel.PaymentContext = originalContext;
+        Select(host);
+        var stagedForCommit = Snapshot(settings);
+        Require(host.ViewModel.CanCommit, "Fresh reviewed cashier context did not re-enable checkout.");
+
         host.ViewModel.CommitCommand.Execute(null);
         Require(host.ViewModel.CommitFeedback == "Checkout committed" && !host.ViewModel.CheckoutUncertain &&
             host.ViewModel.PendingOperationId is null && host.Session.PendingCount == 0,
