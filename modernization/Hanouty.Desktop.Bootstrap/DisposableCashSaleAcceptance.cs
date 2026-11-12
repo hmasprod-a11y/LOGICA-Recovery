@@ -261,12 +261,18 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             host.ViewModel.PaymentContext = edited;
             host.ViewModel.CommitCommand.Execute(null);
             rejectedOperation ??= host.ViewModel.PendingOperationId;
-            Require(host.ViewModel.CommitFeedback == "Cart invalidated — cashier must review" &&
-                !host.ViewModel.CheckoutUncertain && host.Session.PendingCount == 1 &&
-                host.Session.State == CheckoutCommitState.Ready &&
+            var editedSnapshot = Snapshot(settings);
+            var editedFeedback = host.ViewModel.CommitFeedback;
+            var editedUncertain = host.ViewModel.CheckoutUncertain;
+            var editedPending = host.Session.PendingCount;
+            var editedState = host.Session.State;
+            var editedOperation = host.ViewModel.PendingOperationId;
+            Require(editedFeedback == "Cart invalidated — cashier must review" &&
+                !editedUncertain && editedPending == 1 &&
+                editedState == CheckoutCommitState.Ready &&
                 rejectedOperation is not null &&
-                host.ViewModel.PendingOperationId == rejectedOperation && Snapshot(settings) == staged,
-                "Edited UI cashier/register/currency/tender bypassed same-session authorization or changed SQL.");
+                editedOperation == rejectedOperation && editedSnapshot == staged,
+                $"Edited cashier context: feedback='{editedFeedback}', uncertain={editedUncertain}, pending={editedPending}, state={editedState}, operation='{editedOperation}', expected='{rejectedOperation}', sqlUnchanged={editedSnapshot == staged}.");
         }
         // Explicitly restore the captured context after deterministic local
         // rejection, preserving the SAME basket and operation ID (no blind retry).
