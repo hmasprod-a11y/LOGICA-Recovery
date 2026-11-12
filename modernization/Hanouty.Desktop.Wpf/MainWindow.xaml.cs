@@ -457,7 +457,7 @@ public partial class MainWindow : Window
         // durable-outcome review is active. Never prompt for a competing sale.
         if (_cashierEntryOpen || _logoutOpen || _reviewOpen || _pinOpen || _originalSaleLookupBusy ||
             DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
-            vm.CheckoutUncertain || vm.PendingOperationId is not null ||
+            vm.CheckoutUncertain || (vm.PendingOperationId is not null && !vm.CheckoutBusy) ||
             vm.PaymentContext is null || vm.PaymentContext.CashierId != cashier)
             return "";
         return ReadPin("Authorize cash checkout",
