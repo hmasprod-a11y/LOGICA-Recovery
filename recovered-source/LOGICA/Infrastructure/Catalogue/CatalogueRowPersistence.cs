@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using System.Linq;
 using MySql.Data.MySqlClient;
 
 namespace LOGICA.Infrastructure.Catalogue
@@ -189,7 +190,7 @@ namespace LOGICA.Infrastructure.Catalogue
             if (!row.Table.Columns.Contains("STOCK") || row.IsNull("STOCK", version))
                 throw new UnauthorizedAccessException("Stock value is missing or NULL.");
             try { return Convert.ToDecimal(row["STOCK", version], CultureInfo.InvariantCulture); }
-            catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+            catch (Exception ex) when (!(ex is OutOfMemoryException) && !(ex is StackOverflowException))
             { throw new UnauthorizedAccessException("Stock value cannot be verified.", ex); }
         }
 
