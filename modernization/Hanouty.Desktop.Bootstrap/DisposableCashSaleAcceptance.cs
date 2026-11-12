@@ -49,6 +49,7 @@ internal static class DisposableCashSaleAcceptance
         "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS",
         "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK",
         "SELECT COUNT(*) FROM hanouty_checkout_operations",
+        "SELECT COUNT(*) FROM hanouty_cash_return_consumption",
         "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'",
         "SELECT CL FROM TABLE_NUM", "SELECT COUNT(*) FROM TABLE_01"
     }.Select(q => Number(settings, q).ToString(CultureInfo.InvariantCulture)));
@@ -88,6 +89,7 @@ CREATE TABLE TABLE_VENTES_ENTETE (ID_TICKET VARCHAR(64) PRIMARY KEY,TICKET TEXT,
 CREATE TABLE TABLE_01 (ID_ARTICLE VARCHAR(64),Code TEXT,Article TEXT,Famille TEXT,PRIX_A DECIMAL(16,3),PRIX_MP DECIMAL(16,3),PRIX_V DECIMAL(16,3),Qté DECIMAL(16,3),Remise DECIMAL(16,3),TOTAL_NET DECIMAL(16,3),TAUX_TVA DECIMAL(16,3),GROUPE TEXT) ENGINE=InnoDB;
 CREATE TABLE TABLE_VENTES_JOURNAL (ID_TICKET VARCHAR(64),Ticket TEXT,Dates TEXT,Heure TEXT,ID_ARTICLE VARCHAR(64),Code TEXT,Article TEXT,Famille TEXT,PRIX_A DECIMAL(16,3),PRIX_MP DECIMAL(16,3),PRIX_V DECIMAL(16,3),Qté DECIMAL(16,3),Remise DECIMAL(16,3),Total_NET DECIMAL(16,3),TAUX_TVA DECIMAL(16,3),GROUPE TEXT,Caissier TEXT,Vendeur TEXT,ID_CLIENT TEXT,CODE_CLIENT TEXT,CLIENT TEXT,POSTE TEXT,OPERATION TEXT,NOTES TEXT,NOTES_TYPE_PRIX TEXT,NOTES_MODE_P TEXT) ENGINE=InnoDB;
 CREATE TABLE TABLE_VENTES_REGLEMENTS (ID_TICKET VARCHAR(64),TICKET TEXT,DATES TEXT,CAISSIER TEXT,ID_CLIENT TEXT,CODE_CLIENT TEXT,CLIENT TEXT,POSTE TEXT,MONTANT DECIMAL(16,3),MODE_P TEXT,OPERATION TEXT,NOTES_REMARQUE TEXT) ENGINE=InnoDB;
+CREATE TABLE hanouty_cash_return_consumption (original_ticket_id VARCHAR(64) NOT NULL PRIMARY KEY, return_operation_id VARCHAR(64) NOT NULL UNIQUE, consumed_quantity DECIMAL(16,3) NOT NULL) ENGINE=InnoDB;
 INSERT INTO TABLE_ARTICLES VALUES ('W2-Article',100,'CODE''1','Lait d''été',NULL,'Food',1,1,5.25,20,'G',0,0);
 INSERT INTO TABLE_PASS VALUES ('O''Neil','1234','UTILISATEUR');
 INSERT INTO TABLE_NUM VALUES (0,1);
@@ -676,6 +678,71 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         }
         finally { workstation.Window.Close(); }
 
+        // Exercise the complete production return route on this exact WPF Host + disposable InnoDB database.
+        // First inject a failure after the refund payment insert: ticket, payment, stock,
+        // operation journal, and the durable original-ticket claim must all roll back.
+        var beforeRefundRollback = Snapshot(settings);
+        Sql(settings, "CREATE TRIGGER w2_return_after_payment AFTER INSERT ON TABLE_VENTES_REGLEMENTS FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='w2-injected-return-after-payment'");
+        try
+        {
+            var rejectedReturn = PrepareWpfReturn(settings, pin, operation);
+            try
+            {
+                rejectedReturn.Window.ConfirmReturnDraft();
+                Require(Snapshot(settings) == beforeRefundRollback &&
+                    Number(settings, "SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id=@id", operation) == 0,
+                    "Injected WPF return failure did not roll back payment, stock, journal and original-ticket claim.");
+            }
+            finally { rejectedReturn.Window.Close(); }
+        }
+        finally { Sql(settings, "DROP TRIGGER w2_return_after_payment"); }
+
+        var beforeFullRefund = Snapshot(settings);
+        var stockBeforeFullRefund = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+        var headersBeforeFullRefund = Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE");
+        var journalBeforeFullRefund = Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL");
+        var paymentsBeforeFullRefund = Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS");
+        var movementsBeforeFullRefund = Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK");
+        var operationsBeforeFullRefund = Number(settings, "SELECT COUNT(*) FROM hanouty_checkout_operations");
+        var refundHost = PrepareWpfReturn(settings, pin, operation);
+        try
+        {
+            Require(refundHost.Window.ConfirmReturnDraft(),
+                "Actual WPF full-ticket confirmation did not submit through the production Checkout gate: " +
+                refundHost.ViewModel.CommitFeedback + "; " + refundHost.Window.ReturnDraftStatus.Text);
+            Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == headersBeforeFullRefund + 1 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL") == journalBeforeFullRefund + 1 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == paymentsBeforeFullRefund + 1 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movementsBeforeFullRefund + 1 &&
+                Number(settings, "SELECT COUNT(*) FROM hanouty_checkout_operations") == operationsBeforeFullRefund + 1 &&
+                Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == stockBeforeFullRefund + 1 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_01") == 0,
+                "WPF refund SQL readback did not show one atomic ticket/payment/journal/stock operation.");
+        }
+        finally { refundHost.Window.Close(); }
+
+        var returnOperation = Convert.ToString(Value(settings,
+            "SELECT return_operation_id FROM hanouty_cash_return_consumption WHERE original_ticket_id=@id", operation))!;
+        Require(Number(settings, "SELECT consumed_quantity FROM hanouty_cash_return_consumption WHERE original_ticket_id=@id", operation) == 1m &&
+            Number(settings, "SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id=@id", returnOperation) == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET=@id AND ID_ARTICLE='W2-Article'", returnOperation) == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MODE_P='ESPECES' AND ABS(MONTANT)=5.25", returnOperation) == 1 &&
+            Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == 100m,
+            "Persisted original lines, exact cash amount, claim and restored stock do not reconcile.");
+
+        // A second cashier UI must not even offer the consumed original receipt.
+        var beforeDuplicateRefund = Snapshot(settings);
+        var duplicateRefundHost = Host(settings, pin);
+        try
+        {
+            duplicateRefundHost.Window.Show();
+            Require(!duplicateRefundHost.Window.SearchOriginalSales(operation) &&
+                duplicateRefundHost.Window.OriginalSaleResults.Items.Count == 0 &&
+                Snapshot(settings) == beforeDuplicateRefund,
+                "Already-returned receipt remained available or a second WPF refund changed SQL.");
+        }
+        finally { duplicateRefundHost.Window.Close(); }
+
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
             ReviewCallbackAuthenticated = true, WrongReviewPinRejected = true,
@@ -683,8 +750,34 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             EmptyBasket = true, TicketPaymentStockSql = true, Duplicate = true, ProcessRestart = true,
             WrongPinRejected = true, WrongTotalRejected = true, StalePriceRejected = true,
             AfterPaymentRollback = true, UnknownJournalLocked = true, LostAcknowledgementPersisted = true, Reconciliation = true,
-            W2Accepted = false, Remaining = "Broader V1 payment/returns/device parity and commercial rollout acceptance"
+            FullCashReturnThroughWpfUi = true, FullCashReturnSqlReadback = true, FullCashReturnRollback = true, FullCashReturnIdempotency = true,\n            W2Accepted = true, Remaining = "Partial returns, mixed tenders, discounts/credit, device parity, and commercial rollout acceptance"
         }));
+    }
+
+    private static CatalogueHost PrepareWpfReturn(CatalogueSettings settings, string pin, string originalTicket)
+    {
+        var host = Host(settings, pin);
+        host.Window.Show();
+        try
+        {
+            Require(host.Window.SearchOriginalSales(originalTicket),
+                "Actual WPF Host did not find the persisted original cash ticket.");
+            var row = host.Window.OriginalSaleResults.Items
+                .Cast<OriginalSaleCandidate>()
+                .Single(candidate => candidate.SaleId == originalTicket);
+            host.Window.OriginalSaleResults.SelectedItem = row;
+            Require(host.Window.SelectOriginalSale(row),
+                "Actual WPF Host refused the selected persisted original ticket.");
+            Require(host.Window.ReturnDraftStatus.Text.Contains("full ticket", StringComparison.OrdinalIgnoreCase) ||
+                host.Window.ReturnDraftStatus.Text.Contains("full-ticket", StringComparison.OrdinalIgnoreCase),
+                "WPF did not prepare an explicit full-ticket return review.");
+            return host;
+        }
+        catch
+        {
+            host.Window.Close();
+            throw;
+        }
     }
 
     public static int Run(string evidenceDirectory)
