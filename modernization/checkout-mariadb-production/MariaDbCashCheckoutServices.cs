@@ -137,7 +137,15 @@ namespace Hanouty.Checkout.MariaDb
                             if (reader.Read())
                                 throw new InvalidOperationException("Original ticket already consumed by a refund.");
                     }
-                    var lines = original.Select(x => new CheckoutBatchLine(x.ArticleId, x.Quantity)).ToArray();
+                    var lines = original.Select(x =>
+                    {
+                        // WPF's batch contract accepts whole units only. Never round
+                        // persisted fractional or overflowing quantities into a refund.
+                        if (x.Quantity <= 0 || x.Quantity != decimal.Truncate(x.Quantity) ||
+                            x.Quantity > int.MaxValue)
+                            throw new InvalidOperationException("Original ticket quantity is not a valid whole-unit refund quantity.");
+                        return new CheckoutBatchLine(x.ArticleId, checked((int)x.Quantity));
+                    }).ToArray();
                     transaction.Commit();
                     return new OriginalCashTicketEvidence(originalTicketId, paid, lines);
                 }
