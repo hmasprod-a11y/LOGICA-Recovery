@@ -272,9 +272,10 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 host.ViewModel.PendingOperationId == rejectedOperation && Snapshot(settings) == staged,
                 "Locked edited-context operation was replayed or changed SQL.");
             host.ViewModel.ReconcileCommand.Execute(null);
+            var reconciledSnapshot = Snapshot(settings);
             Require(host.ViewModel.ReviewedResolution == CheckoutResolution.Absent &&
-                host.ViewModel.CheckoutUncertain && Snapshot(settings) == staged,
-                "Rejected edited context must reconcile as absent while remaining locked for cashier review.");
+                host.ViewModel.CheckoutUncertain && reconciledSnapshot == staged,
+                $"Rejected-context reconciliation: resolution={host.ViewModel.ReviewedResolution}, uncertain={host.ViewModel.CheckoutUncertain}, pending={host.Session.PendingCount}, snapshotUnchanged={reconciledSnapshot == staged} (before='{staged}', after='{reconciledSnapshot}').");
             ReviewThroughDialog(host, pin, true);
             Require(!host.ViewModel.CheckoutUncertain && host.Session.PendingCount == 0 &&
                 host.ViewModel.PendingOperationId is null && Snapshot(settings) == basketBeforeEditedContexts,
