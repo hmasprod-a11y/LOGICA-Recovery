@@ -688,8 +688,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             var rejectedReturn = PrepareWpfReturn(settings, pin, operation);
             try
             {
-                rejectedReturn.Window.ConfirmReturnDraft();
-                Require(Snapshot(settings) == beforeRefundRollback &&
+                var refundWasRejected = !rejectedReturn.Window.ConfirmReturnDraft();
+                Require(refundWasRejected && Snapshot(settings) == beforeRefundRollback &&
                     Number(settings, "SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id=@id", operation) == 0,
                     "Injected WPF return failure did not roll back payment, stock, journal and original-ticket claim.");
             }
