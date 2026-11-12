@@ -335,6 +335,20 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         }
     }
 
+    // Host-only recovery hook used after durable outcome and cashier PIN have
+    // both been revalidated. Restore the original immutable cashier context
+    // before the old draft is discarded; user-edited display state is never trusted.
+    public bool RestoreAuthorizedPaymentContextAfterReview(CashierPaymentContext trustedContext)
+    {
+        if (trustedContext?.IsWellFormed != true || !_selectionInFlight ||
+            !CheckoutUncertain || !FinancialSessionActive)
+            return false;
+        _paymentContext = trustedContext;
+        OnPropertyChanged(nameof(PaymentContext));
+        OnPropertyChanged(nameof(CanCommit));
+        return true;
+    }
+
     // Called only by the explicit review UI. A journal read alone never unlocks.
     // Authorization must recheck the durable outcome and clear the same draft.
     public bool TryReviewResolvedCheckout(Func<string, CheckoutResolution, bool> authorize)
