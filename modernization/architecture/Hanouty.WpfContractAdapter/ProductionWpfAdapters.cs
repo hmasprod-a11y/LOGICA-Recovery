@@ -106,9 +106,15 @@ public sealed class ProductionWpfCheckoutSubmission : Wpf.ICheckoutSubmission, W
         // the financial gate. In that case it is Ready (not OutcomeUnknown)
         // while retaining the operation ID for cashier review. Reconcile that
         // ID against the durable journal; never infer Absent from local state.
+        var sessionOperationId = _session.OperationId;
         if (_session.State == CheckoutCommitState.Ready &&
-            string.Equals(_session.OperationId, stableOperationId, StringComparison.Ordinal))
+            (sessionOperationId is null ||
+             string.Equals(sessionOperationId, stableOperationId, StringComparison.Ordinal)) &&
+            _financialGate?.UncertainOperationId is null)
         {
+            // A cashier-context guard may reject before CheckoutSession sees
+            // the stable ID. A verified journal lookup for this exact ID is
+            // still authoritative; another session/gate operation blocks it. 
             if (_operationJournal is null) return Wpf.CheckoutResolution.Unknown;
             try
             {
