@@ -625,9 +625,12 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 !workstation.ViewModel.FinancialSessionActive && Snapshot(settings) == before,
                 "Wrong PIN activated signed-out cashier session.");
             Require(CashierEntry(workstation, "O'Neil", "01", "0", 0m, pin) &&
-                workstation.ViewModel.FinancialSessionActive && workstation.ViewModel.PaymentContext is null &&
-                workstation.ViewModel.CanSelectProduct && !workstation.ViewModel.CanCommit && Snapshot(settings) == before,
-                "Authenticated empty session created a dummy financial operation or failed to activate.");
+                workstation.ViewModel.FinancialSessionActive &&
+                workstation.ViewModel.PaymentContext?.TenderedAmount == 0m &&
+                workstation.ViewModel.PendingOperationId is null &&
+                workstation.ViewModel.CanSelectProduct && !workstation.ViewModel.CanCommit &&
+                Snapshot(settings) == before,
+                "Authenticated zero-tender session created a financial operation, enabled payment, or changed SQL.");
 
             void Stage(int count) {
                 for (int n = 0; n < count; n++) {
