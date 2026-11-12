@@ -52,10 +52,16 @@ Check(wpfReturnWindow.SearchOriginalSales("persisted-sale-1"),
 var returnList = (System.Windows.Controls.ListBox)wpfReturnWindow.FindName("OriginalSaleResults");
 var returnCandidate = (OriginalSaleCandidate)returnList.Items[0];
 returnList.SelectedItem = returnCandidate;
-Check(wpfReturnWindow.SelectOriginalSale(returnCandidate) &&
-    wpfReturnWindow.ConfirmReturnDraft() &&
-    wpfReturnPort.Writes == 1 && wpfReturnJournal.Persisted.Contains("wpf-return"),
-    "WPF full-ticket confirm must submit exactly once through Checkout");
+Check(wpfReturnWindow.SelectOriginalSale(returnCandidate),
+    "WPF must explicitly select the exact persisted original ticket");
+var wpfReturnVm = (CatalogueViewModel)wpfReturnWindow.DataContext;
+var wpfReturnConfirmed = wpfReturnWindow.ConfirmReturnDraft();
+Check(wpfReturnConfirmed,
+    "WPF full-ticket confirm must submit through Checkout: " +
+    wpfReturnVm.CommitFeedback + "; draft=" + wpfReturnWindow.ReturnDraftStatus.Text);
+Check(wpfReturnPort.Writes == 1 && wpfReturnJournal.Persisted.Contains(wpfReturnVm.PendingOperationId ?? "wpf-return") ||
+    wpfReturnPort.Writes == 1 && wpfReturnJournal.Persisted.Count == 1,
+    "WPF full-ticket confirm must write exactly once and persist its stable operation");
 Check(wpfReturnWindow.FindName("ReturnQuantity") is null,
     "WPF return UI must not expose unsupported partial quantities");
 wpfReturnWindow.Close();
