@@ -247,7 +247,7 @@ namespace LOGICA.Infrastructure.Checkout
             // They are copied into the signed return journal without using current
             // prices or mutable UI data.
             var original = Read(connection, transaction,
-                "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté," +
+                "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté AS quantity," +
                 "Total_NET AS line_amount,TAUX_TVA,GROUPE,OPERATION FROM TABLE_VENTES_JOURNAL " +
                 "WHERE BINARY ID_TICKET=BINARY @original AND BINARY OPERATION=BINARY 'VENTE' " +
                 "ORDER BY BINARY ID_ARTICLE FOR UPDATE",
@@ -264,7 +264,7 @@ namespace LOGICA.Infrastructure.Checkout
                 if (string.IsNullOrWhiteSpace(id) || originalById.ContainsKey(id))
                     throw new InvalidOperationException("Original sale contains ambiguous article identity.");
                 originalById.Add(id, row);
-                decimal quantity = Number(row, "Qté");
+                decimal quantity = Number(row, "quantity");
                 decimal lineAmount = Number(row, "line_amount");
                 if (quantity <= 0m || lineAmount <= 0m || Number(row, "Remise") != 0m)
                     throw new InvalidOperationException("Original line is outside the full exact-cash return policy.");
@@ -292,7 +292,7 @@ namespace LOGICA.Infrastructure.Checkout
             }
 
             var staged = Read(connection, transaction,
-                "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté," +
+                "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté AS quantity," +
                 "TOTAL_NET AS line_amount,TAUX_TVA,GROUPE FROM TABLE_" + workstation +
                 " ORDER BY BINARY ID_ARTICLE FOR UPDATE");
             if (staged.Rows.Count != original.Rows.Count)
@@ -303,7 +303,7 @@ namespace LOGICA.Infrastructure.Checkout
                 string id = Convert.ToString(row["ID_ARTICLE"], CultureInfo.InvariantCulture);
                 DataRow source;
                 if (!originalById.TryGetValue(id, out source) ||
-                    Convert.ToDecimal(row["Qté"], CultureInfo.CurrentCulture) != -Number(source, "Qté") ||
+                    Convert.ToDecimal(row["quantity"], CultureInfo.CurrentCulture) != -Number(source, "quantity") ||
                     Convert.ToDecimal(row["line_amount"], CultureInfo.CurrentCulture) != -Number(source, "line_amount"))
                     throw new InvalidOperationException("Signed return staging differs from the original line set.");
                 foreach (string field in new[] { "Code", "Article", "Famille", "GROUPE" })
@@ -316,7 +316,7 @@ namespace LOGICA.Infrastructure.Checkout
                         throw new InvalidOperationException("Signed return price or tax differs from the original.");
                 stock.Add(new CheckoutStockLine { TicketNumber = ticket, ArticleId = id,
                     ArticleCode = row["Code"], ArticleName = row["Article"],
-                    BasketQuantity = -Number(source, "Qté") });
+                    BasketQuantity = -Number(source, "quantity") });
             }
 
             var date = DateTime.Now;
@@ -346,7 +346,7 @@ namespace LOGICA.Infrastructure.Checkout
                         ("@id", idTicket));
                     var detail = Read(connection, transaction,
                         "SELECT ID_ARTICLE,Code,Article,Famille,GROUPE,PRIX_A,PRIX_MP,PRIX_V,Remise," +
-                        "Qté,Total_NET AS line_amount,TAUX_TVA,OPERATION FROM TABLE_VENTES_JOURNAL " +
+                        "Qté AS quantity,Total_NET AS line_amount,TAUX_TVA,OPERATION FROM TABLE_VENTES_JOURNAL " +
                         "WHERE BINARY ID_TICKET=BINARY @id ORDER BY BINARY ID_ARTICLE",
                         ("@id", idTicket));
                     if (receipt.Rows.Count != 1 || payment.Rows.Count != 1 ||
@@ -366,7 +366,7 @@ namespace LOGICA.Infrastructure.Checkout
                         string id = Convert.ToString(row["ID_ARTICLE"], CultureInfo.InvariantCulture);
                         DataRow source;
                         if (!returned.Add(id) || !originalById.TryGetValue(id, out source) ||
-                            Number(row, "Qté") != -Number(source, "Qté") ||
+                            Number(row, "quantity") != -Number(source, "quantity") ||
                             Number(row, "line_amount") != -Number(source, "line_amount") ||
                             Convert.ToString(row["OPERATION"]) != "RETOUR REMBOURSEMENT")
                             throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
@@ -444,8 +444,13 @@ namespace LOGICA.Infrastructure.Checkout
 
         private static decimal Number(DataRow row, string column)
         {
-            if (!row.Table.Columns.Contains(column) || row.IsNull(column))
-                throw new InvalidOperationException("Required authoritative numeric field is unavailable.");
+            bool present = row.Table.Columns.Contains(column);
+            bool isNull = present && row.IsNull(column);
+            if (!present || isNull)
+                throw new InvalidOperationException(
+                    "Required authoritative numeric field is unavailable: " + column +
+                    " (present=" + present + ", databaseNull=" + isNull + ", queryColumns=" +
+                    string.Join(",", row.Table.Columns.Cast<DataColumn>().Select(item => item.ColumnName)) + ").");
             return Convert.ToDecimal(row[column], CultureInfo.CurrentCulture);
         }
         private static decimal OptionalNumber(DataRow row, string column) =>

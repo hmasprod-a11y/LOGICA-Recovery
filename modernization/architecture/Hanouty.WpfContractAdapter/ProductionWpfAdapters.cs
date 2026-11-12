@@ -72,14 +72,17 @@ public sealed class ProductionWpfCheckoutSubmission : Wpf.ICheckoutSubmission, W
     private readonly CheckoutSession _session;
     private readonly AuthorizedCheckoutCommitGate? _financialGate;
     private readonly Wpf.IContextualWpfCashReturnSubmission? _returnSubmission;
+    private readonly ICheckoutOperationJournal? _operationJournal;
     private string? _returnOperationId;
     public ProductionWpfCheckoutSubmission(CheckoutSession session,
         AuthorizedCheckoutCommitGate? financialGate = null,
-        Wpf.IContextualWpfCashReturnSubmission? returnSubmission = null)
+        Wpf.IContextualWpfCashReturnSubmission? returnSubmission = null,
+        ICheckoutOperationJournal? operationJournal = null)
     {
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _financialGate = financialGate;
         _returnSubmission = returnSubmission;
+        _operationJournal = operationJournal;
     }
 
     public Wpf.CheckoutResolution Reconcile(string stableOperationId)
@@ -98,6 +101,34 @@ public sealed class ProductionWpfCheckoutSubmission : Wpf.ICheckoutSubmission, W
             }
             catch (InvalidOperationException)
             { return Wpf.CheckoutResolution.Unknown; }
+        }
+        // CheckoutSession can reject a stale staged identity before entering
+        // the financial gate. In that case it is Ready (not OutcomeUnknown)
+        // while retaining the operation ID for cashier review. Reconcile that
+        // ID against the durable journal; never infer Absent from local state.
+        var sessionOperationId = _session.OperationId;
+        if (_session.State == CheckoutCommitState.Ready &&
+            (sessionOperationId is null ||
+             string.Equals(sessionOperationId, stableOperationId, StringComparison.Ordinal)) &&
+            _financialGate?.UncertainOperationId is null)
+        {
+            // A cashier-context guard may reject before CheckoutSession sees
+            // the stable ID. A verified journal lookup for this exact ID is
+            // still authoritative; another session/gate operation blocks it. 
+            if (_operationJournal is null) return Wpf.CheckoutResolution.Unknown;
+            try
+            {
+                return _operationJournal.Lookup(stableOperationId) switch
+                {
+                    CheckoutOperationOutcome.Persisted => Wpf.CheckoutResolution.Persisted,
+                    CheckoutOperationOutcome.Absent => Wpf.CheckoutResolution.Absent,
+                    _ => Wpf.CheckoutResolution.Unknown
+                };
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+            {
+                return Wpf.CheckoutResolution.Unknown;
+            }
         }
         if (_session.State != CheckoutCommitState.OutcomeUnknown ||
             !string.Equals(_session.OperationId, stableOperationId, StringComparison.Ordinal))
@@ -176,6 +207,6 @@ public static class ProductionWpfServices
         return new WpfProductionBinding(session,
             new ProductionWpfCatalogueReader(session),
             new ProductionWpfProductSelection(session),
-            new ProductionWpfCheckoutSubmission(session, financialGate, returnSubmission));
+            new ProductionWpfCheckoutSubmission(session, financialGate, returnSubmission, journal));
     }
 }

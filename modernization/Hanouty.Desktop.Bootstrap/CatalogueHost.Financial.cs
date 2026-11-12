@@ -174,7 +174,7 @@ public sealed partial record CatalogueHost
                 expected is not (CheckoutResolution.Persisted or CheckoutResolution.Absent) ||
                 !vm.CanReviewResolvedCheckout || vm.ReviewedResolution != expected ||
                 !string.Equals(vm.PendingOperationId, operation, StringComparison.Ordinal) ||
-                vm.PaymentContext != context || binding.Session.State != CheckoutCommitState.Ready)
+                binding.Session.State != CheckoutCommitState.Ready)
                 return false;
             reviewing = true;
             try
@@ -188,7 +188,8 @@ public sealed partial record CatalogueHost
                 if (journal.Lookup(operation) != outcome ||
                     !vm.CanReviewResolvedCheckout || vm.ReviewedResolution != expected ||
                     !string.Equals(vm.PendingOperationId, operation, StringComparison.Ordinal) ||
-                    vm.PaymentContext != context || binding.Session.State != CheckoutCommitState.Ready)
+                    binding.Session.State != CheckoutCommitState.Ready ||
+                    !vm.RestoreAuthorizedPaymentContextAfterReview(context))
                     return false;
                 binding.Session.DiscardInvalidated();
                 contextConsumed = true;

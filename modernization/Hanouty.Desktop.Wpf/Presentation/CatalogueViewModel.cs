@@ -81,7 +81,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public System.Windows.Input.ICommand ReconcileCommand { get; }
     private readonly ICheckoutOutcomeReconciliation? _reconciliation;
     public string CommitFeedback { get => _commitFeedback; private set { _commitFeedback = value; OnPropertyChanged(); } }
-    public bool CanCommit => FinancialSessionActive && _submission is IContextualCheckoutSubmission && PaymentContext?.IsWellFormed == true && CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
+    public bool CanCommit => FinancialSessionActive && _submission is IContextualCheckoutSubmission &&
+        PaymentContext is { IsWellFormed: true, TenderedAmount: > 0m } &&
+        CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
     public System.Windows.Input.ICommand CommitCommand { get; }
     private readonly IProductImageAvailability _images;
 
@@ -335,6 +337,20 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         }
     }
 
+    // Host-only recovery hook used after durable outcome and cashier PIN have
+    // both been revalidated. Restore the original immutable cashier context
+    // before the old draft is discarded; user-edited display state is never trusted.
+    public bool RestoreAuthorizedPaymentContextAfterReview(CashierPaymentContext trustedContext)
+    {
+        if (trustedContext?.IsWellFormed != true || !_selectionInFlight ||
+            !CheckoutUncertain || !FinancialSessionActive)
+            return false;
+        _paymentContext = trustedContext;
+        OnPropertyChanged(nameof(PaymentContext));
+        OnPropertyChanged(nameof(CanCommit));
+        return true;
+    }
+
     // Called only by the explicit review UI. A journal read alone never unlocks.
     // Authorization must recheck the durable outcome and clear the same draft.
     public bool TryReviewResolvedCheckout(Func<string, CheckoutResolution, bool> authorize)
@@ -389,7 +405,8 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         // Logout must fail closed at the ViewModel boundary, before allocating an operation ID.
         if (!FinancialSessionActive) { CommitFeedback = "Cashier session required"; return; }
         if (_submission is not IContextualCheckoutSubmission contextual) { CommitFeedback = "Authorized payment adapter unavailable"; return; }
-        if (PaymentContext?.IsWellFormed != true) { CommitFeedback = "Cashier and payment context required"; return; }
+        if (PaymentContext is not { IsWellFormed: true, TenderedAmount: > 0m })
+        { CommitFeedback = "Cashier and positive cash tender required"; return; }
         if (CheckoutUncertain) { CommitFeedback = "Checkout status unknown — reconcile before retry"; return; }
         if (!CatalogueAvailable) { CommitFeedback = "Local catalogue unavailable"; return; }
         ReviewedResolution = CheckoutResolution.Unknown;

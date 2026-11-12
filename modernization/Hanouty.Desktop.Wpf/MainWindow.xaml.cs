@@ -478,7 +478,7 @@ public partial class MainWindow : Window
     {
         var vm = (CatalogueViewModel)DataContext;
         return ReadPin("Review checkout result",
-            $"Cashier: {vm.PaymentContext?.CashierId}\nOperation: {vm.PendingOperationId}\nResult: {vm.ReviewedResolution}\nConfirm this result to discard the old basket.");
+            $"Authenticate the originally authorized cashier.\nOperation: {vm.PendingOperationId}\nResult: {vm.ReviewedResolution}\nConfirm this result to discard the old basket.");
     }
 
     private string ReadPin(string title, string message, string? cashierEntryPin = null)
