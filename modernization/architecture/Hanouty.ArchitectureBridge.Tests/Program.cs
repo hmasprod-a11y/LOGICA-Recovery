@@ -268,20 +268,20 @@ var sessionComposition = new CheckoutComposition(new CompositionCatalogue(),
 var session = sessionComposition.CreateSession();
 Assert(session.Products.Count == 3 && session.ImageProducts.Count == 1,
        "session exposes all products and only image products");
-// WPF must never be able to mutate the photo grid through an IList cast.
-var imageSnapshot = session.ImageProducts;
-Assert(imageSnapshot is System.Collections.Generic.IList<ProductSummary>,
-       "image grid exposes a read-only IList for mutation rejection");
+var sessionImages = session.ImageProducts;
+Assert(ReferenceEquals(sessionImages, session.ImageProducts),
+       "image grid uses one immutable snapshot for its catalogue generation");
+Assert(sessionImages is IList<ProductSummary>, "session image catalogue has a guarded list surface");
 try
 {
-    ((System.Collections.Generic.IList<ProductSummary>)imageSnapshot)[0] =
-        new ProductSummary("forged", "", "Forged", "fake/path.png");
-    throw new Exception("image grid permitted identity mutation");
+    ((IList<ProductSummary>)sessionImages)[0] =
+        new ProductSummary("forged", "", "Forged tile", "fake/path.png");
+    throw new Exception("session image catalogue mutation accepted");
 }
 catch (NotSupportedException)
 {
     Assert(session.ImageProducts.Count == 1 && session.ImageProducts[0].ArticleId == "21",
-           "image grid retains authoritative article identity after mutation attempt");
+           "session photo-grid snapshot rejects mutation without changing catalogue identity");
 }
 
 // Both WPF catalogue views use the same immutable snapshot; tile selection
@@ -344,10 +344,12 @@ sessionJournal.Outcome = CheckoutOperationOutcome.Persisted;
 Assert(failedSession.Reconcile() == CheckoutOperationOutcome.Persisted &&
        failedSession.PendingCount == 0 && failedSession.OperationId is null,
        "durably persisted session clears without duplicate posting");
-var invalidSession = new CheckoutComposition(new MutableCompositionCatalogue(),
-    new RecordingPrompt(), new RecordingAtomicBatchPort(), new CompositionJournal()).CreateSession();
-Assert(invalidSession.Scan("999").Outcome == SelectionOutcome.Selected,
-       "session stages mutable catalogue product");
+var mutableInvalidCatalogue = new MutableCompositionCatalogue();
+var invalidPort = new RecordingAtomicBatchPort();
+var invalidSession = new CheckoutComposition(mutableInvalidCatalogue,
+    new RecordingPrompt(), invalidPort, new CompositionJournal()).CreateSession();
+Assert(invalidSession.SelectArticle(invalidSession.Products[0]).Outcome == SelectionOutcome.Selected,
+       "session stages an article with stable identity");
 mutableInvalidCatalogue.ChangeIdentity = true;
 Assert(invalidSession.Submit("invalidated-001") == CheckoutBatchStatus.Invalidated &&
        invalidPort.Calls.Count == 0, "stale article refuses financial posting");
@@ -991,7 +993,8 @@ sealed class MutablePhotoCatalogue : ICatalogueReader
 {
     public string? ImagePath { get; set; } = "images/original.png";
     public string? VariantId { get; set; } = "v1";
-    private ProductSummary Current => new("photo-1", "", "Image article", ImagePath, VariantId);
+    public string? DisplayName { get; set; } = "Image article";
+    private ProductSummary Current => new("photo-1", "", DisplayName!, ImagePath, VariantId);
     public IReadOnlyList<ProductSummary> ListAll() => new[] { Current };
     public IReadOnlyList<ProductSummary> FindBarcode(string barcode) => Array.Empty<ProductSummary>();
     public IReadOnlyList<ProductSummary> RefreshBarcode(string barcode) => Array.Empty<ProductSummary>();
