@@ -48,7 +48,7 @@ namespace Hanouty.Checkout.MariaDb
                     RequireInnoDb(connection, transaction, "TABLE_VENTES_REGLEMENTS");
                     RequireInnoDb(connection, transaction, "hanouty_cash_return_consumption");
                     var result = new List<PersistedCashSaleCandidate>();
-                    string? saleId = null;
+                    string saleId = null;
                     using (var command = new MySqlCommand(
                         "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE " +
                         "WHERE BINARY ID_TICKET=BINARY @ticket AND BINARY OPERATION=BINARY 'VENTE' LIMIT 2",
