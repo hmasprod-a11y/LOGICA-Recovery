@@ -17,6 +17,29 @@ public static class Program
             return DisposableCashSaleAcceptance.Run(Path.GetFullPath(args[1]));
 #endif
         #if HANOUTY_FINANCIAL
+        // Financial builds open the real cashier workstation on double-click, initially locked.
+        if (args.Length == 0)
+        {
+            try
+            {
+                var settings = CatalogueSettings.FromEnvironment();
+                var workstationId = Environment.GetEnvironmentVariable("HANOUTY_WORKSTATION") ?? "01";
+                if (!System.Text.RegularExpressions.Regex.IsMatch(workstationId, "^[0-9]{2}$"))
+                    throw new InvalidOperationException("HANOUTY_WORKSTATION must contain exactly two digits.");
+                var application = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
+                var workstation = CatalogueHost.CreateCashierWorkstation(settings, workstationId);
+                application.MainWindow = workstation.Window;
+                application.Run(workstation.Window);
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message + Environment.NewLine +
+                    "Configure the local HANOUTY_CATALOGUE_CONNECTION, HANOUTY_DATA_DIRECTORY and HANOUTY_WORKSTATION.",
+                    "Hanouty — cashier startup blocked", MessageBoxButton.OK, MessageBoxImage.Error);
+                return 2;
+            }
+        }
         if (args.Length == 2 && args[0] == "--cashier-development")
         {
             try
