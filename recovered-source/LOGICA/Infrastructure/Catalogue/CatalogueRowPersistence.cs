@@ -187,7 +187,7 @@ namespace LOGICA.Infrastructure.Catalogue
 
         private static decimal ReadStock(DataRow row, DataRowVersion version)
         {
-            if (!row.Table.Columns.Contains("STOCK") || row.IsNull("STOCK", version))
+            if (!row.Table.Columns.Contains("STOCK") || row.IsNull(row.Table.Columns["STOCK"], version))
                 throw new UnauthorizedAccessException("Stock value is missing or NULL.");
             try { return Convert.ToDecimal(row["STOCK", version], CultureInfo.InvariantCulture); }
             catch (Exception ex) when (!(ex is OutOfMemoryException) && !(ex is StackOverflowException))
