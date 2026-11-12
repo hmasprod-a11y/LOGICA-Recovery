@@ -195,6 +195,28 @@ jobs:
           Copy-Item 'scripts/Start-Hanouty-Test.ps1' $bundle
           Copy-Item 'scripts/Start-Hanouty-Test.cmd' $bundle
           Copy-Item 'scripts/HANOUTY-TEST-START-HERE.txt' (Join-Path $bundle 'LE-MOI-DEMARRER.txt')
+      - name: Stop only this workflow's disposable MariaDB server
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:HANOUTY_W2_SERVER_PID) {
+            $server = Get-Process -Id ([int]$env:HANOUTY_W2_SERVER_PID) -ErrorAction SilentlyContinue
+            if ($server -and $server.ProcessName -eq 'mariadbd') { Stop-Process -Id $server.Id }
+          }
+      - name: Confirm the workflow database has stopped before isolated launcher test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $available = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            $probe = [Net.Sockets.TcpClient]::new()
+            try { $probe.Connect('127.0.0.1', 3307); $stillListening = $true }
+            catch { $stillListening = $false }
+            finally { $probe.Dispose() }
+            if (-not $stillListening) { $available = $true; break }
+            Start-Sleep -Seconds 1
+          }
+          if (-not $available) { throw 'Disposable MariaDB did not release port 3307 before launcher verification.' }
       - name: Run the bundled one-click test setup on Windows before download
         shell: pwsh
         run: |
@@ -208,11 +230,3 @@ jobs:
           path: ${{ runner.temp }}/HANOUTY-WPF-TEST-BUNDLE/
           if-no-files-found: error
           retention-days: 14
-      - name: Stop only this workflow's disposable MariaDB server
-        if: always()
-        shell: pwsh
-        run: |
-          if ($env:HANOUTY_W2_SERVER_PID) {
-            $server = Get-Process -Id ([int]$env:HANOUTY_W2_SERVER_PID) -ErrorAction SilentlyContinue
-            if ($server -and $server.ProcessName -eq 'mariadbd') { Stop-Process -Id $server.Id }
-          }
