@@ -197,22 +197,24 @@ public partial class MainWindow : Window
             ReturnDraftStatus.Text = _returnDraft.Status;
             return false;
         }
-        var confirmed = _returnDraft.Confirm(vm.FinancialSessionActive && !vm.CheckoutBusy,
-            vm.CheckoutUncertain || vm.PendingOperationId is not null);
+        if (!_returnDraft.ConfirmFullTicket(vm.FinancialSessionActive && !vm.CheckoutBusy,
+            vm.CheckoutUncertain || vm.PendingOperationId is not null))
+        { ReturnDraftStatus.Text = _returnDraft.Status; return false; }
         ReturnDraftStatus.Text = _returnDraft.Status;
-        return confirmed;
+        var committed = vm.CommitFullCashReturn(_originalSaleSelection.Selected.SaleId);
+        if (committed)
+        {
+            _returnDraft.Invalidate("Full-ticket refund submitted");
+            _originalSaleSelection.Clear();
+            _originalSaleLookupContext = null;
+            _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
+            OriginalSaleResults.ItemsSource = null;
+            OriginalSaleStatus.Text = "Refund submitted";
+        }
+        else ReturnDraftStatus.Text = vm.CommitFeedback;
+        return committed;
     }
 
-    private void ReturnQuantity_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
-    {
-        // Editing the quantity after confirmation invalidates the reviewed
-        // amount. The cashier must explicitly review and confirm the new value.
-        _returnDraft.ClearQuantity("Return quantity edited — review again");
-        ReturnDraftStatus.Text = _returnDraft.Status;
-    }
-
-    private void ReviewReturnQuantity_Click(object sender, RoutedEventArgs e) =>
-        ReviewReturnQuantity(ReturnQuantity.Text);
     private void ConfirmReturnDraft_Click(object sender, RoutedEventArgs e) => ConfirmReturnDraft();
 
     private void OriginalSaleSearch_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
