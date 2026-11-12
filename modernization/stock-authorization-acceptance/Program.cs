@@ -108,7 +108,7 @@ static class Program
         {
             adapter.MissingSchemaAction = MissingSchemaAction.AddWithKey;
             var articles = new DataTable(); adapter.Fill(articles);
-            var added = articles.NewRow(); added["ID_ARTICLE"] = "P0-NEW-ARTICLE"; added["ID"] = 2;
+            var added = articles.NewRow(); added["ID_ARTICLE"] = "P0-NEW-ARTICLE";
             added["STOCK"] = 2m; added["Code"] = "NEW"; added["Article"] = "New"; articles.Rows.Add(added);
             Denied(() => CatalogueRowPersistence.UpdateAndAccept(adapter, articles));
             Require(Number(db, "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE ID_ARTICLE='P0-NEW-ARTICLE'") == 0m,
