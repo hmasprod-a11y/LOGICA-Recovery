@@ -121,7 +121,7 @@ public partial class MainWindow : Window
             _originalSaleLookupContext = context;
             OriginalSaleResults.ItemsSource = _originalSaleResults;
             OriginalSaleStatus.Text = _originalSaleResults.Count == 0 ? "No persisted sale found" :
-                "Select a persisted sale for review; refund posting is not enabled";
+                "Select a persisted full-cash sale; only full-ticket refunds are supported";
             return _originalSaleResults.Count > 0;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
@@ -149,7 +149,7 @@ public partial class MainWindow : Window
         _returnDraft.SetOriginalSale(accepted ? candidate.SaleId : null);
         ReturnDraftStatus.Text = _returnDraft.Status;
         OriginalSaleStatus.Text = accepted ?
-            $"Original sale: {candidate.SaleId} — read-only, refund not authorized" :
+            $"Original sale: {candidate.SaleId} — full-ticket cash refund only" :
             "Invalid original-sale selection";
         return accepted;
     }
