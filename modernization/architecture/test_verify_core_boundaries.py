@@ -38,7 +38,7 @@ class BoundaryTests(unittest.TestCase):
     def test_duplicate_rejected(self):
         p = "../recovered-source/LOGICA/Domain/Rules.cs"
         self.manifest(p, p)
-        self.assertIn("duplicate production source", validate(self.root)["errors"])
+        self.assertTrue(any("duplicate production source" in error for error in validate(self.root)["errors"]))
 
     def test_escape_rejected(self):
         self.manifest("../README.md")
