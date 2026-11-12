@@ -140,10 +140,16 @@ GRANT ALL PRIVILEGES ON logica_ci.* TO 'w2_test'@'127.0.0.1';
     $env:HANOUTY_W2_DISPOSABLE_MARKER = 'I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY'
     $env:HANOUTY_W2_TEST_PIN = '1234'
     Write-Host 'Preparing a fresh, temporary MariaDB test database and running the WPF financial acceptance...' -ForegroundColor Cyan
-    & $exe '--verify-disposable-cash-sale' $evidence
-    if ($LASTEXITCODE -ne 0) { throw "Financial acceptance failed. Evidence: $evidence" }
+    $acceptanceRun = Start-Process -FilePath $exe -ArgumentList @('--verify-disposable-cash-sale', ('"' + $evidence + '"')) -Wait -PassThru
+    if ($acceptanceRun.ExitCode -ne 0) { throw "Financial acceptance failed with exit code $($acceptanceRun.ExitCode). Evidence: $evidence" }
     $reportPath = Join-Path $evidence 'w2-cash-sale.json'
-    if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) { throw "Acceptance evidence is missing. Evidence: $evidence" }
+    if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+        $failurePath = Join-Path $evidence 'w2-failure.txt'
+        if (Test-Path -LiteralPath $failurePath -PathType Leaf) {
+            throw "Financial acceptance failed: $(Get-Content -LiteralPath $failurePath -Raw)"
+        }
+        throw "Acceptance evidence is missing. Evidence: $evidence"
+    }
     $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
     if ($report.W2Accepted -ne $true -or $report.FullCashReturnThroughWpfUi -ne $true) {
         throw "Financial acceptance did not report a successful cash sale and return. Evidence: $evidence"
