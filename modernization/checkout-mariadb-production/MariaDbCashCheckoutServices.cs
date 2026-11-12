@@ -81,6 +81,69 @@ namespace Hanouty.Checkout.MariaDb
             }
         }
 
+        // Read-only snapshot for Host/WPF. It is evidence for constructing a full
+        // refund request, never authorization to post; the production transaction
+        // independently re-locks and revalidates the complete original ticket.
+        public sealed class OriginalCashTicketEvidence
+        {
+            public OriginalCashTicketEvidence(string ticketId, decimal cashAmount,
+                IReadOnlyList<CheckoutBatchLine> lines)
+            {
+                OriginalTicketId = ticketId;
+                CashAmount = cashAmount;
+                Lines = Array.AsReadOnly(lines.ToArray());
+            }
+            public string OriginalTicketId { get; private set; }
+            public decimal CashAmount { get; private set; }
+            public IReadOnlyList<CheckoutBatchLine> Lines { get; private set; }
+        }
+
+        public static OriginalCashTicketEvidence ReadFullCashReturnEvidence(
+            Func<MySqlConnection> connections, string originalTicketId)
+        {
+            if (connections == null) throw new ArgumentNullException(nameof(connections));
+            using (var connection = LocalConnection(connections))
+            {
+                connection.Open();
+                using (var transaction = connection.BeginTransaction())
+                {
+                    // Never mistake nontransactional or incomplete journal evidence
+                    // for an authoritative, consistent original ticket snapshot.
+                    foreach (var table in new[] { "TABLE_VENTES_ENTETE",
+                        "TABLE_VENTES_JOURNAL", "TABLE_VENTES_REGLEMENTS",
+                        "hanouty_cash_return_consumption" })
+                    {
+                        using (var engine = new MySqlCommand(
+                            "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@table",
+                            connection, transaction))
+                        {
+                            engine.Parameters.AddWithValue("@table", table);
+                            if (!string.Equals(Convert.ToString(engine.ExecuteScalar()), "InnoDB",
+                                StringComparison.Ordinal))
+                                throw new InvalidOperationException("Trusted refund evidence requires existing InnoDB tables.");
+                        }
+                    }
+                    var original = CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLines(
+                        connection, transaction, originalTicketId);
+                    decimal paid = CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                        connection, transaction, originalTicketId);
+                    using (var consumed = new MySqlCommand(
+                        "SELECT original_ticket_id FROM hanouty_cash_return_consumption " +
+                        "WHERE BINARY original_ticket_id=BINARY @original FOR UPDATE",
+                        connection, transaction))
+                    {
+                        consumed.Parameters.AddWithValue("@original", originalTicketId);
+                        using (var reader = consumed.ExecuteReader())
+                            if (reader.Read())
+                                throw new InvalidOperationException("Original ticket already consumed by a refund.");
+                    }
+                    var lines = original.Select(x => new CheckoutBatchLine(x.ArticleId, x.Quantity)).ToArray();
+                    transaction.Commit();
+                    return new OriginalCashTicketEvidence(originalTicketId, paid, lines);
+                }
+            }
+        }
+
         private static MySqlConnection LocalConnection(Func<MySqlConnection> connections)
         {
             var connection = connections() ?? throw new InvalidOperationException("Local checkout connection is unavailable.");
