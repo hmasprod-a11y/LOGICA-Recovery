@@ -36,6 +36,42 @@ catch (InvalidOperationException) { directWindowRejected = true; }
 Check(directWindowRejected,
     "direct MainWindow construction rejects an unauthorized payment context");
 Hanouty.Desktop.Wpf.MainWindow.TestOnlyAllowUnauthorizedPaymentContext = true;
+// Full-ticket WPF return action: exact original ID and trusted preparation
+// flow through the existing financial gate, with no partial-quantity control.
+var wpfReturnJournal = new FinancialJournal();
+var wpfReturnPort = new FinancialPort(wpfReturnJournal);
+var wpfReturnGate = new AuthorizedCheckoutCommitGate(wpfReturnPort, wpfReturnJournal);
+var wpfReturnAdapter = new AuthorizedWpfCheckoutAdapter(new FinancialPreparation(),
+    wpfReturnGate, wpfReturnJournal, new FullReturnPreparation());
+var wpfReturnContext = new CashierPaymentContext("cashier-1", "register-1", "MAD", "Cash", 0m);
+var wpfReturnWindow = new Hanouty.Desktop.Wpf.MainWindow(new EmptyCatalogueReader(),
+    new RecordingSelection(), wpfReturnAdapter, wpfReturnContext, requireFreshPaymentContext: true);
+wpfReturnWindow.ConfigureOriginalSaleLookup(new PersistedCashSaleLookup());
+Check(wpfReturnWindow.SearchOriginalSales("persisted-sale-1"),
+    "WPF must find an exact persisted original cash sale");
+var returnList = (System.Windows.Controls.ListBox)wpfReturnWindow.FindName("OriginalSaleResults");
+var returnCandidate = (OriginalSaleCandidate)returnList.Items[0];
+returnList.SelectedItem = returnCandidate;
+Check(wpfReturnWindow.SelectOriginalSale(returnCandidate) &&
+    wpfReturnWindow.ConfirmReturnDraft() &&
+    wpfReturnPort.Writes == 1 && wpfReturnJournal.Persisted.Contains("wpf-return"),
+    "WPF full-ticket confirm must submit exactly once through Checkout");
+Check(wpfReturnWindow.FindName("ReturnQuantity") is null,
+    "WPF return UI must not expose unsupported partial quantities");
+wpfReturnWindow.Close();
+
+var lostReturnJournal = new FinancialJournal();
+var lostReturnGate = new AuthorizedCheckoutCommitGate(
+    new ThrowAfterWritePort(lostReturnJournal), lostReturnJournal);
+var lostReturnAdapter = new AuthorizedWpfCheckoutAdapter(new FinancialPreparation(),
+    lostReturnGate, lostReturnJournal, new FullReturnPreparation());
+Check(lostReturnAdapter.SubmitFullCashReturn("lost-return", "persisted-sale-1", wpfReturnContext) ==
+    CheckoutSubmissionResult.Unknown && lostReturnGate.UncertainOperationId == "lost-return",
+    "lost return acknowledgement must latch the durable operation");
+Check(lostReturnAdapter.Reconcile("lost-return") == CheckoutResolution.Persisted &&
+    lostReturnGate.UncertainOperationId is null,
+    "return reconciliation must clear the same gate latch from durable evidence");
+
 // A catalogue-only diagnostic resolver must never make the installed WPF app
 // start a cashier process. The QA-owned Bootstrap must supply financial services.
 Hanouty.Desktop.Wpf.App.ResolveFinancialServices = null;
@@ -1837,6 +1873,33 @@ sealed class FinancialPort(FinancialJournal journal) : IAuthorizedCheckoutPort
         journal.Persisted.Add(request.OperationId);
     }
 }
+sealed class PersistedCashSaleLookup : IOriginalSaleLookup
+{
+    public IReadOnlyList<OriginalSaleCandidate> FindPersistedSales(string receiptSearch) =>
+        receiptSearch == "persisted-sale-1"
+            ? new[] { new OriginalSaleCandidate("persisted-sale-1", "persisted-sale-1", 13.50m) }
+            : Array.Empty<OriginalSaleCandidate>();
+}
+
+sealed class FullReturnPreparation : ITrustedWpfFullCashReturnPreparation
+{
+    public AuthorizedCheckoutRequest PrepareFullCashReturn(string operationId,
+        string originalTicketId, CashierPaymentContext context) =>
+        new(operationId, context.CashierId, context.CurrencyCode, true,
+            new[] { new CheckoutBatchLine("article-1", 2), new CheckoutBatchLine("article-2", 1) },
+            new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 13.50m) },
+            13.50m, originalTicketId);
+}
+
+sealed class ThrowAfterWritePort(FinancialJournal journal) : IAuthorizedCheckoutPort
+{
+    public void Commit(AuthorizedCheckoutRequest request)
+    {
+        journal.Persisted.Add(request.OperationId);
+        throw new InvalidOperationException("Lost acknowledgement after durable write");
+    }
+}
+
 sealed class FinancialPreparation : ITrustedWpfCheckoutPreparation
 {
     public int Calls { get; private set; }
