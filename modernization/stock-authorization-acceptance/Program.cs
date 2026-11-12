@@ -1,5 +1,7 @@
 using LOGICA.Application.Inventory;
 using LOGICA.Infrastructure.Inventory;
+using LOGICA.Infrastructure.Catalogue;
+using System.Data;
 using MySql.Data.MySqlClient;
 using System.Globalization;
 
@@ -65,6 +67,68 @@ static class Program
         Require(Number(db, "SELECT STOCK FROM TABLE_ARTICLES") == 10m &&
             Number(db, "SELECT COUNT(*) FROM blocked_audit") == 0m, "Audit unavailable caused partial writes.");
         Console.WriteLine("PASS real MariaDB: global flag cannot authorize, forged actors denied, concurrent/outer-commit denial preserves stock+audit. Manual adjustment remains DISABLED.");
+
+        // The production catalogue editor must use the current persisted setting,
+        // lock it through the stock write, and reject stale UI snapshots.
+        Sql(db, null, "INSERT INTO TABLE_PARAMETRES VALUES ('AJOUT_STOCK_MANUEL','False')");
+        Sql(db, null, "UPDATE TABLE_PARAMETRES SET VALEUR='False' WHERE OBJET='MODIF_STOCK_MANUEL'");
+        using (var adapter = new MySqlDataAdapter("SELECT * FROM TABLE_ARTICLES WHERE ID_ARTICLE='P0-ARTICLE'", db))
+        {
+            adapter.MissingSchemaAction = MissingSchemaAction.AddWithKey;
+            var articles = new DataTable(); adapter.Fill(articles);
+            Require(articles.Rows.Count == 1, "Catalogue edit fixture missing.");
+            articles.Rows[0]["STOCK"] = 12m;
+            Denied(() => CatalogueRowPersistence.UpdateAndAccept(adapter, articles));
+            Require(Number(db, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='P0-ARTICLE'") == 10m,
+                "Disabled article stock edit reached MariaDB.");
+        }
+        Sql(db, null, "UPDATE TABLE_PARAMETRES SET VALEUR='True' WHERE OBJET='MODIF_STOCK_MANUEL'");
+        using (var adapter = new MySqlDataAdapter("SELECT * FROM TABLE_ARTICLES WHERE ID_ARTICLE='P0-ARTICLE'", db))
+        {
+            adapter.MissingSchemaAction = MissingSchemaAction.AddWithKey;
+            var articles = new DataTable(); adapter.Fill(articles);
+            articles.Rows[0]["STOCK"] = 12m;
+            Sql(db, null, "UPDATE TABLE_PARAMETRES SET VALEUR='False' WHERE OBJET='MODIF_STOCK_MANUEL'");
+            Denied(() => CatalogueRowPersistence.UpdateAndAccept(adapter, articles));
+            Require(Number(db, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='P0-ARTICLE'") == 10m,
+                "Stale enabled UI setting bypassed the persisted deny setting.");
+        }
+        Sql(db, null, "UPDATE TABLE_PARAMETRES SET VALEUR='True' WHERE OBJET='MODIF_STOCK_MANUEL'");
+        using (var adapter = new MySqlDataAdapter("SELECT * FROM TABLE_ARTICLES WHERE ID_ARTICLE='P0-ARTICLE'", db))
+        {
+            adapter.MissingSchemaAction = MissingSchemaAction.AddWithKey;
+            var articles = new DataTable(); adapter.Fill(articles);
+            articles.Rows[0]["STOCK"] = 12m;
+            CatalogueRowPersistence.UpdateAndAccept(adapter, articles);
+            Require(Number(db, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='P0-ARTICLE'") == 12m,
+                "Enabled stock edit did not persist atomically.");
+        }
+        Sql(db, null, "UPDATE TABLE_PARAMETRES SET VALEUR='False' WHERE OBJET='AJOUT_STOCK_MANUEL'");
+        using (var adapter = new MySqlDataAdapter("SELECT * FROM TABLE_ARTICLES WHERE ID_ARTICLE='P0-ARTICLE'", db))
+        {
+            adapter.MissingSchemaAction = MissingSchemaAction.AddWithKey;
+            var articles = new DataTable(); adapter.Fill(articles);
+            var added = articles.NewRow(); added["ID_ARTICLE"] = "P0-NEW-ARTICLE"; added["ID"] = 2;
+            added["STOCK"] = 2m; added["Code"] = "NEW"; added["Article"] = "New"; articles.Rows.Add(added);
+            Denied(() => CatalogueRowPersistence.UpdateAndAccept(adapter, articles));
+            Require(Number(db, "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE ID_ARTICLE='P0-NEW-ARTICLE'") == 0m,
+                "Disabled initial stock allowed new article persistence.");
+        }
+        using (var tx = db.BeginTransaction())
+        {
+            Denied(() => CatalogueRowPersistence.RequireManualStockPermission(db, tx, "AJOUT_STOCK_MANUEL"));
+            tx.Rollback();
+        }
+        Sql(db, null, "UPDATE TABLE_PARAMETRES SET VALEUR='True' WHERE OBJET='AJOUT_STOCK_MANUEL'");
+        using (var tx = db.BeginTransaction())
+        {
+            CatalogueRowPersistence.RequireManualStockPermission(db, tx, "AJOUT_STOCK_MANUEL");
+            tx.Rollback();
+        }
+        Require(Number(db, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='P0-ARTICLE'") == 12m &&
+            Number(db, "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE ID_ARTICLE='P0-NEW-ARTICLE'") == 0m,
+            "Catalogue permission integration left an unexpected article write.");
+        Console.WriteLine("PASS real MariaDB: edit/add/collection stock guards deny disabled or stale UI settings, permit configured edits, and preserve transaction boundaries.");
         return 0;
     }
 }
