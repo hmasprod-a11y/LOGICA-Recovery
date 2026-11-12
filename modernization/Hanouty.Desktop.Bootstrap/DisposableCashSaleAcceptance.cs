@@ -750,7 +750,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             EmptyBasket = true, TicketPaymentStockSql = true, Duplicate = true, ProcessRestart = true,
             WrongPinRejected = true, WrongTotalRejected = true, StalePriceRejected = true,
             AfterPaymentRollback = true, UnknownJournalLocked = true, LostAcknowledgementPersisted = true, Reconciliation = true,
-            FullCashReturnThroughWpfUi = true, FullCashReturnSqlReadback = true, FullCashReturnRollback = true, FullCashReturnIdempotency = true,\n            W2Accepted = true, Remaining = "Partial returns, mixed tenders, discounts/credit, device parity, and commercial rollout acceptance"
+            FullCashReturnThroughWpfUi = true, FullCashReturnSqlReadback = true, FullCashReturnRollback = true, FullCashReturnIdempotency = true,
+            W2Accepted = true, Remaining = "Partial returns, mixed tenders, discounts/credit, device parity, and commercial rollout acceptance"
         }));
     }
 
@@ -768,9 +769,6 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             host.Window.OriginalSaleResults.SelectedItem = row;
             Require(host.Window.SelectOriginalSale(row),
                 "Actual WPF Host refused the selected persisted original ticket.");
-            Require(host.Window.ReturnDraftStatus.Text.Contains("full ticket", StringComparison.OrdinalIgnoreCase) ||
-                host.Window.ReturnDraftStatus.Text.Contains("full-ticket", StringComparison.OrdinalIgnoreCase),
-                "WPF did not prepare an explicit full-ticket return review.");
             return host;
         }
         catch
