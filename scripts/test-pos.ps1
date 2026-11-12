@@ -18,6 +18,11 @@ foreach($case in $cases) {
   $results+= [pscustomobject]@{test=$case;status=$status;exitCode=$p.ExitCode}
   Write-Host "$case $status"
   Get-Content $log | Select-Object -First 30 | ForEach-Object{Write-Host $_}
+  if($status -ne 'PASS') {
+    if(Test-Path $err) { Get-Content $err | Select-Object -First 60 | ForEach-Object{Write-Host $_} }
+    $results | ConvertTo-Json | Set-Content results/pos-tests.json
+    throw "POS case '$case' $status; stopped at first failure to preserve the exact root-cause logs"
+  }
 }
 # Mandatory real MariaDB round-trip for the physical QtÃ© column observed in user builds.
 # This runs on the isolated logica_ci database and fails before packaging on any
