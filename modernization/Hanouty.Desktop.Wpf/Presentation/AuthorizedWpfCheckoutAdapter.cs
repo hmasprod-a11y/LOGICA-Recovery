@@ -18,7 +18,7 @@ public interface ITrustedWpfFullCashReturnPreparation
         string stableOperationId, string originalTicketId, CashierPaymentContext cashierContext);
 }
 
-public interface IContextualWpfCashReturnSubmission
+public interface IContextualWpfCashReturnSubmission : ICheckoutOutcomeReconciliation
 {
     CheckoutSubmissionResult SubmitFullCashReturn(
         string stableOperationId, string originalTicketId, CashierPaymentContext context);
