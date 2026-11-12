@@ -25,6 +25,9 @@ namespace LOGICA.Infrastructure.Checkout
             Require(settings.Database == "checkout_disposable" &&
                 (settings.Server == "127.0.0.1" || settings.Server == "localhost"),
                 "Acceptance is restricted to the disposable loopback schema.");
+            // QA production code correctly refuses to create a missing ledger.
+            // Provision only this verified disposable test schema; never change a shop schema.
+            Sql("CREATE TABLE IF NOT EXISTS hanouty_checkout_operations (operation_id VARCHAR(128) NOT NULL PRIMARY KEY) ENGINE=InnoDB");
             Require(typeof(AuthorizedCheckoutMariaDbPort).GetInterface("IAuthorizedCheckoutPort") != null,
                 "Actual authorized financial port must compile against Architecture.");
             string key = "csharp-boundary-" + Guid.NewGuid().ToString("N");
