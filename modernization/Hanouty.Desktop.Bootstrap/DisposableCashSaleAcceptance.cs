@@ -245,7 +245,6 @@ INSERT INTO TABLE_NUM VALUES (0,1);
     private static void Verify(CatalogueSettings settings, string pin, CatalogueHost host, string evidence)
     {
         Require(host.Window.IsVisible && host.Window.IsLoaded, "Actual financial WPF window did not render.");
-        Select(host);
         var originalContext = host.ViewModel.PaymentContext ??
             throw new InvalidOperationException("Host cash context missing.");
         var basketBeforeEditedContexts = Snapshot(settings);
