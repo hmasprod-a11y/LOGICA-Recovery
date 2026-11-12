@@ -727,7 +727,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Number(settings, "SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id=@id", returnOperation) == 1 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET=@id AND ID_ARTICLE='W2-Article'", returnOperation) == 1 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MODE_P='ESPECES' AND ABS(MONTANT)=5.25", returnOperation) == 1 &&
-            Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == 100m,
+            Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == stockBeforeFullRefund + 1m,
             "Persisted original lines, exact cash amount, claim and restored stock do not reconcile.");
 
         // A second cashier UI must not even offer the consumed original receipt.
