@@ -284,7 +284,6 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 "Fresh cashier authorization could not be issued after reviewed rejection.");
         }
         Select(host);
-        var stagedForCommit = Snapshot(settings);
         Require(host.ViewModel.CanCommit, "Fresh reviewed cashier context did not re-enable checkout.");
 
         host.ViewModel.CommitCommand.Execute(null);
