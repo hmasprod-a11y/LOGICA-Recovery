@@ -168,8 +168,8 @@ namespace LOGICA.Infrastructure.Catalogue
                 }
                 else if (row.RowState == DataRowState.Modified &&
                     table.Columns.Contains("STOCK") &&
-                    !row.IsNull("STOCK", DataRowVersion.Original) &&
-                    !row.IsNull("STOCK", DataRowVersion.Current))
+                    !row.IsNull(row.Table.Columns["STOCK"], DataRowVersion.Original) &&
+                    !row.IsNull(row.Table.Columns["STOCK"], DataRowVersion.Current))
                 {
                     decimal original = ReadStock(row, DataRowVersion.Original);
                     decimal requested = ReadStock(row, DataRowVersion.Current);
@@ -177,7 +177,7 @@ namespace LOGICA.Infrastructure.Catalogue
                         result.Add(new StockChange { Row = row, Permission = "MODIF_STOCK_MANUEL", Original = original, Requested = requested });
                 }
                 else if (row.RowState == DataRowState.Modified && table.Columns.Contains("STOCK") &&
-                    row.IsNull("STOCK", DataRowVersion.Original) != row.IsNull("STOCK", DataRowVersion.Current))
+                    row.IsNull(row.Table.Columns["STOCK"], DataRowVersion.Original) != row.IsNull(row.Table.Columns["STOCK"], DataRowVersion.Current))
                 {
                     throw new UnauthorizedAccessException("A NULL stock value cannot be changed through catalogue editing.");
                 }
@@ -198,7 +198,7 @@ namespace LOGICA.Infrastructure.Catalogue
             MySqlTransaction transaction, StockChange change)
         {
             if (!change.Row.Table.Columns.Contains("ID_ARTICLE") ||
-                change.Row.IsNull("ID_ARTICLE", DataRowVersion.Original))
+                change.Row.IsNull(change.Row.Table.Columns["ID_ARTICLE"], DataRowVersion.Original))
                 throw new UnauthorizedAccessException("Original article identity is unavailable.");
             string id = Convert.ToString(change.Row["ID_ARTICLE", DataRowVersion.Original], CultureInfo.InvariantCulture);
             decimal? persisted = null;
