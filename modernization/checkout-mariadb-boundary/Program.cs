@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using LOGICA.ApplicationLayer.Checkout;
 using LOGICA.Infrastructure.Checkout;
 using MySql.Data.MySqlClient;
