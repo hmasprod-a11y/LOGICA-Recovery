@@ -429,13 +429,18 @@ Assert(photoSession.SelectImage(originalTile).Outcome == SelectionOutcome.Invali
        photoSession.PendingCount == 0, "replaced photo cannot stage stale WPF tile");
 photoReader.ImagePath = "images/original.png";
 photoReader.DisplayName = "Renamed article";
-Assert(photoSession.SelectImage(originalTile).Outcome == SelectionOutcome.InvalidCandidates &&
-       photoSession.PendingCount == 0 && photoPort.Calls.Count == 0,
-       "renamed photo article cannot stage stale WPF tile");
-photoReader.DisplayName = "Image article";
 Assert(photoSession.SelectImage(originalTile).Outcome == SelectionOutcome.Selected &&
-       photoSession.Submit("photo-current-001") == CheckoutBatchStatus.Committed &&
-       photoPort.Calls.Count == 1, "current WPF photo stages and posts exactly once");
+       photoSession.PendingCount == 1 && photoPort.Calls.Count == 0,
+       "display-only rename preserves QA image selection contract without posting");
+Assert(photoSession.Submit("photo-current-001") == CheckoutBatchStatus.Committed &&
+       photoPort.Calls.Count == 1, "renamed WPF photo stages and posts exactly once");
+photoReader.DisplayName = "Image article";
+var unchangedPhotoPort = new RecordingAtomicBatchPort();
+var unchangedPhotoSession = new CheckoutComposition(photoReader, new RecordingPrompt(),
+    unchangedPhotoPort, new CompositionJournal()).CreateSession();
+Assert(unchangedPhotoSession.SelectImage(unchangedPhotoSession.ImageProducts[0]).Outcome == SelectionOutcome.Selected &&
+       unchangedPhotoSession.Submit("photo-current-002") == CheckoutBatchStatus.Committed &&
+       unchangedPhotoPort.Calls.Count == 1, "unchanged live WPF photo stages and posts exactly once");
 
 var preCommitReader = new MutablePhotoCatalogue();
 var preCommitPort = new RecordingAtomicBatchPort();
