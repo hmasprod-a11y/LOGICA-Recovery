@@ -81,7 +81,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public System.Windows.Input.ICommand ReconcileCommand { get; }
     private readonly ICheckoutOutcomeReconciliation? _reconciliation;
     public string CommitFeedback { get => _commitFeedback; private set { _commitFeedback = value; OnPropertyChanged(); } }
-    public bool CanCommit => FinancialSessionActive && _submission is IContextualCheckoutSubmission && PaymentContext?.IsWellFormed == true && CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
+    public bool CanCommit => FinancialSessionActive && _submission is IContextualCheckoutSubmission &&
+        PaymentContext is { IsWellFormed: true, TenderedAmount: > 0m } &&
+        CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
     public System.Windows.Input.ICommand CommitCommand { get; }
     private readonly IProductImageAvailability _images;
 
@@ -403,7 +405,8 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         // Logout must fail closed at the ViewModel boundary, before allocating an operation ID.
         if (!FinancialSessionActive) { CommitFeedback = "Cashier session required"; return; }
         if (_submission is not IContextualCheckoutSubmission contextual) { CommitFeedback = "Authorized payment adapter unavailable"; return; }
-        if (PaymentContext?.IsWellFormed != true) { CommitFeedback = "Cashier and payment context required"; return; }
+        if (PaymentContext is not { IsWellFormed: true, TenderedAmount: > 0m })
+        { CommitFeedback = "Cashier and positive cash tender required"; return; }
         if (CheckoutUncertain) { CommitFeedback = "Checkout status unknown — reconcile before retry"; return; }
         if (!CatalogueAvailable) { CommitFeedback = "Local catalogue unavailable"; return; }
         ReviewedResolution = CheckoutResolution.Unknown;
