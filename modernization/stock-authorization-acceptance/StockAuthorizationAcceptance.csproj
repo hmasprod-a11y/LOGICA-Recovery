@@ -4,5 +4,6 @@
     <PackageReference Include="MySql.Data" Version="9.5.0" />
     <Compile Include="../../recovered-source/LOGICA/Application/Inventory/StockAdjustmentPlan.cs" Link="Production/StockAdjustmentPlan.cs" />
     <Compile Include="../../recovered-source/LOGICA/Infrastructure/Inventory/StockAdjustmentWriter.cs" Link="Production/StockAdjustmentWriter.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Infrastructure/Catalogue/CatalogueRowPersistence.cs" Link="Production/CatalogueRowPersistence.cs" />
   </ItemGroup>
 </Project>
