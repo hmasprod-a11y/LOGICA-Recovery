@@ -23,6 +23,34 @@ static void Check(bool value, string reason)
 {
     if (!value) throw new Exception(reason);
 }
+// Inventory must remain read-only and fail closed without Cell03 production contract.
+var inventoryWindow = new Hanouty.Desktop.Wpf.InventoryCountWindow();
+var inventoryVm = (InventoryCountViewModel)inventoryWindow.DataContext;
+inventoryVm.DocumentId = "INV-001";
+Check(!inventoryVm.CanOpen && !inventoryVm.CanRecord && !inventoryVm.CanConfirm,
+    "unwired Inventory contract must disable all stock operations");
+inventoryVm.Open();
+inventoryVm.Record();
+inventoryVm.Confirm();
+Check(inventoryVm.Lines.Count == 0, "unwired Inventory must never invent counted lines");
+inventoryWindow.Close();
+// An opened document cannot be silently reused after its identity changes.
+var inventoryPort = new RecordingInventoryWorkflow();
+var documentVm = new InventoryCountViewModel(inventoryPort) { DocumentId = "INV-001" };
+documentVm.Open();
+Check(documentVm.Lines.Count == 1 && !documentVm.CanConfirm,
+    "Inventory confirmation requires physical count of every document line");
+documentVm.ArticleId = "article-A";
+documentVm.PhysicalText = "8.5";
+documentVm.Record();
+Check(documentVm.Lines[0].Difference == -1.5m && documentVm.CanConfirm,
+    "physical quantity and variance must come from Inventory readback");
+documentVm.DocumentId = "INV-002";
+Check(documentVm.Lines.Count == 0 && !documentVm.CanRecord && !documentVm.CanConfirm,
+    "changing document identity must invalidate the count and confirmation");
+documentVm.Confirm();
+Check(inventoryPort.ConfirmCalls == 0,
+    "stale document must never invoke Inventory confirmation");
 // A catalogue-only diagnostic resolver must never make the installed WPF app
 // start a cashier process. The QA-owned Bootstrap must supply financial services.
 Hanouty.Desktop.Wpf.App.ResolveFinancialServices = null;
@@ -1980,4 +2008,14 @@ sealed class CallbackBasketReader(Action callback) : ICurrentBasketReader
         callback();
         return new[] { new BasketDisplayLine("test", "Test", 1m, 3m) };
     }
+}
+
+sealed class RecordingInventoryWorkflow : IInventoryCountWorkflow
+{
+    public int ConfirmCalls { get; private set; }
+    public InventoryCountDocument Open(string id) =>
+        new(id, new[] { new InventoryCountLine("article-A", "Article A", 10m, null) });
+    public InventoryCountDocument RecordPhysicalQuantity(string id, string articleId, decimal physicalQuantity) =>
+        new(id, new[] { new InventoryCountLine(articleId, "Article A", 10m, physicalQuantity) });
+    public bool Confirm(string id) { ConfirmCalls++; return true; }
 }
