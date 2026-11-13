@@ -49,22 +49,35 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         _basketRefreshPending = true;
     }
     private bool _basketRefreshPending;
+    private bool _basketReadBusy;
     public bool RefreshBasketLines()
     {
+        // Host callbacks can pump the dispatcher; never publish a snapshot
+        // captured under a previous session, payment context or Unknown state.
+        if (_basketReadBusy) return false;
         BasketLines.Clear();
-        if (_basketReader is null || !FinancialSessionActive || CheckoutUncertain || _selectionInFlight)
+        if (_basketReader is null || !FinancialSessionActive || CheckoutUncertain ||
+            _selectionInFlight || _pendingOperationId is not null)
         {
             BasketStatus = "Authorized Host basket unavailable";
             OnPropertyChanged(nameof(BasketStatus));
             return false;
         }
+        _basketReadBusy = true;
+        var context = PaymentContext;
         try
         {
             var lines = _basketReader.ReadCurrentBasket();
-            if (lines is null || lines.Any(x => string.IsNullOrWhiteSpace(x.ArticleId) || x.Quantity <= 0m || x.UnitPriceMad < 0m))
-                throw new InvalidOperationException("Invalid Host basket snapshot");
-            foreach (var line in lines) BasketLines.Add(line);
-            BasketStatus = lines.Count == 0 ? "Panier vide" : $"{lines.Count} ligne(s) du panier Host";
+            if (!FinancialSessionActive || CheckoutUncertain || _selectionInFlight ||
+                _pendingOperationId is not null || !ReferenceEquals(PaymentContext, context) ||
+                lines is null || lines.Any(x => string.IsNullOrWhiteSpace(x.ArticleId) ||
+                    x.Quantity <= 0m || x.UnitPriceMad < 0m))
+                throw new InvalidOperationException("Stale or invalid Host basket snapshot");
+            // Snapshot before publication: a Host-owned mutable list must not
+            // change underneath WPF's observable collection.
+            var snapshot = lines.ToArray();
+            foreach (var line in snapshot) BasketLines.Add(line);
+            BasketStatus = snapshot.Length == 0 ? "Panier vide" : $"{snapshot.Length} ligne(s) du panier Host";
             OnPropertyChanged(nameof(BasketStatus));
             return true;
         }
@@ -75,6 +88,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(BasketStatus));
             return false;
         }
+        finally { _basketReadBusy = false; }
     }
     private bool _selectionInFlight;
     public bool CheckoutBusy => _selectionInFlight;
