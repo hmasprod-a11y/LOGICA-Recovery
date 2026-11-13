@@ -812,6 +812,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
 
         VerifyCashDrawerClosing(settings, pin);
         VerifyInventoryValidation(settings);
+        VerifyPurchaseReceipt(settings);
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -823,6 +824,65 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             FullCashReturnThroughWpfUi = true, FullCashReturnSqlReadback = true, FullCashReturnRollback = true, FullCashReturnIdempotency = true,
             W2Accepted = true, Remaining = "Partial returns, mixed tenders, discounts/credit, device parity, and commercial rollout acceptance"
         }));
+    }
+
+    private static void VerifyPurchaseReceipt(CatalogueSettings settings)
+    {
+        Sql(settings, """
+            ALTER TABLE TABLE_ARTICLES ADD FOURNISSEUR VARCHAR(128);
+            CREATE TABLE TABLE_FOURNISSEURS (ID_FOURNISSEUR VARCHAR(64)) ENGINE=InnoDB;
+            CREATE TABLE TABLE_RECEPTIONS_ENTETE (ID_BR VARCHAR(64), ID_FOURNISSEUR VARCHAR(64), FOURNISSEUR VARCHAR(128), ETAT VARCHAR(24)) ENGINE=InnoDB;
+            CREATE TABLE TABLE_RECEPTIONS_DETAILS (ID_BR VARCHAR(64), ID_FOURNISSEUR VARCHAR(64), ID_ARTICLE VARCHAR(64), Article VARCHAR(128), Qté DECIMAL(16,3), PRIX_A DECIMAL(16,3), PRIX_V DECIMAL(16,3), ETAT VARCHAR(24)) ENGINE=InnoDB;
+            INSERT INTO TABLE_FOURNISSEURS VALUES ('SUP-TEST');
+            INSERT INTO TABLE_RECEPTIONS_ENTETE VALUES ('BR-TEST','SUP-TEST','Fournisseur test','ENREGISTRER');
+            INSERT INTO TABLE_RECEPTIONS_DETAILS SELECT 'BR-TEST','SUP-TEST',ID_ARTICLE,Article,2,11,15,'ENREGISTRER' FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article';
+            """);
+        var receipt = new PurchaseReceiptValidation(settings.ConnectionString);
+        var preview = receipt.Read("BR-TEST");
+        var before = Snapshot(settings);
+        var oldStock = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+        var oldAverage = Number(settings, "SELECT PRIX_MP FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+        try
+        {
+            receipt.Validate(preview, "O'Neil", "1234");
+            throw new InvalidOperationException("A cashier validated a purchase receipt.");
+        }
+        catch (UnauthorizedAccessException) { }
+        Sql(settings, "UPDATE TABLE_RECEPTIONS_DETAILS SET PRIX_A=12 WHERE ID_BR='BR-TEST'");
+        try
+        {
+            receipt.Validate(preview, "Test manager", "5678");
+            throw new InvalidOperationException("A stale purchase receipt was accepted.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.StartsWith("La réception a changé.", StringComparison.Ordinal)) { }
+        Sql(settings, "UPDATE TABLE_RECEPTIONS_DETAILS SET PRIX_A=11 WHERE ID_BR='BR-TEST'");
+        Sql(settings, "CREATE TRIGGER test_receipt_rollback BEFORE UPDATE ON TABLE_RECEPTIONS_ENTETE FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='receipt rollback'");
+        try
+        {
+            receipt.Validate(preview, "Test manager", "5678");
+            throw new InvalidOperationException("Purchase receipt ignored an injected failure.");
+        }
+        catch (MySqlException) { }
+        finally { Sql(settings, "DROP TRIGGER test_receipt_rollback"); }
+        Require(Snapshot(settings) == before &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_DETAILS WHERE ETAT='ENREGISTRER'") == 1,
+            "Purchase receipt rollback left partial changes.");
+        receipt.Validate(preview, "Test manager", "5678");
+        var expectedAverage = Math.Round((oldAverage * oldStock + 22m) / (oldStock + 2m), 2,
+            MidpointRounding.AwayFromZero);
+        Require(Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == oldStock + 2m &&
+            Number(settings, "SELECT PRIX_MP FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == expectedAverage &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article' AND PRIX_A=11 AND PRIX_V_1=15 AND FOURNISSEUR='Fournisseur test'") == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE LIKE '%BR-TEST [Test manager]' AND QUANTITE=2") == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_ENTETE WHERE ETAT='VALIDER'") == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_DETAILS WHERE ETAT='VALIDER'") == 1,
+            "Validated receipt did not preserve LOGICA's stock, pricing and movement rules.");
+        try
+        {
+            receipt.Validate(preview, "Test manager", "5678");
+            throw new InvalidOperationException("Purchase receipt was posted twice.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message == "Réception enregistrée introuvable.") { }
     }
 
     private static void VerifyInventoryValidation(CatalogueSettings settings)

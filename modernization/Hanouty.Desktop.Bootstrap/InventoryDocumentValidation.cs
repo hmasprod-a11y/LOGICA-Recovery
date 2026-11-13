@@ -9,7 +9,7 @@ internal sealed class InventoryDocumentValidation(string connectionString)
     private sealed record CountedLine(string Id, decimal Baseline, decimal Physical);
     private sealed record Article(string Code, string Name, decimal Stock);
 
-    private static void Authenticate(MySqlConnection connection, MySqlTransaction transaction,
+    internal static void Authenticate(MySqlConnection connection, MySqlTransaction transaction,
         string actor, string pin, bool validationOnly)
     {
         using var command = new MySqlCommand(
@@ -230,7 +230,7 @@ internal sealed class InventoryDocumentValidation(string connectionString)
         catch { connection.Dispose(); throw; }
     }
 
-    private static void RequireTransactionalTables(MySqlConnection connection,
+    internal static void RequireTransactionalTables(MySqlConnection connection,
         MySqlTransaction transaction, params string[] tables)
     {
         using var command = new MySqlCommand(

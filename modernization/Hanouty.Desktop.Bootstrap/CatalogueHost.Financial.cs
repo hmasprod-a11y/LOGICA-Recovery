@@ -378,6 +378,28 @@ public sealed partial record CatalogueHost
                 finally { reviewing = false; }
             });
         });
+        window.ConfigurePurchaseReceipt(() =>
+        {
+            if (!CanChangeContext() || activeCashierId is not { } actor || binding.Session.PendingCount != 0)
+                return;
+            var receipt = new PurchaseReceiptValidation(settings.ConnectionString);
+            var dialog = new PurchaseReceiptDialog(receipt, reviewed =>
+            {
+                if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                    binding.Session.PendingCount != 0) return false;
+                reviewing = true;
+                try
+                {
+                    var pin = window.PromptCashierPin(actor);
+                    if (string.IsNullOrWhiteSpace(pin)) return false;
+                    receipt.Validate(reviewed, actor, pin);
+                    return true;
+                }
+                finally { reviewing = false; }
+            });
+            dialog.Owner = window;
+            dialog.ShowDialog();
+        });
         window.ConfigureReviewedCheckout(result.TryReviewResolvedCheckout);
         return result;
     }

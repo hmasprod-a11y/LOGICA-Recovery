@@ -32,6 +32,18 @@ public partial class MainWindow : Window
         new InventoryCountWindow(workflow) { Owner = this }.ShowDialog();
     }
 
+    private Action? _openPurchaseReceipt;
+
+    public void ConfigurePurchaseReceipt(Action openPurchaseReceipt) =>
+        _openPurchaseReceipt = openPurchaseReceipt;
+
+    private void OpenPurchaseReceipt_Click(object sender, RoutedEventArgs e)
+    {
+        if (_openPurchaseReceipt is not null && DataContext is CatalogueViewModel
+            { FinancialSessionActive: true, CheckoutBusy: false, CheckoutUncertain: false })
+            _openPurchaseReceipt();
+    }
+
     private void CountCashDrawer_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is not CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false })

@@ -14,6 +14,9 @@
             </DockPanel>
             <Button Content="Inventaire physique" Click="OpenInventory_Click" HorizontalAlignment="Left"
                     MinHeight="36" Padding="12,4" Margin="0,8,0,0" AutomationProperties.Name="Open physical inventory workflow"/>
+            <Button Content="Réception fournisseur" Click="OpenPurchaseReceipt_Click" HorizontalAlignment="Left"
+                    IsEnabled="{Binding FinancialSessionActive}" MinHeight="36" Padding="12,4" Margin="0,8,0,0"
+                    AutomationProperties.Name="Open purchase receipt"/>
             <CheckBox Content="Right-to-left layout" IsChecked="{Binding IsRightToLeft, Mode=TwoWay}" Margin="0,8,0,0" AutomationProperties.Name="Right-to-left layout"/>
             <TextBlock Text="Offline desktop — checkout requires registered authorized local services"
                        Foreground="DimGray" Margin="0,4,0,0"/>
