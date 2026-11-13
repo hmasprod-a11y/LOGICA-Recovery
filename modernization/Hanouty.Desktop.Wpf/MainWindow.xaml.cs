@@ -6,12 +6,20 @@ namespace Hanouty.Desktop.Wpf;
 
 public partial class MainWindow : Window
 {
+    private Func<decimal, bool>? _closeCashDrawer;
+
+    public void ConfigureCashDrawerClosing(Func<decimal, bool> closeCashDrawer)
+    {
+        ArgumentNullException.ThrowIfNull(closeCashDrawer);
+        _closeCashDrawer = closeCashDrawer;
+    }
+
     private void CountCashDrawer_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is not CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false })
             return;
 
-        new CashDrawerCountDialog { Owner = this }.ShowDialog();
+        new CashDrawerCountDialog(_closeCashDrawer) { Owner = this }.ShowDialog();
     }
 
     // Test assembly only: permits recording adapters for STA view tests. Production callers

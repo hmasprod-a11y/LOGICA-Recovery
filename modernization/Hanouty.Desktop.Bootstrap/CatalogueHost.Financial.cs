@@ -265,6 +265,50 @@ public sealed partial record CatalogueHost
                 cashier, "MAD", false, new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, tender) }, total.Value));
         }, ReadTrustedTotal, result.TryEndFinancialSession,
             () => System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines));
+        var cashClosing = new CashDrawerClosing(settings.ConnectionString);
+        window.ConfigureCashDrawerClosing(counted =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive ||
+                activeCashierId is not { } cashier || binding.Session.PendingCount != 0)
+            {
+                System.Windows.MessageBox.Show(window, "Terminez le panier en cours avant la clôture.", "Clôture");
+                return false;
+            }
+
+            reviewing = true;
+            try
+            {
+                var pin = window.PromptCashierPin(cashier);
+                if (string.IsNullOrEmpty(pin)) return false;
+                var preview = cashClosing.Read(cashier, pin);
+                var summary = $"Fond de caisse : {preview.Opening:N2} MAD\n" +
+                    $"Ventes nettes : {preview.NetSales:N2} MAD\n" +
+                    $"Espèces ventes et retours : {preview.CashSales:N2} MAD\n" +
+                    $"Règlements clients en espèces : {preview.ClientCash:N2} MAD\n" +
+                    $"Règlements fournisseurs en espèces : {preview.SupplierCash:N2} MAD\n" +
+                    $"Dépenses : {preview.Expenses:N2} MAD\n" +
+                    $"Attendu : {preview.Expected:N2} MAD\nCompté : {counted:N2} MAD\n" +
+                    $"Écart : {counted - preview.Expected:N2} MAD\n\nValider la clôture n° {preview.Number} ?";
+                if (System.Windows.MessageBox.Show(window, summary, "Clôture globale",
+                        System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question,
+                        System.Windows.MessageBoxResult.No) != System.Windows.MessageBoxResult.Yes) return false;
+                cashClosing.Close(cashier, pin, preview);
+                System.Windows.MessageBox.Show(window, $"Clôture n° {preview.Number} enregistrée.", "Clôture");
+                return true;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                System.Windows.MessageBox.Show(window, "Clôture non autorisée.", "Clôture");
+                return false;
+            }
+            catch (Exception ex) when (ex is MySqlException or InvalidOperationException)
+            {
+                System.Windows.MessageBox.Show(window,
+                    "La clôture n’a pas pu être confirmée. Vérifiez l’état des mouvements avant une nouvelle tentative.", "Clôture");
+                return false;
+            }
+            finally { reviewing = false; }
+        });
         window.ConfigureReviewedCheckout(result.TryReviewResolvedCheckout);
         return result;
     }

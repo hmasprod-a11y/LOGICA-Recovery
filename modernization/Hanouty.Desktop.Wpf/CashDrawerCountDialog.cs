@@ -10,7 +10,10 @@ internal sealed class CashDrawerCountDialog : Window
     private readonly List<TextBox> counts = new();
     private readonly TextBlock result = new() { FontSize = 18, Margin = new Thickness(0, 12, 0, 0) };
 
-    public CashDrawerCountDialog()
+    private readonly Button? closeDrawer;
+    private decimal? countedTotal;
+
+    public CashDrawerCountDialog(Func<decimal, bool>? closeCashDrawer)
     {
         Title = "Comptage de caisse";
         Width = 350;
@@ -31,6 +34,18 @@ internal sealed class CashDrawerCountDialog : Window
             panel.Children.Add(row);
         }
         panel.Children.Add(result);
+        if (closeCashDrawer is not null)
+        {
+            closeDrawer = new Button { Content = "Préparer la clôture globale", MinHeight = 36, Margin = new Thickness(0, 12, 0, 0) };
+            closeDrawer.Click += (_, _) =>
+            {
+                if (countedTotal is not decimal counted) return;
+                closeDrawer.IsEnabled = false;
+                if (closeCashDrawer(counted)) Close();
+                else RefreshTotal();
+            };
+            panel.Children.Add(closeDrawer);
+        }
         var close = new Button { Content = "Fermer", IsCancel = true, MinHeight = 36, Margin = new Thickness(0, 12, 0, 0) };
         panel.Children.Add(close);
         Content = panel;
@@ -39,6 +54,8 @@ internal sealed class CashDrawerCountDialog : Window
 
     private void RefreshTotal()
     {
+        countedTotal = null;
+        if (closeDrawer is not null) closeDrawer.IsEnabled = false;
         var quantities = new int[counts.Count];
         for (var index = 0; index < counts.Count; index++)
         {
@@ -50,6 +67,8 @@ internal sealed class CashDrawerCountDialog : Window
                 return;
             }
         }
-        result.Text = $"Total compté : {CashDrawerCount.Calculate(quantities):N2} MAD";
+        countedTotal = CashDrawerCount.Calculate(quantities);
+        result.Text = $"Total compté : {countedTotal:N2} MAD";
+        if (closeDrawer is not null) closeDrawer.IsEnabled = true;
     }
 }

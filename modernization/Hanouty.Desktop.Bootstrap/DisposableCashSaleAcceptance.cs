@@ -810,6 +810,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         }
         finally { duplicateRefundHost.Window.Close(); }
 
+        VerifyCashDrawerClosing(settings, pin);
+
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
             ReviewCallbackAuthenticated = true, WrongReviewPinRejected = true,
@@ -820,6 +822,57 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             FullCashReturnThroughWpfUi = true, FullCashReturnSqlReadback = true, FullCashReturnRollback = true, FullCashReturnIdempotency = true,
             W2Accepted = true, Remaining = "Partial returns, mixed tenders, discounts/credit, device parity, and commercial rollout acceptance"
         }));
+    }
+
+    private static void VerifyCashDrawerClosing(CatalogueSettings settings, string pin)
+    {
+        Sql(settings, """
+            ALTER TABLE TABLE_PASS ADD CLOTURE VARCHAR(32);
+            UPDATE TABLE_PASS SET CLOTURE='VISIBLE' WHERE ListUser='O''Neil';
+            CREATE TABLE TABLE_PARAMETRES (OBJET VARCHAR(64), VALEUR VARCHAR(32)) ENGINE=InnoDB;
+            INSERT INTO TABLE_PARAMETRES VALUES ('FONDS_CAISSE','100'),('GESTION_CLOTURE','True'),('CLOTURE_CAISSIER_OBLIGER','False');
+            ALTER TABLE TABLE_VENTES_JOURNAL ADD CLOTURE_GLOBALE VARCHAR(32), ADD CLOTURE_CAISSIER VARCHAR(32);
+            ALTER TABLE TABLE_VENTES_ENTETE ADD CLOTURE_GLOBALE VARCHAR(32);
+            ALTER TABLE TABLE_VENTES_REGLEMENTS ADD CLOTURE_GLOBALE VARCHAR(32);
+            CREATE TABLE TABLE_DEPENSES (MONTANT DECIMAL(16,3), CLOTURE_GLOBALE VARCHAR(32)) ENGINE=InnoDB;
+            CREATE TABLE TABLE_CLIENTS_REGLE (MONTANT DECIMAL(16,3), MODE_P VARCHAR(32), CLOTURE_GLOBALE VARCHAR(32)) ENGINE=InnoDB;
+            CREATE TABLE TABLE_FOURNISSEURS_REGLE (MONTANT DECIMAL(16,3), MODE_P VARCHAR(32), CLOTURE_GLOBALE VARCHAR(32)) ENGINE=InnoDB;
+            CREATE TABLE TABLE_POUBELLE (CLOTURE_GLOBALE VARCHAR(32)) ENGINE=InnoDB;
+            INSERT INTO TABLE_DEPENSES VALUES (3,NULL);
+            INSERT INTO TABLE_CLIENTS_REGLE VALUES (10,'ESPECES',NULL),(30,'CARTE',NULL);
+            INSERT INTO TABLE_FOURNISSEURS_REGLE VALUES (4,'ESPECES',NULL);
+            INSERT INTO TABLE_POUBELLE VALUES (NULL);
+            """);
+        var closing = new CashDrawerClosing(settings.ConnectionString);
+        try
+        {
+            closing.Read("O'Neil", "wrong");
+            throw new InvalidOperationException("Closing accepted a wrong PIN.");
+        }
+        catch (UnauthorizedAccessException) { }
+        var preview = closing.Read("O'Neil", pin);
+        Require(preview.Number == 1 && preview.Opening == 100m &&
+            preview.ClientCash == 10m && preview.SupplierCash == 4m && preview.Expenses == 3m &&
+            preview.Expected == 103m + preview.CashSales, "Cash closing did not reconcile the drawer.");
+        Sql(settings, "CREATE TRIGGER test_closing_failure BEFORE UPDATE ON TABLE_POUBELLE FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='test-closing-rollback'");
+        try
+        {
+            closing.Close("O'Neil", pin, preview);
+            throw new InvalidOperationException("Closing ignored a failed final write.");
+        }
+        catch (MySqlException) { }
+        finally { Sql(settings, "DROP TRIGGER test_closing_failure"); }
+        Require(closing.Read("O'Neil", pin) == preview, "Closing left partial writes after rollback.");
+        closing.Close("O'Neil", pin, preview);
+        Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE CLOTURE_GLOBALE IS NULL") == 0 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_POUBELLE WHERE CLOTURE_GLOBALE='1'") == 1,
+            "Closing did not mark the open documents with the same number.");
+        try
+        {
+            closing.Close("O'Neil", pin, preview);
+            throw new InvalidOperationException("Closing replay was accepted.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message == "Aucune vente ouverte à clôturer.") { }
     }
 
     private static CatalogueHost PrepareWpfReturn(CatalogueSettings settings, string pin, string originalTicket)
