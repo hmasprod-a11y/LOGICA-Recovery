@@ -512,9 +512,10 @@ namespace LOGICA.Infrastructure.Checkout
             Func<decimal> preview = () =>
                 Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
                     NewConnection, TrustedRequest("preview-only").Lines);
-            Require(preview() == 10.50m &&
+            rejected("preview-empty-basket", () =>
                 Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
-                    NewConnection, Array.Empty<Hanouty.ArchitectureBridge.CheckoutBatchLine>()) == 0m &&
+                    NewConnection, Array.Empty<Hanouty.ArchitectureBridge.CheckoutBatchLine>()));
+            Require(preview() == 10.50m &&
                 Scalar("SELECT COUNT(*) FROM TABLE_01") == 0 &&
                 Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == headers &&
                 Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == payments &&
