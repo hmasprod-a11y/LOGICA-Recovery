@@ -6,7 +6,7 @@
 
 1. Create a fresh isolated database `hanouty_wpf_fixture` on local MariaDB (loopback); do not run against `logica_ci` or any shop schema.
 2. Run `fixture.sql` against that database using a dedicated test account. The script refuses to overwrite an existing `TABLE_ARTICLES`.
-3. Create `<test-data>/bd/images/fixture-soap.png` from an actual small PNG (any valid PNG), and pass `<test-data>` as the `legacyDataDirectory` argument.
+3. Generate the deterministic valid PNG with `python3 modernization/inventory/wpf-sale-fixture/create_fixture_image.py --data-dir <test-data>`. The generator refuses to overwrite a different existing image. Expected path: `<test-data>/bd/images/fixture-soap.png`. Pass `<test-data>` as the `legacyDataDirectory` argument.
 4. Instantiate the existing `Hanouty.Inventory.MariaDb.MariaDbCatalogueReader(connectionString, testDataDirectory)`. Use `ListAll()`, `FindBarcode(code)`, and `RefreshArticle(articleId)` as appropriate. For stock availability use the separate read-only `MariaDbInventorySnapshotReader(connectionString)`. Never decrement stock from either reader.
 
 | Scan | Expected catalogue result | Stock/checkout expectation |
