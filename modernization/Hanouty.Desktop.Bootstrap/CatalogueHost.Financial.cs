@@ -292,9 +292,7 @@ public sealed partial record CatalogueHost
                     $"Dépenses : {preview.Expenses:N2} MAD\n" +
                     $"Attendu : {preview.Expected:N2} MAD\nCompté : {counted:N2} MAD\n" +
                     $"Écart : {counted - preview.Expected:N2} MAD\n\nValider la clôture n° {preview.Number} ?";
-                if (System.Windows.MessageBox.Show(window, summary, cashierOnly ? "Clôture caissier" : "Clôture globale",
-                        System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question,
-                        System.Windows.MessageBoxResult.No) != System.Windows.MessageBoxResult.Yes) return false;
+                if (!ConfirmCashDrawer(window, summary, cashierOnly ? "Clôture caissier" : "Clôture globale")) return false;
                 cashClosing.Close(cashier, pin, preview, approvalPin);
                 var report = new System.Windows.Controls.TextBlock
                 {
@@ -354,10 +352,8 @@ public sealed partial record CatalogueHost
             try
             {
                 var pin = window.PromptCashierPin(cashier);
-                if (string.IsNullOrEmpty(pin) || System.Windows.MessageBox.Show(window,
-                    $"Enregistrer {opening:N2} MAD comme fond de caisse ?", "Fond de caisse",
-                    System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question,
-                    System.Windows.MessageBoxResult.No) != System.Windows.MessageBoxResult.Yes) return false;
+                if (string.IsNullOrEmpty(pin) || !ConfirmCashDrawer(window,
+                    $"Enregistrer {opening:N2} MAD comme fond de caisse ?", "Fond de caisse")) return false;
                 cashClosing.SetOpening(cashier, pin, opening);
                 return true;
             }
@@ -370,6 +366,27 @@ public sealed partial record CatalogueHost
         });
         window.ConfigureReviewedCheckout(result.TryReviewResolvedCheckout);
         return result;
+    }
+
+    private static bool ConfirmCashDrawer(System.Windows.Window owner, string text, string title)
+    {
+        var dialog = new System.Windows.Window
+        {
+            Title = title, Owner = owner, Width = 440,
+            SizeToContent = System.Windows.SizeToContent.Height,
+            WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner
+        };
+        var layout = new System.Windows.Controls.StackPanel { Margin = new System.Windows.Thickness(20) };
+        layout.Children.Add(new System.Windows.Controls.TextBlock { Text = text,
+            TextWrapping = System.Windows.TextWrapping.Wrap });
+        var cancel = new System.Windows.Controls.Button { Content = "Annuler", IsCancel = true,
+            IsDefault = true, MinHeight = 36, Margin = new System.Windows.Thickness(0, 12, 0, 4) };
+        var confirm = new System.Windows.Controls.Button { Content = "Confirmer", MinHeight = 36 };
+        confirm.Click += (_, _) => dialog.DialogResult = true;
+        layout.Children.Add(cancel);
+        layout.Children.Add(confirm);
+        dialog.Content = layout;
+        return dialog.ShowDialog() == true;
     }
 
     private sealed class MariaDbFullCashReturnHost(

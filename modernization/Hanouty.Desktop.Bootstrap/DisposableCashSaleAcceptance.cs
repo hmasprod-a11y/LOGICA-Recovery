@@ -844,7 +844,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             INSERT INTO TABLE_POUBELLE VALUES (NULL);
             """);
         var closing = new CashDrawerClosing(settings.ConnectionString);
-        closing.SetOpening("O'Neil", pin, 120.50m);
+        RunCashDrawerFromWindow(settings, pin, opening: true);
         Require(Convert.ToString(Value(settings, "SELECT VALEUR FROM TABLE_PARAMETRES WHERE OBJET='FONDS_CAISSE'")) == "120.50",
             "Opening amount was not persisted to LOGICA's setting.");
         try
@@ -921,7 +921,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         catch (MySqlException) { }
         finally { Sql(settings, "DROP TRIGGER test_closing_failure"); }
         Require(closing.Read("O'Neil", pin) == preview, "Closing left partial writes after rollback.");
-        closing.Close("O'Neil", pin, preview);
+        RunCashDrawerFromWindow(settings, pin, opening: false);
         Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE CLOTURE_GLOBALE IS NULL") == 0 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_POUBELLE WHERE CLOTURE_GLOBALE='1'") == 1,
             "Closing did not mark the open documents with the same number.");
@@ -931,6 +931,90 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             throw new InvalidOperationException("Closing replay was accepted.");
         }
         catch (InvalidOperationException ex) when (ex.Message == "Aucune vente ouverte à clôturer.") { }
+    }
+
+    private static void RunCashDrawerFromWindow(CatalogueSettings settings, string pin, bool opening)
+    {
+        var host = CatalogueHost.CreateCashierWorkstation(settings, "01");
+        host.Window.Show();
+        try
+        {
+            Require(CashierEntry(host, "O'Neil", "01", "0", 0m, pin),
+                "Cash drawer acceptance could not authenticate the cashier.");
+            static IEnumerable<T> Controls<T>(DependencyObject parent) where T : DependencyObject
+            {
+                foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+                {
+                    if (child is T control) yield return control;
+                    foreach (var nested in Controls<T>(child)) yield return nested;
+                }
+            }
+            static void Click(System.Windows.Controls.Button button) =>
+                button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Exception? failure = null;
+            var step = 0;
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(75) };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                try
+                {
+                    var dialogs = Application.Current.Windows.Cast<Window>()
+                        .Where(w => w.IsVisible && w.Owner == host.Window).ToArray();
+                    var dialog = dialogs.Last();
+                    switch (step++)
+                    {
+                        case 0:
+                            Require(dialog.Title == "Comptage de caisse", "Cash count window was not rendered.");
+                            var counts = Controls<System.Windows.Controls.TextBox>(dialog).ToArray();
+                            counts[1].Text = "1";
+                            counts[3].Text = "1";
+                            counts[8].Text = "1";
+                            var action = Controls<System.Windows.Controls.Button>(dialog).Single(button =>
+                                Equals(button.Content, opening ? "Enregistrer le montant compté comme fond de caisse"
+                                    : "Préparer la clôture"));
+                            timer.Start();
+                            Click(action);
+                            break;
+                        case 1:
+                            Controls<System.Windows.Controls.PasswordBox>(dialog).Single().Password = pin;
+                            timer.Start();
+                            Click(Controls<System.Windows.Controls.Button>(dialog).Single(button => button.IsDefault));
+                            break;
+                        case 2:
+                            Require(dialog.Title == (opening ? "Fond de caisse" : "Clôture globale"),
+                                "Cash drawer confirmation was not rendered.");
+                            if (!opening) timer.Start();
+                            Click(Controls<System.Windows.Controls.Button>(dialog).Single(button => Equals(button.Content, "Confirmer")));
+                            break;
+                        case 3:
+                            Require(dialog.Title == "Clôture n° 1 enregistrée" &&
+                                Controls<System.Windows.Controls.TextBlock>(dialog).Any(block =>
+                                    block.Text.Contains("Écart") && block.Text.Contains("Compté")) &&
+                                Controls<System.Windows.Controls.Button>(dialog).Any(button => Equals(button.Content, "Imprimer le rapport")),
+                                "The committed close did not display its printable drawer report.");
+                            dialog.Close();
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                    foreach (var window in Application.Current.Windows.Cast<Window>()
+                        .Where(w => w.Owner == host.Window && w.IsVisible).ToArray().Reverse())
+                        window.Close();
+                }
+            };
+            timer.Start();
+            try
+            {
+                Click(Controls<System.Windows.Controls.Button>(host.Window).Single(button => Equals(button.Content, "Compter la caisse")));
+            }
+            finally { timer.Stop(); }
+            if (failure is not null) throw new InvalidOperationException("Cash drawer UI acceptance failed.", failure);
+            Require(step == (opening ? 3 : 4), "Cash drawer UI did not reach its final step.");
+        }
+        finally { host.Window.Close(); }
     }
 
     private static CatalogueHost PrepareWpfReturn(CatalogueSettings settings, string pin, string originalTicket)
