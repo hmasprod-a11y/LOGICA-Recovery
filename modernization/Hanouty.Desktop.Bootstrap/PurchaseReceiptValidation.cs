@@ -16,6 +16,115 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
         return Read(connection, transaction, id, lockRows: false);
     }
 
+    internal Receipt CreateFromOrder(string orderId, string articleId, decimal quantity, string actor, string pin)
+    {
+        if (string.IsNullOrWhiteSpace(orderId) || string.IsNullOrWhiteSpace(articleId) ||
+            quantity <= 0 || Round(quantity) != quantity)
+            throw new ArgumentException("Commande, article et quantité positive à deux décimales requis.");
+
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
+        InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_PASS", "TABLE_NUM",
+            "TABLE_COMMANDES_ENTETE", "TABLE_COMMANDES_DETAILS", "TABLE_RECEPTIONS_ENTETE",
+            "TABLE_RECEPTIONS_DETAILS", "hanouty_purchase_receipt_order");
+        InventoryDocumentValidation.Authenticate(connection, transaction, actor, pin, validationOnly: false);
+
+        MySqlCommand Query(string sql, params (string Name, object Value)[] args) =>
+            Command(connection, transaction, sql, args);
+        void Write(string sql, params (string Name, object Value)[] args)
+        {
+            using var command = Query(sql, args);
+            if (command.ExecuteNonQuery() != 1)
+                throw new InvalidOperationException("Le bon de réception n’a pas pu être créé.");
+        }
+
+        string supplierId;
+        string supplierName;
+        string supplierCode;
+        using (var order = Query(
+            "SELECT ID_FOURNISSEUR, FOURNISSEUR, CODE_FOURNISSEUR FROM TABLE_COMMANDES_ENTETE " +
+            "WHERE BINARY ID_BC=BINARY @id AND ETAT='VALIDER' FOR UPDATE", ("@id", orderId)))
+        using (var reader = order.ExecuteReader())
+        {
+            if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1))
+                throw new InvalidOperationException("Commande validée introuvable.");
+            supplierId = reader.GetString(0);
+            supplierName = reader.GetString(1);
+            supplierCode = reader.IsDBNull(2) ? "" : reader.GetString(2);
+            if (reader.Read() || string.IsNullOrWhiteSpace(supplierId) || string.IsNullOrWhiteSpace(supplierName))
+                throw new InvalidOperationException("Commande ou fournisseur ambigu.");
+        }
+
+        decimal ordered;
+        decimal cost;
+        decimal salePrice;
+        string code;
+        string articleName;
+        using (var detail = Query(
+            "SELECT `Qté`, PRIX_A, PRIX_V, Code, Article FROM TABLE_COMMANDES_DETAILS " +
+            "WHERE BINARY ID_BC=BINARY @order AND BINARY ID_ARTICLE=BINARY @article " +
+            "AND BINARY ID_FOURNISSEUR=BINARY @supplier AND ETAT='VALIDER' FOR UPDATE",
+            ("@order", orderId), ("@article", articleId), ("@supplier", supplierId)))
+        using (var reader = detail.ExecuteReader())
+        {
+            if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1) ||
+                reader.IsDBNull(2) || reader.IsDBNull(4))
+                throw new InvalidOperationException("Ligne de commande introuvable ou incomplète.");
+            ordered = Round(reader.GetDecimal(0));
+            cost = Round(reader.GetDecimal(1));
+            salePrice = Round(reader.GetDecimal(2));
+            code = reader.IsDBNull(3) ? "" : reader.GetString(3);
+            articleName = reader.GetString(4);
+            if (reader.Read() || cost < 0 || salePrice < 0)
+                throw new InvalidOperationException("Ligne de commande ambiguë ou invalide.");
+        }
+
+        // Serialize reservations for an order through the locked LOGICA header.
+        // A saved receipt reserves the balance before it is posted to stock.
+        using (var reserved = Query(
+            "SELECT COALESCE(SUM(QUANTITY),0) FROM hanouty_purchase_receipt_order " +
+            "WHERE ORDER_ID=@order AND ARTICLE_ID=@article", ("@order", orderId), ("@article", articleId)))
+            if (quantity > ordered - Convert.ToDecimal(reserved.ExecuteScalar(), CultureInfo.InvariantCulture))
+                throw new InvalidOperationException("Quantité supérieure au reliquat de la commande.");
+
+        long number;
+        using (var counter = Query("SELECT BR FROM TABLE_NUM WHERE ID=0 FOR UPDATE"))
+        using (var reader = counter.ExecuteReader())
+        {
+            if (!reader.Read() || reader.IsDBNull(0)) throw new InvalidOperationException("Compteur BR absent.");
+            number = reader.GetInt64(0);
+            if (number < 0 || reader.Read()) throw new InvalidOperationException("Compteur BR invalide.");
+        }
+        var receiptId = "BR" + number.ToString("D6", CultureInfo.InvariantCulture);
+        using (var existing = Query(
+            "SELECT COUNT(*) FROM TABLE_RECEPTIONS_ENTETE WHERE BINARY ID_BR=BINARY @id", ("@id", receiptId)))
+            if (Convert.ToInt64(existing.ExecuteScalar(), CultureInfo.InvariantCulture) != 0)
+                throw new InvalidOperationException("Le numéro BR est déjà utilisé.");
+
+        var date = DateTime.Today;
+        var purchaseTotal = Round(quantity * cost);
+        var saleTotal = Round(quantity * salePrice);
+        Write("INSERT INTO TABLE_RECEPTIONS_ENTETE " +
+            "(Dates,ID_BR,UTILISATEUR,ID_FOURNISSEUR,CODE_FOURNISSEUR,FOURNISSEUR,TOTAL_NET_ACHATS,TOTAL_NET_VENTES,ETAT) " +
+            "VALUES (@date,@id,@actor,@supplier,@code,@name,@purchase,@sales,'ENREGISTRER')",
+            ("@date", date), ("@id", receiptId), ("@actor", actor), ("@supplier", supplierId),
+            ("@code", supplierCode), ("@name", supplierName), ("@purchase", purchaseTotal), ("@sales", saleTotal));
+        Write("INSERT INTO TABLE_RECEPTIONS_DETAILS " +
+            "(Dates,ID_BR,ID_FOURNISSEUR,CODE_FOURNISSEUR,FOURNISSEUR,ID_ARTICLE,Code,Article,PRIX_A,PRIX_V,`Qté`," +
+            "TOTAL_NET_ACHATS,TOTAL_NET_VENTES,ETAT) " +
+            "VALUES (@date,@id,@supplier,@supplierCode,@supplierName,@article,@code,@name,@cost,@sale,@qty,@purchase,@sales,'ENREGISTRER')",
+            ("@date", date), ("@id", receiptId), ("@supplier", supplierId), ("@supplierCode", supplierCode),
+            ("@supplierName", supplierName), ("@article", articleId), ("@code", code), ("@name", articleName),
+            ("@cost", cost), ("@sale", salePrice), ("@qty", quantity), ("@purchase", purchaseTotal), ("@sales", saleTotal));
+        Write("INSERT INTO hanouty_purchase_receipt_order (RECEIPT_ID,ORDER_ID,ARTICLE_ID,QUANTITY) " +
+            "VALUES (@receipt,@order,@article,@qty)",
+            ("@receipt", receiptId), ("@order", orderId), ("@article", articleId), ("@qty", quantity));
+        Write("UPDATE TABLE_NUM SET BR=BR+1 WHERE ID=0 AND BR=@number", ("@number", number));
+        transaction.Commit();
+        return new Receipt(receiptId, supplierId, supplierName,
+            Array.AsReadOnly(new[] { new Line(articleId, articleName, quantity, cost, salePrice) }));
+    }
+
     internal void Validate(Receipt reviewed, string actor, string pin)
     {
         using var connection = Open();
@@ -25,6 +134,7 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
             "TABLE_ARTICLES", "TABLE_MOUVEMENTS_STOCK");
         InventoryDocumentValidation.Authenticate(connection, transaction, actor, pin, validationOnly: true);
         var current = Read(connection, transaction, reviewed.Id, lockRows: true);
+        VerifyOrderReservation(connection, transaction, current);
         if (current.SupplierId != reviewed.SupplierId || current.Supplier != reviewed.Supplier ||
             !current.Lines.SequenceEqual(reviewed.Lines))
             throw new InvalidOperationException("La réception a changé. Rechargez le document.");
@@ -86,6 +196,22 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
         Write("UPDATE TABLE_RECEPTIONS_ENTETE SET ETAT='VALIDER' WHERE BINARY ID_BR=BINARY @id AND ETAT='ENREGISTRER'",
             1, ("@id", current.Id));
         transaction.Commit();
+    }
+
+    private static void VerifyOrderReservation(MySqlConnection connection, MySqlTransaction transaction, Receipt receipt)
+    {
+        using (var exists = Command(connection, transaction,
+            "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='hanouty_purchase_receipt_order'"))
+            if (Convert.ToInt64(exists.ExecuteScalar(), CultureInfo.InvariantCulture) == 0) return;
+        InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "hanouty_purchase_receipt_order");
+        using var command = Command(connection, transaction,
+            "SELECT ARTICLE_ID, QUANTITY FROM hanouty_purchase_receipt_order WHERE RECEIPT_ID=@id FOR UPDATE",
+            ("@id", receipt.Id));
+        using var reader = command.ExecuteReader();
+        if (!reader.Read()) return;
+        if (receipt.Lines.Count != 1 || reader.GetString(0) != receipt.Lines[0].ArticleId ||
+            reader.GetDecimal(1) != receipt.Lines[0].Quantity || reader.Read())
+            throw new InvalidOperationException("Les lignes du bon ne correspondent plus à la réservation de commande.");
     }
 
     private static Receipt Read(MySqlConnection connection, MySqlTransaction transaction, string id, bool lockRows)

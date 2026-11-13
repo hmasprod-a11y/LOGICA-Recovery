@@ -8,7 +8,8 @@ namespace Hanouty.Desktop.Bootstrap;
 internal sealed class PurchaseReceiptDialog : Window
 {
     internal PurchaseReceiptDialog(PurchaseReceiptValidation service,
-        Func<PurchaseReceiptValidation.Receipt, bool> validate)
+        Func<PurchaseReceiptValidation.Receipt, bool> validate,
+        Func<string, string, decimal, PurchaseReceiptValidation.Receipt?> createFromOrder)
     {
         Title = "Réception fournisseur";
         Width = 840;
@@ -24,6 +25,25 @@ internal sealed class PurchaseReceiptDialog : Window
         var summary = new TextBlock { Margin = new Thickness(0, 10, 0, 8), TextWrapping = TextWrapping.Wrap };
         top.Children.Add(number);
         top.Children.Add(open);
+        var orderInputs = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
+        top.Children.Add(new TextBlock { Text = "Nouveau bon depuis une commande validée", Margin = new Thickness(0, 12, 0, 0) });
+        top.Children.Add(orderInputs);
+        TextBox OrderField(string label)
+        {
+            var field = new TextBox { MinWidth = 140, MinHeight = 32, Margin = new Thickness(0, 0, 8, 0),
+                ToolTip = label };
+            System.Windows.Automation.AutomationProperties.SetName(field, label);
+            var cell = new StackPanel();
+            cell.Children.Add(new TextBlock { Text = label });
+            cell.Children.Add(field);
+            orderInputs.Children.Add(cell);
+            return field;
+        }
+        var order = OrderField("Commande");
+        var article = OrderField("Identifiant article");
+        var quantity = OrderField("Quantité reçue");
+        var create = new Button { Content = "Créer le bon", MinHeight = 32, Margin = new Thickness(0, 14, 0, 0) };
+        orderInputs.Children.Add(create);
         top.Children.Add(summary);
 
         var confirm = new Button { Content = "Valider la réception", MinHeight = 42,
@@ -46,16 +66,46 @@ internal sealed class PurchaseReceiptDialog : Window
             confirm.IsEnabled = false;
             summary.Text = "";
         }
+        void Display(PurchaseReceiptValidation.Receipt receipt)
+        {
+            reviewed = receipt;
+            lines.ItemsSource = receipt.Lines;
+            summary.Text = $"{receipt.Id} — {receipt.Supplier} — {receipt.Lines.Count} article(s)";
+            confirm.IsEnabled = true;
+        }
+
+        create.Click += (_, _) =>
+        {
+            if (!decimal.TryParse(quantity.Text.Trim().Replace(',', '.'),
+                System.Globalization.NumberStyles.AllowDecimalPoint,
+                System.Globalization.CultureInfo.InvariantCulture, out var amount) || amount <= 0)
+            {
+                summary.Text = "Saisissez une quantité reçue positive.";
+                return;
+            }
+            create.IsEnabled = false;
+            try
+            {
+                var receipt = createFromOrder(order.Text.Trim(), article.Text.Trim(), amount);
+                if (receipt is null) { summary.Text = "Création annulée."; return; }
+                number.Text = receipt.Id;
+                Display(receipt);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or MySqlException or UnauthorizedAccessException)
+            {
+                Reset();
+                summary.Text = ex is InvalidOperationException or ArgumentException ? ex.Message :
+                    "Création non confirmée. Vérifiez la commande et les bons enregistrés.";
+            }
+            finally { create.IsEnabled = true; }
+        };
         number.TextChanged += (_, _) => Reset();
         open.Click += (_, _) =>
         {
             Reset();
             try
             {
-                reviewed = service.Read(number.Text.Trim());
-                lines.ItemsSource = reviewed.Lines;
-                summary.Text = $"{reviewed.Supplier} — {reviewed.Lines.Count} article(s)";
-                confirm.IsEnabled = true;
+                Display(service.Read(number.Text.Trim()));
             }
             catch (Exception ex) when (ex is MySqlException or InvalidOperationException or ArgumentException)
             {
@@ -70,8 +120,7 @@ internal sealed class PurchaseReceiptDialog : Window
             {
                 if (validate(document))
                 {
-                    number.IsEnabled = false;
-                    open.IsEnabled = false;
+                    reviewed = null;
                     summary.Text = $"Bon {document.Id} validé. Stock et coûts mis à jour.";
                 }
                 else

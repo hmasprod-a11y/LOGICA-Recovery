@@ -883,6 +883,45 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             throw new InvalidOperationException("Purchase receipt was posted twice.");
         }
         catch (InvalidOperationException ex) when (ex.Message == "Réception enregistrée introuvable.") { }
+
+        Sql(settings, """
+            ALTER TABLE TABLE_NUM ADD BR INT NOT NULL DEFAULT 1;
+            ALTER TABLE TABLE_RECEPTIONS_ENTETE ADD Dates DATE, ADD UTILISATEUR VARCHAR(128), ADD CODE_FOURNISSEUR VARCHAR(64), ADD TOTAL_NET_ACHATS DECIMAL(16,3), ADD TOTAL_NET_VENTES DECIMAL(16,3);
+            ALTER TABLE TABLE_RECEPTIONS_DETAILS ADD Dates DATE, ADD CODE_FOURNISSEUR VARCHAR(64), ADD FOURNISSEUR VARCHAR(128), ADD Code VARCHAR(64), ADD TOTAL_NET_ACHATS DECIMAL(16,3), ADD TOTAL_NET_VENTES DECIMAL(16,3);
+            CREATE TABLE TABLE_COMMANDES_ENTETE (ID_BC VARCHAR(64), ID_FOURNISSEUR VARCHAR(64), FOURNISSEUR VARCHAR(128), CODE_FOURNISSEUR VARCHAR(64), ETAT VARCHAR(24)) ENGINE=InnoDB;
+            CREATE TABLE TABLE_COMMANDES_DETAILS (ID_BC VARCHAR(64), ID_FOURNISSEUR VARCHAR(64), ID_ARTICLE VARCHAR(64), Article VARCHAR(128), Code VARCHAR(64), Qté DECIMAL(16,3), PRIX_A DECIMAL(16,3), PRIX_V DECIMAL(16,3), ETAT VARCHAR(24)) ENGINE=InnoDB;
+            INSERT INTO TABLE_COMMANDES_ENTETE VALUES ('BC-TEST','SUP-TEST','Fournisseur test','SUP','VALIDER');
+            INSERT INTO TABLE_COMMANDES_DETAILS SELECT 'BC-TEST','SUP-TEST',ID_ARTICLE,Article,Code,5,13,19,'VALIDER' FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article';
+            -- Apply to an isolated, backed-up LOGICA schema before creating receipts from orders.
+            CREATE TABLE IF NOT EXISTS hanouty_purchase_receipt_order (
+                RECEIPT_ID VARCHAR(255) COLLATE utf8mb4_bin NOT NULL,
+                ORDER_ID VARCHAR(255) COLLATE utf8mb4_bin NOT NULL,
+                ARTICLE_ID VARCHAR(255) COLLATE utf8mb4_bin NOT NULL,
+                QUANTITY DECIMAL(18,2) NOT NULL,
+                PRIMARY KEY (RECEIPT_ID),
+                KEY ix_purchase_receipt_order_article (ORDER_ID, ARTICLE_ID),
+                CONSTRAINT ck_purchase_receipt_order_quantity CHECK (QUANTITY > 0)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+            """);
+        var startingStock = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+        var firstPart = receipt.CreateFromOrder("BC-TEST", "W2-Article", 2m, "Test manager", "5678");
+        Require(firstPart.Id == "BR000001" &&
+            Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == startingStock,
+            "Saved receipt changed stock before validation or used the wrong LOGICA sequence.");
+        try
+        {
+            receipt.CreateFromOrder("BC-TEST", "W2-Article", 4m, "Test manager", "5678");
+            throw new InvalidOperationException("Receipt exceeded the remaining order quantity.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.StartsWith("Quantité supérieure", StringComparison.Ordinal)) { }
+        receipt.Validate(firstPart, "Test manager", "5678");
+        var remainder = receipt.CreateFromOrder("BC-TEST", "W2-Article", 3m, "Test manager", "5678");
+        receipt.Validate(remainder, "Test manager", "5678");
+        Require(remainder.Id == "BR000002" &&
+            Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == startingStock + 5m &&
+            Number(settings, "SELECT SUM(QUANTITY) FROM hanouty_purchase_receipt_order WHERE ORDER_ID='BC-TEST'") == 5m &&
+            Number(settings, "SELECT BR FROM TABLE_NUM WHERE ID=0") == 3,
+            "Two partial receipts did not exhaust the order and update the stock exactly once.");
     }
 
     private static void VerifyInventoryValidation(CatalogueSettings settings)
