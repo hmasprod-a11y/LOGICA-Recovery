@@ -12,8 +12,9 @@ internal sealed class CashDrawerCountDialog : Window
 
     private readonly Button? closeDrawer;
     private decimal? countedTotal;
+    private readonly CheckBox cashierOnly = new() { Content = "Clôturer mon poste caissier", Margin = new Thickness(0, 8, 0, 0) };
 
-    public CashDrawerCountDialog(Func<decimal, bool>? closeCashDrawer)
+    public CashDrawerCountDialog(Func<decimal, bool, bool>? closeCashDrawer, Func<decimal, bool>? setOpeningCash)
     {
         Title = "Comptage de caisse";
         Width = 350;
@@ -34,14 +35,25 @@ internal sealed class CashDrawerCountDialog : Window
             panel.Children.Add(row);
         }
         panel.Children.Add(result);
+        if (setOpeningCash is not null)
+        {
+            var opening = new Button { Content = "Enregistrer le montant compté comme fond de caisse",
+                MinHeight = 36, Margin = new Thickness(0, 8, 0, 0) };
+            opening.Click += (_, _) =>
+            {
+                if (countedTotal is decimal counted && setOpeningCash(counted)) Close();
+            };
+            panel.Children.Add(opening);
+        }
         if (closeCashDrawer is not null)
         {
-            closeDrawer = new Button { Content = "Préparer la clôture globale", MinHeight = 36, Margin = new Thickness(0, 12, 0, 0) };
+            panel.Children.Add(cashierOnly);
+            closeDrawer = new Button { Content = "Préparer la clôture", MinHeight = 36, Margin = new Thickness(0, 12, 0, 0) };
             closeDrawer.Click += (_, _) =>
             {
                 if (countedTotal is not decimal counted) return;
                 closeDrawer.IsEnabled = false;
-                if (closeCashDrawer(counted)) Close();
+                if (closeCashDrawer(counted, cashierOnly.IsChecked == true)) Close();
                 else RefreshTotal();
             };
             panel.Children.Add(closeDrawer);

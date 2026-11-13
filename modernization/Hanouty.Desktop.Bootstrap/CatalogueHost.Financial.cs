@@ -266,7 +266,7 @@ public sealed partial record CatalogueHost
         }, ReadTrustedTotal, result.TryEndFinancialSession,
             () => System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines));
         var cashClosing = new CashDrawerClosing(settings.ConnectionString);
-        window.ConfigureCashDrawerClosing(counted =>
+        window.ConfigureCashDrawerClosing((counted, cashierOnly) =>
         {
             if (!CanChangeContext() || !vm.FinancialSessionActive ||
                 activeCashierId is not { } cashier || binding.Session.PendingCount != 0)
@@ -280,7 +280,7 @@ public sealed partial record CatalogueHost
             {
                 var pin = window.PromptCashierPin(cashier);
                 if (string.IsNullOrEmpty(pin)) return false;
-                var preview = cashClosing.Read(cashier, pin);
+                var preview = cashClosing.Read(cashier, pin, cashierOnly);
                 var summary = $"Fond de caisse : {preview.Opening:N2} MAD\n" +
                     $"Ventes nettes : {preview.NetSales:N2} MAD\n" +
                     $"Espèces ventes et retours : {preview.CashSales:N2} MAD\n" +
@@ -289,11 +289,45 @@ public sealed partial record CatalogueHost
                     $"Dépenses : {preview.Expenses:N2} MAD\n" +
                     $"Attendu : {preview.Expected:N2} MAD\nCompté : {counted:N2} MAD\n" +
                     $"Écart : {counted - preview.Expected:N2} MAD\n\nValider la clôture n° {preview.Number} ?";
-                if (System.Windows.MessageBox.Show(window, summary, "Clôture globale",
+                if (System.Windows.MessageBox.Show(window, summary, cashierOnly ? "Clôture caissier" : "Clôture globale",
                         System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question,
                         System.Windows.MessageBoxResult.No) != System.Windows.MessageBoxResult.Yes) return false;
                 cashClosing.Close(cashier, pin, preview);
-                System.Windows.MessageBox.Show(window, $"Clôture n° {preview.Number} enregistrée.", "Clôture");
+                var report = new System.Windows.Controls.TextBlock
+                {
+                    Text = summary[..summary.LastIndexOf("\n\n", StringComparison.Ordinal)],
+                    Margin = new System.Windows.Thickness(20),
+                    TextWrapping = System.Windows.TextWrapping.Wrap
+                };
+                var reportWindow = new System.Windows.Window
+                {
+                    Title = $"Clôture n° {preview.Number} enregistrée",
+                    Owner = window, Width = 440, SizeToContent = System.Windows.SizeToContent.Height,
+                    WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner
+                };
+                var layout = new System.Windows.Controls.StackPanel();
+                layout.Children.Add(report);
+                var print = new System.Windows.Controls.Button
+                {
+                    Content = "Imprimer le rapport", MinHeight = 38, Margin = new System.Windows.Thickness(20)
+                };
+                print.Click += (_, _) =>
+                {
+                    try
+                    {
+                        var dialog = new System.Windows.Controls.PrintDialog();
+                        if (dialog.ShowDialog() == true)
+                            dialog.PrintVisual(report, reportWindow.Title);
+                    }
+                    catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+                    {
+                        System.Windows.MessageBox.Show(reportWindow,
+                            "Impression indisponible. La clôture est enregistrée.", "Impression");
+                    }
+                };
+                layout.Children.Add(print);
+                reportWindow.Content = layout;
+                reportWindow.ShowDialog();
                 return true;
             }
             catch (UnauthorizedAccessException)
@@ -305,6 +339,28 @@ public sealed partial record CatalogueHost
             {
                 System.Windows.MessageBox.Show(window,
                     "La clôture n’a pas pu être confirmée. Vérifiez l’état des mouvements avant une nouvelle tentative.", "Clôture");
+                return false;
+            }
+            finally { reviewing = false; }
+        }, opening =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive ||
+                activeCashierId is not { } cashier || binding.Session.PendingCount != 0) return false;
+
+            reviewing = true;
+            try
+            {
+                var pin = window.PromptCashierPin(cashier);
+                if (string.IsNullOrEmpty(pin) || System.Windows.MessageBox.Show(window,
+                    $"Enregistrer {opening:N2} MAD comme fond de caisse ?", "Fond de caisse",
+                    System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question,
+                    System.Windows.MessageBoxResult.No) != System.Windows.MessageBoxResult.Yes) return false;
+                cashClosing.SetOpening(cashier, pin, opening);
+                return true;
+            }
+            catch (Exception ex) when (ex is MySqlException or InvalidOperationException or UnauthorizedAccessException)
+            {
+                System.Windows.MessageBox.Show(window, "Le fond de caisse n’a pas pu être enregistré.", "Fond de caisse");
                 return false;
             }
             finally { reviewing = false; }

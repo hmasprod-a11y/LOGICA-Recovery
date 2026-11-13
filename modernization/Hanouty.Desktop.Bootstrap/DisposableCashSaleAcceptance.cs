@@ -844,12 +844,51 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             INSERT INTO TABLE_POUBELLE VALUES (NULL);
             """);
         var closing = new CashDrawerClosing(settings.ConnectionString);
+        closing.SetOpening("O'Neil", pin, 120.50m);
+        Require(Convert.ToString(Value(settings, "SELECT VALEUR FROM TABLE_PARAMETRES WHERE OBJET='FONDS_CAISSE'")) == "120.50",
+            "Opening amount was not persisted to LOGICA's setting.");
+        try
+        {
+            closing.SetOpening("O'Neil", "wrong", 1m);
+            throw new InvalidOperationException("Opening amount accepted a wrong PIN.");
+        }
+        catch (UnauthorizedAccessException) { }
+        closing.SetOpening("O'Neil", pin, 100m);
         try
         {
             closing.Read("O'Neil", "wrong");
             throw new InvalidOperationException("Closing accepted a wrong PIN.");
         }
         catch (UnauthorizedAccessException) { }
+        Sql(settings, """
+            ALTER TABLE TABLE_VENTES_ENTETE ADD CLOTURE_CAISSIER VARCHAR(32);
+            ALTER TABLE TABLE_VENTES_REGLEMENTS ADD CLOTURE_CAISSIER VARCHAR(32);
+            ALTER TABLE TABLE_DEPENSES ADD CLOTURE_CAISSIER VARCHAR(32), ADD UTILISATEUR VARCHAR(128);
+            ALTER TABLE TABLE_CLIENTS_REGLE ADD CLOTURE_CAISSIER VARCHAR(32), ADD UTILISATEUR VARCHAR(128);
+            ALTER TABLE TABLE_FOURNISSEURS_REGLE ADD CLOTURE_CAISSIER VARCHAR(32), ADD UTILISATEUR VARCHAR(128);
+            ALTER TABLE TABLE_POUBELLE ADD CLOTURE_CAISSIER VARCHAR(32), ADD CAISSIER VARCHAR(128);
+            UPDATE TABLE_DEPENSES SET UTILISATEUR='O''Neil';
+            UPDATE TABLE_CLIENTS_REGLE SET UTILISATEUR='O''Neil' WHERE MODE_P='ESPECES';
+            UPDATE TABLE_FOURNISSEURS_REGLE SET UTILISATEUR='O''Neil';
+            UPDATE TABLE_POUBELLE SET CAISSIER='O''Neil';
+            UPDATE TABLE_PARAMETRES SET VALEUR='True' WHERE OBJET='CLOTURE_CAISSIER_OBLIGER';
+            """);
+        try
+        {
+            closing.Read("O'Neil", pin);
+            throw new InvalidOperationException("Global closing bypassed the required cashier closing.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.StartsWith("Clôturez d’abord", StringComparison.Ordinal)) { }
+        var cashierPreview = closing.Read("O'Neil", pin, perCashier: true);
+        closing.Close("O'Neil", pin, cashierPreview);
+        Require(cashierPreview.PerCashier && cashierPreview.Number == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE BINARY CAISSIER=BINARY 'O''Neil' AND CLOTURE_CAISSIER IS NULL") == 0 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE BINARY CAISSIER=BINARY 'Second cashier' AND CLOTURE_CAISSIER IS NULL") > 0 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE CLOTURE_GLOBALE IS NOT NULL") == 0,
+            "Cashier closing affected another cashier or the global closing.");
+        Sql(settings, "UPDATE TABLE_PASS SET CLOTURE='VISIBLE' WHERE ListUser='Second cashier'");
+        var secondCashier = closing.Read("Second cashier", "4321", perCashier: true);
+        closing.Close("Second cashier", "4321", secondCashier);
         var preview = closing.Read("O'Neil", pin);
         Require(preview.Number == 1 && preview.Opening == 100m &&
             preview.ClientCash == 10m && preview.SupplierCash == 4m && preview.Expenses == 3m &&
