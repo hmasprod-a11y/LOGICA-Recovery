@@ -108,6 +108,21 @@ Check(reentrantInventory.ConfirmedId == "INV-ORIGINAL" &&
     !reentrantInventoryVm.CanConfirm && reentrantInventoryVm.Lines.Count == 0 &&
     !reentrantInventoryVm.Status.Contains("confirmé", StringComparison.OrdinalIgnoreCase),
     "reentrant Inventory document replacement must never confirm or display stale success");
+// An Inventory write-port failure invalidates both the grid and all derived
+// progress, so the cashier cannot mistake a stale count for a successful write.
+var failedCountPort = new FailingCountInventoryWorkflow();
+var failedCountVm = new InventoryCountViewModel(failedCountPort) { DocumentId = "INV-FAIL" };
+failedCountVm.Open();
+failedCountVm.ArticleId = "article-A";
+failedCountVm.PhysicalText = "8";
+failedCountVm.Record();
+Check(failedCountVm.Lines.Count == 0 && failedCountVm.CountedLines == 0 &&
+    failedCountVm.RemainingLines == 0 && failedCountVm.DifferenceLines == 0 &&
+    failedCountVm.CountProgress.Contains("0/0") &&
+    failedCountVm.ArticleId == "" && failedCountVm.PhysicalText == "" &&
+    !failedCountVm.CanRecord && !failedCountVm.CanConfirm &&
+    failedCountPort.RecordCalls == 1,
+    "failed Inventory port must invalidate grid, progress, editor and confirmation");
 // Inventory duplicate article IDs are ambiguous: refuse the entire readback.
 var ambiguousVm = new InventoryCountViewModel(new AmbiguousInventoryWorkflow()) { DocumentId = "INV-DUP" };
 ambiguousVm.Open();
@@ -2107,4 +2122,17 @@ sealed class ReentrantInventoryWorkflow : IInventoryCountWorkflow
         ViewModel!.DocumentId = "INV-REPLACEMENT";
         return true;
     }
+}
+
+sealed class FailingCountInventoryWorkflow : IInventoryCountWorkflow
+{
+    public int RecordCalls { get; private set; }
+    public InventoryCountDocument Open(string id) =>
+        new(id, new[] { new InventoryCountLine("article-A", "Article A", 10m, null) });
+    public InventoryCountDocument RecordPhysicalQuantity(string id, string articleId, decimal quantity)
+    {
+        RecordCalls++;
+        throw new InvalidOperationException("simulated Inventory transaction failure");
+    }
+    public bool Confirm(string id) => throw new InvalidOperationException("must not confirm failed count");
 }
