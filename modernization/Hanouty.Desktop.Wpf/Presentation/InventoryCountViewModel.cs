@@ -26,20 +26,21 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     private string _status = "Contrat Inventory non raccordé — validation indisponible";
     private bool _busy;
     private bool _loaded;
+    private string? _openedDocumentId;
     public ObservableCollection<InventoryCountLine> Lines { get; } = new();
     public InventoryCountViewModel(IInventoryCountWorkflow? workflow = null) => _workflow = workflow;
-    public string DocumentId { get => _documentId; set { _documentId = value ?? ""; Changed(); Changed(nameof(CanOpen)); } }
+    public string DocumentId { get => _documentId; set { if (_documentId == (value ?? "")) return; _documentId = value ?? ""; InvalidateDocument(); Changed(); Changed(nameof(CanOpen)); } }
     public string ArticleId { get => _articleId; set { _articleId = value ?? ""; Changed(); } }
     public string PhysicalText { get => _physicalText; set { _physicalText = value ?? ""; Changed(); } }
     public string Status { get => _status; private set { _status = value; Changed(); } }
     public bool CanOpen => _workflow is not null && !_busy && !string.IsNullOrWhiteSpace(DocumentId);
-    public bool CanRecord => _workflow is not null && _loaded && !_busy;
-    public bool CanConfirm => _workflow is not null && _loaded && !_busy &&
+    public bool CanRecord => _workflow is not null && _loaded && !_busy && _openedDocumentId == DocumentId;
+    public bool CanConfirm => _workflow is not null && _loaded && !_busy && _openedDocumentId == DocumentId &&
         Lines.Count > 0 && Lines.All(x => x.PhysicalQuantity is >= 0m);
     public void Open()
     {
         if (!CanOpen) return;
-        Execute(() => Apply(_workflow!.Open(DocumentId.Trim())));
+        Execute(() => Apply(_workflow!.Open(DocumentId)));
     }
     public void Record()
     {
@@ -61,6 +62,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
             if (!_workflow!.Confirm(DocumentId)) throw new InvalidOperationException("Inventory refused confirmation");
             Lines.Clear();
             _loaded = false;
+            _openedDocumentId = null;
             Status = "Document confirmé par Inventory";
         });
     }
@@ -73,6 +75,8 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
         Lines.Clear();
         foreach (var line in document.Lines) Lines.Add(line);
         _loaded = true;
+        _openedDocumentId = document.DocumentId;
+        NotifyActions();
         Status = "Document Inventory chargé — écarts affichés";
     }
     private void Execute(Action action)
@@ -84,9 +88,18 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
         {
             Lines.Clear();
             _loaded = false;
+            _openedDocumentId = null;
             Status = "Opération refusée — vérifier le document dans Inventory";
         }
         finally { _busy = false; NotifyActions(); }
+    }
+    private void InvalidateDocument()
+    {
+        Lines.Clear();
+        _loaded = false;
+        _openedDocumentId = null;
+        Status = "Document modifié — ouvrir le nouveau document avant comptage";
+        NotifyActions();
     }
     private void NotifyActions() { Changed(nameof(CanOpen)); Changed(nameof(CanRecord)); Changed(nameof(CanConfirm)); }
     public event PropertyChangedEventHandler? PropertyChanged;
