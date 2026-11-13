@@ -51,6 +51,11 @@ Check(documentVm.Lines.Count == 0 && !documentVm.CanRecord && !documentVm.CanCon
 documentVm.Confirm();
 Check(inventoryPort.ConfirmCalls == 0,
     "stale document must never invoke Inventory confirmation");
+// Inventory duplicate article IDs are ambiguous: refuse the entire readback.
+var ambiguousVm = new InventoryCountViewModel(new AmbiguousInventoryWorkflow()) { DocumentId = "INV-DUP" };
+ambiguousVm.Open();
+Check(ambiguousVm.Lines.Count == 0 && !ambiguousVm.CanRecord && !ambiguousVm.CanConfirm,
+    "duplicate Inventory article identities must fail closed before any count or confirmation");
 // A catalogue-only diagnostic resolver must never make the installed WPF app
 // start a cashier process. The QA-owned Bootstrap must supply financial services.
 Hanouty.Desktop.Wpf.App.ResolveFinancialServices = null;
@@ -2018,4 +2023,15 @@ sealed class RecordingInventoryWorkflow : IInventoryCountWorkflow
     public InventoryCountDocument RecordPhysicalQuantity(string id, string articleId, decimal physicalQuantity) =>
         new(id, new[] { new InventoryCountLine(articleId, "Article A", 10m, physicalQuantity) });
     public bool Confirm(string id) { ConfirmCalls++; return true; }
+}
+
+sealed class AmbiguousInventoryWorkflow : IInventoryCountWorkflow
+{
+    public InventoryCountDocument Open(string id) => new(id, new[] {
+        new InventoryCountLine("same-id", "First", 10m, null),
+        new InventoryCountLine("same-id", "Second", 20m, null)
+    });
+    public InventoryCountDocument RecordPhysicalQuantity(string id, string articleId, decimal quantity) =>
+        throw new InvalidOperationException("ambiguous count must never be called");
+    public bool Confirm(string id) => throw new InvalidOperationException("ambiguous confirmation must never be called");
 }
