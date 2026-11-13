@@ -896,6 +896,33 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             """);
         var validation = new InventoryDocumentValidation(settings.ConnectionString);
         var before = Snapshot(settings);
+        // Incomplete count must fail closed before any stock or audit write.
+        Sql(settings, "UPDATE TABLE_INVENTAIRES_DETAILS SET STOCK_PHYSIQUE=NULL WHERE ID_INV='INV-TEST'");
+        try
+        {
+            validation.Validate("INV-TEST", "Test manager", "5678");
+            throw new InvalidOperationException("Inventory accepted an incomplete physical count.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message == "Inventory contains uncounted or invalid lines.") { }
+        Require(Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE LIKE 'Inventaire [Test manager] INV-TEST:%'") == 0 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_INVENTAIRES_ENTETE WHERE ID_INV='INV-TEST' AND ETAT='ENREGISTRER'") == 1,
+            "Incomplete count wrote inventory stock or audit.");
+        Sql(settings, "UPDATE TABLE_INVENTAIRES_DETAILS SET STOCK_PHYSIQUE=STOCK_LOGIQUE+2 WHERE ID_INV='INV-TEST'");
+        Require(Snapshot(settings) == before, "Incomplete count rejection did not preserve the baseline.");
+
+        // Real concurrent stock movement after document read must invalidate the count.
+        Sql(settings, "UPDATE TABLE_ARTICLES SET STOCK=STOCK+1 WHERE ID_ARTICLE='W2-Article'");
+        try
+        {
+            validation.Validate("INV-TEST", "Test manager", "5678");
+            throw new InvalidOperationException("Inventory accepted stock changed after count.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.StartsWith("Inventory stock is stale", StringComparison.Ordinal)) { }
+        Require(Number(settings, "SELECT COUNT(*) FROM TABLE_INVENTAIRES_ENTETE WHERE ID_INV='INV-TEST' AND ETAT='ENREGISTRER'") == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE LIKE 'Inventaire [Test manager] INV-TEST:%'") == 0,
+            "Concurrent stock change produced an inventory write.");
+        Sql(settings, "UPDATE TABLE_ARTICLES SET STOCK=STOCK-1 WHERE ID_ARTICLE='W2-Article'");
+        Require(Snapshot(settings) == before, "Concurrent stock test did not restore its baseline.");
         try
         {
             validation.Validate("INV-TEST", "O'Neil", "1234");
