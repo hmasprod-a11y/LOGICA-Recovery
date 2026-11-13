@@ -171,3 +171,30 @@ catch (UnauthorizedAccessException)
 {
     Console.WriteLine("PASS: readiness denied before baseline/count enumeration.");
 }
+
+ 
+// A validated request's immutable article identities must match the later count
+// snapshot exactly, even when the physical count's own coverage is otherwise valid.
+InventoryValidationReadiness.EnsureCountIdentitiesMatchRequest(validShape, counted);
+InventoryValidationReadiness.EnsureCountIdentitiesMatchRequest(validShape,
+    new[] { counted[1], counted[0] }); // order is not an identity
+int mismatches = 0;
+void ExpectIdentityMismatch(string label, LOGICA.ApplicationLayer.Inventory.StockCountLine[] lines)
+{
+    try
+    {
+        InventoryValidationReadiness.EnsureCountIdentitiesMatchRequest(validShape, lines);
+        throw new Exception("FAIL: " + label + " accepted.");
+    }
+    catch (InvalidOperationException)
+    {
+        mismatches++;
+        Console.WriteLine("PASS: " + label + " refused");
+    }
+}
+ExpectIdentityMismatch("count replaced after request", new[] {
+    counted[0], new LOGICA.ApplicationLayer.Inventory.StockCountLine("ART-X", 4m, 4m) });
+ExpectIdentityMismatch("count shortened after request", new[] { counted[0] });
+ExpectIdentityMismatch("duplicate count identity", new[] { counted[0], counted[0] });
+if (mismatches != 3) throw new Exception("Missing count identity snapshot tests.");
+Console.WriteLine("PASS: request/count identity consistency, no database opened.");
