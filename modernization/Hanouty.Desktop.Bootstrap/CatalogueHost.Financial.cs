@@ -364,6 +364,20 @@ public sealed partial record CatalogueHost
             }
             finally { reviewing = false; }
         });
+        window.ConfigureInventory(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive ||
+                activeCashierId is not { } actor || binding.Session.PendingCount != 0)
+                return null;
+            return new InventoryCountWorkflow(settings.ConnectionString, actor, () =>
+            {
+                if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                    binding.Session.PendingCount != 0) return "";
+                reviewing = true;
+                try { return window.PromptCashierPin(actor); }
+                finally { reviewing = false; }
+            });
+        });
         window.ConfigureReviewedCheckout(result.TryReviewResolvedCheckout);
         return result;
     }

@@ -9,7 +9,8 @@ internal sealed class InventoryDocumentValidation(string connectionString)
     private sealed record CountedLine(string Id, decimal Baseline, decimal Physical);
     private sealed record Article(string Code, string Name, decimal Stock);
 
-    internal void Validate(string document, string actor, string pin)
+    internal void Validate(string document, string actor, string pin,
+        IReadOnlyDictionary<string, (decimal Baseline, decimal? Previous, decimal Physical)>? counted = null)
     {
         if (string.IsNullOrWhiteSpace(document) || string.IsNullOrWhiteSpace(actor) ||
             string.IsNullOrWhiteSpace(pin))
@@ -80,15 +81,26 @@ internal sealed class InventoryDocumentValidation(string connectionString)
         {
             while (reader.Read())
             {
-                if (reader.IsDBNull(0) || reader.IsDBNull(1) || reader.IsDBNull(2) ||
+                if (reader.IsDBNull(0) || reader.IsDBNull(1) || (counted is null && reader.IsDBNull(2)) ||
                     reader.IsDBNull(3) || reader.GetString(3) != "ENREGISTRER")
                     throw new InvalidOperationException("Inventory contains uncounted or invalid lines.");
-                var line = new CountedLine(reader.GetString(0), reader.GetDecimal(1), reader.GetDecimal(2));
+                var id = reader.GetString(0);
+                var baseline = reader.GetDecimal(1);
+                decimal? previous = reader.IsDBNull(2) ? null : reader.GetDecimal(2);
+                var physical = previous.GetValueOrDefault();
+                if (counted is not null)
+                {
+                    if (!counted.TryGetValue(id, out var reviewed) || reviewed.Baseline != baseline ||
+                        reviewed.Previous != previous)
+                        throw new InvalidOperationException("Inventory document changed since opening.");
+                    physical = reviewed.Physical;
+                }
+                var line = new CountedLine(id, baseline, physical);
                 if (string.IsNullOrWhiteSpace(line.Id) || line.Physical < 0 || !lines.TryAdd(line.Id, line))
                     throw new InvalidOperationException("Inventory contains duplicate or invalid articles.");
             }
         }
-        if (lines.Count == 0) throw new InvalidOperationException("Inventory document is empty.");
+        if (lines.Count == 0 || (counted is not null && counted.Count != lines.Count)) throw new InvalidOperationException("Inventory document is empty.");
 
         // The historical inventory screen can count selected articles. Require
         // complete, fresh counts for every article belonging to this document.
@@ -112,6 +124,11 @@ internal sealed class InventoryDocumentValidation(string connectionString)
         foreach (var line in lines.Values)
         {
             var article = articles[line.Id];
+            if (counted is not null)
+                Write("UPDATE TABLE_INVENTAIRES_DETAILS SET STOCK_PHYSIQUE=@quantity, ECART=@quantity-STOCK_LOGIQUE, " +
+                    "VALEUR=(@quantity-STOCK_LOGIQUE)*PRIX_A, ETAT='VALIDER' " +
+                    "WHERE BINARY ID_INV=BINARY @id AND BINARY ID_ARTICLE=BINARY @article AND ETAT='ENREGISTRER'",
+                    1, ("@quantity", line.Physical), ("@id", document), ("@article", line.Id));
             Write("UPDATE TABLE_ARTICLES SET STOCK=@quantity, STOCK_INITIAL=@quantity, DATE_INVENTAIRE=@date " +
                 "WHERE BINARY ID_ARTICLE=BINARY @article", 1,
                 ("@quantity", line.Physical), ("@date", documentDate), ("@article", line.Id));
@@ -125,7 +142,8 @@ internal sealed class InventoryDocumentValidation(string connectionString)
                 ("@audit", audit), ("@article", line.Id), ("@code", article.Code),
                 ("@name", article.Name), ("@quantity", line.Physical.ToString(CultureInfo.InvariantCulture)));
         }
-        Write("UPDATE TABLE_INVENTAIRES_DETAILS SET ETAT='VALIDER' WHERE BINARY ID_INV=BINARY @id AND ETAT='ENREGISTRER'",
+        if (counted is null)
+            Write("UPDATE TABLE_INVENTAIRES_DETAILS SET ETAT='VALIDER' WHERE BINARY ID_INV=BINARY @id AND ETAT='ENREGISTRER'",
             lines.Count, ("@id", document));
         Write("UPDATE TABLE_INVENTAIRES_ENTETE SET ETAT='VALIDER' WHERE BINARY ID_INV=BINARY @id AND ETAT='ENREGISTRER'",
             1, ("@id", document));

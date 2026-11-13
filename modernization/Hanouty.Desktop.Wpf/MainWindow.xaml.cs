@@ -16,6 +16,22 @@ public partial class MainWindow : Window
         _setOpeningCash = setOpeningCash;
     }
 
+    private Func<IInventoryCountWorkflow?>? _inventoryWorkflow;
+
+    public void ConfigureInventory(Func<IInventoryCountWorkflow?> inventoryWorkflow) =>
+        _inventoryWorkflow = inventoryWorkflow;
+
+    private void OpenInventory_Click(object sender, RoutedEventArgs e)
+    {
+        var workflow = _inventoryWorkflow?.Invoke();
+        if (workflow is null)
+        {
+            MessageBox.Show(this, "Ouvrez une session et terminez le panier en cours.", "Inventaire");
+            return;
+        }
+        new InventoryCountWindow(workflow) { Owner = this }.ShowDialog();
+    }
+
     private void CountCashDrawer_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is not CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false })
