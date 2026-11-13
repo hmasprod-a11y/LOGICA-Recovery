@@ -16,7 +16,6 @@
   <ItemGroup Condition="'$(CheckoutProductionProject)' == ''">
     <Compile Remove="CatalogueHost.Financial.cs" />
     <Compile Remove="CashDrawerClosing.cs" />
-    <Compile Remove="InventoryDocumentValidation.cs" />
     <Compile Remove="DisposableCashSaleAcceptance.cs" />
   </ItemGroup>
 </Project>
