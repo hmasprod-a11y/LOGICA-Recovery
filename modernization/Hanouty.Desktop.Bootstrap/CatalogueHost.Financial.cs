@@ -280,7 +280,10 @@ public sealed partial record CatalogueHost
             {
                 var pin = window.PromptCashierPin(cashier);
                 if (string.IsNullOrEmpty(pin)) return false;
-                var preview = cashClosing.Read(cashier, pin, cashierOnly);
+                var role = cashClosing.RequiredApprovalRole(cashier, pin);
+                var approvalPin = role is null ? null : window.PromptCashierPin(role);
+                if (role is not null && string.IsNullOrEmpty(approvalPin)) return false;
+                var preview = cashClosing.Read(cashier, pin, cashierOnly, approvalPin);
                 var summary = $"Fond de caisse : {preview.Opening:N2} MAD\n" +
                     $"Ventes nettes : {preview.NetSales:N2} MAD\n" +
                     $"Espèces ventes et retours : {preview.CashSales:N2} MAD\n" +
@@ -292,7 +295,7 @@ public sealed partial record CatalogueHost
                 if (System.Windows.MessageBox.Show(window, summary, cashierOnly ? "Clôture caissier" : "Clôture globale",
                         System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question,
                         System.Windows.MessageBoxResult.No) != System.Windows.MessageBoxResult.Yes) return false;
-                cashClosing.Close(cashier, pin, preview);
+                cashClosing.Close(cashier, pin, preview, approvalPin);
                 var report = new System.Windows.Controls.TextBlock
                 {
                     Text = summary[..summary.LastIndexOf("\n\n", StringComparison.Ordinal)],

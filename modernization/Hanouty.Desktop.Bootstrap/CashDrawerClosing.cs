@@ -18,18 +18,18 @@ internal sealed class CashDrawerClosing(string connectionString)
         public decimal Expected => Opening + CashSales + ClientCash - SupplierCash - Expenses;
     }
 
-    public Summary Read(string cashier, string pin, bool perCashier = false)
+    public Summary Read(string cashier, string pin, bool perCashier = false, string? approvalPin = null)
     {
         using var connection = Open();
         using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
-        return Read(connection, transaction, cashier, pin, perCashier);
+        return Read(connection, transaction, cashier, pin, perCashier, approvalPin);
     }
 
-    public Summary Close(string cashier, string pin, Summary reviewed)
+    public Summary Close(string cashier, string pin, Summary reviewed, string? approvalPin = null)
     {
         using var connection = Open();
         using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
-        var current = Read(connection, transaction, cashier, pin, reviewed.PerCashier);
+        var current = Read(connection, transaction, cashier, pin, reviewed.PerCashier, approvalPin);
         if (reviewed != current) throw new InvalidOperationException("Les mouvements ont changé. Actualisez la clôture.");
         long rows = 0;
         foreach (var table in Tables)
@@ -70,7 +70,7 @@ internal sealed class CashDrawerClosing(string connectionString)
         return command.ExecuteScalar();
     }
 
-    private static void Authorize(MySqlCommand command, string cashier, string pin)
+    private static void Authorize(MySqlCommand command, string cashier, string pin, string? approvalPin = null)
     {
         if (string.IsNullOrWhiteSpace(cashier) || string.IsNullOrWhiteSpace(pin))
             throw new UnauthorizedAccessException("Authentification requise.");
@@ -84,10 +84,44 @@ internal sealed class CashDrawerClosing(string connectionString)
         command.Parameters.Clear();
         command.Parameters.AddWithValue("@cashier", cashier);
         command.Parameters.AddWithValue("@pin", pin);
-        if (Convert.ToInt64(Scalar(command, "SELECT COUNT(*) FROM TABLE_PASS WHERE BINARY ListUser=BINARY @cashier")) != 1 ||
-            Convert.ToInt64(Scalar(command, "SELECT COUNT(*) FROM TABLE_PASS WHERE BINARY ListUser=BINARY @cashier AND BINARY ListPass=BINARY @pin AND BINARY CLOTURE=BINARY 'VISIBLE'")) != 1)
-            throw new UnauthorizedAccessException("Clôture non autorisée pour cet utilisateur.");
+        if (Convert.ToInt64(Scalar(command, "SELECT COUNT(*) FROM TABLE_PASS WHERE BINARY ListUser=BINARY @cashier")) != 1)
+            throw new UnauthorizedAccessException("Compte caissier invalide.");
+
+        var permission = Convert.ToString(Scalar(command,
+            "SELECT CLOTURE FROM TABLE_PASS WHERE BINARY ListUser=BINARY @cashier AND BINARY ListPass=BINARY @pin"));
+        var role = permission switch
+        {
+            "ACCES MANAGER" => "MANAGER",
+            "ACCES ADMIN" => "ADMIN",
+            _ => null
+        };
+        if (permission != "VISIBLE")
+        {
+            if (role is null || string.IsNullOrWhiteSpace(approvalPin))
+                throw new UnauthorizedAccessException("Clôture non autorisée pour cet utilisateur.");
+            command.Parameters.AddWithValue("@role", role);
+            command.Parameters.AddWithValue("@approval", approvalPin);
+            if (Convert.ToInt64(Scalar(command,
+                "SELECT COUNT(*) FROM TABLE_PASS WHERE BINARY Catégorie=BINARY @role AND BINARY ListPass=BINARY @approval")) != 1)
+                throw new UnauthorizedAccessException("Code d’autorisation invalide.");
+        }
         command.Parameters.Clear();
+    }
+
+    public string? RequiredApprovalRole(string cashier, string pin)
+    {
+        using var connection = Open();
+        using var command = new MySqlCommand(
+            "SELECT CLOTURE FROM TABLE_PASS WHERE BINARY ListUser=BINARY @cashier AND BINARY ListPass=BINARY @pin",
+            connection);
+        command.Parameters.AddWithValue("@cashier", cashier);
+        command.Parameters.AddWithValue("@pin", pin);
+        return Convert.ToString(command.ExecuteScalar()) switch
+        {
+            "ACCES MANAGER" => "MANAGER",
+            "ACCES ADMIN" => "ADMIN",
+            _ => null
+        };
     }
 
     private MySqlConnection Open()
@@ -100,10 +134,10 @@ internal sealed class CashDrawerClosing(string connectionString)
         catch { connection.Dispose(); throw; }
     }
 
-    private static Summary Read(MySqlConnection connection, MySqlTransaction transaction, string cashier, string pin, bool cashierOnly)
+    private static Summary Read(MySqlConnection connection, MySqlTransaction transaction, string cashier, string pin, bool cashierOnly, string? approvalPin)
     {
         using var command = new MySqlCommand("", connection, transaction);
-        Authorize(command, cashier, pin);
+        Authorize(command, cashier, pin, approvalPin);
         decimal Amount(string sql) => Convert.ToDecimal(Scalar(command, sql), CultureInfo.InvariantCulture);
 
         string Setting(string name)

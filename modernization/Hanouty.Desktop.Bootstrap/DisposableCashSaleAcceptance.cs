@@ -879,8 +879,27 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             throw new InvalidOperationException("Global closing bypassed the required cashier closing.");
         }
         catch (InvalidOperationException ex) when (ex.Message.StartsWith("Clôturez d’abord", StringComparison.Ordinal)) { }
-        var cashierPreview = closing.Read("O'Neil", pin, perCashier: true);
-        closing.Close("O'Neil", pin, cashierPreview);
+        Sql(settings, "INSERT INTO TABLE_PASS VALUES ('Test manager','5678','MANAGER',NULL),('Test admin','6789','ADMIN',NULL)");
+        Sql(settings, "UPDATE TABLE_PASS SET CLOTURE='ACCES ADMIN' WHERE ListUser='O''Neil'");
+        Require(closing.RequiredApprovalRole("O'Neil", pin) == "ADMIN", "Admin approval was not requested.");
+        try
+        {
+            closing.Read("O'Neil", pin, perCashier: true, approvalPin: "5678");
+            throw new InvalidOperationException("Manager approved an admin-only closing.");
+        }
+        catch (UnauthorizedAccessException) { }
+        closing.Read("O'Neil", pin, perCashier: true, approvalPin: "6789");
+        Sql(settings, "UPDATE TABLE_PASS SET CLOTURE='ACCES MANAGER' WHERE ListUser='O''Neil'");
+        Require(closing.RequiredApprovalRole("O'Neil", pin) == "MANAGER", "Manager approval was not requested.");
+        var cashierPreview = closing.Read("O'Neil", pin, perCashier: true, approvalPin: "5678");
+        try
+        {
+            closing.Close("O'Neil", pin, cashierPreview);
+            throw new InvalidOperationException("Closing committed without required manager approval.");
+        }
+        catch (UnauthorizedAccessException) { }
+        closing.Close("O'Neil", pin, cashierPreview, "5678");
+        Sql(settings, "UPDATE TABLE_PASS SET CLOTURE='VISIBLE' WHERE ListUser='O''Neil'");
         Require(cashierPreview.PerCashier && cashierPreview.Number == 1 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE BINARY CAISSIER=BINARY 'O''Neil' AND CLOTURE_CAISSIER IS NULL") == 0 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE BINARY CAISSIER=BINARY 'Second cashier' AND CLOTURE_CAISSIER IS NULL") > 0 &&
