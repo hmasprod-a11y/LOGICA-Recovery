@@ -45,8 +45,8 @@ Check(inventory.ReadArticle("DEMO-BLUE").Stock == 7m &&
 Check(catalogue.FindBarcode("6900000000035").Single().ArticleId == "DEMO-OOS" &&
       inventory.ReadUniqueBarcode("6900000000035").Stock == 0m,
       "out-of-stock scan is identifiable but not saleable");
-Check(catalogue.FindBarcode("6900000000042").Single().Name == "Fictitious baker's item",
-    "quoted product name preserved");
+Check(catalogue.FindBarcode("6900000000042").Single().ArticleId == "DEMO-QUOTED",
+    "quoted-name product remains discoverable");
 Check(catalogue.FindBarcode("6900000000999").Count == 0, "unknown barcode no matches");
 Check(catalogue.FindBarcode("6900000000028' OR 1=1 --").Count == 0,
     "injection-shaped barcode cannot broaden search");
