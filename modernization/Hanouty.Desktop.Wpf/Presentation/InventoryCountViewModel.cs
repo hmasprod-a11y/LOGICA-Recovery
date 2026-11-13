@@ -56,9 +56,16 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     public void Confirm()
     {
         if (!CanConfirm) return;
+        // Freeze the reviewed identity before invoking an external Inventory port.
+        // A reentrant UI callback must not redirect confirmation to another document.
+        var reviewedDocumentId = _openedDocumentId;
         Execute(() =>
         {
-            if (!_workflow!.Confirm(DocumentId)) throw new InvalidOperationException("Inventory refused confirmation");
+            if (reviewedDocumentId is null || reviewedDocumentId != DocumentId)
+                throw new InvalidOperationException("Inventory document changed before confirmation");
+            if (!_workflow!.Confirm(reviewedDocumentId)) throw new InvalidOperationException("Inventory refused confirmation");
+            if (reviewedDocumentId != DocumentId)
+                throw new InvalidOperationException("Inventory document changed during confirmation");
             Lines.Clear();
             _loaded = false;
             _openedDocumentId = null;
