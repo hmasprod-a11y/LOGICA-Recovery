@@ -243,6 +243,8 @@ public sealed partial record CatalogueHost
                 cashier, "MAD", false, new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, tender) }, total.Value));
         }, ReadTrustedTotal, result.TryEndFinancialSession,
             () => System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines));
+        window.ConfigureBasketDisplay(() => binding.Session.PendingLines
+            .Select(line => new MainWindow.CashierBasketLine(line.ArticleId, line.Quantity)).ToArray());
         window.ConfigureReviewedCheckout(result.TryReviewResolvedCheckout);
         return result;
     }

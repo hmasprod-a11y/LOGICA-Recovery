@@ -90,6 +90,14 @@
                 <Button Content="Select product" Command="{Binding SelectCommand}" MinHeight="44"
                         Padding="12,8" Margin="0,18,0,0"
                         AutomationProperties.Name="Select product" IsEnabled="{Binding CanSelectProduct}"/>
+                <TextBlock Text="Basket" FontSize="18" FontWeight="SemiBold" Margin="0,12,0,4"/>
+                <DataGrid x:Name="CashierBasket" AutoGenerateColumns="False" IsReadOnly="True"
+                          CanUserAddRows="False" MaxHeight="200" AutomationProperties.Name="Cashier basket">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Article" Binding="{Binding ArticleId}" Width="*"/>
+                        <DataGridTextColumn Header="Quantity" Binding="{Binding Quantity}" Width="Auto"/>
+                    </DataGrid.Columns>
+                </DataGrid>
                 <GroupBox Header="Original sale — read-only return preparation" Margin="0,14,0,8"
                           AutomationProperties.Name="Persisted original sale lookup">
                     <StackPanel Margin="8">

@@ -23,6 +23,26 @@ public partial class MainWindow : Window
     private Func<decimal?>? _readTrustedCashTotal;
     private Func<bool>? _endFinancialSession;
     private Func<string>? _readBasketIdentity;
+    private Func<IReadOnlyList<CashierBasketLine>>? _readBasketLines;
+
+    public sealed record CashierBasketLine(string ArticleId, int Quantity);
+
+    public void ConfigureBasketDisplay(Func<IReadOnlyList<CashierBasketLine>> readBasketLines)
+    {
+        ArgumentNullException.ThrowIfNull(readBasketLines);
+        _readBasketLines = readBasketLines;
+    }
+
+    private void QueueBasketRefresh(bool refreshTotal = false)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            CashierBasket.ItemsSource = DataContext is CatalogueViewModel { FinancialSessionActive: true }
+                ? _readBasketLines?.Invoke()
+                : null;
+            if (refreshTotal) RefreshTrustedBasketTotal();
+        }, System.Windows.Threading.DispatcherPriority.Background);
+    }
     private readonly ReturnReviewDraft _returnDraft = new();
     private OriginalSaleSelection? _originalSaleSelection;
     private IReadOnlyList<OriginalSaleCandidate> _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
@@ -39,6 +59,7 @@ public partial class MainWindow : Window
         {
             _trustedTotalRevision++;
             TrustedBasketTotal.Text = "Checkout state changed — refresh trusted total after resolution";
+            QueueBasketRefresh();
             // A cash checkout outcome invalidates any separately prepared return.
             // Never allow a previous cashier review to survive a posted sale,
             // rejected payment or Unknown outcome, even with the same receipt row.
@@ -56,7 +77,8 @@ public partial class MainWindow : Window
             selectionVm.ScanFeedback == "Selection accepted")
         {
             _trustedTotalRevision++;
-            TrustedBasketTotal.Text = "Basket changed — refresh trusted total";
+            TrustedBasketTotal.Text = "Updating total…";
+            QueueBasketRefresh(refreshTotal: true);
             return;
         }
         if (e.PropertyName is not (nameof(CatalogueViewModel.FinancialSessionActive) or
@@ -64,6 +86,7 @@ public partial class MainWindow : Window
         if (DataContext is not CatalogueViewModel vm) return;
         _trustedTotalRevision++;
         TrustedBasketTotal.Text = "Trusted basket total unavailable";
+        QueueBasketRefresh();
         // A valid-looking replacement cashier context is not the context that
         // authorized these receipt results. Invalidate on every identity change,
         // including cashier A -> cashier B without an intermediate null.
