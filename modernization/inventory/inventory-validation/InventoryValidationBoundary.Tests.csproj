@@ -9,6 +9,7 @@
   <ItemGroup>
     <Compile Include="InventoryValidationBoundary.cs" />
     <Compile Include="InventoryValidationPreparation.cs" />
+    <Compile Include="InventoryValidationReadiness.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Application/Inventory/StockCountVarianceService.cs" Link="StockCountVarianceService.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Application/Inventory/StockCountCoverageService.cs" Link="StockCountCoverageService.cs" />
     <Compile Include="../../../recovered-source/LOGICA/Application/Inventory/StockCountFreshnessService.cs" Link="StockCountFreshnessService.cs" />
