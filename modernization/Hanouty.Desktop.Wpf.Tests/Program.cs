@@ -45,6 +45,16 @@ documentVm.PhysicalText = "8.5";
 documentVm.Record();
 Check(documentVm.Lines[0].Difference == -1.5m && documentVm.CanConfirm,
     "physical quantity and variance must come from Inventory readback");
+// Moroccan/French decimal comma must be treated as a fractional count, not
+// as a thousands separator; ambiguous grouped quantities must be rejected.
+documentVm.PhysicalText = "8,25";
+documentVm.Record();
+Check(documentVm.Lines[0].PhysicalQuantity == 8.25m && documentVm.Lines[0].Difference == -1.75m,
+    "decimal comma must preserve the physical quantity and Inventory variance");
+documentVm.PhysicalText = "1,234.5";
+documentVm.Record();
+Check(documentVm.Lines[0].PhysicalQuantity == 8.25m,
+    "mixed thousands/decimal separators must not reach Inventory");
 documentVm.DocumentId = "INV-002";
 Check(documentVm.Lines.Count == 0 && !documentVm.CanRecord && !documentVm.CanConfirm,
     "changing document identity must invalidate the count and confirmation");
