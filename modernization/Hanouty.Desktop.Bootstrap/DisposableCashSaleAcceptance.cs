@@ -830,9 +830,9 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         Sql(settings, """
             ALTER TABLE TABLE_ARTICLES ADD STOCK_INITIAL DECIMAL(16,3), ADD DATE_INVENTAIRE DATE;
             CREATE TABLE TABLE_INVENTAIRES_ENTETE (ID_INV VARCHAR(64), Dates DATE, ETAT VARCHAR(24)) ENGINE=InnoDB;
-            CREATE TABLE TABLE_INVENTAIRES_DETAILS (ID_INV VARCHAR(64), ID_ARTICLE VARCHAR(64), STOCK_LOGIQUE DECIMAL(16,3), STOCK_PHYSIQUE DECIMAL(16,3), ETAT VARCHAR(24)) ENGINE=InnoDB;
+            CREATE TABLE TABLE_INVENTAIRES_DETAILS (ID_INV VARCHAR(64), ID_ARTICLE VARCHAR(64), STOCK_LOGIQUE DECIMAL(16,3), STOCK_PHYSIQUE DECIMAL(16,3), ETAT VARCHAR(24), Article VARCHAR(128), ECART DECIMAL(16,3), VALEUR DECIMAL(16,3), PRIX_A DECIMAL(16,3)) ENGINE=InnoDB;
             INSERT INTO TABLE_INVENTAIRES_ENTETE VALUES ('INV-TEST','2026-11-13','ENREGISTRER');
-            INSERT INTO TABLE_INVENTAIRES_DETAILS SELECT 'INV-TEST', ID_ARTICLE, STOCK, STOCK+2,'ENREGISTRER' FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article';
+            INSERT INTO TABLE_INVENTAIRES_DETAILS SELECT 'INV-TEST', ID_ARTICLE, STOCK, STOCK+2,'ENREGISTRER', Article, 0, 0, PRIX_A FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article';
             """);
         var validation = new InventoryDocumentValidation(settings.ConnectionString);
         var before = Snapshot(settings);
@@ -862,7 +862,14 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         Require(Snapshot(settings) == before &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_INVENTAIRES_DETAILS WHERE ETAT='ENREGISTRER'") == 1,
             "Failed inventory left stock, movements or details partially updated.");
-        validation.Validate("INV-TEST", "Test manager", "5678");
+        var workflow = new InventoryCountWorkflow(settings.ConnectionString, "Test manager", () => "5678");
+        var count = workflow.Open("INV-TEST").Lines.Single();
+        Require(count.PhysicalQuantity is null && !workflow.Confirm("INV-TEST"),
+            "An existing saved quantity bypassed the fresh count in WPF.");
+        workflow.RecordPhysicalQuantity("INV-TEST", count.ArticleId, count.ExpectedQuantity + 3);
+        Require(workflow.Confirm("INV-TEST") &&
+            Number(settings, "SELECT ECART FROM TABLE_INVENTAIRES_DETAILS WHERE ID_INV='INV-TEST'") == 3m,
+            "The WPF workflow did not persist the new physical count.");
         Require(Number(settings, "SELECT COUNT(*) FROM TABLE_INVENTAIRES_ENTETE WHERE ETAT='VALIDER'") == 1 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_INVENTAIRES_DETAILS WHERE ETAT='VALIDER'") == 1 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE LIKE 'Inventaire [Test manager] INV-TEST:%'") == 1 &&
