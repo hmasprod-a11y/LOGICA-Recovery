@@ -38,11 +38,15 @@ inventoryWindow.Close();
 var inventoryPort = new RecordingInventoryWorkflow();
 var documentVm = new InventoryCountViewModel(inventoryPort) { DocumentId = "INV-001" };
 documentVm.Open();
+Check(documentVm.CountedLines == 0 && documentVm.RemainingLines == 1 && documentVm.DifferenceLines == 0,
+    "unrecorded physical count must remain missing, not zero stock");
 Check(documentVm.Lines.Count == 1 && !documentVm.CanConfirm,
     "Inventory confirmation requires physical count of every document line");
 documentVm.ArticleId = "article-A";
 documentVm.PhysicalText = "8.5";
 documentVm.Record();
+Check(documentVm.CountedLines == 1 && documentVm.RemainingLines == 0 && documentVm.DifferenceLines == 1 &&
+    documentVm.CountProgress.Contains("1/1"), "count summary must follow Inventory readback");
 Check(documentVm.Lines[0].Difference == -1.5m && documentVm.CanConfirm,
     "physical quantity and variance must come from Inventory readback");
 // Moroccan/French decimal comma must be treated as a fractional count, not
@@ -58,6 +62,8 @@ Check(documentVm.Lines[0].PhysicalQuantity == 8.25m,
 documentVm.DocumentId = "INV-002";
 Check(documentVm.ArticleId == "" && documentVm.PhysicalText == "",
     "switching inventory document must clear previous article and physical count editor");
+Check(documentVm.CountedLines == 0 && documentVm.RemainingLines == 0 && documentVm.DifferenceLines == 0,
+    "switching documents must erase stale progress indicators");
 Check(documentVm.Lines.Count == 0 && !documentVm.CanRecord && !documentVm.CanConfirm,
     "changing document identity must invalidate the count and confirmation");
 documentVm.Confirm();
