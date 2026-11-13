@@ -64,9 +64,22 @@ public partial class MainWindow : Window
         // authorized these receipt results. Invalidate on every identity change,
         // including cashier A -> cashier B without an intermediate null.
         if (vm.FinancialSessionActive && !vm.CheckoutUncertain &&
-            vm.PendingOperationId is null && vm.PaymentContext is not null &&
-            (_originalSaleLookupContext is null ||
-             ReferenceEquals(vm.PaymentContext, _originalSaleLookupContext))) return;
+            vm.PendingOperationId is null && vm.PaymentContext is not null)
+        {
+            // A newly authorized cashier must see the real Host quote without
+            // a technical refresh click. Defer until the Host callback unwinds:
+            // RefreshTrustedBasketTotal checks session, context, revision and
+            // basket identity again before publishing a monetary value.
+            var expectedRevision = _trustedTotalRevision;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (expectedRevision == _trustedTotalRevision &&
+                    ReferenceEquals(DataContext, vm))
+                    RefreshTrustedBasketTotal();
+            }), System.Windows.Threading.DispatcherPriority.Background);
+            if (_originalSaleLookupContext is null ||
+                ReferenceEquals(vm.PaymentContext, _originalSaleLookupContext)) return;
+        }
         _originalSaleSelection?.Clear();
         _returnDraft.Invalidate("Cashier context changed — return draft revoked");
         ReturnDraftStatus.Text = _returnDraft.Status;
