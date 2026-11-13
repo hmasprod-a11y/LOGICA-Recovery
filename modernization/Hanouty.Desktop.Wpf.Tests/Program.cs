@@ -73,6 +73,20 @@ nestedBasketVm = new CatalogueViewModel(new Reader(new[] {
 Check(nestedBasketVm.RefreshBasketLines() && nestedReader.Reads == 1 &&
     nestedBasketVm.BasketLines.Count == 1,
     "Host basket reader reentrancy must not trigger a second read");
+// Publishing an observable row may synchronously revoke the Host session.
+// No partial basket may remain visible after that notification.
+var publicationReader = new CallbackBasketReader(() => { });
+var publicationVm = new CatalogueViewModel(new Reader(new[] {
+    new ProductSummary("publish", "Publish article", "P")
+}), new RecordingSelection(), basketReader: publicationReader);
+publicationVm.BasketLines.CollectionChanged += (_, e) =>
+{
+    if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add)
+        publicationVm.FinancialSessionActive = false;
+};
+Check(!publicationVm.RefreshBasketLines() && publicationVm.BasketLines.Count == 0 &&
+    !publicationVm.FinancialSessionActive,
+    "Host basket publication must fail closed on cashier revocation during collection event");
 // Production session adapter must not post if the Host session expires or
 // its authorization callback fails. The same durable submission stays unused.
 var expiredHostSession = new SessionFinancialSubmission();
