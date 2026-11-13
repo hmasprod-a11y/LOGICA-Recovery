@@ -235,3 +235,52 @@ catch (InvalidOperationException)
         throw new Exception("FAIL: invalid request opened transaction connection.");
     Console.WriteLine("PASS: invalid inventory identity denies before transaction connection.");
 }
+
+
+// The connection delegate itself may be missing. Authorization must still be
+// rejected first, rather than leaking a different exception or opening anything.
+try
+{
+    InventoryValidationWriteGate.ExecuteAfterAuthorization<int>(validShape, null, now, null!);
+    throw new Exception("FAIL: missing grant with null connection factory accepted.");
+}
+catch (UnauthorizedAccessException)
+{
+    if (connectionOpens != 0)
+        throw new Exception("FAIL: null factory denial opened a connection.");
+    Console.WriteLine("PASS: unmapped capability takes precedence over missing connection factory.");
+}
+
+// Null request and malformed duplicate IDs must never reach a connection factory.
+try
+{
+    InventoryValidationWriteGate.ExecuteAfterAuthorization<int>(null!, null, now, () =>
+    {
+        connectionOpens++;
+        return 0;
+    });
+    throw new Exception("FAIL: null request accepted by write gate.");
+}
+catch (ArgumentNullException)
+{
+    if (connectionOpens != 0)
+        throw new Exception("FAIL: null request opened a connection.");
+    Console.WriteLine("PASS: null request denied before transaction connection.");
+}
+try
+{
+    InventoryValidationWriteGate.ExecuteAfterAuthorization(
+        new InventoryValidationRequest("INV-TEST-001", new[] { "ART-A", "ART-A" }),
+        null, now, () =>
+        {
+            connectionOpens++;
+            return 0;
+        });
+    throw new Exception("FAIL: duplicate article request accepted by write gate.");
+}
+catch (InvalidOperationException)
+{
+    if (connectionOpens != 0)
+        throw new Exception("FAIL: duplicate article request opened a connection.");
+    Console.WriteLine("PASS: duplicate article identities denied before transaction connection.");
+}
