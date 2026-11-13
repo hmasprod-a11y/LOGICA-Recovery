@@ -32,7 +32,7 @@ internal sealed class InventoryValidationRequest
     internal InventoryValidationRequest(string inventoryId, IReadOnlyList<string> articleIds)
     {
         InventoryId = inventoryId;
-        ArticleIds = articleIds;
+        // Snapshot the caller's mutable UI list at the boundary. A scan/edit cannot\n        // change the authorized identities after validation (TOCTOU).\n        ArticleIds = articleIds is null ? null! : Array.AsReadOnly(new List<string>(articleIds).ToArray());
     }
 }
 
