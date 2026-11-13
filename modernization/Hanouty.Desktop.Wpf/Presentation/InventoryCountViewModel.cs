@@ -22,12 +22,38 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     private readonly IInventoryCountWorkflow? _workflow;
     private string _documentId = "";
     private string _articleId = "";
+    private string _searchText = "";
     private string _physicalText = "";
     private string _status = "Contrat Inventory non raccordé — validation indisponible";
     private bool _busy;
     private bool _loaded;
     private string? _openedDocumentId;
     public ObservableCollection<InventoryCountLine> Lines { get; } = new();
+    // Search only the opened Inventory snapshot; never search or mutate store stock.
+    public ObservableCollection<InventoryCountLine> SearchResults { get; } = new();
+    public string SearchText
+    {
+        get => _searchText;
+        set { _searchText = value ?? ""; Changed(); RefreshSearchResults(); }
+    }
+    private void RefreshSearchResults()
+    {
+        SearchResults.Clear();
+        var term = _searchText.Trim();
+        foreach (var line in Lines.Where(x => term.Length == 0 ||
+            x.ArticleId.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+            x.ArticleName.Contains(term, StringComparison.OrdinalIgnoreCase)))
+            SearchResults.Add(line);
+        Changed(nameof(SearchResultCount));
+    }
+    public int SearchResultCount => SearchResults.Count;
+    public void SelectArticle(InventoryCountLine? line)
+    {
+        if (!_loaded || _openedDocumentId != DocumentId || line is null ||
+            !Lines.Any(x => x.ArticleId == line.ArticleId)) return;
+        ArticleId = line.ArticleId;
+        PhysicalText = line.PhysicalQuantity?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
+    }
     public InventoryCountViewModel(IInventoryCountWorkflow? workflow = null) => _workflow = workflow;
     public string DocumentId { get => _documentId; set { if (_documentId == (value ?? "")) return; _documentId = value ?? ""; InvalidateDocument(); Changed(); Changed(nameof(CanOpen)); } }
     public string ArticleId { get => _articleId; set { _articleId = value ?? ""; Changed(); } }
@@ -80,6 +106,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
             if (reviewedDocumentId != DocumentId)
                 throw new InvalidOperationException("Inventory document changed during confirmation");
             Lines.Clear();
+            RefreshSearchResults();
             NotifyCountProgress();
             _loaded = false;
             _openedDocumentId = null;
@@ -110,6 +137,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
             throw new InvalidOperationException("Invalid Inventory document");
         Lines.Clear();
         foreach (var line in document.Lines) Lines.Add(line);
+        RefreshSearchResults();
         NotifyCountProgress();
         _loaded = true;
         _openedDocumentId = document.DocumentId;
@@ -146,6 +174,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
         Changed(nameof(ArticleId));
         Changed(nameof(PhysicalText));
         Lines.Clear();
+        RefreshSearchResults();
         NotifyCountProgress();
         _loaded = false;
         _openedDocumentId = null;
