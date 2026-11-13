@@ -1,6 +1,6 @@
 # V1 cash-return characterization — Checkout PR #75
 
-Status: **characterization only; NOT return acceptance or enablement**. Pinned cash baseline: Checkout 6c0f68f0, QA a675772d. Do not advance the accepted manifest automatically.
+Status: **V1 historical characterization, not a standalone production acceptance**. Current production cash-return support must be evaluated against its own exact-SHA QA evidence; this document alone neither enables nor rejects it. Pinned cash baseline: Checkout 6c0f68f0, QA a675772d. Do not advance the accepted manifest automatically.
 
 ## Traced production behavior
 
@@ -9,7 +9,7 @@ Status: **characterization only; NOT return acceptance or enablement**. Pinned c
 * `CheckoutPaymentReadService.Read`: for `RETOUR REMBOURSEMENT` without payment modes, writes a single cash row using the signed `Text_TOTAL_NET` string.
 * `CheckoutStockWriter.Apply`: `UPDATE TABLE_ARTICLES SET STOCK = STOCK - @checkoutQuantity`; a negative quantity therefore increases stock. `StockMovementWriter` receives the same signed quantity.
 * `CheckoutPaymentPostingService` and `MySqlCheckoutPostingStore`: forward payment rows to existing `TicketPaymentWriter` without sign normalization. The enclosing transaction owns rollback.
-* `AuthorizedCheckoutMariaDbPort.Commit`: **still rejects** `IsReturn` before opening the transaction. No production return enabled by this document.
+* `AuthorizedCheckoutMariaDbPort.Commit`: the current implementation does **not** reject `IsReturn` before opening the transaction; it restricts tender to single cash and delegates full-return validation to `MariaDbCashCheckoutPreparation.PrepareFullCashReturn` inside the transaction. The earlier historical characterization predated this implementation.
 
 ## Source-derived input/output examples (not executed SQL evidence)
 
@@ -21,7 +21,7 @@ Status: **characterization only; NOT return acceptance or enablement**. Pinned c
 
 The example presupposes a signed return total already computed by the legacy UI; it does **not** prove the UI's return rounding or original-price selection. Those must be characterized separately against the original implementation and disposable SQL.
 
-## Required disposable MariaDB acceptance before enabling IsReturn
+## Disposable MariaDB acceptance requirements for the full-return path
 
 1. Create an exact-cash sale using the real writers and read back original ticket, lines, price, payment, movement, and stock.
 2. Return exactly the sold quantity, with a durable original-ticket reference and authoritative original price, using the same transaction and writers; assert signed journal/header/payment and stock increment once.
@@ -32,13 +32,17 @@ The example presupposes a signed return total already computed by the legacy UI;
 
 ## Contract gap requiring Architecture/QA decision
 
-The current `AuthorizedCheckoutRequest` has `IsReturn` but no proven durable original-ticket reference or consumed-return ledger. The V1 writer path shown above does not itself establish original-sale linkage, over-return prevention, or the exact original-price rule. **Do not infer these protections from the sign rule**. Agree a minimal original reference/quantity-consumption contract and its durable storage/reconciliation with Architecture and QA before enabling the port. Do not create a competing DTO/gate or mutate a live store schema.
+The V1 signed-quantity writer path alone does not establish original-sale linkage, over-return prevention, or the exact original-price rule. **Do not infer these protections from the sign rule.** The current preparation explicitly checks `hanouty_cash_return_consumption` is InnoDB for a return, and dispatches to `PrepareFullCashReturn`; acceptance of the entire chain still depends on exact-SHA production QA evidence. Do not create a competing DTO/gate or mutate a live store schema.
 
 Mixed payment, tier pricing, discounts and credit are separate acceptance gates.
 
 ## Inventory handoff — Checkout financial stock concurrency (2026-11-13)
 
 Scope: Checkout owns **only** stock changes caused by an authorized financial sale/return. Inventory Cell03 owns inventory adjustment authorization and its own writer; Cell02 must not call or modify that writer. QA #93 integration baseline reported by owner: `2108f549`; cashier software acceptance is distinct from pending physical printer acceptance. Do not reinterpret this characterization as a new W2 acceptance run.
+
+### Correction of historical return-port statement
+
+The historical claim that `AuthorizedCheckoutMariaDbPort.Commit` unconditionally rejects `IsReturn` is obsolete at this Checkout SHA. The cash-only guard permits a verified full-ticket cash return; `MariaDbCashCheckoutPreparation` checks the transactional original-ticket claim table and calls `PrepareFullCashReturn`. This is a source-code correction, **not** a new end-to-end acceptance result. The financial sale/return stock writer remains the sole Checkout writer, and Inventory Cell03 must not duplicate it.
 
 ### Source-verified transaction invariants
 
