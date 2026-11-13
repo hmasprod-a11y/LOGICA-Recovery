@@ -23,6 +23,8 @@ static void Check(bool value, string reason)
 {
     if (!value) throw new Exception(reason);
 }
+Check(CashDrawerCount.Calculate(new[] { 1, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3 }) == 201.20m,
+    "cash drawer recount must preserve LOGICA banknote and fractional coin totals");
 Hanouty.Desktop.Wpf.MainWindow.TestOnlyAllowUnauthorizedPaymentContext = false;
 var directWindowRejected = false;
 try

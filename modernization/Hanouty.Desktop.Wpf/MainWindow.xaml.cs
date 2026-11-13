@@ -6,6 +6,14 @@ namespace Hanouty.Desktop.Wpf;
 
 public partial class MainWindow : Window
 {
+    private void CountCashDrawer_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false })
+            return;
+
+        new CashDrawerCountDialog { Owner = this }.ShowDialog();
+    }
+
     // Test assembly only: permits recording adapters for STA view tests. Production callers
     // still require a complete authorized financial registration before accepting payment context.
     internal static bool TestOnlyAllowUnauthorizedPaymentContext { get; set; }

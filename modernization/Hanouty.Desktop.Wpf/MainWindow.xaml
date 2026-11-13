@@ -7,7 +7,11 @@
     <Window.Resources><BooleanToVisibilityConverter x:Key="BoolVisibility"/></Window.Resources>
     <DockPanel Margin="20" FlowDirection="{Binding LayoutDirection}">
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,16">
-            <TextBlock Text="Hanouty POS" FontSize="28" FontWeight="SemiBold"/>
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Compter la caisse" Click="CountCashDrawer_Click"
+                        MinHeight="36" Padding="12,4" IsEnabled="{Binding FinancialSessionActive}"/>
+                <TextBlock Text="Hanouty POS" FontSize="28" FontWeight="SemiBold"/>
+            </DockPanel>
             <CheckBox Content="Right-to-left layout" IsChecked="{Binding IsRightToLeft, Mode=TwoWay}" Margin="0,8,0,0" AutomationProperties.Name="Right-to-left layout"/>
             <TextBlock Text="Offline desktop — checkout requires registered authorized local services"
                        Foreground="DimGray" Margin="0,4,0,0"/>
