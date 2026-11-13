@@ -277,6 +277,46 @@ public partial class MainWindow : Window
     }
     private void RefreshTrustedBasketTotal_Click(object sender, RoutedEventArgs e) => RefreshTrustedBasketTotal();
 
+    private Func<string, int, bool>? _setBasketQuantity;
+
+    public void ConfigureBasketQuantity(Func<string, int, bool> setBasketQuantity)
+    {
+        ArgumentNullException.ThrowIfNull(setBasketQuantity);
+        _setBasketQuantity = setBasketQuantity;
+    }
+
+    public bool ChangeBasketQuantity(BasketDisplayLine line, int quantity)
+    {
+        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
+            _trustedTotalReadBusy || _originalSaleLookupBusy || _setBasketQuantity is null ||
+            DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
+            vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
+            !vm.BasketLines.Any(current => ReferenceEquals(current, line)) || quantity < 0 ||
+            !_setBasketQuantity(line.ArticleId, quantity)) return false;
+        vm.RefreshBasketLines();
+        RefreshTrustedBasketTotal();
+        CashierBasket.SelectedItem = vm.BasketLines.FirstOrDefault(current => current.ArticleId == line.ArticleId);
+        return true;
+    }
+
+    private void IncreaseBasketQuantity_Click(object sender, RoutedEventArgs e)
+    {
+        if (CashierBasket.SelectedItem is BasketDisplayLine line && line.Quantity < int.MaxValue)
+            ChangeBasketQuantity(line, (int)line.Quantity + 1);
+    }
+
+    private void DecreaseBasketQuantity_Click(object sender, RoutedEventArgs e)
+    {
+        if (CashierBasket.SelectedItem is BasketDisplayLine line)
+            ChangeBasketQuantity(line, (int)line.Quantity - 1);
+    }
+
+    private void RemoveBasketLine_Click(object sender, RoutedEventArgs e)
+    {
+        if (CashierBasket.SelectedItem is BasketDisplayLine line)
+            ChangeBasketQuantity(line, 0);
+    }
+
     public void ConfigureCashierEntry(Func<string, string, decimal, bool> setFinancialContext,
         Func<decimal?> readTrustedCashTotal, Func<bool>? endFinancialSession = null,
         Func<string>? readBasketIdentity = null)

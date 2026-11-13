@@ -707,7 +707,17 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             var firstStock = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
             Sql(settings, "INSERT INTO TABLE_ARTICLES VALUES ('W2-Second',15,'W2-SECOND','Second test product',NULL,'Food',1,1,8,20,'G',0,0)");
             workstation.ViewModel.ReloadCatalogue();
-            Stage(2);
+            Stage(1);
+            var originalLine = workstation.ViewModel.BasketLines.Single();
+            Require(workstation.Window.ChangeBasketQuantity(originalLine, 2) &&
+                !workstation.Window.ChangeBasketQuantity(originalLine, 3),
+                "Cashier basket could not edit the selected quantity or accepted a stale row.");
+            workstation.ViewModel.ScannerText = "W2-SECOND";
+            workstation.ViewModel.ScanCommand.Execute(null);
+            var removableLine = workstation.ViewModel.BasketLines.Single(line => line.ArticleId == "W2-Second");
+            Require(workstation.Window.ChangeBasketQuantity(removableLine, 0) &&
+                workstation.ViewModel.BasketLines.Count == 1,
+                "Cashier basket did not remove the selected line.");
             workstation.ViewModel.ScannerText = "W2-SECOND";
             workstation.ViewModel.ScanCommand.Execute(null);
             var displayed = workstation.ViewModel.BasketLines.ToArray();

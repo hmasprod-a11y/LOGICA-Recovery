@@ -218,6 +218,17 @@ public sealed partial record CatalogueHost
             if (!CanChangeContext()) return null;
             return MariaDbCashCheckoutServices.ReadCashSaleTotal(connections, binding.Session.PendingLines);
         }
+        window.ConfigureBasketQuantity((articleId, quantity) =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive ||
+                activeCashierId is null || !binding.Session.SetPendingQuantity(articleId, quantity))
+                return false;
+            captured = null;
+            contextConsumed = true;
+            context = new CashierPaymentContext(activeCashierId, twoDigitWorkstation, "MAD", "Cash", 0m);
+            vm.PaymentContext = context;
+            return true;
+        });
         window.ConfigureCashierEntry((cashier, register, tender) => {
             if (!CanChangeContext() || register != twoDigitWorkstation ||
                 string.IsNullOrWhiteSpace(cashier) || tender < 0m) return false;

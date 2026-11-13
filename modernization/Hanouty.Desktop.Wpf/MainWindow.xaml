@@ -95,7 +95,14 @@
                 <GroupBox Header="Panier" Margin="0,0,0,12" AutomationProperties.Name="Current Host basket">
                     <DockPanel Margin="8">
                         <TextBlock DockPanel.Dock="Bottom" Text="{Binding BasketStatus}" Foreground="DimGray" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                        <DataGrid ItemsSource="{Binding BasketLines}" AutoGenerateColumns="False" IsReadOnly="True"
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
+                            <Button Content="−" Click="DecreaseBasketQuantity_Click" MinWidth="44" MinHeight="36"
+                                    Margin="0,0,6,0" AutomationProperties.Name="Diminuer la quantité"/>
+                            <Button Content="+" Click="IncreaseBasketQuantity_Click" MinWidth="44" MinHeight="36"
+                                    Margin="0,0,6,0" AutomationProperties.Name="Augmenter la quantité"/>
+                            <Button Content="Retirer" Click="RemoveBasketLine_Click" MinHeight="36"/>
+                        </StackPanel>
+                        <DataGrid x:Name="CashierBasket" SelectionMode="Single" ItemsSource="{Binding BasketLines}" AutoGenerateColumns="False" IsReadOnly="True"
                                   CanUserAddRows="False" MinHeight="140" MaxHeight="280" AutomationProperties.Name="Basket article quantity price">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Article" Binding="{Binding ArticleName}" Width="*"/>

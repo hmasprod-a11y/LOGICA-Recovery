@@ -114,6 +114,19 @@ public sealed class CheckoutSession
         return selected;
     }
 
+    public bool SetPendingQuantity(string articleId, int quantity)
+    {
+        EnsureNoSubmission();
+        if (_invalidatedSubmission || !_batch.SetQuantity(articleId, quantity)) return false;
+        if (quantity == 0)
+        {
+            _stagedImages.RemoveAll(product => product.ArticleId == articleId);
+            _stagedExplicitVariants.RemoveAll(product => product.ArticleId == articleId);
+            _stagedArticles.RemoveAll(product => product.ArticleId == articleId);
+        }
+        return true;
+    }
+
     public void Clear()
     {
         EnsureNoSubmission();

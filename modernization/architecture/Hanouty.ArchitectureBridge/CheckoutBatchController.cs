@@ -100,6 +100,18 @@ public sealed class CheckoutBatchController
         }
     }
 
+    internal bool SetQuantity(string articleId, int quantity)
+    {
+        EnsureMutable();
+        if (quantity < 0) return false;
+        var first = _pending.FindIndex(line => line.Candidate.ArticleId == articleId);
+        if (first < 0) return false;
+        var existing = _pending[first];
+        _pending.RemoveAll(line => line.Candidate.ArticleId == articleId);
+        if (quantity > 0) _pending.Insert(first, existing with { Quantity = quantity });
+        return true;
+    }
+
     public void Clear()
     {
         EnsureMutable();
