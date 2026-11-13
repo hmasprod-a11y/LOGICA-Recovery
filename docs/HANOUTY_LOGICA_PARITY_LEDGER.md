@@ -32,6 +32,12 @@ Inventory possède l’écriture transactionnelle; WPF possède l’écran et le
 
 La [recette Windows/MariaDB](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/43384733768) sur `33e89590bab4a5d64eee3f0fbe49ced0426ccec2` crée un document par l’interface WPF pour une liste d’articles, réserve `INV000001` avec le compteur LOGICA, saisit le stock physique, affiche l’écart et valide avec le PIN du manager. La base confirme la mise à jour du stock et l’état `VALIDER`. La recette couvre aussi l’ouverture d’un document existant, le refus du stock périmé, le rollback et le refus d’une double validation. La sélection initiale se fait actuellement par identifiants d’article; les autres variantes de l’écran LOGICA et la recette magasin restent à examiner.
 
+## Achats — réception partielle depuis une commande
+
+La [recette Windows/MariaDB](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/43500365368) sur `c433b93146c4563db63a0ba1297c45df14adaa17` ouvre l’écran WPF, crée puis valide un premier bon de 2 unités à partir d’une ligne commandée de 5. Le stock reste inchangé à l’enregistrement et augmente à la validation. Un essai à 4 unités est refusé. Un second bon de 3 unités solde la quantité commandée. La transaction de validation applique la moyenne pondérée de LOGICA et écrit le mouvement. Le test couvre aussi le rollback et la validation en double.
+
+Le lien durable entre une commande et un bon est une extension HANOUTY. Installer la [migration de liaison](../input/migrations/20261113-purchase-receipt-order.sql) sur une copie protégée avant d’utiliser la création. Le flux actuel crée un bon pour une ligne de commande et requiert une commande déjà validée. La création de commande dans WPF, la sélection de plusieurs articles dans un même bon, l’annulation de réservation et le rapprochement du compte fournisseur restent à traiter.
+
 ## Ordre d’exécution
 
 1. **Caisse** — partir du fond de caisse, du comptage et des variantes de clôture du code LOGICA. Extraire les sélections et règles de rapprochement qui déterminent le contenu d’une clôture. Réutiliser le service de comptage, puis raccorder les écritures et le parcours WPF. Vérifier clôture et rollback sur la même version.
