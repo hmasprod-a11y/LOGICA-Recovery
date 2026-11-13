@@ -811,6 +811,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         finally { duplicateRefundHost.Window.Close(); }
 
         VerifyCashDrawerClosing(settings, pin);
+        VerifyInventoryValidation(settings);
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -822,6 +823,57 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             FullCashReturnThroughWpfUi = true, FullCashReturnSqlReadback = true, FullCashReturnRollback = true, FullCashReturnIdempotency = true,
             W2Accepted = true, Remaining = "Partial returns, mixed tenders, discounts/credit, device parity, and commercial rollout acceptance"
         }));
+    }
+
+    private static void VerifyInventoryValidation(CatalogueSettings settings)
+    {
+        Sql(settings, """
+            ALTER TABLE TABLE_ARTICLES ADD STOCK_INITIAL DECIMAL(16,3), ADD DATE_INVENTAIRE DATE;
+            CREATE TABLE TABLE_INVENTAIRES_ENTETE (ID_INV VARCHAR(64), Dates DATE, ETAT VARCHAR(24)) ENGINE=InnoDB;
+            CREATE TABLE TABLE_INVENTAIRES_DETAILS (ID_INV VARCHAR(64), ID_ARTICLE VARCHAR(64), STOCK_LOGIQUE DECIMAL(16,3), STOCK_PHYSIQUE DECIMAL(16,3), ETAT VARCHAR(24)) ENGINE=InnoDB;
+            INSERT INTO TABLE_INVENTAIRES_ENTETE VALUES ('INV-TEST','2026-11-13','EN COURS');
+            INSERT INTO TABLE_INVENTAIRES_DETAILS SELECT 'INV-TEST', ID_ARTICLE, STOCK, STOCK+2,'EN COURS' FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article';
+            """);
+        var validation = new InventoryDocumentValidation(settings.ConnectionString);
+        var before = Snapshot(settings);
+        try
+        {
+            validation.Validate("INV-TEST", "O'Neil", "1234");
+            throw new InvalidOperationException("Cashier validated inventory without the LOGICA role.");
+        }
+        catch (UnauthorizedAccessException) { }
+        Require(Snapshot(settings) == before, "Denied inventory changed business tables.");
+        Sql(settings, "UPDATE TABLE_INVENTAIRES_DETAILS SET STOCK_LOGIQUE=STOCK_LOGIQUE+1 WHERE ID_INV='INV-TEST'");
+        try
+        {
+            validation.Validate("INV-TEST", "Test manager", "5678");
+            throw new InvalidOperationException("Stale inventory was accepted.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.StartsWith("Inventory stock is stale", StringComparison.Ordinal)) { }
+        Sql(settings, "UPDATE TABLE_INVENTAIRES_DETAILS SET STOCK_LOGIQUE=STOCK_LOGIQUE-1 WHERE ID_INV='INV-TEST'");
+        Sql(settings, "CREATE TRIGGER inventory_failure BEFORE UPDATE ON TABLE_INVENTAIRES_ENTETE FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='inventory-rollback'");
+        try
+        {
+            validation.Validate("INV-TEST", "Test manager", "5678");
+            throw new InvalidOperationException("Inventory ignored the final write failure.");
+        }
+        catch (MySqlException) { }
+        finally { Sql(settings, "DROP TRIGGER inventory_failure"); }
+        Require(Snapshot(settings) == before &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_INVENTAIRES_DETAILS WHERE ETAT='EN COURS'") == 1,
+            "Failed inventory left stock, movements or details partially updated.");
+        validation.Validate("INV-TEST", "Test manager", "5678");
+        Require(Number(settings, "SELECT COUNT(*) FROM TABLE_INVENTAIRES_ENTETE WHERE ETAT='VALIDER'") == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_INVENTAIRES_DETAILS WHERE ETAT='VALIDER'") == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE LIKE 'Inventaire [Test manager] INV-TEST:%'") == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_ARTICLES a JOIN TABLE_INVENTAIRES_DETAILS d ON a.ID_ARTICLE=d.ID_ARTICLE WHERE a.STOCK=d.STOCK_PHYSIQUE AND a.STOCK_INITIAL=d.STOCK_PHYSIQUE") == 1,
+            "Inventory did not update document, stock and actor audit together.");
+        try
+        {
+            validation.Validate("INV-TEST", "Test manager", "5678");
+            throw new InvalidOperationException("Inventory was validated twice.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message == "Inventory document is not open.") { }
     }
 
     private static void VerifyCashDrawerClosing(CatalogueSettings settings, string pin)
