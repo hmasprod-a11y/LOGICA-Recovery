@@ -9,18 +9,102 @@ internal sealed class InventoryDocumentValidation(string connectionString)
     private sealed record CountedLine(string Id, decimal Baseline, decimal Physical);
     private sealed record Article(string Code, string Name, decimal Stock);
 
+    private static void Authenticate(MySqlConnection connection, MySqlTransaction transaction,
+        string actor, string pin, bool validationOnly)
+    {
+        using var command = new MySqlCommand(
+            "SELECT ListPass, Catégorie FROM TABLE_PASS WHERE BINARY ListUser=BINARY @actor FOR UPDATE",
+            connection, transaction);
+        command.Parameters.AddWithValue("@actor", actor);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1) ||
+            !string.Equals(reader.GetString(0), pin, StringComparison.Ordinal) ||
+            (validationOnly ? reader.GetString(1) is not ("ADMIN" or "MANAGER") :
+                reader.GetString(1) is not ("ADMIN" or "MANAGER" or "UTILISATEUR")) || reader.Read())
+            throw new UnauthorizedAccessException("Inventory operation is not authorized.");
+    }
+
+    internal string Create(IReadOnlyList<string> articleIds, string actor, string pin)
+    {
+        if (string.IsNullOrWhiteSpace(actor) || string.IsNullOrWhiteSpace(pin) ||
+            articleIds.Count == 0 || articleIds.Any(string.IsNullOrWhiteSpace) ||
+            articleIds.Distinct(StringComparer.Ordinal).Count() != articleIds.Count)
+            throw new ArgumentException("Inventory requires distinct articles and an authenticated operator.");
+        using var connection = OpenLocal();
+        using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
+        RequireTransactionalTables(connection, transaction, "TABLE_NUM", "TABLE_PASS", "TABLE_ARTICLES",
+            "TABLE_INVENTAIRES_ENTETE", "TABLE_INVENTAIRES_DETAILS");
+        Authenticate(connection, transaction, actor, pin, validationOnly: false);
+
+        MySqlCommand Command(string sql, params (string Name, object Value)[] parameters)
+        {
+            var command = new MySqlCommand(sql, connection, transaction);
+            foreach (var (name, value) in parameters) command.Parameters.AddWithValue(name, value);
+            return command;
+        }
+        void Write(string sql, params (string Name, object Value)[] parameters)
+        {
+            using var command = Command(sql, parameters);
+            if (command.ExecuteNonQuery() != 1)
+                throw new InvalidOperationException("Inventory document could not be saved.");
+        }
+
+        long number;
+        using (var sequence = Command("SELECT INV FROM TABLE_NUM WHERE ID=0 FOR UPDATE"))
+        using (var reader = sequence.ExecuteReader())
+        {
+            if (!reader.Read() || reader.IsDBNull(0))
+                throw new InvalidOperationException("Inventory numbering is unavailable.");
+            number = reader.GetInt64(0);
+            if (number < 0 || reader.Read())
+                throw new InvalidOperationException("Inventory numbering is invalid.");
+        }
+        var id = "INV" + number.ToString("D6", CultureInfo.InvariantCulture);
+        using (var duplicate = Command(
+            "SELECT COUNT(*) FROM TABLE_INVENTAIRES_ENTETE WHERE BINARY ID_INV=BINARY @id", ("@id", id)))
+            if (Convert.ToInt64(duplicate.ExecuteScalar(), CultureInfo.InvariantCulture) != 0)
+                throw new InvalidOperationException("The inventory number is already used.");
+
+        var date = DateTime.Today;
+        Write("INSERT INTO TABLE_INVENTAIRES_ENTETE (Dates, ID_INV, UTILISATEUR, TOTAL_VALEUR, ETAT) " +
+            "VALUES (@date,@id,@actor,0,'ENREGISTRER')", ("@date", date), ("@id", id), ("@actor", actor));
+        foreach (var articleId in articleIds.OrderBy(value => value, StringComparer.Ordinal))
+        {
+            string code;
+            string name;
+            decimal stock;
+            decimal cost;
+            using (var article = Command(
+                "SELECT Code, Article, STOCK, PRIX_A FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @article FOR UPDATE",
+                ("@article", articleId)))
+            using (var reader = article.ExecuteReader())
+            {
+                if (!reader.Read() || reader.IsDBNull(2) || reader.IsDBNull(3))
+                    throw new InvalidOperationException("Inventory article or its baseline is missing.");
+                code = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                name = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                stock = reader.GetDecimal(2);
+                cost = reader.GetDecimal(3);
+                if (reader.Read()) throw new InvalidOperationException("Inventory article identity is ambiguous.");
+            }
+            Write("INSERT INTO TABLE_INVENTAIRES_DETAILS " +
+                "(Dates,ID_INV,N_INV,ID_ARTICLE,Code,Article,PRIX_A,STOCK_LOGIQUE,STOCK_PHYSIQUE,ECART,VALEUR,ETAT) " +
+                "VALUES (@date,@id,'',@article,@code,@name,@cost,@stock,NULL,NULL,NULL,'ENREGISTRER')",
+                ("@date", date), ("@id", id), ("@article", articleId), ("@code", code),
+                ("@name", name), ("@cost", cost), ("@stock", stock));
+        }
+        Write("UPDATE TABLE_NUM SET INV=INV+1 WHERE ID=0 AND INV=@number", ("@number", number));
+        transaction.Commit();
+        return id;
+    }
+
     internal void Validate(string document, string actor, string pin,
         IReadOnlyDictionary<string, (decimal Baseline, decimal? Previous, decimal Physical)>? counted = null)
     {
         if (string.IsNullOrWhiteSpace(document) || string.IsNullOrWhiteSpace(actor) ||
             string.IsNullOrWhiteSpace(pin))
             throw new ArgumentException("Inventory document and authenticated operator are required.");
-        var endpoint = new MySqlConnectionStringBuilder(connectionString);
-        if (endpoint.Server is not ("localhost" or "127.0.0.1" or "::1"))
-            throw new InvalidOperationException("Inventory validation requires a local database.");
-
-        using var connection = new MySqlConnection(connectionString);
-        connection.Open();
+        using var connection = OpenLocal();
         using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
 
         MySqlCommand Command(string sql, params (string Name, object Value)[] parameters)
@@ -37,28 +121,10 @@ internal sealed class InventoryDocumentValidation(string connectionString)
                 throw new InvalidOperationException("Inventory changed before validation.");
         }
 
-        foreach (var table in new[] { "TABLE_PASS", "TABLE_ARTICLES", "TABLE_MOUVEMENTS_STOCK",
-            "TABLE_INVENTAIRES_ENTETE", "TABLE_INVENTAIRES_DETAILS" })
-        {
-            using var command = Command(
-                "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@table",
-                ("@table", table));
-            if (!Equals(command.ExecuteScalar(), "InnoDB"))
-                throw new InvalidOperationException("Inventory requires the complete transactional LOGICA schema.");
-        }
+        RequireTransactionalTables(connection, transaction, "TABLE_PASS", "TABLE_ARTICLES",
+            "TABLE_MOUVEMENTS_STOCK", "TABLE_INVENTAIRES_ENTETE", "TABLE_INVENTAIRES_DETAILS");
 
-        // LOGICA Form_6_INVENTAIRES.FUN_CAT_ACCES grants document validation to
-        // authenticated ADMIN and MANAGER; manual adjustment has its own rules.
-        using (var command = Command(
-            "SELECT ListPass, Catégorie FROM TABLE_PASS WHERE BINARY ListUser=BINARY @actor FOR UPDATE",
-            ("@actor", actor)))
-        using (var reader = command.ExecuteReader())
-        {
-            if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1) ||
-                !string.Equals(reader.GetString(0), pin, StringComparison.Ordinal) ||
-                reader.GetString(1) is not ("ADMIN" or "MANAGER") || reader.Read())
-                throw new UnauthorizedAccessException("Inventory document validation is not authorized.");
-        }
+        Authenticate(connection, transaction, actor, pin, validationOnly: true);
 
         DateTime documentDate;
         using (var command = Command(
@@ -145,8 +211,37 @@ internal sealed class InventoryDocumentValidation(string connectionString)
         if (counted is null)
             Write("UPDATE TABLE_INVENTAIRES_DETAILS SET ETAT='VALIDER' WHERE BINARY ID_INV=BINARY @id AND ETAT='ENREGISTRER'",
             lines.Count, ("@id", document));
-        Write("UPDATE TABLE_INVENTAIRES_ENTETE SET ETAT='VALIDER' WHERE BINARY ID_INV=BINARY @id AND ETAT='ENREGISTRER'",
-            1, ("@id", document));
+        if (counted is null)
+            Write("UPDATE TABLE_INVENTAIRES_ENTETE SET ETAT='VALIDER' WHERE BINARY ID_INV=BINARY @id AND ETAT='ENREGISTRER'",
+                1, ("@id", document));
+        else
+            Write("UPDATE TABLE_INVENTAIRES_ENTETE SET ETAT='VALIDER', TOTAL_VALEUR=" +
+                "(SELECT COALESCE(SUM(VALEUR),0) FROM TABLE_INVENTAIRES_DETAILS WHERE BINARY ID_INV=BINARY @id) " +
+                "WHERE BINARY ID_INV=BINARY @id AND ETAT='ENREGISTRER'", 1, ("@id", document));
         transaction.Commit();
+    }
+    private MySqlConnection OpenLocal()
+    {
+        var endpoint = new MySqlConnectionStringBuilder(connectionString);
+        if (endpoint.Server is not ("localhost" or "127.0.0.1" or "::1"))
+            throw new InvalidOperationException("Inventory requires a local database.");
+        var connection = new MySqlConnection(connectionString);
+        try { connection.Open(); return connection; }
+        catch { connection.Dispose(); throw; }
+    }
+
+    private static void RequireTransactionalTables(MySqlConnection connection,
+        MySqlTransaction transaction, params string[] tables)
+    {
+        using var command = new MySqlCommand(
+            "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@table",
+            connection, transaction);
+        var parameter = command.Parameters.AddWithValue("@table", "");
+        foreach (var table in tables)
+        {
+            parameter.Value = table;
+            if (!Equals(command.ExecuteScalar(), "InnoDB"))
+                throw new InvalidOperationException("Inventory requires the complete transactional LOGICA schema.");
+        }
     }
 }

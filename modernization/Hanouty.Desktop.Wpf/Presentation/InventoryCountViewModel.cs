@@ -13,6 +13,7 @@ public sealed record InventoryCountLine(string ArticleId, string ArticleName,
 public sealed record InventoryCountDocument(string DocumentId, IReadOnlyList<InventoryCountLine> Lines);
 public interface IInventoryCountWorkflow
 {
+    InventoryCountDocument Create(IReadOnlyList<string> articleIds);
     InventoryCountDocument Open(string documentId);
     InventoryCountDocument RecordPhysicalQuantity(string documentId, string articleId, decimal physicalQuantity);
     bool Confirm(string documentId);
@@ -23,15 +24,34 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     private string _documentId = "";
     private string _articleId = "";
     private string _physicalText = "";
+    private string _newArticleIds = "";
     private string _status = "Contrat Inventory non raccordé — validation indisponible";
     private bool _busy;
     private bool _loaded;
     public ObservableCollection<InventoryCountLine> Lines { get; } = new();
     public InventoryCountViewModel(IInventoryCountWorkflow? workflow = null) => _workflow = workflow;
-    public string DocumentId { get => _documentId; set { _documentId = value ?? ""; Changed(); Changed(nameof(CanOpen)); } }
+    public string DocumentId { get => _documentId; set { var id = value?.Trim() ?? ""; if (_documentId == id) return; _documentId = id; _loaded = false; Lines.Clear(); Changed(); NotifyActions(); } }
     public string ArticleId { get => _articleId; set { _articleId = value ?? ""; Changed(); } }
     public string PhysicalText { get => _physicalText; set { _physicalText = value ?? ""; Changed(); } }
     public string Status { get => _status; private set { _status = value; Changed(); } }
+    public string NewArticleIds
+    {
+        get => _newArticleIds;
+        set { _newArticleIds = value ?? ""; Changed(); Changed(nameof(CanCreate)); }
+    }
+    public bool CanCreate => _workflow is not null && !_busy && !string.IsNullOrWhiteSpace(NewArticleIds);
+    public void Create()
+    {
+        if (!CanCreate) return;
+        var articleIds = NewArticleIds.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        Execute(() =>
+        {
+            var document = _workflow!.Create(articleIds);
+            DocumentId = document.DocumentId;
+            Apply(document);
+            NewArticleIds = "";
+        });
+    }
     public bool CanOpen => _workflow is not null && !_busy && !string.IsNullOrWhiteSpace(DocumentId);
     public bool CanRecord => _workflow is not null && _loaded && !_busy;
     public bool CanConfirm => _workflow is not null && _loaded && !_busy &&
@@ -88,7 +108,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
         }
         finally { _busy = false; NotifyActions(); }
     }
-    private void NotifyActions() { Changed(nameof(CanOpen)); Changed(nameof(CanRecord)); Changed(nameof(CanConfirm)); }
+    private void NotifyActions() { Changed(nameof(CanCreate)); Changed(nameof(CanOpen)); Changed(nameof(CanRecord)); Changed(nameof(CanConfirm)); }
     public event PropertyChangedEventHandler? PropertyChanged;
     private void Changed([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }

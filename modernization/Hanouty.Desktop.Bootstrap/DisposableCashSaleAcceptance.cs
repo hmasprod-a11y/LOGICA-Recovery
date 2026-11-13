@@ -829,10 +829,10 @@ INSERT INTO TABLE_NUM VALUES (0,1);
     {
         Sql(settings, """
             ALTER TABLE TABLE_ARTICLES ADD STOCK_INITIAL DECIMAL(16,3), ADD DATE_INVENTAIRE DATE;
-            CREATE TABLE TABLE_INVENTAIRES_ENTETE (ID_INV VARCHAR(64), Dates DATE, ETAT VARCHAR(24)) ENGINE=InnoDB;
-            CREATE TABLE TABLE_INVENTAIRES_DETAILS (ID_INV VARCHAR(64), ID_ARTICLE VARCHAR(64), STOCK_LOGIQUE DECIMAL(16,3), STOCK_PHYSIQUE DECIMAL(16,3), ETAT VARCHAR(24), Article VARCHAR(128), ECART DECIMAL(16,3), VALEUR DECIMAL(16,3), PRIX_A DECIMAL(16,3)) ENGINE=InnoDB;
-            INSERT INTO TABLE_INVENTAIRES_ENTETE VALUES ('INV-TEST','2026-11-13','ENREGISTRER');
-            INSERT INTO TABLE_INVENTAIRES_DETAILS SELECT 'INV-TEST', ID_ARTICLE, STOCK, STOCK+2,'ENREGISTRER', Article, 0, 0, PRIX_A FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article';
+            CREATE TABLE TABLE_INVENTAIRES_ENTETE (ID_INV VARCHAR(64), Dates DATE, ETAT VARCHAR(24), UTILISATEUR VARCHAR(128), TOTAL_VALEUR DECIMAL(16,3)) ENGINE=InnoDB;
+            CREATE TABLE TABLE_INVENTAIRES_DETAILS (ID_INV VARCHAR(64), ID_ARTICLE VARCHAR(64), STOCK_LOGIQUE DECIMAL(16,3), STOCK_PHYSIQUE DECIMAL(16,3), ETAT VARCHAR(24), Article VARCHAR(128), ECART DECIMAL(16,3), VALEUR DECIMAL(16,3), PRIX_A DECIMAL(16,3), N_INV VARCHAR(64), Dates DATE, Code VARCHAR(64)) ENGINE=InnoDB;
+            INSERT INTO TABLE_INVENTAIRES_ENTETE (ID_INV,Dates,ETAT) VALUES ('INV-TEST','2026-11-13','ENREGISTRER');
+            INSERT INTO TABLE_INVENTAIRES_DETAILS (ID_INV,ID_ARTICLE,STOCK_LOGIQUE,STOCK_PHYSIQUE,ETAT,Article,ECART,VALEUR,PRIX_A) SELECT 'INV-TEST', ID_ARTICLE, STOCK, STOCK+2,'ENREGISTRER', Article, 0, 0, PRIX_A FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article';
             """);
         var validation = new InventoryDocumentValidation(settings.ConnectionString);
         var before = Snapshot(settings);
@@ -881,9 +881,18 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             throw new InvalidOperationException("Inventory was validated twice.");
         }
         catch (InvalidOperationException ex) when (ex.Message == "Inventory document is not open.") { }
+
+        Sql(settings, "ALTER TABLE TABLE_NUM ADD INV INT NOT NULL DEFAULT 1");
+        var latestStock = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+        RunInventoryFromWindow(settings, "W2-Article", latestStock + 3, create: true);
+        Require(Number(settings, "SELECT INV FROM TABLE_NUM WHERE ID=0") == 2 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_INVENTAIRES_ENTETE WHERE ID_INV='INV000001' AND UTILISATEUR='Test manager' AND ETAT='VALIDER'") == 1 &&
+            Number(settings, "SELECT ECART FROM TABLE_INVENTAIRES_DETAILS WHERE ID_INV='INV000001'") == 3m &&
+            Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == latestStock + 3,
+            "The WPF inventory did not create, number, count and validate a new LOGICA document.");
     }
 
-    private static void RunInventoryFromWindow(CatalogueSettings settings, string articleId, decimal physical)
+    private static void RunInventoryFromWindow(CatalogueSettings settings, string articleId, decimal physical, bool create = false)
     {
         var host = CatalogueHost.CreateCashierWorkstation(settings, "01");
         host.Window.Show();
@@ -915,12 +924,22 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 timer.Stop();
                 try
                 {
-                    if (step++ == 0)
+                    var stage = step++;
+                    if (stage == 0)
                     {
                         var dialog = Application.Current.Windows.OfType<Hanouty.Desktop.Wpf.InventoryCountWindow>()
                             .Single(window => window.Owner == host.Window && window.IsVisible);
-                        Named<System.Windows.Controls.TextBox>(dialog, "Inventory document identity").Text = "INV-TEST";
-                        Click(Named<System.Windows.Controls.Button>(dialog, "Open inventory document"));
+                        if (create)
+                        {
+                            Named<System.Windows.Controls.TextBox>(dialog, "Article IDs for new inventory").Text = articleId;
+                            timer.Start();
+                            Click(Named<System.Windows.Controls.Button>(dialog, "Create inventory document"));
+                        }
+                        else
+                        {
+                            Named<System.Windows.Controls.TextBox>(dialog, "Inventory document identity").Text = "INV-TEST";
+                            Click(Named<System.Windows.Controls.Button>(dialog, "Open inventory document"));
+                        }
                         var confirm = Named<System.Windows.Controls.Button>(dialog, "Confirm inventory document");
                         Require(!confirm.IsEnabled, "Inventory confirmation was enabled before counting.");
                         Named<System.Windows.Controls.TextBox>(dialog, "Counted article identity").Text = articleId;
@@ -956,7 +975,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             try { Click(Named<System.Windows.Controls.Button>(host.Window, "Open physical inventory workflow")); }
             finally { timer.Stop(); }
             if (failure is not null) throw new InvalidOperationException("Inventory window acceptance failed.", failure);
-            Require(step == 2, "Inventory window did not reach its authorization step.");
+            Require(step == (create ? 3 : 2), "Inventory window did not reach its authorization step.");
         }
         finally { host.Window.Close(); }
     }

@@ -9,6 +9,15 @@ internal sealed class InventoryCountWorkflow(string connectionString, string act
     private InventoryCountDocument? source;
     private readonly Dictionary<string, decimal> counts = new(StringComparer.Ordinal);
 
+    public InventoryCountDocument Create(IReadOnlyList<string> articleIds)
+    {
+        var pin = readPin();
+        if (string.IsNullOrWhiteSpace(pin))
+            throw new UnauthorizedAccessException("Inventory creation requires a verified operator.");
+        var documentId = new InventoryDocumentValidation(connectionString).Create(articleIds, actor, pin);
+        return Open(documentId);
+    }
+
     public InventoryCountDocument Open(string documentId)
     {
         source = null;
