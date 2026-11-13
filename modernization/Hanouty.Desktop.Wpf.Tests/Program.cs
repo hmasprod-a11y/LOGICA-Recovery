@@ -87,6 +87,22 @@ publicationVm.BasketLines.CollectionChanged += (_, e) =>
 Check(!publicationVm.RefreshBasketLines() && publicationVm.BasketLines.Count == 0 &&
     !publicationVm.FinancialSessionActive,
     "Host basket publication must fail closed on cashier revocation during collection event");
+// Unknown checkout must erase a previously visible Host basket and prevent
+// stale readback until the durable result has been explicitly reviewed.
+var unknownBasketHost = new TwoArticleHostBasket();
+var unknownBasketSubmission = new RecordingSubmission { Result = CheckoutSubmissionResult.Unknown };
+var unknownBasketVm = new CatalogueViewModel(new Reader(new[] {
+    new ProductSummary("article-A", "Article A", "SCAN-A")
+}), unknownBasketHost, submission: unknownBasketSubmission);
+unknownBasketVm.ScannerText = "SCAN-A";
+unknownBasketVm.ScanBarcode();
+Check(unknownBasketVm.BasketLines.Count == 1, "pre-Unknown Host basket is visible");
+unknownBasketVm.PaymentContext = new CashierPaymentContext("cashier-1", "register-1", "MAD", "Cash", 100m);
+unknownBasketVm.CommitCheckout();
+Check(unknownBasketVm.CheckoutUncertain && unknownBasketVm.BasketLines.Count == 0 &&
+    !unknownBasketVm.RefreshBasketLines() && unknownBasketVm.BasketLines.Count == 0 &&
+    unknownBasketVm.BasketStatus.Contains("unavailable", StringComparison.OrdinalIgnoreCase),
+    "Unknown checkout must hide Host basket and reject readback until durable review");
 // Production session adapter must not post if the Host session expires or
 // its authorization callback fails. The same durable submission stays unused.
 var expiredHostSession = new SessionFinancialSubmission();
