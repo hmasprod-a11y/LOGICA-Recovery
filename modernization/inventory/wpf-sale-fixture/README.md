@@ -20,12 +20,24 @@
 
 `FindBarcode` intentionally returns **all** candidates for a shared barcode; the WPF selection flow owns explicit disambiguation. `ReadUniqueBarcode` must throw for that barcode. `RefreshArticle("DEMO-BLUE")` must return exactly the blue article. Image lookup only returns a path when the file exists under the supplied images folder. This is a **data/reader fixture**, not a claimed WPF acceptance.
 
+
+## Executable reader acceptance (after isolated fixture setup)
+
+Set `HANOUTY_WPF_FIXTURE_DB` to the **read-only** local connection string for database `hanouty_wpf_fixture`, and `HANOUTY_WPF_FIXTURE_DATA` to the same test data directory used by the image generator. Then execute:
+
+```sh
+dotnet run --project modernization/inventory/Hanouty.Inventory.WpfFixtureAcceptance/Hanouty.Inventory.WpfFixtureAcceptance.csproj -c Release
+```
+
+The runner refuses any database name other than `hanouty_wpf_fixture`, checks the real generated PNG path, all five article identities, both candidates of the shared barcode, exact per-variant stock, zero stock, unknown and injection-shaped scans. It uses only SELECT readers and does not write stock or execute checkout. **A passing reader acceptance is not a passing WPF UI/financial acceptance.**
+
 ## QA93 selective manifest
 
 - `modernization/inventory/Hanouty.Inventory.MariaDb/MariaDbCatalogueReader.cs`
 - `modernization/inventory/Hanouty.Inventory.MariaDb/MariaDbInventorySnapshotReader.cs`
 - `modernization/inventory/Hanouty.Inventory.MariaDb/Hanouty.Inventory.MariaDb.csproj`
-- `modernization/inventory/wpf-sale-fixture/fixture.sql` and this README
+- `modernization/inventory/wpf-sale-fixture/fixture.sql`, `create_fixture_image.py` and this README
+- `modernization/inventory/Hanouty.Inventory.WpfFixtureAcceptance/` (independent executable reader acceptance)
 - Architecture dependency: existing `Hanouty.ArchitectureBridge.ICatalogueReader` and `ProductSummary` (do not duplicate contracts)
 
 No Stock Writer, Checkout writer, QA workflow, production migration, or shop database changes.
