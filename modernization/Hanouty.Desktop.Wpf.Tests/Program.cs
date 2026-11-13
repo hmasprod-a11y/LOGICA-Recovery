@@ -128,6 +128,12 @@ var ambiguousVm = new InventoryCountViewModel(new AmbiguousInventoryWorkflow()) 
 ambiguousVm.Open();
 Check(ambiguousVm.Lines.Count == 0 && !ambiguousVm.CanRecord && !ambiguousVm.CanConfirm,
     "duplicate Inventory article identities must fail closed before any count or confirmation");
+// Malformed Inventory readback must fail closed before binding any null line.
+var nullLineVm = new InventoryCountViewModel(new NullLineInventoryWorkflow()) { DocumentId = "INV-NULL" };
+nullLineVm.Open();
+Check(nullLineVm.Lines.Count == 0 && !nullLineVm.CanRecord && !nullLineVm.CanConfirm &&
+    nullLineVm.CountedLines == 0 && nullLineVm.RemainingLines == 0,
+    "null Inventory line must invalidate entire document and block confirmation");
 // A catalogue-only diagnostic resolver must never make the installed WPF app
 // start a cashier process. The QA-owned Bootstrap must supply financial services.
 Hanouty.Desktop.Wpf.App.ResolveFinancialServices = null;
@@ -2135,4 +2141,14 @@ sealed class FailingCountInventoryWorkflow : IInventoryCountWorkflow
         throw new InvalidOperationException("simulated Inventory transaction failure");
     }
     public bool Confirm(string id) => throw new InvalidOperationException("must not confirm failed count");
+}
+
+sealed class NullLineInventoryWorkflow : IInventoryCountWorkflow
+{
+    public InventoryCountDocument Open(string id) => new(id, new InventoryCountLine[] {
+        new("article-A", "Article A", 10m, null), null!
+    });
+    public InventoryCountDocument RecordPhysicalQuantity(string id, string articleId, decimal quantity) =>
+        throw new InvalidOperationException("malformed document must not allow counting");
+    public bool Confirm(string id) => throw new InvalidOperationException("malformed document must not confirm");
 }
