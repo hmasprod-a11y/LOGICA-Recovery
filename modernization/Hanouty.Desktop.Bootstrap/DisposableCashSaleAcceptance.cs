@@ -974,6 +974,41 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_DETAILS WHERE ID_BR='BR000005' AND ETAT='VALIDER' AND PRIX_A=13") == 1 &&
             Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == startingStock + 7m,
             "The fiscal LOGICA order did not support a validated partial receipt.");
+
+        Sql(settings, """
+            -- Run after 20261113-purchase-receipt-order.sql. Existing reservations are preserved.
+            ALTER TABLE hanouty_purchase_receipt_order
+                DROP PRIMARY KEY, ADD PRIMARY KEY (RECEIPT_ID, ARTICLE_ID);
+            ALTER TABLE TABLE_FOURNISSEURS ADD CREDIT_INITIAL DECIMAL(16,3);
+            UPDATE TABLE_FOURNISSEURS SET CREDIT_INITIAL=10 WHERE ID_FOURNISSEUR='SUP-TEST';
+            ALTER TABLE TABLE_FOURNISSEURS_REGLE ADD ID_FOURNISSEUR VARCHAR(64);
+            INSERT INTO TABLE_FOURNISSEURS_REGLE (ID_FOURNISSEUR,MONTANT) VALUES ('SUP-TEST',8);
+            CREATE TABLE TABLE_SORTIES_ENTETE (ID_FOURNISSEUR VARCHAR(64), TOTAL_NET_ACHATS DECIMAL(16,3)) ENGINE=InnoDB;
+            INSERT INTO TABLE_SORTIES_ENTETE VALUES ('SUP-TEST',-3);
+            INSERT INTO TABLE_ARTICLES (ID_ARTICLE,STOCK,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V_1,TAUX_TVA,GROUPE,PROMOTION,PRIX_QTE)
+            VALUES ('W2-PURCHASE-SECOND',4,'W2-PURCHASE','Autre produit','Food',7,7,10,20,'G',0,0);
+            """);
+        var accountBefore = receipt.ReadSupplierAccount("SUP-TEST");
+        var beforeMultiStock = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+        var multiOrder = receipt.CreateOrder("SUP-TEST",
+            [new("W2-Article", 2m), new("W2-PURCHASE-SECOND", 3m)], "Test manager", "5678");
+        Require(multiOrder == "BC000002" &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_COMMANDES_DETAILS WHERE ID_BC='BC000002' AND ETAT='VALIDER'") == 2,
+            "Multi-line order did not store both articles under one LOGICA number.");
+        var multiReceipt = receipt.CreateFromOrder(multiOrder,
+            [new("W2-Article", 1m), new("W2-PURCHASE-SECOND", 2m)], "Test manager", "5678");
+        Require(multiReceipt.Lines.Count == 2 &&
+            Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == beforeMultiStock &&
+            Number(settings, "SELECT COUNT(*) FROM hanouty_purchase_receipt_order WHERE RECEIPT_ID=@id", multiReceipt.Id) == 2,
+            "Multi-line receipt did not reserve both articles without writing stock.");
+        receipt.Validate(multiReceipt, "Test manager", "5678");
+        var account = receipt.ReadSupplierAccount("SUP-TEST");
+        Require(Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == beforeMultiStock + 1 &&
+            Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-PURCHASE-SECOND'") == 6 &&
+            account.Opening == 10 && account.Outgoing == -3 && account.Payments == 8 &&
+            account.Receipts == accountBefore.Receipts + 27 && account.Balance == accountBefore.Balance + 27,
+            "Receipt or supplier account does not reconcile with LOGICA's signed movements.");
+
     }
 
     private static void RunPartialReceiptFromWindow(CatalogueSettings settings, bool cancel = false, bool createOrder = false)

@@ -396,7 +396,7 @@ public sealed partial record CatalogueHost
                     return true;
                 }
                 finally { reviewing = false; }
-            }, (order, article, quantity) =>
+            }, (order, lines) =>
             {
                 if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
                     binding.Session.PendingCount != 0) return null;
@@ -405,7 +405,7 @@ public sealed partial record CatalogueHost
                 {
                     var pin = window.PromptCashierPin(actor);
                     return string.IsNullOrWhiteSpace(pin) ? null :
-                        receipt.CreateFromOrder(order, article, quantity, actor, pin);
+                        receipt.CreateFromOrder(order, lines, actor, pin);
                 }
                 finally { reviewing = false; }
             }, reviewed =>
@@ -423,7 +423,7 @@ public sealed partial record CatalogueHost
                     return true;
                 }
                 finally { reviewing = false; }
-            }, (supplier, article, quantity) =>
+            }, (supplier, lines) =>
             {
                 if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
                     binding.Session.PendingCount != 0) return null;
@@ -432,7 +432,7 @@ public sealed partial record CatalogueHost
                 {
                     var pin = window.PromptCashierPin(actor);
                     return string.IsNullOrWhiteSpace(pin) ? null :
-                        receipt.CreateOrder(supplier, article, quantity, actor, pin);
+                        receipt.CreateOrder(supplier, lines, actor, pin);
                 }
                 finally { reviewing = false; }
             });

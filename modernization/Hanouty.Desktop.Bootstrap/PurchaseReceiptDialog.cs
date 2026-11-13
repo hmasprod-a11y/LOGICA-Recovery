@@ -9,9 +9,9 @@ internal sealed class PurchaseReceiptDialog : Window
 {
     internal PurchaseReceiptDialog(PurchaseReceiptValidation service,
         Func<PurchaseReceiptValidation.Receipt, bool> validate,
-        Func<string, string, decimal, PurchaseReceiptValidation.Receipt?> createFromOrder,
+        Func<string, IReadOnlyList<PurchaseReceiptValidation.RequestedLine>, PurchaseReceiptValidation.Receipt?> createFromOrder,
         Func<PurchaseReceiptValidation.Receipt, bool> cancelReceipt,
-        Func<string, string, decimal, string?> createOrder)
+        Func<string, IReadOnlyList<PurchaseReceiptValidation.RequestedLine>, string?> createOrder)
     {
         Title = "Réception fournisseur";
         Width = 840;
@@ -49,28 +49,73 @@ internal sealed class PurchaseReceiptDialog : Window
         var orderCreation = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
         var supplier = new TextBox { MinWidth = 160, MinHeight = 32, ToolTip = "Identifiant fournisseur" };
         System.Windows.Automation.AutomationProperties.SetName(supplier, "Identifiant fournisseur");
+        var requested = new List<PurchaseReceiptValidation.RequestedLine>();
+        var requestedSummary = new TextBlock { Margin = new Thickness(0, 6, 0, 4), TextWrapping = TextWrapping.Wrap };
+        IReadOnlyList<PurchaseReceiptValidation.RequestedLine> RequestedLines()
+        {
+            if (requested.Count > 0) return requested.ToArray();
+            if (!decimal.TryParse(quantity.Text.Trim().Replace(',', '.'),
+                    System.Globalization.NumberStyles.AllowDecimalPoint,
+                    System.Globalization.CultureInfo.InvariantCulture, out var amount) || amount <= 0 ||
+                string.IsNullOrWhiteSpace(article.Text))
+                throw new ArgumentException("Saisissez l’article et sa quantité.");
+            return [new PurchaseReceiptValidation.RequestedLine(article.Text.Trim(), amount)];
+        }
+        var addLine = new Button { Content = "Ajouter la ligne", Margin = new Thickness(8, 14, 0, 0), MinHeight = 32 };
+        addLine.Click += (_, _) =>
+        {
+            if (!decimal.TryParse(quantity.Text.Trim().Replace(',', '.'),
+                    System.Globalization.NumberStyles.AllowDecimalPoint,
+                    System.Globalization.CultureInfo.InvariantCulture, out var amount) || amount <= 0 ||
+                string.IsNullOrWhiteSpace(article.Text))
+            {
+                summary.Text = "Saisissez l’article et sa quantité.";
+                return;
+            }
+            var id = article.Text.Trim();
+            requested.RemoveAll(line => line.ArticleId == id);
+            requested.Add(new PurchaseReceiptValidation.RequestedLine(id, amount));
+            requestedSummary.Text = string.Join(" · ", requested.Select(line => $"{line.ArticleId} × {line.Quantity}"));
+            article.Clear();
+            quantity.Clear();
+        };
+        orderInputs.Children.Add(addLine);
+        top.Children.Add(requestedSummary);
+        var clearLines = new Button { Content = "Vider les lignes", Margin = new Thickness(8, 0, 0, 0) };
+        clearLines.Click += (_, _) => { requested.Clear(); requestedSummary.Text = ""; };
+        var account = new Button { Content = "Solde fournisseur", Margin = new Thickness(8, 0, 0, 0) };
+        account.Click += (_, _) =>
+        {
+            try
+            {
+                var balance = service.ReadSupplierAccount(supplier.Text.Trim());
+                summary.Text = $"Initial : {balance.Opening:N2} · Réceptions : {balance.Receipts:N2} · " +
+                    $"Sorties : {balance.Outgoing:N2} · Règlements : {balance.Payments:N2} · Solde : {balance.Balance:N2} MAD";
+            }
+            catch (Exception ex) when (ex is MySqlException or InvalidOperationException or ArgumentException)
+            {
+                summary.Text = "Impossible de lire le compte fournisseur.";
+            }
+        };
         var saveOrder = new Button { Content = "Créer et valider la commande", MinHeight = 32 };
         orderCreation.Children.Add(new TextBlock { Text = "Fournisseur", VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 8, 0) });
         orderCreation.Children.Add(supplier);
         orderCreation.Children.Add(saveOrder);
+        orderCreation.Children.Add(clearLines);
+        orderCreation.Children.Add(account);
         top.Children.Add(orderCreation);
         top.Children.Add(summary);
         saveOrder.Click += (_, _) =>
         {
-            if (!decimal.TryParse(quantity.Text.Trim().Replace(',', '.'),
-                System.Globalization.NumberStyles.AllowDecimalPoint,
-                System.Globalization.CultureInfo.InvariantCulture, out var amount) || amount <= 0)
-            {
-                summary.Text = "Saisissez l’article et la quantité commandée.";
-                return;
-            }
             saveOrder.IsEnabled = false;
             try
             {
-                var id = createOrder(supplier.Text.Trim(), article.Text.Trim(), amount);
+                var id = createOrder(supplier.Text.Trim(), RequestedLines());
                 if (id is not null)
                 {
+                    requested.Clear();
+                    requestedSummary.Text = "";
                     order.Text = id;
                     summary.Text = $"Commande {id} validée.";
                 }
@@ -119,18 +164,13 @@ internal sealed class PurchaseReceiptDialog : Window
 
         create.Click += (_, _) =>
         {
-            if (!decimal.TryParse(quantity.Text.Trim().Replace(',', '.'),
-                System.Globalization.NumberStyles.AllowDecimalPoint,
-                System.Globalization.CultureInfo.InvariantCulture, out var amount) || amount <= 0)
-            {
-                summary.Text = "Saisissez une quantité reçue positive.";
-                return;
-            }
             create.IsEnabled = false;
             try
             {
-                var receipt = createFromOrder(order.Text.Trim(), article.Text.Trim(), amount);
+                var receipt = createFromOrder(order.Text.Trim(), RequestedLines());
                 if (receipt is null) { summary.Text = "Création annulée."; return; }
+                requested.Clear();
+                requestedSummary.Text = "";
                 number.Text = receipt.Id;
                 Display(receipt);
             }

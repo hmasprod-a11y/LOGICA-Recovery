@@ -9,6 +9,41 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
     internal sealed record Line(string ArticleId, string ArticleName, decimal Quantity, decimal Cost, decimal SalePrice);
     internal sealed record Receipt(string Id, string SupplierId, string Supplier, IReadOnlyList<Line> Lines);
 
+    internal sealed record SupplierAccount(decimal Opening, decimal Receipts, decimal Outgoing, decimal Payments)
+    {
+        public decimal Balance => Opening + Receipts + Outgoing - Payments;
+    }
+
+    internal SupplierAccount ReadSupplierAccount(string supplierId)
+    {
+        if (string.IsNullOrWhiteSpace(supplierId)) throw new ArgumentException("Fournisseur requis.");
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(IsolationLevel.RepeatableRead);
+        decimal opening;
+        using (var supplier = Command(connection, transaction,
+            "SELECT CREDIT_INITIAL FROM TABLE_FOURNISSEURS WHERE BINARY ID_FOURNISSEUR=BINARY @id", ("@id", supplierId)))
+        using (var reader = supplier.ExecuteReader())
+        {
+            if (!reader.Read()) throw new InvalidOperationException("Fournisseur introuvable.");
+            opening = reader.IsDBNull(0) ? 0m : reader.GetDecimal(0);
+            if (reader.Read()) throw new InvalidOperationException("Fournisseur ambigu.");
+        }
+
+        // LOGICA Form_6_FOURNISSEURS_REGLE uses all saved receipts and signed outgoing
+        // amounts. Keep the same scope and round each subtotal before combining.
+        decimal Sum(string table, string column)
+        {
+            using var command = Command(connection, transaction,
+                $"SELECT COALESCE(SUM({column}),0) FROM {table} WHERE BINARY ID_FOURNISSEUR=BINARY @id",
+                ("@id", supplierId));
+            return Math.Round(Convert.ToDecimal(command.ExecuteScalar(), CultureInfo.InvariantCulture), 2);
+        }
+        return new SupplierAccount(Math.Round(opening, 2),
+            Sum("TABLE_RECEPTIONS_ENTETE", "TOTAL_NET_ACHATS"),
+            Sum("TABLE_SORTIES_ENTETE", "TOTAL_NET_ACHATS"),
+            Sum("TABLE_FOURNISSEURS_REGLE", "MONTANT"));
+    }
+
     internal Receipt Read(string id)
     {
         using var connection = Open();
@@ -24,11 +59,23 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
         return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture) == 1;
     }
 
-    internal string CreateOrder(string supplierId, string articleId, decimal quantity, string actor, string pin)
+    internal sealed record RequestedLine(string ArticleId, decimal Quantity);
+
+    private static void RequireLines(IReadOnlyList<RequestedLine> lines)
     {
-        if (string.IsNullOrWhiteSpace(supplierId) || string.IsNullOrWhiteSpace(articleId) ||
-            quantity <= 0 || Round(quantity) != quantity)
-            throw new ArgumentException("Fournisseur, article et quantité positive à deux décimales requis.");
+        if (lines.Count == 0 || lines.Any(line => string.IsNullOrWhiteSpace(line.ArticleId) ||
+            line.Quantity <= 0 || Round(line.Quantity) != line.Quantity) ||
+            lines.Select(line => line.ArticleId).Distinct(StringComparer.Ordinal).Count() != lines.Count)
+            throw new ArgumentException("Saisissez des articles distincts et des quantités positives à deux décimales.");
+    }
+
+    internal string CreateOrder(string supplierId, string articleId, decimal quantity, string actor, string pin) =>
+        CreateOrder(supplierId, [new RequestedLine(articleId, quantity)], actor, pin);
+
+    internal string CreateOrder(string supplierId, IReadOnlyList<RequestedLine> requestedLines, string actor, string pin)
+    {
+        if (string.IsNullOrWhiteSpace(supplierId)) throw new ArgumentException("Fournisseur requis.");
+        RequireLines(requestedLines);
         using var connection = Open();
         using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
         InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_PASS", "TABLE_NUM",
@@ -56,26 +103,33 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
                 throw new InvalidOperationException("Fournisseur ambigu ou incomplet.");
         }
 
-        decimal cost;
-        decimal sale;
-        decimal taxRate;
-        string code;
-        string article;
-        using (var command = Command(connection, transaction,
-            "SELECT Code, Article, PRIX_A, PRIX_V_1, TAUX_TVA FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE",
-            ("@id", articleId)))
-        using (var reader = command.ExecuteReader())
+        var orderedLines = new List<(string Id, decimal Quantity, decimal Cost, decimal Sale, decimal Tax,
+            string Code, string Name)>();
+        foreach (var requested in requestedLines.OrderBy(line => line.ArticleId, StringComparer.Ordinal))
         {
-            if (!reader.Read() || reader.IsDBNull(1) || reader.IsDBNull(2) ||
-                reader.IsDBNull(3) || reader.IsDBNull(4))
-                throw new InvalidOperationException("Article introuvable ou incomplet.");
-            code = reader.IsDBNull(0) ? "" : reader.GetString(0);
-            article = reader.GetString(1);
-            cost = Round(reader.GetDecimal(2));
-            sale = Round(reader.GetDecimal(3));
-            taxRate = reader.GetDecimal(4);
-            if (reader.Read() || cost < 0 || sale < 0 || taxRate < 0)
-                throw new InvalidOperationException("Article ambigu ou prix invalide.");
+            var articleId = requested.ArticleId;
+            decimal cost;
+            decimal sale;
+            decimal taxRate;
+            string code;
+            string article;
+            using (var command = Command(connection, transaction,
+                "SELECT Code, Article, PRIX_A, PRIX_V_1, TAUX_TVA FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE",
+                ("@id", articleId)))
+            using (var reader = command.ExecuteReader())
+            {
+                if (!reader.Read() || reader.IsDBNull(1) || reader.IsDBNull(2) ||
+                    reader.IsDBNull(3) || reader.IsDBNull(4))
+                    throw new InvalidOperationException("Article introuvable ou incomplet.");
+                code = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                article = reader.GetString(1);
+                cost = Round(reader.GetDecimal(2));
+                sale = Round(reader.GetDecimal(3));
+                taxRate = reader.GetDecimal(4);
+                if (reader.Read() || cost < 0 || sale < 0 || taxRate < 0)
+                    throw new InvalidOperationException("Article ambigu ou prix invalide.");
+            }
+            orderedLines.Add((articleId, requested.Quantity, cost, sale, taxRate, code, article));
         }
 
         long number;
@@ -93,10 +147,9 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
                 throw new InvalidOperationException("Le numéro BC est déjà utilisé.");
 
         var date = DateTime.Today;
-        var purchase = Round(cost * quantity);
-        var sales = Round(sale * quantity);
-        var unitBeforeTax = Round(cost / (1m + taxRate / 100m));
-        var beforeTax = Round(unitBeforeTax * quantity);
+        var purchase = orderedLines.Sum(line => Round(line.Cost * line.Quantity));
+        var sales = orderedLines.Sum(line => Round(line.Sale * line.Quantity));
+        var beforeTax = orderedLines.Sum(line => Round(Round(line.Cost / (1m + line.Tax / 100m)) * line.Quantity));
         var fiscal = HasFiscalOrderColumns(connection, transaction);
         var headerColumns = fiscal ? "TOTAL_TTC_DOC,TOTAL_TVA_DOC,TOTAL_HT_DOC,TOTAL_REMISE_DOC" :
             "TOTAL_NET_ACHATS,TOTAL_NET_VENTES";
@@ -107,26 +160,35 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
             ("@date", date), ("@id", id), ("@actor", actor), ("@supplier", supplierId),
             ("@supplierCode", supplierCode), ("@supplierName", supplier), ("@purchase", purchase),
             ("@sales", sales), ("@tax", purchase - beforeTax), ("@beforeTax", beforeTax));
-        var detailColumns = fiscal ? "PU_TTC,TAUX_TVA,PU_HT,TOTAL_TTC,TOTAL_TVA,TOTAL_HT,TAUX_REMISE" :
-            "PRIX_A,PRIX_V,TOTAL_NET_ACHATS,TOTAL_NET_VENTES";
-        var detailValues = fiscal ? "@cost,@rate,@unitBeforeTax,@purchase,@tax,@beforeTax,0" : "@cost,@sale,@purchase,@sales";
-        Write("INSERT INTO TABLE_COMMANDES_DETAILS " +
-            $"(Dates,ID_BC,ID_FOURNISSEUR,CODE_FOURNISSEUR,FOURNISSEUR,ID_ARTICLE,Code,Article,`Qté`,{detailColumns},ETAT) " +
-            $"VALUES (@date,@id,@supplier,@supplierCode,@supplierName,@articleId,@code,@article,@quantity,{detailValues},'VALIDER')",
-            ("@date", date), ("@id", id), ("@supplier", supplierId), ("@supplierCode", supplierCode),
-            ("@supplierName", supplier), ("@articleId", articleId), ("@code", code), ("@article", article),
-            ("@quantity", quantity), ("@cost", cost), ("@sale", sale), ("@purchase", purchase), ("@sales", sales),
-            ("@rate", taxRate), ("@unitBeforeTax", unitBeforeTax), ("@tax", purchase - beforeTax), ("@beforeTax", beforeTax));
+        foreach (var (articleId, quantity, cost, sale, taxRate, code, article) in orderedLines)
+        {
+            var linePurchase = Round(cost * quantity);
+            var lineSales = Round(sale * quantity);
+            var unitBeforeTax = Round(cost / (1m + taxRate / 100m));
+            var lineBeforeTax = Round(unitBeforeTax * quantity);
+            var detailColumns = fiscal ? "PU_TTC,TAUX_TVA,PU_HT,TOTAL_TTC,TOTAL_TVA,TOTAL_HT,TAUX_REMISE" :
+                "PRIX_A,PRIX_V,TOTAL_NET_ACHATS,TOTAL_NET_VENTES";
+            var detailValues = fiscal ? "@cost,@rate,@unitBeforeTax,@purchase,@tax,@beforeTax,0" : "@cost,@sale,@purchase,@sales";
+            Write("INSERT INTO TABLE_COMMANDES_DETAILS " +
+                $"(Dates,ID_BC,ID_FOURNISSEUR,CODE_FOURNISSEUR,FOURNISSEUR,ID_ARTICLE,Code,Article,`Qté`,{detailColumns},ETAT) " +
+                $"VALUES (@date,@id,@supplier,@supplierCode,@supplierName,@articleId,@code,@article,@quantity,{detailValues},'VALIDER')",
+                ("@date", date), ("@id", id), ("@supplier", supplierId), ("@supplierCode", supplierCode),
+                ("@supplierName", supplier), ("@articleId", articleId), ("@code", code), ("@article", article),
+                ("@quantity", quantity), ("@cost", cost), ("@sale", sale), ("@purchase", linePurchase), ("@sales", lineSales),
+                ("@rate", taxRate), ("@unitBeforeTax", unitBeforeTax), ("@tax", linePurchase - lineBeforeTax), ("@beforeTax", lineBeforeTax));
+        }
         Write("UPDATE TABLE_NUM SET BC=BC+1 WHERE ID=0 AND BC=@number", ("@number", number));
         transaction.Commit();
         return id;
     }
 
-    internal Receipt CreateFromOrder(string orderId, string articleId, decimal quantity, string actor, string pin)
+    internal Receipt CreateFromOrder(string orderId, string articleId, decimal quantity, string actor, string pin) =>
+        CreateFromOrder(orderId, [new RequestedLine(articleId, quantity)], actor, pin);
+
+    internal Receipt CreateFromOrder(string orderId, IReadOnlyList<RequestedLine> requestedLines, string actor, string pin)
     {
-        if (string.IsNullOrWhiteSpace(orderId) || string.IsNullOrWhiteSpace(articleId) ||
-            quantity <= 0 || Round(quantity) != quantity)
-            throw new ArgumentException("Commande, article et quantité positive à deux décimales requis.");
+        if (string.IsNullOrWhiteSpace(orderId)) throw new ArgumentException("Commande requise.");
+        RequireLines(requestedLines);
 
         using var connection = Open();
         using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
@@ -163,50 +225,56 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
 
         var fiscalOrder = HasFiscalOrderColumns(connection, transaction);
         var priceColumns = fiscalOrder ? "PU_TTC, NULL" : "PRIX_A, PRIX_V";
-        decimal ordered;
-        decimal cost;
-        decimal salePrice;
-        string code;
-        string articleName;
-        using (var detail = Query(
-            $"SELECT `Qté`, {priceColumns}, Code, Article FROM TABLE_COMMANDES_DETAILS " +
-            "WHERE BINARY ID_BC=BINARY @order AND BINARY ID_ARTICLE=BINARY @article " +
-            "AND BINARY ID_FOURNISSEUR=BINARY @supplier AND ETAT='VALIDER' FOR UPDATE",
-            ("@order", orderId), ("@article", articleId), ("@supplier", supplierId)))
-        using (var reader = detail.ExecuteReader())
+        var receivedLines = new List<(Line Line, string Code)>();
+        foreach (var requested in requestedLines.OrderBy(line => line.ArticleId, StringComparer.Ordinal))
         {
-            if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1) ||
-                (!fiscalOrder && reader.IsDBNull(2)) || reader.IsDBNull(4))
-                throw new InvalidOperationException("Ligne de commande introuvable ou incomplète.");
-            ordered = Round(reader.GetDecimal(0));
-            cost = Round(reader.GetDecimal(1));
-            salePrice = fiscalOrder ? 0m : Round(reader.GetDecimal(2));
-            code = reader.IsDBNull(3) ? "" : reader.GetString(3);
-            articleName = reader.GetString(4);
-            if (reader.Read() || cost < 0 || salePrice < 0)
-                throw new InvalidOperationException("Ligne de commande ambiguë ou invalide.");
-        }
+            var (articleId, quantity) = requested;
+            decimal ordered;
+            decimal cost;
+            decimal salePrice;
+            string code;
+            string articleName;
+            using (var detail = Query(
+                $"SELECT `Qté`, {priceColumns}, Code, Article FROM TABLE_COMMANDES_DETAILS " +
+                "WHERE BINARY ID_BC=BINARY @order AND BINARY ID_ARTICLE=BINARY @article " +
+                "AND BINARY ID_FOURNISSEUR=BINARY @supplier AND ETAT='VALIDER' FOR UPDATE",
+                ("@order", orderId), ("@article", articleId), ("@supplier", supplierId)))
+            using (var reader = detail.ExecuteReader())
+            {
+                if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1) ||
+                    (!fiscalOrder && reader.IsDBNull(2)) || reader.IsDBNull(4))
+                    throw new InvalidOperationException("Ligne de commande introuvable ou incomplète.");
+                ordered = Round(reader.GetDecimal(0));
+                cost = Round(reader.GetDecimal(1));
+                salePrice = fiscalOrder ? 0m : Round(reader.GetDecimal(2));
+                code = reader.IsDBNull(3) ? "" : reader.GetString(3);
+                articleName = reader.GetString(4);
+                if (reader.Read() || cost < 0 || salePrice < 0)
+                    throw new InvalidOperationException("Ligne de commande ambiguë ou invalide.");
+            }
 
-        if (fiscalOrder)
-        {
-            InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_ARTICLES");
-            using var article = Query("SELECT PRIX_V_1 FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE",
-                ("@id", articleId));
-            using var reader = article.ExecuteReader();
-            if (!reader.Read() || reader.IsDBNull(0))
-                throw new InvalidOperationException("Prix de vente de l’article introuvable.");
-            salePrice = Round(reader.GetDecimal(0));
-            if (salePrice < 0 || reader.Read())
-                throw new InvalidOperationException("Prix de vente de l’article invalide.");
-        }
+            if (fiscalOrder)
+            {
+                InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_ARTICLES");
+                using var article = Query("SELECT PRIX_V_1 FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE",
+                    ("@id", articleId));
+                using var reader = article.ExecuteReader();
+                if (!reader.Read() || reader.IsDBNull(0))
+                    throw new InvalidOperationException("Prix de vente de l’article introuvable.");
+                salePrice = Round(reader.GetDecimal(0));
+                if (salePrice < 0 || reader.Read())
+                    throw new InvalidOperationException("Prix de vente de l’article invalide.");
+            }
 
-        // Serialize reservations for an order through the locked LOGICA header.
-        // A saved receipt reserves the balance before it is posted to stock.
-        using (var reserved = Query(
-            "SELECT COALESCE(SUM(QUANTITY),0) FROM hanouty_purchase_receipt_order " +
-            "WHERE ORDER_ID=@order AND ARTICLE_ID=@article", ("@order", orderId), ("@article", articleId)))
-            if (quantity > ordered - Convert.ToDecimal(reserved.ExecuteScalar(), CultureInfo.InvariantCulture))
-                throw new InvalidOperationException("Quantité supérieure au reliquat de la commande.");
+            // Serialize reservations for an order through the locked LOGICA header.
+            // A saved receipt reserves the balance before it is posted to stock.
+            using (var reserved = Query(
+                "SELECT COALESCE(SUM(QUANTITY),0) FROM hanouty_purchase_receipt_order " +
+                "WHERE ORDER_ID=@order AND ARTICLE_ID=@article", ("@order", orderId), ("@article", articleId)))
+                if (quantity > ordered - Convert.ToDecimal(reserved.ExecuteScalar(), CultureInfo.InvariantCulture))
+                    throw new InvalidOperationException("Quantité supérieure au reliquat de la commande.");
+            receivedLines.Add((new Line(articleId, articleName, quantity, cost, salePrice), code));
+        }
 
         long number;
         using (var counter = Query("SELECT BR FROM TABLE_NUM WHERE ID=0 FOR UPDATE"))
@@ -223,27 +291,31 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
                 throw new InvalidOperationException("Le numéro BR est déjà utilisé.");
 
         var date = DateTime.Today;
-        var purchaseTotal = Round(quantity * cost);
-        var saleTotal = Round(quantity * salePrice);
+        var purchaseTotal = receivedLines.Sum(item => Round(item.Line.Quantity * item.Line.Cost));
+        var saleTotal = receivedLines.Sum(item => Round(item.Line.Quantity * item.Line.SalePrice));
         Write("INSERT INTO TABLE_RECEPTIONS_ENTETE " +
             "(Dates,ID_BR,UTILISATEUR,ID_FOURNISSEUR,CODE_FOURNISSEUR,FOURNISSEUR,TOTAL_NET_ACHATS,TOTAL_NET_VENTES,ETAT) " +
             "VALUES (@date,@id,@actor,@supplier,@code,@name,@purchase,@sales,'ENREGISTRER')",
             ("@date", date), ("@id", receiptId), ("@actor", actor), ("@supplier", supplierId),
             ("@code", supplierCode), ("@name", supplierName), ("@purchase", purchaseTotal), ("@sales", saleTotal));
-        Write("INSERT INTO TABLE_RECEPTIONS_DETAILS " +
-            "(Dates,ID_BR,ID_FOURNISSEUR,CODE_FOURNISSEUR,FOURNISSEUR,ID_ARTICLE,Code,Article,PRIX_A,PRIX_V,`Qté`," +
-            "TOTAL_NET_ACHATS,TOTAL_NET_VENTES,ETAT) " +
-            "VALUES (@date,@id,@supplier,@supplierCode,@supplierName,@article,@code,@name,@cost,@sale,@qty,@purchase,@sales,'ENREGISTRER')",
-            ("@date", date), ("@id", receiptId), ("@supplier", supplierId), ("@supplierCode", supplierCode),
-            ("@supplierName", supplierName), ("@article", articleId), ("@code", code), ("@name", articleName),
-            ("@cost", cost), ("@sale", salePrice), ("@qty", quantity), ("@purchase", purchaseTotal), ("@sales", saleTotal));
-        Write("INSERT INTO hanouty_purchase_receipt_order (RECEIPT_ID,ORDER_ID,ARTICLE_ID,QUANTITY) " +
-            "VALUES (@receipt,@order,@article,@qty)",
-            ("@receipt", receiptId), ("@order", orderId), ("@article", articleId), ("@qty", quantity));
+        foreach (var (line, code) in receivedLines)
+        {
+            var (articleId, articleName, quantity, cost, salePrice) = line;
+            Write("INSERT INTO TABLE_RECEPTIONS_DETAILS " +
+                "(Dates,ID_BR,ID_FOURNISSEUR,CODE_FOURNISSEUR,FOURNISSEUR,ID_ARTICLE,Code,Article,PRIX_A,PRIX_V,`Qté`," +
+                "TOTAL_NET_ACHATS,TOTAL_NET_VENTES,ETAT) " +
+                "VALUES (@date,@id,@supplier,@supplierCode,@supplierName,@article,@code,@name,@cost,@sale,@qty,@purchase,@sales,'ENREGISTRER')",
+                ("@date", date), ("@id", receiptId), ("@supplier", supplierId), ("@supplierCode", supplierCode),
+                ("@supplierName", supplierName), ("@article", articleId), ("@code", code), ("@name", articleName),
+                ("@cost", cost), ("@sale", salePrice), ("@qty", quantity), ("@purchase", Round(quantity * cost)), ("@sales", Round(quantity * salePrice)));
+            Write("INSERT INTO hanouty_purchase_receipt_order (RECEIPT_ID,ORDER_ID,ARTICLE_ID,QUANTITY) " +
+                "VALUES (@receipt,@order,@article,@qty)",
+                ("@receipt", receiptId), ("@order", orderId), ("@article", articleId), ("@qty", quantity));
+        }
         Write("UPDATE TABLE_NUM SET BR=BR+1 WHERE ID=0 AND BR=@number", ("@number", number));
         transaction.Commit();
         return new Receipt(receiptId, supplierId, supplierName,
-            Array.AsReadOnly(new[] { new Line(articleId, articleName, quantity, cost, salePrice) }));
+            receivedLines.Select(item => item.Line).ToList().AsReadOnly());
     }
 
     internal void Cancel(Receipt reviewed, string actor, string pin)
@@ -258,7 +330,7 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
 
         using (var reservation = Command(connection, transaction,
             "DELETE FROM hanouty_purchase_receipt_order WHERE RECEIPT_ID=@id", ("@id", current.Id)))
-            if (reservation.ExecuteNonQuery() != 1)
+            if (reservation.ExecuteNonQuery() != current.Lines.Count)
                 throw new InvalidOperationException("Seuls les bons réservés sur une commande peuvent être annulés ici.");
 
         using (var details = Command(connection, transaction,
@@ -362,9 +434,11 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
             "SELECT ARTICLE_ID, QUANTITY FROM hanouty_purchase_receipt_order WHERE RECEIPT_ID=@id FOR UPDATE",
             ("@id", receipt.Id));
         using var reader = command.ExecuteReader();
-        if (!reader.Read()) return;
-        if (receipt.Lines.Count != 1 || reader.GetString(0) != receipt.Lines[0].ArticleId ||
-            reader.GetDecimal(1) != receipt.Lines[0].Quantity || reader.Read())
+        var reservations = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        while (reader.Read()) reservations.Add(reader.GetString(0), reader.GetDecimal(1));
+        if (reservations.Count == 0) return;
+        if (reservations.Count != receipt.Lines.Count || receipt.Lines.Any(line =>
+                !reservations.TryGetValue(line.ArticleId, out var quantity) || quantity != line.Quantity))
             throw new InvalidOperationException("Les lignes du bon ne correspondent plus à la réservation de commande.");
     }
 
