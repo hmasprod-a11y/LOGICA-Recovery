@@ -104,7 +104,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     private void Apply(InventoryCountDocument document)
     {
         if (document is null || document.DocumentId != DocumentId ||
-            document.Lines is null || document.Lines.Any(x => string.IsNullOrWhiteSpace(x.ArticleId) ||
+            document.Lines is null || document.Lines.Any(x => x is null || string.IsNullOrWhiteSpace(x.ArticleId) ||
                 x.ExpectedQuantity < 0m || x.PhysicalQuantity < 0m) ||
             document.Lines.Select(x => x.ArticleId).Distinct(StringComparer.Ordinal).Count() != document.Lines.Count)
             throw new InvalidOperationException("Invalid Inventory document");
