@@ -14,6 +14,8 @@
                 <TextBox Text="{Binding DocumentId, UpdateSourceTrigger=PropertyChanged}" MinHeight="42"
                          Margin="0,0,10,0" Padding="8" AutomationProperties.Name="Inventory document identity"/>
             </DockPanel>
+            <TextBlock Text="{Binding CountProgress}" FontWeight="SemiBold" Margin="0,4,0,4"
+                       AutomationProperties.Name="Inventory counted remaining and difference summary"/>
             <TextBlock Text="{Binding Status}" Margin="0,10,0,14" TextWrapping="Wrap"
                        AutomationProperties.Name="Inventory status"/>
         </StackPanel>
