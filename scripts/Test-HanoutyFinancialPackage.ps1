@@ -22,7 +22,14 @@ $acceptance=Join-Path $evidence 'w2'
 if (Test-Path $acceptance) { Remove-Item $acceptance -Recurse -Force }
 New-Item -ItemType Directory -Force $acceptance | Out-Null
 $run=Start-Process -FilePath $exe -ArgumentList @('--verify-disposable-cash-sale',('"' + $acceptance + '"')) -Wait -PassThru
-if ($run.ExitCode -ne 0) { throw "Extracted financial package W2 acceptance exited $($run.ExitCode)." }
+if ($run.ExitCode -ne 0) {
+    $failure = Join-Path $acceptance 'w2-failure.txt'
+    if (Test-Path -LiteralPath $failure) {
+        $summary = Get-Content -LiteralPath $failure -TotalCount 1
+        Write-Host ($summary -replace '(?i)(password|pwd)=[^;\s]+', '$1=[redacted]')
+    }
+    throw "Extracted financial package W2 acceptance exited $($run.ExitCode)."
+}
 $report=Get-Content (Join-Path $acceptance 'w2-cash-sale.json') -Raw | ConvertFrom-Json
 $fields=@('CashierDialogProductionBound','TrustedQuoteDisplayed','WindowLoaded','EditedContextRejected',
 'SingleSessionBinding','InitialCashierPinUi','InitialPinCancelAndWrongRejected','CashChangeSql',
