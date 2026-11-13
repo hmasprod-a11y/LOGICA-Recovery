@@ -866,8 +866,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         var count = workflow.Open("INV-TEST").Lines.Single();
         Require(count.PhysicalQuantity is null && !workflow.Confirm("INV-TEST"),
             "An existing saved quantity bypassed the fresh count in WPF.");
-        workflow.RecordPhysicalQuantity("INV-TEST", count.ArticleId, count.ExpectedQuantity + 3);
-        Require(workflow.Confirm("INV-TEST") &&
+        RunInventoryFromWindow(settings, count.ArticleId, count.ExpectedQuantity + 3);
+        Require(
             Number(settings, "SELECT ECART FROM TABLE_INVENTAIRES_DETAILS WHERE ID_INV='INV-TEST'") == 3m,
             "The WPF workflow did not persist the new physical count.");
         Require(Number(settings, "SELECT COUNT(*) FROM TABLE_INVENTAIRES_ENTETE WHERE ETAT='VALIDER'") == 1 &&
@@ -881,6 +881,84 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             throw new InvalidOperationException("Inventory was validated twice.");
         }
         catch (InvalidOperationException ex) when (ex.Message == "Inventory document is not open.") { }
+    }
+
+    private static void RunInventoryFromWindow(CatalogueSettings settings, string articleId, decimal physical)
+    {
+        var host = CatalogueHost.CreateCashierWorkstation(settings, "01");
+        host.Window.Show();
+        try
+        {
+            Require(CashierEntry(host, "Test manager", "01", "0", 0m, "5678"),
+                "Inventory manager could not open a cashier session.");
+            static IEnumerable<T> Controls<T>(DependencyObject parent) where T : DependencyObject
+            {
+                foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+                {
+                    if (child is T control) yield return control;
+                    foreach (var nested in Controls<T>(child)) yield return nested;
+                }
+            }
+            static T Named<T>(DependencyObject root, string name) where T : DependencyObject =>
+                Controls<T>(root).Single(control => System.Windows.Automation.AutomationProperties.GetName(control) == name);
+            static void Click(System.Windows.Controls.Button button)
+            {
+                Require(button.IsEnabled, "Inventory control is disabled.");
+                button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            }
+
+            Exception? failure = null;
+            var step = 0;
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(75) };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                try
+                {
+                    if (step++ == 0)
+                    {
+                        var dialog = Application.Current.Windows.OfType<Hanouty.Desktop.Wpf.InventoryCountWindow>()
+                            .Single(window => window.Owner == host.Window && window.IsVisible);
+                        Named<System.Windows.Controls.TextBox>(dialog, "Inventory document identity").Text = "INV-TEST";
+                        Click(Named<System.Windows.Controls.Button>(dialog, "Open inventory document"));
+                        var confirm = Named<System.Windows.Controls.Button>(dialog, "Confirm inventory document");
+                        Require(!confirm.IsEnabled, "Inventory confirmation was enabled before counting.");
+                        Named<System.Windows.Controls.TextBox>(dialog, "Counted article identity").Text = articleId;
+                        Named<System.Windows.Controls.TextBox>(dialog, "Physical stock quantity").Text =
+                            physical.ToString(CultureInfo.InvariantCulture);
+                        Click(Named<System.Windows.Controls.Button>(dialog, "Record physical quantity"));
+                        var model = (InventoryCountViewModel)dialog.DataContext;
+                        Require(model.Lines.Single().Difference == 3m, "Inventory screen did not show the counted difference.");
+                        timer.Start();
+                        Click(confirm);
+                        Require(model.Status == "Document confirmé par Inventory",
+                            "Inventory screen did not confirm the MariaDB document.");
+                        dialog.Close();
+                    }
+                    else
+                    {
+                        var dialog = Application.Current.Windows.Cast<Window>()
+                            .Single(window => window.Owner == host.Window && window.IsVisible &&
+                                Controls<System.Windows.Controls.PasswordBox>(window).Any());
+                        Controls<System.Windows.Controls.PasswordBox>(dialog).Single().Password = "5678";
+                        Click(Controls<System.Windows.Controls.Button>(dialog).Single(button => button.IsDefault));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                    foreach (var window in Application.Current.Windows.Cast<Window>()
+                        .Where(window => window.Owner == host.Window && window.IsVisible).ToArray().Reverse())
+                        window.Close();
+                }
+            };
+            timer.Start();
+            try { Click(Named<System.Windows.Controls.Button>(host.Window, "Open physical inventory workflow")); }
+            finally { timer.Stop(); }
+            if (failure is not null) throw new InvalidOperationException("Inventory window acceptance failed.", failure);
+            Require(step == 2, "Inventory window did not reach its authorization step.");
+        }
+        finally { host.Window.Close(); }
     }
 
     private static void VerifyCashDrawerClosing(CatalogueSettings settings, string pin)
