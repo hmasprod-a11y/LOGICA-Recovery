@@ -350,6 +350,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         finally
         {
             _selectionInFlight = false;
+            if (_basketRefreshPending) { _basketRefreshPending = false; RefreshBasketLines(); }
             if (clearAcknowledgedVariantScan && !CheckoutUncertain)
             {
                 // Internal acknowledgement owns the reset; external scanner edits
