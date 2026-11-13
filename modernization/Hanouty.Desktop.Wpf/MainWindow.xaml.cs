@@ -6,6 +6,13 @@ namespace Hanouty.Desktop.Wpf;
 
 public partial class MainWindow : Window
 {
+    private void OpenInventory_Click(object sender, RoutedEventArgs e)
+    {
+        // No Inventory contract is wired yet. Opening this screen cannot write stock.
+        var inventory = new InventoryCountWindow { Owner = this };
+        inventory.ShowDialog();
+    }
+
     // Existing Host owns context authorization and trusted price readback.
     // The UI only collects a draft and never grants financial authority.
     private bool _cashierEntryOpen;
