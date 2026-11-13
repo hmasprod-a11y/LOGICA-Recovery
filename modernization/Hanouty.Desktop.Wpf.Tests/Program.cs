@@ -51,6 +51,25 @@ Check(documentVm.Lines.Count == 0 && !documentVm.CanRecord && !documentVm.CanCon
 documentVm.Confirm();
 Check(inventoryPort.ConfirmCalls == 0,
     "stale document must never invoke Inventory confirmation");
+// Selecting an Inventory row must populate the physical-count editor from the
+// Inventory-provided line, not from a parallel WPF stock model.
+var selectionWindow = new Hanouty.Desktop.Wpf.InventoryCountWindow(new RecordingInventoryWorkflow());
+var selectionVm = (InventoryCountViewModel)selectionWindow.DataContext;
+selectionVm.DocumentId = "INV-SELECT";
+selectionVm.Open();
+var countGrid = (System.Windows.Controls.DataGrid)selectionWindow.FindName("InventoryLinesGrid");
+Check(countGrid is not null && countGrid.Items.Count == 1,
+    "Inventory grid must display the document supplied by Inventory");
+countGrid.SelectedItem = selectionVm.Lines[0];
+Check(selectionVm.ArticleId == "article-A" && selectionVm.PhysicalText == "",
+    "selecting a not-yet-counted article must prefill its identity but no invented quantity");
+selectionVm.PhysicalText = "9";
+selectionVm.Record();
+countGrid.SelectedItem = null;
+countGrid.SelectedItem = selectionVm.Lines[0];
+Check(selectionVm.ArticleId == "article-A" && selectionVm.PhysicalText == "9",
+    "selecting a counted line must display Inventory's readback physical quantity");
+selectionWindow.Close();
 // Inventory duplicate article IDs are ambiguous: refuse the entire readback.
 var ambiguousVm = new InventoryCountViewModel(new AmbiguousInventoryWorkflow()) { DocumentId = "INV-DUP" };
 ambiguousVm.Open();
