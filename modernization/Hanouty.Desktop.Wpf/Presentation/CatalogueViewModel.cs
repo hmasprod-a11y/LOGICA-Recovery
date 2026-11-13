@@ -437,6 +437,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             BarcodeCandidates = Array.Empty<ProductSummary>();
             OnPropertyChanged(nameof(BarcodeCandidates));
             OnPropertyChanged(nameof(HasBarcodeAmbiguity));
+            BasketLines.Clear();
+            BasketStatus = "Checkout reviewed — read a fresh Host basket";
+            OnPropertyChanged(nameof(BasketStatus));
             ReviewedResolution = CheckoutResolution.Unknown;
             ClearConsumedPaymentContext();
             CheckoutUncertain = false;
@@ -468,6 +471,11 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         if (PaymentContext?.IsWellFormed != true) { CommitFeedback = "Cashier and payment context required"; return; }
         if (CheckoutUncertain) { CommitFeedback = "Checkout status unknown — reconcile before retry"; return; }
         if (!CatalogueAvailable) { CommitFeedback = "Local catalogue unavailable"; return; }
+        // A checkout can post, empty or become Unknown. Never keep pre-posting
+        // Host basket rows visible as though they were the current sale.
+        BasketLines.Clear();
+        BasketStatus = "Checkout in progress — basket snapshot invalidated";
+        OnPropertyChanged(nameof(BasketStatus));
         ReviewedResolution = CheckoutResolution.Unknown;
         // Stable operation identity is retained for invalidation and unknown outcomes.
         _pendingOperationId ??= Guid.NewGuid().ToString("N");
