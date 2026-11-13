@@ -106,9 +106,26 @@ public sealed class CheckoutBatchController
         if (quantity < 0) return false;
         var first = _pending.FindIndex(line => line.Candidate.ArticleId == articleId);
         if (first < 0) return false;
-        var existing = _pending[first];
-        _pending.RemoveAll(line => line.Candidate.ArticleId == articleId);
-        if (quantity > 0) _pending.Insert(first, existing with { Quantity = quantity });
+        var previous = 0;
+        foreach (var line in _pending)
+            if (line.Candidate.ArticleId == articleId) previous = checked(previous + line.Quantity);
+        if (quantity >= previous)
+        {
+            var line = _pending[first];
+            _pending[first] = line with { Quantity = checked(line.Quantity + (quantity - previous)) };
+            return true;
+        }
+
+        var remaining = previous - quantity;
+        for (var i = _pending.Count - 1; i >= 0 && remaining > 0; i--)
+        {
+            var line = _pending[i];
+            if (line.Candidate.ArticleId != articleId) continue;
+            var reduction = Math.Min(line.Quantity, remaining);
+            remaining -= reduction;
+            if (reduction == line.Quantity) _pending.RemoveAt(i);
+            else _pending[i] = line with { Quantity = line.Quantity - reduction };
+        }
         return true;
     }
 
