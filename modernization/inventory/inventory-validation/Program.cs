@@ -198,3 +198,40 @@ ExpectIdentityMismatch("count shortened after request", new[] { counted[0] });
 ExpectIdentityMismatch("duplicate count identity", new[] { counted[0], counted[0] });
 if (mismatches != 3) throw new Exception("Missing count identity snapshot tests.");
 Console.WriteLine("PASS: request/count identity consistency, no database opened.");
+
+
+// A future MariaDB writer must not even open its connection without a verified
+// actor/session/capability. The delegate stands in for a connection factory.
+int connectionOpens = 0;
+try
+{
+    InventoryValidationWriteGate.ExecuteAfterAuthorization(validShape, null, now, () =>
+    {
+        connectionOpens++;
+        throw new Exception("FAIL: unauthorized inventory transaction connection opened.");
+    });
+    throw new Exception("FAIL: unauthorized inventory writer accepted.");
+}
+catch (UnauthorizedAccessException)
+{
+    if (connectionOpens != 0)
+        throw new Exception("FAIL: authorization checked after connection open.");
+    Console.WriteLine("PASS: missing grant denies before transaction connection factory.");
+}
+// An invalid inventory request is also rejected before any connection opens.
+try
+{
+    InventoryValidationWriteGate.ExecuteAfterAuthorization(
+        new InventoryValidationRequest(" ", new[] { "ART-A" }), null, now, () =>
+        {
+            connectionOpens++;
+            return 0;
+        });
+    throw new Exception("FAIL: invalid inventory identity accepted by write gate.");
+}
+catch (InvalidOperationException)
+{
+    if (connectionOpens != 0)
+        throw new Exception("FAIL: invalid request opened transaction connection.");
+    Console.WriteLine("PASS: invalid inventory identity denies before transaction connection.");
+}
