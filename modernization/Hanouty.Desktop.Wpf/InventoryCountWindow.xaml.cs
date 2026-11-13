@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Controls;
-using System.Globalization;
 using Hanouty.Desktop.Wpf.Presentation;
 
 namespace Hanouty.Desktop.Wpf;
@@ -21,8 +20,7 @@ public partial class InventoryCountWindow : Window
     {
         if (sender is DataGrid { SelectedItem: InventoryCountLine line })
         {
-            Model.ArticleId = line.ArticleId;
-            Model.PhysicalText = line.PhysicalQuantity?.ToString(CultureInfo.InvariantCulture) ?? "";
+            Model.SelectArticle(line);
         }
     }
 
