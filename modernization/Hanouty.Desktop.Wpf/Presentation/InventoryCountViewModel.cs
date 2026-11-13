@@ -33,6 +33,19 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     public string ArticleId { get => _articleId; set { _articleId = value ?? ""; Changed(); } }
     public string PhysicalText { get => _physicalText; set { _physicalText = value ?? ""; Changed(); } }
     public string Status { get => _status; private set { _status = value; Changed(); } }
+    // Read-only progress is derived exclusively from the Inventory document snapshot.
+    // Never infer missing physical counts as zero stock.
+    public int CountedLines => Lines.Count(x => x.PhysicalQuantity.HasValue);
+    public int RemainingLines => Lines.Count - CountedLines;
+    public int DifferenceLines => Lines.Count(x => x.Difference is { } difference && difference != 0m);
+    public string CountProgress => $"{CountedLines}/{Lines.Count} articles comptés — {RemainingLines} restants — {DifferenceLines} écarts";
+    private void NotifyCountProgress()
+    {
+        Changed(nameof(CountedLines));
+        Changed(nameof(RemainingLines));
+        Changed(nameof(DifferenceLines));
+        Changed(nameof(CountProgress));
+    }
     public bool CanOpen => _workflow is not null && !_busy && !string.IsNullOrWhiteSpace(DocumentId);
     public bool CanRecord => _workflow is not null && _loaded && !_busy && _openedDocumentId == DocumentId;
     public bool CanConfirm => _workflow is not null && _loaded && !_busy && _openedDocumentId == DocumentId &&
@@ -67,6 +80,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
             if (reviewedDocumentId != DocumentId)
                 throw new InvalidOperationException("Inventory document changed during confirmation");
             Lines.Clear();
+            NotifyCountProgress();
             _loaded = false;
             _openedDocumentId = null;
             Status = "Document confirmé par Inventory";
@@ -96,6 +110,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
             throw new InvalidOperationException("Invalid Inventory document");
         Lines.Clear();
         foreach (var line in document.Lines) Lines.Add(line);
+        NotifyCountProgress();
         _loaded = true;
         _openedDocumentId = document.DocumentId;
         NotifyActions();
@@ -124,6 +139,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
         Changed(nameof(ArticleId));
         Changed(nameof(PhysicalText));
         Lines.Clear();
+        NotifyCountProgress();
         _loaded = false;
         _openedDocumentId = null;
         Status = "Document modifié — ouvrir le nouveau document avant comptage";
