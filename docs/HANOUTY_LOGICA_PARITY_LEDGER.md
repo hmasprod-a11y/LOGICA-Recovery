@@ -28,6 +28,10 @@ La [validation LOGICA](../recovered-source/LOGICA/Form_6_INVENTAIRES.cs#L9302) r
 
 Inventory possède l’écriture transactionnelle; WPF possède l’écran et le ViewModel; QA possède l’intégration et la recette sur #93. Architecture trace les règles et Checkout vérifie la coexistence avec la vente. Vérifier l’état de brouillon exact, le refus des inventaires incomplets, du stock périmé et des doublons, puis le rollback et l’audit sur une base jetable.
 
+## Inventaire — recette de création et de validation
+
+La [recette Windows/MariaDB](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/43384733768) sur `33e89590bab4a5d64eee3f0fbe49ced0426ccec2` crée un document par l’interface WPF pour une liste d’articles, réserve `INV000001` avec le compteur LOGICA, saisit le stock physique, affiche l’écart et valide avec le PIN du manager. La base confirme la mise à jour du stock et l’état `VALIDER`. La recette couvre aussi l’ouverture d’un document existant, le refus du stock périmé, le rollback et le refus d’une double validation. La sélection initiale se fait actuellement par identifiants d’article; les autres variantes de l’écran LOGICA et la recette magasin restent à examiner.
+
 ## Ordre d’exécution
 
 1. **Caisse** — partir du fond de caisse, du comptage et des variantes de clôture du code LOGICA. Extraire les sélections et règles de rapprochement qui déterminent le contenu d’une clôture. Réutiliser le service de comptage, puis raccorder les écritures et le parcours WPF. Vérifier clôture et rollback sur la même version.
