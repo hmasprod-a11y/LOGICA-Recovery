@@ -17,7 +17,7 @@ Check(!string.IsNullOrWhiteSpace(connectionString) && !string.IsNullOrWhiteSpace
 var endpoint = new MySqlConnectionStringBuilder(connectionString);
 Check((endpoint.Server.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
        endpoint.Server.Equals("localhost", StringComparison.OrdinalIgnoreCase)) &&
-      endpoint.Database == "hanouty_wpf_fixture", "strict local disposable database");
+      endpoint.Database == "hanouty_wpf_fixture" && endpoint.Port == 3307, "strict local disposable database on port 3307");
 var png = Path.Combine(Path.GetFullPath(dataDirectory), "bd", "images", "fixture-soap.png");
 Check(File.Exists(png), "deterministic fixture image exists");
 byte[] imageHeader = new byte[8];
@@ -50,6 +50,7 @@ catch (InvalidOperationException) { ambiguous = true; }
 Check(ambiguous, "ambiguous barcode cannot auto-select article");
 Check(catalogue.RefreshArticle("DEMO-BLUE").Single().ArticleId == "DEMO-BLUE",
     "explicit variant selection resolves stable article");
+Check(inventory.FindBarcode("6900000000028").Count == 2, "inventory reader also preserves shared barcode candidates");
 Check(inventory.ReadArticle("DEMO-BLUE").Stock == 7m &&
       inventory.ReadArticle("DEMO-RED").Stock == 5m, "distinct variant stock");
 Check(catalogue.FindBarcode("6900000000035").Single().ArticleId == "DEMO-OOS" &&
@@ -59,7 +60,8 @@ Check(catalogue.RefreshArticle("DEMO-OOS").Single().ImagePath == null,
       "unavailable product does not fabricate an image");
 Check(catalogue.FindBarcode("6900000000042").Single().ArticleId == "DEMO-QUOTED",
     "quoted-name product remains discoverable");
-Check(catalogue.FindBarcode("6900000000999").Count == 0, "unknown barcode no matches");
+Check(catalogue.FindBarcode("6900000000999").Count == 0 &&
+      inventory.FindBarcode("6900000000999").Count == 0, "unknown barcode no matches in either reader");
 Check(catalogue.FindBarcode("6900000000028' OR 1=1 --").Count == 0,
     "injection-shaped barcode cannot broaden search");
 Check(inventory.FindStockBelow(1m).Single().ArticleId == "DEMO-OOS",
