@@ -11,8 +11,8 @@ def chunk(kind: bytes, payload: bytes) -> bytes:
 
 def image_bytes() -> bytes:
     # Four opaque pixels, a simple high-contrast 2x2 test image. No third-party packages.
-    rows = [bytes([0, 0, 88, 190, 255, 255, 255, 255, 255]),
-            bytes([0, 255, 255, 255, 0, 0, 88, 190, 255])]
+    rows = [bytes([0, 0, 88, 190, 255, 255, 255]),
+            bytes([0, 255, 255, 255, 0, 88, 190])]
     header = struct.pack(">IIBBBBB", 2, 2, 8, 2, 0, 0, 0)
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) +
             chunk(b"IDAT", zlib.compress(b"".join(rows), level=9)) + chunk(b"IEND", b""))
