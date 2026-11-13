@@ -22,6 +22,12 @@ La recette [Windows et MariaDB](https://github.com/hmasprod-a11y/LOGICA-Recovery
 
 Prochain parcours à livrer en entier : inventaire, du comptage à l’écriture de stock et à l’audit, à partir de [la validation LOGICA](../recovered-source/LOGICA/Form_6_INVENTAIRES.cs#L9339).
 
+## Inventaire — démarrage
+
+La [validation LOGICA](../recovered-source/LOGICA/Form_6_INVENTAIRES.cs#L9302) refuse un document déjà `VALIDER`, applique le stock physique et inscrit les mouvements et les états du document dans une transaction. [Les accès LOGICA](../recovered-source/LOGICA/Form_6_INVENTAIRES.cs#L8055) autorisent les catégories authentifiées ADMIN et MANAGER et désactivent la validation pour UTILISATEUR. Ce droit de valider un document est distinct de l’ajustement manuel.
+
+Inventory possède l’écriture transactionnelle; WPF possède l’écran et le ViewModel; QA possède l’intégration et la recette sur #93. Architecture trace les règles et Checkout vérifie la coexistence avec la vente. Vérifier l’état de brouillon exact, le refus des inventaires incomplets, du stock périmé et des doublons, puis le rollback et l’audit sur une base jetable.
+
 ## Ordre d’exécution
 
 1. **Caisse** — partir du fond de caisse, du comptage et des variantes de clôture du code LOGICA. Extraire les sélections et règles de rapprochement qui déterminent le contenu d’une clôture. Réutiliser le service de comptage, puis raccorder les écritures et le parcours WPF. Vérifier clôture et rollback sur la même version.
