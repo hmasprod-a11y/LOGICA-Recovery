@@ -385,7 +385,7 @@ namespace LOGICA.Infrastructure.Checkout
             if (connection == null || connection.State != ConnectionState.Open ||
                 transaction == null || !ReferenceEquals(transaction.Connection, connection))
                 throw new InvalidOperationException("Cash total requires an active MariaDB transaction.");
-            if (lines == null || lines.Any(x => x == null ||
+            if (lines == null || lines.Count == 0 || lines.Any(x => x == null ||
                 string.IsNullOrWhiteSpace(x.ArticleId) || x.Quantity <= 0) ||
                 lines.GroupBy(x => x.ArticleId, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
                 throw new InvalidOperationException("Valid aggregated checkout lines are required for price preview.");
