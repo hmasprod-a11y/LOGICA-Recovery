@@ -125,6 +125,41 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
             Array.AsReadOnly(new[] { new Line(articleId, articleName, quantity, cost, salePrice) }));
     }
 
+    internal void Cancel(Receipt reviewed, string actor, string pin)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
+        InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_PASS",
+            "TABLE_RECEPTIONS_ENTETE", "TABLE_RECEPTIONS_DETAILS", "hanouty_purchase_receipt_order");
+        InventoryDocumentValidation.Authenticate(connection, transaction, actor, pin, validationOnly: true);
+        var current = Read(connection, transaction, reviewed.Id, lockRows: true);
+        RequireSameReceipt(reviewed, current);
+
+        using (var reservation = Command(connection, transaction,
+            "DELETE FROM hanouty_purchase_receipt_order WHERE RECEIPT_ID=@id", ("@id", current.Id)))
+            if (reservation.ExecuteNonQuery() != 1)
+                throw new InvalidOperationException("Seuls les bons réservés sur une commande peuvent être annulés ici.");
+
+        using (var details = Command(connection, transaction,
+            "DELETE FROM TABLE_RECEPTIONS_DETAILS WHERE BINARY ID_BR=BINARY @id AND ETAT='ENREGISTRER'", ("@id", current.Id)))
+            if (details.ExecuteNonQuery() != current.Lines.Count)
+                throw new InvalidOperationException("Les lignes ont changé. Rechargez le bon.");
+
+        using (var header = Command(connection, transaction,
+            "DELETE FROM TABLE_RECEPTIONS_ENTETE WHERE BINARY ID_BR=BINARY @id AND ETAT='ENREGISTRER'", ("@id", current.Id)))
+            if (header.ExecuteNonQuery() != 1)
+                throw new InvalidOperationException("Le bon a changé. Rechargez le document.");
+
+        transaction.Commit();
+    }
+
+    private static void RequireSameReceipt(Receipt reviewed, Receipt current)
+    {
+        if (current.SupplierId != reviewed.SupplierId || current.Supplier != reviewed.Supplier ||
+            !current.Lines.SequenceEqual(reviewed.Lines))
+            throw new InvalidOperationException("La réception a changé. Rechargez le document.");
+    }
+
     internal void Validate(Receipt reviewed, string actor, string pin)
     {
         using var connection = Open();
@@ -135,9 +170,7 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
         InventoryDocumentValidation.Authenticate(connection, transaction, actor, pin, validationOnly: true);
         var current = Read(connection, transaction, reviewed.Id, lockRows: true);
         VerifyOrderReservation(connection, transaction, current);
-        if (current.SupplierId != reviewed.SupplierId || current.Supplier != reviewed.Supplier ||
-            !current.Lines.SequenceEqual(reviewed.Lines))
-            throw new InvalidOperationException("La réception a changé. Rechargez le document.");
+        RequireSameReceipt(reviewed, current);
 
         using (var supplier = Command(connection, transaction,
             "SELECT ID_FOURNISSEUR FROM TABLE_FOURNISSEURS WHERE BINARY ID_FOURNISSEUR=BINARY @id FOR UPDATE",

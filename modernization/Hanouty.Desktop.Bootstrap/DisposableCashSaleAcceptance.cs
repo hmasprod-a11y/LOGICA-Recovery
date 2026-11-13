@@ -915,12 +915,31 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             throw new InvalidOperationException("Receipt exceeded the remaining order quantity.");
         }
         catch (InvalidOperationException ex) when (ex.Message.StartsWith("Quantité supérieure", StringComparison.Ordinal)) { }
+        var cancelled = receipt.CreateFromOrder("BC-TEST", "W2-Article", 3m, "Test manager", "5678");
+        var beforeCancellation = Snapshot(settings);
+        Sql(settings, "CREATE TRIGGER test_receipt_cancel_failure BEFORE DELETE ON TABLE_RECEPTIONS_ENTETE FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='receipt cancel rollback'");
+        try
+        {
+            receipt.Cancel(cancelled, "Test manager", "5678");
+            throw new InvalidOperationException("Cancellation ignored an injected failure.");
+        }
+        catch (MySqlException) { }
+        finally { Sql(settings, "DROP TRIGGER test_receipt_cancel_failure"); }
+        Require(Number(settings, "SELECT COUNT(*) FROM hanouty_purchase_receipt_order WHERE RECEIPT_ID='BR000002'") == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_DETAILS WHERE ID_BR='BR000002'") == 1,
+            "Cancellation rollback lost a reserved receipt.");
+        receipt.Cancel(cancelled, "Test manager", "5678");
+        Require(Snapshot(settings) == beforeCancellation &&
+            Number(settings, "SELECT COUNT(*) FROM hanouty_purchase_receipt_order WHERE RECEIPT_ID='BR000002'") == 0 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_ENTETE WHERE ID_BR='BR000002'") == 0 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_DETAILS WHERE ID_BR='BR000002'") == 0,
+            "Cancellation did not free the balance without moving stock.");
         var remainder = receipt.CreateFromOrder("BC-TEST", "W2-Article", 3m, "Test manager", "5678");
         receipt.Validate(remainder, "Test manager", "5678");
-        Require(remainder.Id == "BR000002" &&
+        Require(remainder.Id == "BR000003" &&
             Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == startingStock + 5m &&
             Number(settings, "SELECT SUM(QUANTITY) FROM hanouty_purchase_receipt_order WHERE ORDER_ID='BC-TEST'") == 5m &&
-            Number(settings, "SELECT BR FROM TABLE_NUM WHERE ID=0") == 3,
+            Number(settings, "SELECT BR FROM TABLE_NUM WHERE ID=0") == 4,
             "Two partial receipts did not exhaust the order and update the stock exactly once.");
     }
 

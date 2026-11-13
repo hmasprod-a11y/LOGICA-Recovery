@@ -9,7 +9,8 @@ internal sealed class PurchaseReceiptDialog : Window
 {
     internal PurchaseReceiptDialog(PurchaseReceiptValidation service,
         Func<PurchaseReceiptValidation.Receipt, bool> validate,
-        Func<string, string, decimal, PurchaseReceiptValidation.Receipt?> createFromOrder)
+        Func<string, string, decimal, PurchaseReceiptValidation.Receipt?> createFromOrder,
+        Func<PurchaseReceiptValidation.Receipt, bool> cancelReceipt)
     {
         Title = "Réception fournisseur";
         Width = 840;
@@ -48,8 +49,13 @@ internal sealed class PurchaseReceiptDialog : Window
 
         var confirm = new Button { Content = "Valider la réception", MinHeight = 42,
             IsEnabled = false, Margin = new Thickness(0, 10, 0, 0) };
-        DockPanel.SetDock(confirm, Dock.Bottom);
-        panel.Children.Add(confirm);
+        var actions = new StackPanel { Orientation = Orientation.Horizontal };
+        var cancel = new Button { Content = "Annuler le bon enregistré", MinHeight = 42,
+            IsEnabled = false, Margin = new Thickness(12, 10, 0, 0) };
+        actions.Children.Add(confirm);
+        actions.Children.Add(cancel);
+        DockPanel.SetDock(actions, Dock.Bottom);
+        panel.Children.Add(actions);
         var lines = new DataGrid { AutoGenerateColumns = false, IsReadOnly = true, CanUserAddRows = false };
         lines.Columns.Add(new DataGridTextColumn { Header = "Article", Binding = new Binding("ArticleName"), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         lines.Columns.Add(new DataGridTextColumn { Header = "Quantité", Binding = new Binding("Quantity") });
@@ -64,6 +70,7 @@ internal sealed class PurchaseReceiptDialog : Window
             reviewed = null;
             lines.ItemsSource = null;
             confirm.IsEnabled = false;
+            cancel.IsEnabled = false;
             summary.Text = "";
         }
         void Display(PurchaseReceiptValidation.Receipt receipt)
@@ -72,6 +79,7 @@ internal sealed class PurchaseReceiptDialog : Window
             lines.ItemsSource = receipt.Lines;
             summary.Text = $"{receipt.Id} — {receipt.Supplier} — {receipt.Lines.Count} article(s)";
             confirm.IsEnabled = true;
+            cancel.IsEnabled = true;
         }
 
         create.Click += (_, _) =>
@@ -112,10 +120,31 @@ internal sealed class PurchaseReceiptDialog : Window
                 summary.Text = "Impossible d’ouvrir ce bon de réception enregistré.";
             }
         };
+        cancel.Click += (_, _) =>
+        {
+            if (reviewed is not { } document) return;
+            cancel.IsEnabled = false;
+            confirm.IsEnabled = false;
+            try
+            {
+                if (cancelReceipt(document))
+                {
+                    number.Clear();
+                    summary.Text = $"Bon {document.Id} annulé. Quantité libérée.";
+                }
+                else Display(document);
+            }
+            catch (Exception ex) when (ex is MySqlException or InvalidOperationException or UnauthorizedAccessException)
+            {
+                Reset();
+                summary.Text = "Annulation non confirmée. Rouvrez le bon pour vérifier son état.";
+            }
+        };
         confirm.Click += (_, _) =>
         {
             if (reviewed is not { } document) return;
             confirm.IsEnabled = false;
+            cancel.IsEnabled = false;
             try
             {
                 if (validate(document))
@@ -126,12 +155,14 @@ internal sealed class PurchaseReceiptDialog : Window
                 else
                 {
                     confirm.IsEnabled = true;
+                    cancel.IsEnabled = true;
                     summary.Text = "Validation annulée. Aucun changement enregistré.";
                 }
             }
             catch (UnauthorizedAccessException)
             {
                 confirm.IsEnabled = true;
+                cancel.IsEnabled = true;
                 summary.Text = "Validation réservée à un manager ou administrateur authentifié.";
             }
             catch (Exception ex) when (ex is MySqlException or InvalidOperationException or ArithmeticException)

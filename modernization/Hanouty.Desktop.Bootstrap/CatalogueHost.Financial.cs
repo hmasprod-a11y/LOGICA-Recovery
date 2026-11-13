@@ -408,6 +408,21 @@ public sealed partial record CatalogueHost
                         receipt.CreateFromOrder(order, article, quantity, actor, pin);
                 }
                 finally { reviewing = false; }
+            }, reviewed =>
+            {
+                if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                    binding.Session.PendingCount != 0) return false;
+                reviewing = true;
+                try
+                {
+                    var pin = window.PromptCashierPin(actor);
+                    if (string.IsNullOrWhiteSpace(pin) ||
+                        !ConfirmCashDrawer(window, $"Annuler le bon {reviewed.Id} et libérer la quantité réservée ?",
+                            "Annulation du bon")) return false;
+                    receipt.Cancel(reviewed, actor, pin);
+                    return true;
+                }
+                finally { reviewing = false; }
             });
             dialog.Owner = window;
             dialog.ShowDialog();
