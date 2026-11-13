@@ -66,7 +66,7 @@ internal sealed class InventoryDocumentValidation(string connectionString)
         using (var reader = command.ExecuteReader())
         {
             if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1) ||
-                reader.GetString(1) != "EN COURS")
+                reader.GetString(1) != "ENREGISTRER")
                 throw new InvalidOperationException("Inventory document is not open.");
             documentDate = reader.GetDateTime(0).Date;
             if (reader.Read()) throw new InvalidOperationException("Inventory document identity is ambiguous.");
@@ -81,7 +81,7 @@ internal sealed class InventoryDocumentValidation(string connectionString)
             while (reader.Read())
             {
                 if (reader.IsDBNull(0) || reader.IsDBNull(1) || reader.IsDBNull(2) ||
-                    reader.IsDBNull(3) || reader.GetString(3) != "EN COURS")
+                    reader.IsDBNull(3) || reader.GetString(3) != "ENREGISTRER")
                     throw new InvalidOperationException("Inventory contains uncounted or invalid lines.");
                 var line = new CountedLine(reader.GetString(0), reader.GetDecimal(1), reader.GetDecimal(2));
                 if (string.IsNullOrWhiteSpace(line.Id) || line.Physical < 0 || !lines.TryAdd(line.Id, line))
@@ -125,9 +125,9 @@ internal sealed class InventoryDocumentValidation(string connectionString)
                 ("@audit", audit), ("@article", line.Id), ("@code", article.Code),
                 ("@name", article.Name), ("@quantity", line.Physical.ToString(CultureInfo.InvariantCulture)));
         }
-        Write("UPDATE TABLE_INVENTAIRES_DETAILS SET ETAT='VALIDER' WHERE BINARY ID_INV=BINARY @id AND ETAT='EN COURS'",
+        Write("UPDATE TABLE_INVENTAIRES_DETAILS SET ETAT='VALIDER' WHERE BINARY ID_INV=BINARY @id AND ETAT='ENREGISTRER'",
             lines.Count, ("@id", document));
-        Write("UPDATE TABLE_INVENTAIRES_ENTETE SET ETAT='VALIDER' WHERE BINARY ID_INV=BINARY @id AND ETAT='EN COURS'",
+        Write("UPDATE TABLE_INVENTAIRES_ENTETE SET ETAT='VALIDER' WHERE BINARY ID_INV=BINARY @id AND ETAT='ENREGISTRER'",
             1, ("@id", document));
         transaction.Commit();
     }
