@@ -35,3 +35,26 @@ The example presupposes a signed return total already computed by the legacy UI;
 The current `AuthorizedCheckoutRequest` has `IsReturn` but no proven durable original-ticket reference or consumed-return ledger. The V1 writer path shown above does not itself establish original-sale linkage, over-return prevention, or the exact original-price rule. **Do not infer these protections from the sign rule**. Agree a minimal original reference/quantity-consumption contract and its durable storage/reconciliation with Architecture and QA before enabling the port. Do not create a competing DTO/gate or mutate a live store schema.
 
 Mixed payment, tier pricing, discounts and credit are separate acceptance gates.
+
+## Inventory handoff — Checkout financial stock concurrency (2026-11-13)
+
+Scope: Checkout owns **only** stock changes caused by an authorized financial sale/return. Inventory Cell03 owns inventory adjustment authorization and its own writer; Cell02 must not call or modify that writer. QA #93 integration baseline reported by owner: `2108f549`; cashier software acceptance is distinct from pending physical printer acceptance. Do not reinterpret this characterization as a new W2 acceptance run.
+
+### Source-verified transaction invariants
+
+- `AuthorizedCheckoutMariaDbPort.Commit` opens one `MySqlCheckoutAtomicPostingBoundary`, begins/binds its transaction, claims the operation ID, prepares cashier/PIN and authoritative pricing inside that same transaction, posts via `CheckoutPostingService.Post`, then commits. A duplicate operation claim returns without a second posting; after a commit attempt fails, outcome remains unknown and must be reconciled, not blindly retried.
+- `MariaDbCashCheckoutPreparation.Prepare` requires InnoDB for `TABLE_ARTICLES`, `TABLE_MOUVEMENTS_STOCK`, receipt/payment/journal tables and the durable operation ledger. It locks `TABLE_NUM` and `TABLE_ARTICLES` with `FOR UPDATE`; a workstation basket already occupied is rejected rather than overwritten.
+- `CheckoutStockWriter.Apply` issues `UPDATE TABLE_ARTICLES SET STOCK = STOCK - @checkoutQuantity WHERE ID_ARTICLE = @checkoutArticleId` in the caller's transaction, requires exactly one matching article, then appends `StockMovementWriter.Write` in that transaction. A positive sale quantity decreases stock; a negative refund quantity increases it. No second stock writer is allowed in the checkout posting path.
+- Full-ticket cash refund evidence and the unique original-ticket consumption claim are checked in the posting transaction. Inventory adjustments must not mutate original-sale evidence or reuse financial operation IDs.
+
+### Concurrent inventory operations — mandatory Cell03/QA contract
+
+1. Inventory must use InnoDB and serialize any adjustment of the **same** `TABLE_ARTICLES` row with checkout's update/locked read, using the same canonical article identity. A stale UI stock snapshot cannot authorize a write; re-read the authoritative row under the adjustment transaction.
+2. Inventory authorization (actor/session/grant) is separate from cashier/PIN authorization. A cashier payment is not an inventory adjustment grant, and an inventory grant must not bypass checkout's financial operation claim.
+3. All participants should acquire locks in a consistent order when multiple article rows are involved, and must handle deadlock/lock-wait failure by aborting their own transaction. Never silently repeat a financial operation after an uncertain commit; reconcile its durable operation ID first.
+4. A concurrent stock adjustment may change available stock between catalogue preview and payment. The authoritative checkout transaction revalidates article identity/pricing and writes stock atomically; QA must explicitly decide and test whether negative stock is permitted by the approved business policy. The current writer's SQL does **not** impose a `STOCK >= quantity` condition, so do not claim that insufficient stock is rejected.
+5. Physical ticket printing is a post-commit hardware acceptance matter. A printer failure cannot cause a second financial stock movement or an automatic repost.
+
+### Non-regression handoff (do not rerun accepted cashier acceptance)
+
+QA should compare the already-accepted `2108f549` financial evidence to the Inventory integration SHA, then add **only new concurrency acceptance** on disposable MariaDB: one article, two connections, checkout stock update and authorized inventory adjustment contending for the same row; verify serialized final stock and distinct audit movement origins. Also verify an inventory transaction rollback leaves checkout stock and its financial receipt untouched. No real-shop data and no legacy ZIP as commercial Beta evidence.
