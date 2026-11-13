@@ -380,6 +380,11 @@ namespace LOGICA.Infrastructure.Checkout
         internal static decimal ReadCashSaleTotal(IReadOnlyList<CheckoutBatchLine> lines,
             MySqlConnection connection, MySqlTransaction transaction)
         {
+            // The WPF basket preview is authoritative only while the same local
+            // database transaction is active. Never fall back to UI unit prices.
+            if (connection == null || connection.State != ConnectionState.Open ||
+                transaction == null || !ReferenceEquals(transaction.Connection, connection))
+                throw new InvalidOperationException("Cash total requires an active MariaDB transaction.");
             if (lines == null || lines.Any(x => x == null ||
                 string.IsNullOrWhiteSpace(x.ArticleId) || x.Quantity <= 0) ||
                 lines.GroupBy(x => x.ArticleId, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
