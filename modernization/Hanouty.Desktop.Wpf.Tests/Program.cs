@@ -84,6 +84,22 @@ countGrid.SelectedItem = selectionVm.Lines[0];
 Check(selectionVm.ArticleId == "article-A" && selectionVm.PhysicalText == "9",
     "selecting a counted line must display Inventory's readback physical quantity");
 selectionWindow.Close();
+// A synchronous Inventory callback may pump the UI and change the document.
+ // Confirmation must use the reviewed identity, never a reentrant replacement.
+var reentrantInventory = new ReentrantInventoryWorkflow();
+var reentrantInventoryVm = new InventoryCountViewModel(reentrantInventory) { DocumentId = "INV-ORIGINAL" };
+reentrantInventory.ViewModel = reentrantInventoryVm;
+reentrantInventoryVm.Open();
+reentrantInventoryVm.ArticleId = "article-A";
+reentrantInventoryVm.PhysicalText = "10";
+reentrantInventoryVm.Record();
+Check(reentrantInventoryVm.CanConfirm, "fully counted fixture must allow reviewed confirmation");
+reentrantInventoryVm.Confirm();
+Check(reentrantInventory.ConfirmedId == "INV-ORIGINAL" &&
+    reentrantInventoryVm.DocumentId == "INV-REPLACEMENT" &&
+    !reentrantInventoryVm.CanConfirm && reentrantInventoryVm.Lines.Count == 0 &&
+    !reentrantInventoryVm.Status.Contains("confirmé", StringComparison.OrdinalIgnoreCase),
+    "reentrant Inventory document replacement must never confirm or display stale success");
 // Inventory duplicate article IDs are ambiguous: refuse the entire readback.
 var ambiguousVm = new InventoryCountViewModel(new AmbiguousInventoryWorkflow()) { DocumentId = "INV-DUP" };
 ambiguousVm.Open();
@@ -2067,4 +2083,20 @@ sealed class AmbiguousInventoryWorkflow : IInventoryCountWorkflow
     public InventoryCountDocument RecordPhysicalQuantity(string id, string articleId, decimal quantity) =>
         throw new InvalidOperationException("ambiguous count must never be called");
     public bool Confirm(string id) => throw new InvalidOperationException("ambiguous confirmation must never be called");
+}
+
+sealed class ReentrantInventoryWorkflow : IInventoryCountWorkflow
+{
+    public InventoryCountViewModel? ViewModel { get; set; }
+    public string? ConfirmedId { get; private set; }
+    public InventoryCountDocument Open(string id) =>
+        new(id, new[] { new InventoryCountLine("article-A", "Article A", 10m, null) });
+    public InventoryCountDocument RecordPhysicalQuantity(string id, string articleId, decimal physicalQuantity) =>
+        new(id, new[] { new InventoryCountLine(articleId, "Article A", 10m, physicalQuantity) });
+    public bool Confirm(string id)
+    {
+        ConfirmedId = id;
+        ViewModel!.DocumentId = "INV-REPLACEMENT";
+        return true;
+    }
 }
