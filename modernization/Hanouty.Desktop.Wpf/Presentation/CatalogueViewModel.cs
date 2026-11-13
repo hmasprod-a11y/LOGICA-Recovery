@@ -73,10 +73,21 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
                 lines is null || lines.Any(x => string.IsNullOrWhiteSpace(x.ArticleId) ||
                     x.Quantity <= 0m || x.UnitPriceMad < 0m))
                 throw new InvalidOperationException("Stale or invalid Host basket snapshot");
-            // Snapshot before publication: a Host-owned mutable list must not
-            // change underneath WPF's observable collection.
+            // Enumerating a Host-owned lazy/mutable collection can itself invoke
+            // callbacks and revoke the session. Validate the materialized copy,
+            // not the original enumerable, then recheck authorization.
             var snapshot = lines.ToArray();
+            if (!FinancialSessionActive || CheckoutUncertain || _selectionInFlight ||
+                _pendingOperationId is not null || !ReferenceEquals(PaymentContext, context) ||
+                snapshot.Any(x => x is null || string.IsNullOrWhiteSpace(x.ArticleId) ||
+                    x.Quantity <= 0m || x.UnitPriceMad < 0m))
+                throw new InvalidOperationException("Stale Host basket after materialization");
             foreach (var line in snapshot) BasketLines.Add(line);
+            // ObservableCollection notifications can reenter the dispatcher and
+            // revoke the cashier while the rows are being published.
+            if (!FinancialSessionActive || CheckoutUncertain || _selectionInFlight ||
+                _pendingOperationId is not null || !ReferenceEquals(PaymentContext, context))
+                throw new InvalidOperationException("Host basket revoked during publication");
             BasketStatus = snapshot.Length == 0 ? "Panier vide" : $"{snapshot.Length} ligne(s) du panier Host";
             OnPropertyChanged(nameof(BasketStatus));
             return true;
