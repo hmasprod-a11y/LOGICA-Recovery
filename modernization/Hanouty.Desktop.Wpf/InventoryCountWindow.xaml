@@ -34,7 +34,7 @@
                     FontWeight="Bold" Click="Confirm_Click" IsEnabled="{Binding CanConfirm}"
                     AutomationProperties.Name="Confirm inventory document"/>
         </StackPanel>
-        <DataGrid ItemsSource="{Binding Lines}" AutoGenerateColumns="False" IsReadOnly="True"
+        <DataGrid ItemsSource="{Binding Lines}" AutoGenerateColumns="False" IsReadOnly="True" SelectionChanged="CountLine_Selected"
                   AutomationProperties.Name="Inventory count and differences">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Article" Binding="{Binding ArticleName}" Width="*"/>
