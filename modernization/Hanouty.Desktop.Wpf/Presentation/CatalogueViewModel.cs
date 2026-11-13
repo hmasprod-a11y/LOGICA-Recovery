@@ -37,7 +37,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private string _scannerText = "";
     private string _scanFeedback = "";
     private bool _checkoutUncertain;
-    public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); OnPropertyChanged(nameof(CanCommit)); OnPropertyChanged(nameof(CanReviewResolvedCheckout)); } }
+    public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; if (value) { BasketLines.Clear(); BasketStatus = "Checkout unknown — basket locked until durable review"; OnPropertyChanged(nameof(BasketStatus)); } OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); OnPropertyChanged(nameof(CanCommit)); OnPropertyChanged(nameof(CanReviewResolvedCheckout)); } }
     private readonly IProductSelection _selection;
     private readonly ICurrentBasketReader? _basketReader;
     public ObservableCollection<BasketDisplayLine> BasketLines { get; } = new();
