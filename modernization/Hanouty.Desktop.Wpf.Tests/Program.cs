@@ -57,6 +57,10 @@ var selectionWindow = new Hanouty.Desktop.Wpf.InventoryCountWindow(new Recording
 var selectionVm = (InventoryCountViewModel)selectionWindow.DataContext;
 selectionVm.DocumentId = "INV-SELECT";
 selectionVm.Open();
+// A detached WPF window has not completed its first binding/layout pass.
+// Show it on the actual STA runner before asserting the DataGrid Items view.
+selectionWindow.Show();
+selectionWindow.UpdateLayout();
 var countGrid = (System.Windows.Controls.DataGrid)selectionWindow.FindName("InventoryLinesGrid");
 Check(countGrid is not null && countGrid.Items.Count == 1,
     "Inventory grid must display the document supplied by Inventory");
