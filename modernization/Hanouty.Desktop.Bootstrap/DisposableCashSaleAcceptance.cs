@@ -956,27 +956,27 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 ADD PU_TTC DECIMAL(16,3), ADD TAUX_TVA DECIMAL(16,3), ADD PU_HT DECIMAL(16,3), ADD TOTAL_TTC DECIMAL(16,3),
                 ADD TOTAL_TVA DECIMAL(16,3), ADD TOTAL_HT DECIMAL(16,3), ADD TAUX_REMISE DECIMAL(16,3);
             """);
-        var beforeOrder = Snapshot(settings);
+        var salesBeforeOrder = Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE");
         try
         {
             receipt.CreateOrder("SUP-TEST", "W2-Article", 4m, "O'Neil", "1234");
             throw new InvalidOperationException("Cashier validated a purchase order.");
         }
         catch (UnauthorizedAccessException) { }
-        var newOrder = receipt.CreateOrder("SUP-TEST", "W2-Article", 4m, "Test manager", "5678");
-        Require(newOrder == "BC000001" && Snapshot(settings) == beforeOrder &&
+        RunPartialReceiptFromWindow(settings, createOrder: true);
+        const string newOrder = "BC000001";
+        Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == salesBeforeOrder &&
             Number(settings, "SELECT BC FROM TABLE_NUM WHERE ID=0") == 2 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_COMMANDES_ENTETE WHERE ID_BC='BC000001' AND ETAT='VALIDER'") == 1 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_COMMANDES_DETAILS WHERE ID_BC='BC000001' AND ETAT='VALIDER' AND PU_TTC=13 AND Qté=4") == 1,
             "LOGICA fiscal order creation did not preserve the sequence, price or stock.");
-        var orderReceipt = receipt.CreateFromOrder(newOrder, "W2-Article", 2m, "Test manager", "5678");
-        receipt.Validate(orderReceipt, "Test manager", "5678");
-        Require(orderReceipt.Lines.Single().Cost == 13m &&
+        Require(Number(settings, "SELECT COUNT(*) FROM hanouty_purchase_receipt_order WHERE ORDER_ID=@id AND QUANTITY=2", newOrder) == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_DETAILS WHERE ID_BR='BR000005' AND ETAT='VALIDER' AND PRIX_A=13") == 1 &&
             Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == startingStock + 7m,
             "The fiscal LOGICA order did not support a validated partial receipt.");
     }
 
-    private static void RunPartialReceiptFromWindow(CatalogueSettings settings, bool cancel = false)
+    private static void RunPartialReceiptFromWindow(CatalogueSettings settings, bool cancel = false, bool createOrder = false)
     {
         var host = CatalogueHost.CreateCashierWorkstation(settings, "01");
         host.Window.Show();
@@ -1015,10 +1015,20 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                                 System.Windows.Automation.AutomationProperties.GetName(field) == name);
                         System.Windows.Controls.Button Button(string label) =>
                             Controls<System.Windows.Controls.Button>(window).Single(button => Equals(button.Content, label));
-                        Field("Commande").Text = "BC-TEST";
                         Field("Identifiant article").Text = "W2-Article";
+                        if (createOrder)
+                        {
+                            Field("Identifiant fournisseur").Text = "SUP-TEST";
+                            Field("Quantité reçue").Text = "4";
+                            var beforeOrder = Snapshot(settings);
+                            timer.Start();
+                            Click(Button("Créer et valider la commande"));
+                            Require(Field("Commande").Text == "BC000001" && Snapshot(settings) == beforeOrder,
+                                "The order button did not allocate the LOGICA number without moving stock.");
+                        }
+                        else Field("Commande").Text = "BC-TEST";
                         Field("Quantité reçue").Text = cancel ? "3" : "2";
-                        var id = cancel ? "BR000002" : "BR000001";
+                        var id = createOrder ? "BR000005" : cancel ? "BR000002" : "BR000001";
                         var before = Snapshot(settings);
                         timer.Start();
                         Click(Button("Créer le bon"));
@@ -1064,7 +1074,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             }
             finally { timer.Stop(); }
             if (failure is not null) throw new InvalidOperationException("Receipt window acceptance failed.", failure);
-            Require(step == (cancel ? 4 : 3), "Receipt UI did not complete creation and validation.");
+            Require(step == (cancel || createOrder ? 4 : 3), "Receipt UI did not complete creation and validation.");
         }
         finally { host.Window.Close(); }
     }
