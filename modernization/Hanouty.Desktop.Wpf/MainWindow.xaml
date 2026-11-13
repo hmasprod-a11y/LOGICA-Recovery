@@ -8,6 +8,7 @@
     <DockPanel Margin="20" FlowDirection="{Binding LayoutDirection}">
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,16">
             <TextBlock Text="Hanouty POS" FontSize="28" FontWeight="SemiBold"/>
+            <Button Content="Inventaire physique — ouvrir le document" Click="OpenInventory_Click" HorizontalAlignment="Left" MinHeight="40" Padding="14,6" Margin="0,8,0,0" AutomationProperties.Name="Open physical inventory workflow"/>
             <CheckBox Content="Right-to-left layout" IsChecked="{Binding IsRightToLeft, Mode=TwoWay}" Margin="0,8,0,0" AutomationProperties.Name="Right-to-left layout"/>
             <TextBlock Text="Offline desktop — checkout requires registered authorized local services"
                        Foreground="DimGray" Margin="0,4,0,0"/>
