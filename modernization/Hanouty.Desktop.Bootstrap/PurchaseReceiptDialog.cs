@@ -10,7 +10,8 @@ internal sealed class PurchaseReceiptDialog : Window
     internal PurchaseReceiptDialog(PurchaseReceiptValidation service,
         Func<PurchaseReceiptValidation.Receipt, bool> validate,
         Func<string, string, decimal, PurchaseReceiptValidation.Receipt?> createFromOrder,
-        Func<PurchaseReceiptValidation.Receipt, bool> cancelReceipt)
+        Func<PurchaseReceiptValidation.Receipt, bool> cancelReceipt,
+        Func<string, string, decimal, string?> createOrder)
     {
         Title = "Réception fournisseur";
         Width = 840;
@@ -45,7 +46,41 @@ internal sealed class PurchaseReceiptDialog : Window
         var quantity = OrderField("Quantité reçue");
         var create = new Button { Content = "Créer le bon", MinHeight = 32, Margin = new Thickness(0, 14, 0, 0) };
         orderInputs.Children.Add(create);
+        var orderCreation = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+        var supplier = new TextBox { MinWidth = 160, MinHeight = 32, ToolTip = "Identifiant fournisseur" };
+        System.Windows.Automation.AutomationProperties.SetName(supplier, "Identifiant fournisseur");
+        var saveOrder = new Button { Content = "Créer et valider la commande", MinHeight = 32 };
+        orderCreation.Children.Add(new TextBlock { Text = "Fournisseur", VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0) });
+        orderCreation.Children.Add(supplier);
+        orderCreation.Children.Add(saveOrder);
+        top.Children.Add(orderCreation);
         top.Children.Add(summary);
+        saveOrder.Click += (_, _) =>
+        {
+            if (!decimal.TryParse(quantity.Text.Trim().Replace(',', '.'),
+                System.Globalization.NumberStyles.AllowDecimalPoint,
+                System.Globalization.CultureInfo.InvariantCulture, out var amount) || amount <= 0)
+            {
+                summary.Text = "Saisissez l’article et la quantité commandée.";
+                return;
+            }
+            saveOrder.IsEnabled = false;
+            try
+            {
+                var id = createOrder(supplier.Text.Trim(), article.Text.Trim(), amount);
+                if (id is not null)
+                {
+                    order.Text = id;
+                    summary.Text = $"Commande {id} validée.";
+                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or MySqlException or UnauthorizedAccessException or ArithmeticException)
+            {
+                summary.Text = "Commande non confirmée. Vérifiez le fournisseur, l’article et vos droits.";
+            }
+            finally { saveOrder.IsEnabled = true; }
+        };
 
         var confirm = new Button { Content = "Valider la réception", MinHeight = 42,
             IsEnabled = false, Margin = new Thickness(0, 10, 0, 0) };

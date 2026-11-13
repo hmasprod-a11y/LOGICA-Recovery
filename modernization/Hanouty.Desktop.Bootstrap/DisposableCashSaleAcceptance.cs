@@ -945,6 +945,35 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Number(settings, "SELECT SUM(QUANTITY) FROM hanouty_purchase_receipt_order WHERE ORDER_ID='BC-TEST'") == 5m &&
             Number(settings, "SELECT BR FROM TABLE_NUM WHERE ID=0") == 5,
             "Two partial receipts did not exhaust the order and update the stock exactly once.");
+
+        Sql(settings, """
+            ALTER TABLE TABLE_NUM ADD BC INT NOT NULL DEFAULT 1;
+            ALTER TABLE TABLE_FOURNISSEURS ADD FOURNISSEUR VARCHAR(128), ADD CODE_FOURNISSEUR VARCHAR(64);
+            UPDATE TABLE_FOURNISSEURS SET FOURNISSEUR='Fournisseur test', CODE_FOURNISSEUR='SUP' WHERE ID_FOURNISSEUR='SUP-TEST';
+            ALTER TABLE TABLE_COMMANDES_ENTETE ADD Dates DATE, ADD UTILISATEUR VARCHAR(128), ADD TOTAL_TTC_DOC DECIMAL(16,3),
+                ADD TOTAL_TVA_DOC DECIMAL(16,3), ADD TOTAL_HT_DOC DECIMAL(16,3), ADD TOTAL_REMISE_DOC DECIMAL(16,3);
+            ALTER TABLE TABLE_COMMANDES_DETAILS ADD Dates DATE, ADD CODE_FOURNISSEUR VARCHAR(64), ADD FOURNISSEUR VARCHAR(128),
+                ADD PU_TTC DECIMAL(16,3), ADD TAUX_TVA DECIMAL(16,3), ADD PU_HT DECIMAL(16,3), ADD TOTAL_TTC DECIMAL(16,3),
+                ADD TOTAL_TVA DECIMAL(16,3), ADD TOTAL_HT DECIMAL(16,3), ADD TAUX_REMISE DECIMAL(16,3);
+            """);
+        var beforeOrder = Snapshot(settings);
+        try
+        {
+            receipt.CreateOrder("SUP-TEST", "W2-Article", 4m, "O'Neil", "1234");
+            throw new InvalidOperationException("Cashier validated a purchase order.");
+        }
+        catch (UnauthorizedAccessException) { }
+        var newOrder = receipt.CreateOrder("SUP-TEST", "W2-Article", 4m, "Test manager", "5678");
+        Require(newOrder == "BC000001" && Snapshot(settings) == beforeOrder &&
+            Number(settings, "SELECT BC FROM TABLE_NUM WHERE ID=0") == 2 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_COMMANDES_ENTETE WHERE ID_BC='BC000001' AND ETAT='VALIDER'") == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_COMMANDES_DETAILS WHERE ID_BC='BC000001' AND ETAT='VALIDER' AND PU_TTC=13 AND Qté=4") == 1,
+            "LOGICA fiscal order creation did not preserve the sequence, price or stock.");
+        var orderReceipt = receipt.CreateFromOrder(newOrder, "W2-Article", 2m, "Test manager", "5678");
+        receipt.Validate(orderReceipt, "Test manager", "5678");
+        Require(orderReceipt.Lines.Single().Cost == 13m &&
+            Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == startingStock + 7m,
+            "The fiscal LOGICA order did not support a validated partial receipt.");
     }
 
     private static void RunPartialReceiptFromWindow(CatalogueSettings settings, bool cancel = false)

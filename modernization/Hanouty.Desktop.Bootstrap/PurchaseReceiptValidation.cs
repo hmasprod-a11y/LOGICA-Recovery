@@ -16,6 +16,112 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
         return Read(connection, transaction, id, lockRows: false);
     }
 
+    private static bool HasFiscalOrderColumns(MySqlConnection connection, MySqlTransaction transaction)
+    {
+        using var command = Command(connection, transaction,
+            "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() " +
+            "AND TABLE_NAME='TABLE_COMMANDES_DETAILS' AND COLUMN_NAME='PU_TTC'");
+        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture) == 1;
+    }
+
+    internal string CreateOrder(string supplierId, string articleId, decimal quantity, string actor, string pin)
+    {
+        if (string.IsNullOrWhiteSpace(supplierId) || string.IsNullOrWhiteSpace(articleId) ||
+            quantity <= 0 || Round(quantity) != quantity)
+            throw new ArgumentException("Fournisseur, article et quantité positive à deux décimales requis.");
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
+        InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_PASS", "TABLE_NUM",
+            "TABLE_FOURNISSEURS", "TABLE_ARTICLES", "TABLE_COMMANDES_ENTETE", "TABLE_COMMANDES_DETAILS");
+        // The WPF action explicitly creates and validates the order in one operation.
+        InventoryDocumentValidation.Authenticate(connection, transaction, actor, pin, validationOnly: true);
+
+        void Write(string sql, params (string Name, object Value)[] args)
+        {
+            using var command = Command(connection, transaction, sql, args);
+            if (command.ExecuteNonQuery() != 1) throw new InvalidOperationException("Commande non enregistrée.");
+        }
+
+        string supplier;
+        string supplierCode;
+        using (var command = Command(connection, transaction,
+            "SELECT FOURNISSEUR, CODE_FOURNISSEUR FROM TABLE_FOURNISSEURS WHERE BINARY ID_FOURNISSEUR=BINARY @id FOR UPDATE",
+            ("@id", supplierId)))
+        using (var reader = command.ExecuteReader())
+        {
+            if (!reader.Read() || reader.IsDBNull(0)) throw new InvalidOperationException("Fournisseur introuvable.");
+            supplier = reader.GetString(0);
+            supplierCode = reader.IsDBNull(1) ? "" : reader.GetString(1);
+            if (string.IsNullOrWhiteSpace(supplier) || reader.Read())
+                throw new InvalidOperationException("Fournisseur ambigu ou incomplet.");
+        }
+
+        decimal cost;
+        decimal sale;
+        decimal taxRate;
+        string code;
+        string article;
+        using (var command = Command(connection, transaction,
+            "SELECT Code, Article, PRIX_A, PRIX_V_1, TAUX_TVA FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE",
+            ("@id", articleId)))
+        using (var reader = command.ExecuteReader())
+        {
+            if (!reader.Read() || reader.IsDBNull(1) || reader.IsDBNull(2) ||
+                reader.IsDBNull(3) || reader.IsDBNull(4))
+                throw new InvalidOperationException("Article introuvable ou incomplet.");
+            code = reader.IsDBNull(0) ? "" : reader.GetString(0);
+            article = reader.GetString(1);
+            cost = Round(reader.GetDecimal(2));
+            sale = Round(reader.GetDecimal(3));
+            taxRate = reader.GetDecimal(4);
+            if (reader.Read() || cost < 0 || sale < 0 || taxRate < 0)
+                throw new InvalidOperationException("Article ambigu ou prix invalide.");
+        }
+
+        long number;
+        using (var command = Command(connection, transaction, "SELECT BC FROM TABLE_NUM WHERE ID=0 FOR UPDATE"))
+        using (var reader = command.ExecuteReader())
+        {
+            if (!reader.Read() || reader.IsDBNull(0)) throw new InvalidOperationException("Compteur BC absent.");
+            number = reader.GetInt64(0);
+            if (number < 0 || reader.Read()) throw new InvalidOperationException("Compteur BC invalide.");
+        }
+        var id = "BC" + number.ToString("D6", CultureInfo.InvariantCulture);
+        using (var exists = Command(connection, transaction,
+            "SELECT COUNT(*) FROM TABLE_COMMANDES_ENTETE WHERE BINARY ID_BC=BINARY @id", ("@id", id)))
+            if (Convert.ToInt64(exists.ExecuteScalar(), CultureInfo.InvariantCulture) != 0)
+                throw new InvalidOperationException("Le numéro BC est déjà utilisé.");
+
+        var date = DateTime.Today;
+        var purchase = Round(cost * quantity);
+        var sales = Round(sale * quantity);
+        var unitBeforeTax = Round(cost / (1m + taxRate / 100m));
+        var beforeTax = Round(unitBeforeTax * quantity);
+        var fiscal = HasFiscalOrderColumns(connection, transaction);
+        var headerColumns = fiscal ? "TOTAL_TTC_DOC,TOTAL_TVA_DOC,TOTAL_HT_DOC,TOTAL_REMISE_DOC" :
+            "TOTAL_NET_ACHATS,TOTAL_NET_VENTES";
+        var headerValues = fiscal ? "@purchase,@tax,@beforeTax,0" : "@purchase,@sales";
+        Write("INSERT INTO TABLE_COMMANDES_ENTETE " +
+            $"(Dates,ID_BC,UTILISATEUR,ID_FOURNISSEUR,CODE_FOURNISSEUR,FOURNISSEUR,{headerColumns},ETAT) " +
+            $"VALUES (@date,@id,@actor,@supplier,@supplierCode,@supplierName,{headerValues},'VALIDER')",
+            ("@date", date), ("@id", id), ("@actor", actor), ("@supplier", supplierId),
+            ("@supplierCode", supplierCode), ("@supplierName", supplier), ("@purchase", purchase),
+            ("@sales", sales), ("@tax", purchase - beforeTax), ("@beforeTax", beforeTax));
+        var detailColumns = fiscal ? "PU_TTC,TAUX_TVA,PU_HT,TOTAL_TTC,TOTAL_TVA,TOTAL_HT,TAUX_REMISE" :
+            "PRIX_A,PRIX_V,TOTAL_NET_ACHATS,TOTAL_NET_VENTES";
+        var detailValues = fiscal ? "@cost,@rate,@unitBeforeTax,@purchase,@tax,@beforeTax,0" : "@cost,@sale,@purchase,@sales";
+        Write("INSERT INTO TABLE_COMMANDES_DETAILS " +
+            $"(Dates,ID_BC,ID_FOURNISSEUR,CODE_FOURNISSEUR,FOURNISSEUR,ID_ARTICLE,Code,Article,`Qté`,{detailColumns},ETAT) " +
+            $"VALUES (@date,@id,@supplier,@supplierCode,@supplierName,@articleId,@code,@article,@quantity,{detailValues},'VALIDER')",
+            ("@date", date), ("@id", id), ("@supplier", supplierId), ("@supplierCode", supplierCode),
+            ("@supplierName", supplier), ("@articleId", articleId), ("@code", code), ("@article", article),
+            ("@quantity", quantity), ("@cost", cost), ("@sale", sale), ("@purchase", purchase), ("@sales", sales),
+            ("@rate", taxRate), ("@unitBeforeTax", unitBeforeTax), ("@tax", purchase - beforeTax), ("@beforeTax", beforeTax));
+        Write("UPDATE TABLE_NUM SET BC=BC+1 WHERE ID=0 AND BC=@number", ("@number", number));
+        transaction.Commit();
+        return id;
+    }
+
     internal Receipt CreateFromOrder(string orderId, string articleId, decimal quantity, string actor, string pin)
     {
         if (string.IsNullOrWhiteSpace(orderId) || string.IsNullOrWhiteSpace(articleId) ||
@@ -55,28 +161,43 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
                 throw new InvalidOperationException("Commande ou fournisseur ambigu.");
         }
 
+        var fiscalOrder = HasFiscalOrderColumns(connection, transaction);
+        var priceColumns = fiscalOrder ? "PU_TTC, NULL" : "PRIX_A, PRIX_V";
         decimal ordered;
         decimal cost;
         decimal salePrice;
         string code;
         string articleName;
         using (var detail = Query(
-            "SELECT `Qté`, PRIX_A, PRIX_V, Code, Article FROM TABLE_COMMANDES_DETAILS " +
+            $"SELECT `Qté`, {priceColumns}, Code, Article FROM TABLE_COMMANDES_DETAILS " +
             "WHERE BINARY ID_BC=BINARY @order AND BINARY ID_ARTICLE=BINARY @article " +
             "AND BINARY ID_FOURNISSEUR=BINARY @supplier AND ETAT='VALIDER' FOR UPDATE",
             ("@order", orderId), ("@article", articleId), ("@supplier", supplierId)))
         using (var reader = detail.ExecuteReader())
         {
             if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1) ||
-                reader.IsDBNull(2) || reader.IsDBNull(4))
+                (!fiscalOrder && reader.IsDBNull(2)) || reader.IsDBNull(4))
                 throw new InvalidOperationException("Ligne de commande introuvable ou incomplète.");
             ordered = Round(reader.GetDecimal(0));
             cost = Round(reader.GetDecimal(1));
-            salePrice = Round(reader.GetDecimal(2));
+            salePrice = fiscalOrder ? 0m : Round(reader.GetDecimal(2));
             code = reader.IsDBNull(3) ? "" : reader.GetString(3);
             articleName = reader.GetString(4);
             if (reader.Read() || cost < 0 || salePrice < 0)
                 throw new InvalidOperationException("Ligne de commande ambiguë ou invalide.");
+        }
+
+        if (fiscalOrder)
+        {
+            InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_ARTICLES");
+            using var article = Query("SELECT PRIX_V_1 FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE",
+                ("@id", articleId));
+            using var reader = article.ExecuteReader();
+            if (!reader.Read() || reader.IsDBNull(0))
+                throw new InvalidOperationException("Prix de vente de l’article introuvable.");
+            salePrice = Round(reader.GetDecimal(0));
+            if (salePrice < 0 || reader.Read())
+                throw new InvalidOperationException("Prix de vente de l’article invalide.");
         }
 
         // Serialize reservations for an order through the locked LOGICA header.

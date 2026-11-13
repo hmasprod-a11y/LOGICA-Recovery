@@ -423,6 +423,18 @@ public sealed partial record CatalogueHost
                     return true;
                 }
                 finally { reviewing = false; }
+            }, (supplier, article, quantity) =>
+            {
+                if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                    binding.Session.PendingCount != 0) return null;
+                reviewing = true;
+                try
+                {
+                    var pin = window.PromptCashierPin(actor);
+                    return string.IsNullOrWhiteSpace(pin) ? null :
+                        receipt.CreateOrder(supplier, article, quantity, actor, pin);
+                }
+                finally { reviewing = false; }
             });
             dialog.Owner = window;
             dialog.ShowDialog();
