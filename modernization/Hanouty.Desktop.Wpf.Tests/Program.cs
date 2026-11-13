@@ -31,6 +31,29 @@ Hanouty.Desktop.Wpf.App.ResolveServices = () =>
 Check(!Hanouty.Desktop.Wpf.App.HasProductionStartupResolver,
     "catalogue-only resolver must not unlock installed production startup");
 Hanouty.Desktop.Wpf.App.ResolveServices = null;
+// Two distinct articles must be read back from the SAME Host selection port;
+// the WPF VM must not synthesize basket quantities or unit prices.
+var hostBasket = new TwoArticleHostBasket();
+var basketVm = new CatalogueViewModel(new Reader(new[] {
+    new ProductSummary("article-A", "Article A", "SCAN-A"),
+    new ProductSummary("article-B", "Article B", "SCAN-B")
+}), hostBasket);
+basketVm.ScannerText = "SCAN-A";
+basketVm.ScanBarcode();
+Check(basketVm.BasketLines.Count == 1 && basketVm.BasketLines[0].ArticleId == "article-A" &&
+    basketVm.BasketLines[0].Quantity == 2m && basketVm.BasketLines[0].UnitPriceMad == 7.5m,
+    "first scan must show authoritative Host quantity and price");
+basketVm.ScannerText = "SCAN-B";
+basketVm.ScanBarcode();
+Check(basketVm.BasketLines.Count == 2 && basketVm.BasketLines[1].ArticleId == "article-B" &&
+    basketVm.BasketLines[1].Quantity == 1m && basketVm.BasketLines[1].UnitPriceMad == 11m &&
+    hostBasket.Reads == 2, "second scan must read back both Host basket lines");
+basketVm.FinancialSessionActive = false;
+Check(basketVm.BasketLines.Count == 0, "cashier logout must erase stale basket projection");
+var unconnectedBasket = new CatalogueViewModel(new Reader(new[] {
+    new ProductSummary("A", "Article A", "A") }), new RecordingSelection());
+Check(!unconnectedBasket.RefreshBasketLines() && unconnectedBasket.BasketLines.Count == 0,
+    "missing Host basket reader must not invent a WPF basket");
 // Production session adapter must not post if the Host session expires or
 // its authorization callback fails. The same durable submission stays unused.
 var expiredHostSession = new SessionFinancialSubmission();
@@ -1877,5 +1900,24 @@ sealed class CallbackOriginalSaleLookup(Action callback) : IOriginalSaleLookup
         Calls++;
         callback();
         return new[] { new OriginalSaleCandidate("persisted-1", receiptSearch, 25m) };
+    }
+}
+
+// Test-only Host fixture: values are read back from the selection port, never priced by WPF.
+sealed class TwoArticleHostBasket : IProductSelection, ICurrentBasketReader
+{
+    private readonly List<BasketDisplayLine> _lines = new();
+    public int Reads { get; private set; }
+    public bool Select(ProductSummary product)
+    {
+        if (product.Id == "article-A") _lines.Add(new BasketDisplayLine(product.Id, product.Name, 2m, 7.5m));
+        else if (product.Id == "article-B") _lines.Add(new BasketDisplayLine(product.Id, product.Name, 1m, 11m));
+        else return false;
+        return true;
+    }
+    public IReadOnlyList<BasketDisplayLine> ReadCurrentBasket()
+    {
+        Reads++;
+        return _lines.ToArray();
     }
 }
