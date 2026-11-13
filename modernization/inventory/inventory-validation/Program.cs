@@ -81,3 +81,40 @@ ExpectPlanRefused("added article after count", baseline, counted, new[] {
 ExpectPlanRefused("removed article after count", baseline, counted, new[] { baseline[0] });
 if (refusedPlans != 5) throw new Exception("Missing inventory preparation refusal assertions.");
 Console.WriteLine("PASS: read-only coverage/freshness checks; no database opened or modified.");
+
+
+int malformedRejected = 0;
+void ExpectMalformedRefused<TException>(string label,
+    LOGICA.ApplicationLayer.Inventory.StockBaselineLine[] initial,
+    LOGICA.ApplicationLayer.Inventory.StockCountLine[] physical,
+    LOGICA.ApplicationLayer.Inventory.StockBaselineLine[] current) where TException : Exception
+{
+    try
+    {
+        InventoryValidationPreparation.RequireCompleteFreshCount(initial, physical, current);
+        throw new Exception("FAIL: " + label + " accepted.");
+    }
+    catch (TException)
+    {
+        malformedRejected++;
+        Console.WriteLine("PASS: " + label + " rejected");
+    }
+}
+ExpectMalformedRefused<InvalidOperationException>("duplicate baseline article",
+    new[] { baseline[0], baseline[0], baseline[1] }, counted, baseline);
+ExpectMalformedRefused<InvalidOperationException>("duplicate physical count article",
+    baseline, new[] { counted[0], counted[0], counted[1] }, baseline);
+ExpectMalformedRefused<InvalidOperationException>("duplicate current article after count",
+    baseline, counted, new[] { baseline[0], baseline[1], baseline[1] });
+ExpectMalformedRefused<ArgumentOutOfRangeException>("negative physical count",
+    baseline, new[] {
+        new LOGICA.ApplicationLayer.Inventory.StockCountLine("ART-A", 8m, -1m),
+        counted[1]
+    }, baseline);
+ExpectMalformedRefused<ArgumentException>("blank article identity in baseline",
+    new[] {
+        new LOGICA.ApplicationLayer.Inventory.StockBaselineLine(" ", 8m),
+        baseline[1]
+    }, counted, baseline);
+if (malformedRejected != 5) throw new Exception("Missing malformed inventory refusal assertions.");
+Console.WriteLine("PASS: five additional malformed count/identity cases; no database opened or modified.");
