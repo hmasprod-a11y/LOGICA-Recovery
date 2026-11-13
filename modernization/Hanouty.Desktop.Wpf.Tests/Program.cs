@@ -54,6 +54,25 @@ var unconnectedBasket = new CatalogueViewModel(new Reader(new[] {
     new ProductSummary("A", "Article A", "A") }), new RecordingSelection());
 Check(!unconnectedBasket.RefreshBasketLines() && unconnectedBasket.BasketLines.Count == 0,
     "missing Host basket reader must not invent a WPF basket");
+// A Host read can pump the UI dispatcher and revoke the session or enter Unknown.
+// A stale readback must never repopulate the visible basket.
+CatalogueViewModel? revokedBasketVm = null;
+var revokedReader = new CallbackBasketReader(() => revokedBasketVm!.FinancialSessionActive = false);
+revokedBasketVm = new CatalogueViewModel(new Reader(new[] {
+    new ProductSummary("revoked", "Revoked article", "R")
+}), new RecordingSelection(), basketReader: revokedReader);
+Check(!revokedBasketVm.RefreshBasketLines() && revokedBasketVm.BasketLines.Count == 0 &&
+    !revokedBasketVm.FinancialSessionActive,
+    "Host basket readback must fail closed when cashier session is revoked mid-read");
+CatalogueViewModel? nestedBasketVm = null;
+var nestedReader = new CallbackBasketReader(() =>
+    Check(!nestedBasketVm!.RefreshBasketLines(), "nested Host basket read must be refused"));
+nestedBasketVm = new CatalogueViewModel(new Reader(new[] {
+    new ProductSummary("nested", "Nested article", "N")
+}), new RecordingSelection(), basketReader: nestedReader);
+Check(nestedBasketVm.RefreshBasketLines() && nestedReader.Reads == 1 &&
+    nestedBasketVm.BasketLines.Count == 1,
+    "Host basket reader reentrancy must not trigger a second read");
 // Production session adapter must not post if the Host session expires or
 // its authorization callback fails. The same durable submission stays unused.
 var expiredHostSession = new SessionFinancialSubmission();
@@ -1919,5 +1938,16 @@ sealed class TwoArticleHostBasket : IProductSelection, ICurrentBasketReader
     {
         Reads++;
         return _lines.ToArray();
+    }
+}
+
+sealed class CallbackBasketReader(Action callback) : ICurrentBasketReader
+{
+    public int Reads { get; private set; }
+    public IReadOnlyList<BasketDisplayLine> ReadCurrentBasket()
+    {
+        Reads++;
+        callback();
+        return new[] { new BasketDisplayLine("test", "Test", 1m, 3m) };
     }
 }
