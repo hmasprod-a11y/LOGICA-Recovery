@@ -92,6 +92,19 @@
                 <ScrollViewer x:Name="CashierWorkflowScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                           CanContentScroll="True" AutomationProperties.Name="Cashier and return workflow scroll region">
                 <StackPanel Margin="0,0,8,0">
+                <GroupBox Header="PANIER · Lignes du Host" Margin="0,0,0,12" AutomationProperties.Name="Current Host basket">
+                    <DockPanel Margin="8">
+                        <TextBlock DockPanel.Dock="Bottom" Text="{Binding BasketStatus}" Foreground="DimGray" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                        <DataGrid ItemsSource="{Binding BasketLines}" AutoGenerateColumns="False" IsReadOnly="True"
+                                  MinHeight="140" MaxHeight="280" AutomationProperties.Name="Basket article quantity price">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Article" Binding="{Binding ArticleName}" Width="*"/>
+                                <DataGridTextColumn Header="Qté" Binding="{Binding Quantity}" Width="70"/>
+                                <DataGridTextColumn Header="Prix MAD" Binding="{Binding UnitPriceMad, StringFormat={}{0:F2}}" Width="95"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </GroupBox>
                 <TextBlock Text="Selected product" FontSize="18" FontWeight="SemiBold"/>
                 <TextBlock Text="{Binding SelectedProduct.Name, TargetNullValue=No product selected}"
                            Margin="0,12,0,6" TextWrapping="Wrap"/>
