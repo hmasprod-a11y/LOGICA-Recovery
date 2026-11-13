@@ -45,8 +45,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     public void Record()
     {
         if (!CanRecord || !Lines.Any(x => x.ArticleId == ArticleId) ||
-            !decimal.TryParse(PhysicalText, System.Globalization.NumberStyles.AllowDecimalPoint,
-                System.Globalization.CultureInfo.InvariantCulture, out var quantity) ||
+            !TryParsePhysicalQuantity(PhysicalText, out var quantity) ||
             quantity < 0m)
         {
             Status = "Article ou quantité physique invalide";
@@ -65,6 +64,21 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
             _openedDocumentId = null;
             Status = "Document confirmé par Inventory";
         });
+    }
+    // Physical stock is a quantity, never a monetary value: no thousands grouping,
+    // signs, exponents or currency symbols. Accept decimal comma and decimal dot
+    // regardless of the workstation locale, without silently changing magnitude.
+    private static bool TryParsePhysicalQuantity(string input, out decimal quantity)
+    {
+        quantity = 0m;
+        var value = input.Trim();
+        if (value.Length == 0 || value.Any(c => c is not (>= '0' and <= '9') and not '.' and not ','))
+            return false;
+        if (value.Count(c => c == '.' || c == ',') > 1)
+            return false;
+        return decimal.TryParse(value.Replace(',', '.'),
+            System.Globalization.NumberStyles.AllowDecimalPoint,
+            System.Globalization.CultureInfo.InvariantCulture, out quantity);
     }
     private void Apply(InventoryCountDocument document)
     {
