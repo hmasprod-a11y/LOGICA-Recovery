@@ -39,6 +39,31 @@ ExpectDenied("case-sensitive distinct identities still require grant",
 if (rejected != 6) throw new Exception("Missing denial assertions.");
 Console.WriteLine("PASS: six fail-closed boundary cases; no database opened or modified.");
 
+// UI rows can be edited between preview and write. The request must retain an immutable
+// identity snapshot; a caller's List<T> must not be able to replace validated identities.
+var mutableUiArticleIds = new List<string> { "ART-A", "ART-B" };
+var snapshottedRequest = new InventoryValidationRequest("INV-TEST-SNAPSHOT", mutableUiArticleIds);
+mutableUiArticleIds[0] = "ART-INJECTED";
+mutableUiArticleIds.Add("ART-EXTRA");
+if (snapshottedRequest.ArticleIds.Count != 2 ||
+    snapshottedRequest.ArticleIds[0] != "ART-A" ||
+    snapshottedRequest.ArticleIds[1] != "ART-B")
+    throw new Exception("FAIL: inventory identity request changed after caller mutated UI list.");
+if (snapshottedRequest.ArticleIds is IList<string> writable)
+{
+    try
+    {
+        writable[0] = "ART-INJECTED";
+        throw new Exception("FAIL: inventory request exposes a writable identity list.");
+    }
+    catch (NotSupportedException)
+    {
+        Console.WriteLine("PASS: immutable article identity snapshot denies UI mutation.");
+    }
+}
+ExpectDenied("immutable snapshot still requires verified grant", snapshottedRequest);
+
+
 
 var baseline = new[] {
     new LOGICA.ApplicationLayer.Inventory.StockBaselineLine("ART-A", 8m),
