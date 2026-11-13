@@ -56,6 +56,8 @@ documentVm.Record();
 Check(documentVm.Lines[0].PhysicalQuantity == 8.25m,
     "mixed thousands/decimal separators must not reach Inventory");
 documentVm.DocumentId = "INV-002";
+Check(documentVm.ArticleId == "" && documentVm.PhysicalText == "",
+    "switching inventory document must clear previous article and physical count editor");
 Check(documentVm.Lines.Count == 0 && !documentVm.CanRecord && !documentVm.CanConfirm,
     "changing document identity must invalidate the count and confirmation");
 documentVm.Confirm();
