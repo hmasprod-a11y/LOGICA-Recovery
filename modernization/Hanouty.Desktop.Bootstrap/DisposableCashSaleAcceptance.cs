@@ -701,6 +701,36 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == stockBefore - 4 &&
                 Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == salesBefore + 3,
                 "Reauthenticated cashier sale failed on the same workstation.");
+
+            var twoArticleSequence = Number(settings, "SELECT CL FROM TABLE_NUM");
+            var twoArticleSales = Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE");
+            var firstStock = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+            Sql(settings, "INSERT INTO TABLE_ARTICLES VALUES ('W2-Second',15,'W2-SECOND','Second test product',NULL,'Food',1,1,8,20,'G',0,0)");
+            Stage(2);
+            workstation.ViewModel.ScannerText = "W2-SECOND";
+            workstation.ViewModel.ScanCommand.Execute(null);
+            var displayed = workstation.ViewModel.BasketLines.ToArray();
+            Require(displayed.Length == 2 &&
+                displayed.Any(line => line.ArticleId == "W2-Article" && line.Quantity == 2 && line.UnitPriceMad == 5.25m) &&
+                displayed.Any(line => line.ArticleId == "W2-Second" && line.Quantity == 1 && line.UnitPriceMad == 8m),
+                "Two scans did not show both authoritative basket lines.");
+            Require(CashierEntry(workstation, "Second cashier", "01", "20", 18.50m),
+                "Cashier dialog did not accept the authoritative total for both articles.");
+            ReviewThroughDialog(workstation, "4321", true,
+                () => workstation.ViewModel.CommitCommand.Execute(null));
+            workstation.ViewModel.CommitCommand.Execute(null);
+            var twoArticleTicket = Convert.ToString(Value(settings,
+                "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE WHERE TICKET='" +
+                twoArticleSequence.ToString("000000", CultureInfo.InvariantCulture) + "'"))!;
+            Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == twoArticleSales + 1 &&
+                Number(settings, "SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id", twoArticleTicket) == 18.50m &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET=@id", twoArticleTicket) == 2 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MONTANT=20", twoArticleTicket) == 1 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MONTANT=-1.5", twoArticleTicket) == 1 &&
+                Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == firstStock - 2 &&
+                Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Second'") == 14,
+                "Two-article cashier sale did not persist exactly one ticket, tender, change and stock update.");
+            Sql(settings, "DELETE FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Second'");
         }
         finally { workstation.Window.Close(); }
 
