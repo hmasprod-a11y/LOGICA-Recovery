@@ -56,7 +56,8 @@ public partial class MainWindow : Window
             selectionVm.ScanFeedback == "Selection accepted")
         {
             _trustedTotalRevision++;
-            TrustedBasketTotal.Text = "Basket changed — refresh trusted total";
+            TrustedBasketTotal.Text = "Basket changed — reading Host total";
+            Dispatcher.BeginInvoke(new Action(() => RefreshTrustedBasketTotal()), System.Windows.Threading.DispatcherPriority.Background);
             return;
         }
         if (e.PropertyName is not (nameof(CatalogueViewModel.FinancialSessionActive) or
@@ -565,7 +566,8 @@ public partial class MainWindow : Window
     // Architecture-owned CreateFinancial host supplies the authenticated, trusted
     // cash-session context. This constructor does not read PIN or calculate prices.
     public MainWindow(ICatalogueReader catalogue, IProductSelection checkout,
-        ICheckoutSubmission submission, CashierPaymentContext? paymentContext, bool requireFreshPaymentContext = false)
+        ICheckoutSubmission submission, CashierPaymentContext? paymentContext, bool requireFreshPaymentContext = false,
+        ICurrentBasketReader? basketReader = null)
     {
         ArgumentNullException.ThrowIfNull(catalogue);
         ArgumentNullException.ThrowIfNull(checkout);
@@ -578,7 +580,7 @@ public partial class MainWindow : Window
         // Pass the same production instance: never create a second journal or host.
         DataContext = new CatalogueViewModel(catalogue, checkout,
             submission: submission,
-            reconciliation: submission as ICheckoutOutcomeReconciliation)
+            reconciliation: submission as ICheckoutOutcomeReconciliation, basketReader: basketReader)
         {
             RequireFreshPaymentContext = requireFreshPaymentContext,
             PaymentContext = paymentContext,

@@ -411,13 +411,19 @@ namespace LOGICA.Infrastructure.Checkout
         // The price preview and actual staging share THIS policy and operation
         // order. Preview never stages/claims/posts and is revalidated at Commit.
         internal static decimal ReadCashSaleTotal(IReadOnlyList<CheckoutBatchLine> lines,
+            MySqlConnection connection, MySqlTransaction transaction) =>
+            ReadCashSaleLines(lines, connection, transaction).Sum(line => line.Amount);
+
+        internal sealed record CashSaleLine(string ArticleId, string ArticleName, int Quantity, decimal UnitPrice, decimal Amount);
+
+        internal static IReadOnlyList<CashSaleLine> ReadCashSaleLines(IReadOnlyList<CheckoutBatchLine> lines,
             MySqlConnection connection, MySqlTransaction transaction)
         {
             if (lines == null || lines.Any(x => x == null ||
                 string.IsNullOrWhiteSpace(x.ArticleId) || x.Quantity <= 0) ||
                 lines.GroupBy(x => x.ArticleId, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
                 throw new InvalidOperationException("Valid aggregated checkout lines are required for price preview.");
-            decimal total = 0m;
+            var result = new List<CashSaleLine>(lines.Count);
             foreach (var line in lines)
             {
                 var article = Read(connection, transaction,
@@ -425,9 +431,12 @@ namespace LOGICA.Infrastructure.Checkout
                     ("@id", line.ArticleId));
                 if (article.Rows.Count != 1)
                     throw new InvalidOperationException("Requested article is unavailable.");
-                total = checked(total + StandardCashLineTotal(article.Rows[0], line.Quantity));
+                var row = article.Rows[0];
+                var amount = StandardCashLineTotal(row, line.Quantity);
+                result.Add(new CashSaleLine(line.ArticleId, Convert.ToString(row["Article"]) ?? line.ArticleId,
+                    line.Quantity, Number(row, "PRIX_V_1"), amount));
             }
-            return total;
+            return result.AsReadOnly();
         }
 
         private static decimal StandardCashLineTotal(DataRow article, int quantity)

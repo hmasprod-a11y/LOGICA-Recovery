@@ -6,6 +6,14 @@ namespace Hanouty.Desktop.Wpf.Presentation;
 
 public sealed record ProductSummary(string Id, string Name, string Barcode, string? ImagePath = null);
 
+// Read-only projection of the EXISTING Host basket, never a WPF-owned basket.
+// The production composition root must implement this using its active cashier session.
+public sealed record BasketDisplayLine(string ArticleId, string ArticleName, decimal Quantity, decimal UnitPriceMad);
+public interface ICurrentBasketReader
+{
+    IReadOnlyList<BasketDisplayLine> ReadCurrentBasket();
+}
+
 public interface ICatalogueReader
 {
     IReadOnlyList<ProductSummary> ReadProducts();
@@ -31,6 +39,57 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private bool _checkoutUncertain;
     public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); OnPropertyChanged(nameof(CanCommit)); OnPropertyChanged(nameof(CanReviewResolvedCheckout)); } }
     private readonly IProductSelection _selection;
+    private readonly ICurrentBasketReader? _basketReader;
+    public ObservableCollection<BasketDisplayLine> BasketLines { get; } = new();
+    public string BasketStatus { get; private set; } = "Host basket reader not connected";
+    private void RefreshBasketLinesAfterSelection()
+    {
+        // Selection is still marked in-flight until the Host call returns.
+        // Read the same Host-owned basket only after this guard is released.
+        _basketRefreshPending = true;
+    }
+    private bool _basketRefreshPending;
+    private bool _basketReadBusy;
+    public bool RefreshBasketLines()
+    {
+        // Host callbacks can pump the dispatcher; never publish a snapshot
+        // captured under a previous session, payment context or Unknown state.
+        if (_basketReadBusy) return false;
+        BasketLines.Clear();
+        if (_basketReader is null || !FinancialSessionActive || CheckoutUncertain ||
+            _selectionInFlight || _pendingOperationId is not null)
+        {
+            BasketStatus = "Authorized Host basket unavailable";
+            OnPropertyChanged(nameof(BasketStatus));
+            return false;
+        }
+        _basketReadBusy = true;
+        var context = PaymentContext;
+        try
+        {
+            var lines = _basketReader.ReadCurrentBasket();
+            if (!FinancialSessionActive || CheckoutUncertain || _selectionInFlight ||
+                _pendingOperationId is not null || !ReferenceEquals(PaymentContext, context) ||
+                lines is null || lines.Any(x => string.IsNullOrWhiteSpace(x.ArticleId) ||
+                    x.Quantity <= 0m || x.UnitPriceMad < 0m))
+                throw new InvalidOperationException("Stale or invalid Host basket snapshot");
+            // Snapshot before publication: a Host-owned mutable list must not
+            // change underneath WPF's observable collection.
+            var snapshot = lines.ToArray();
+            foreach (var line in snapshot) BasketLines.Add(line);
+            BasketStatus = snapshot.Length == 0 ? "Panier vide" : $"{snapshot.Length} ligne(s) du panier Host";
+            OnPropertyChanged(nameof(BasketStatus));
+            return true;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            BasketLines.Clear();
+            BasketStatus = "Host basket unavailable";
+            OnPropertyChanged(nameof(BasketStatus));
+            return false;
+        }
+        finally { _basketReadBusy = false; }
+    }
     private bool _selectionInFlight;
     public bool CheckoutBusy => _selectionInFlight;
     public bool RequireFreshPaymentContext { get; init; }
@@ -45,6 +104,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             if (!value)
             {
                 ClearConsumedPaymentContext();
+                BasketLines.Clear();
+                BasketStatus = "Cashier session required";
+                OnPropertyChanged(nameof(BasketStatus));
                 // Logout invalidates the selection/variant choice from the old cashier.
                 // Never allow a re-login to submit a previously staged article.
                 _selectedProduct = null;
@@ -80,19 +142,20 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
 
     public System.Windows.Input.ICommand ReconcileCommand { get; }
     private readonly ICheckoutOutcomeReconciliation? _reconciliation;
-    public string CommitFeedback { get => _commitFeedback; private set { _commitFeedback = value; OnPropertyChanged(); } }
+    public string CommitFeedback { get => _commitFeedback; private set { _commitFeedback = value; BasketLines.Clear(); OnPropertyChanged(); } }
     public bool CanCommit => FinancialSessionActive && _submission is IContextualCheckoutSubmission &&
         PaymentContext is { IsWellFormed: true, TenderedAmount: > 0m } &&
         CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
     public System.Windows.Input.ICommand CommitCommand { get; }
     private readonly IProductImageAvailability _images;
 
-    public CatalogueViewModel(ICatalogueReader reader, IProductSelection selection, IProductImageAvailability? images = null, ICheckoutSubmission? submission = null, ICheckoutOutcomeReconciliation? reconciliation = null)
+    public CatalogueViewModel(ICatalogueReader reader, IProductSelection selection, IProductImageAvailability? images = null, ICheckoutSubmission? submission = null, ICheckoutOutcomeReconciliation? reconciliation = null, ICurrentBasketReader? basketReader = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         _reader = reader;
         _all = Array.Empty<ProductSummary>();
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
+        _basketReader = basketReader ?? selection as ICurrentBasketReader;
         _images = images ?? new LocalProductImageAvailability();
         _submission = submission;
         _reconciliation = reconciliation;
@@ -283,6 +346,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(CanSelectProduct));
             OnPropertyChanged(nameof(CanCommit));
             ScanFeedback = _selection.Select(SelectedProduct) ? "Selection accepted" : "Selection rejected";
+            if (ScanFeedback == "Selection accepted") RefreshBasketLinesAfterSelection();
             if (ScanFeedback == "Selection accepted" && HasBarcodeAmbiguity)
             {
                 BarcodeCandidates = Array.Empty<ProductSummary>();
@@ -302,6 +366,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         finally
         {
             _selectionInFlight = false;
+            if (_basketRefreshPending) { _basketRefreshPending = false; RefreshBasketLines(); }
             if (clearAcknowledgedVariantScan && !CheckoutUncertain)
             {
                 // Internal acknowledgement owns the reset; external scanner edits

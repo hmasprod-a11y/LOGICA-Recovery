@@ -1,7 +1,7 @@
 <Window x:Class="Hanouty.Desktop.Wpf.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Hanouty POS V2.0 — Desktop" Height="650" Width="1080"
+        Title="HANOUTY POS — Caisse" Height="760" Width="1280"
         MinHeight="480" MinWidth="760" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" SnapsToDevicePixels="True"
         TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
     <Window.Resources><BooleanToVisibilityConverter x:Key="BoolVisibility"/></Window.Resources>
@@ -13,7 +13,7 @@
                        Foreground="DimGray" Margin="0,4,0,0"/>
         </StackPanel>
         <Grid>
-            <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="3*"/><ColumnDefinition Width="2*"/></Grid.ColumnDefinitions>
             <StackPanel Grid.Column="0" Margin="0,0,18,0">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="Catalogue" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center"/>
@@ -80,9 +80,31 @@
                     </ItemsControl>
                 </ScrollViewer>
             </StackPanel>
-            <ScrollViewer x:Name="CashierWorkflowScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+            <DockPanel Grid.Column="1" LastChildFill="True">
+                <Border DockPanel.Dock="Bottom" Padding="12" Margin="0,12,0,0" BorderThickness="1" BorderBrush="#B9C5D1" Background="#F2F6FA" CornerRadius="8">
+                    <StackPanel>
+                        <TextBlock Text="TOTAL À ENCAISSER · MAD" FontWeight="Bold" FontSize="16"/>
+                        <TextBlock x:Name="TrustedBasketTotal" Text="Total indisponible — actualiser depuis le Host" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,6,0,8" AutomationProperties.Name="Trusted basket total MAD"/>
+                        <Button Content="Actualiser le total du panier" Click="RefreshTrustedBasketTotal_Click" MinHeight="40" AutomationProperties.Name="Read trusted basket total"/>
+                        <Button Content="ENCAISSER · PAIEMENT" Command="{Binding CommitCommand}" IsEnabled="{Binding CanCommit}" MinHeight="58" FontSize="17" FontWeight="Bold" Margin="0,10,0,0" AutomationProperties.Name="Complete checkout"/>
+                            </StackPanel>
+                </Border>
+                <ScrollViewer x:Name="CashierWorkflowScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                           CanContentScroll="True" AutomationProperties.Name="Cashier and return workflow scroll region">
                 <StackPanel Margin="0,0,8,0">
+                <GroupBox Header="Panier" Margin="0,0,0,12" AutomationProperties.Name="Current Host basket">
+                    <DockPanel Margin="8">
+                        <TextBlock DockPanel.Dock="Bottom" Text="{Binding BasketStatus}" Foreground="DimGray" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                        <DataGrid ItemsSource="{Binding BasketLines}" AutoGenerateColumns="False" IsReadOnly="True"
+                                  CanUserAddRows="False" MinHeight="140" MaxHeight="280" AutomationProperties.Name="Basket article quantity price">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Article" Binding="{Binding ArticleName}" Width="*"/>
+                                <DataGridTextColumn Header="Qté" Binding="{Binding Quantity}" Width="70"/>
+                                <DataGridTextColumn Header="Prix MAD" Binding="{Binding UnitPriceMad, StringFormat={}{0:F2}}" Width="95"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </GroupBox>
                 <TextBlock Text="Selected product" FontSize="18" FontWeight="SemiBold"/>
                 <TextBlock Text="{Binding SelectedProduct.Name, TargetNullValue=No product selected}"
                            Margin="0,12,0,6" TextWrapping="Wrap"/>
@@ -90,7 +112,7 @@
                 <Button Content="Select product" Command="{Binding SelectCommand}" MinHeight="44"
                         Padding="12,8" Margin="0,18,0,0"
                         AutomationProperties.Name="Select product" IsEnabled="{Binding CanSelectProduct}"/>
-                <GroupBox Header="Original sale — read-only return preparation" Margin="0,14,0,8"
+                <Expander Header="RETOUR · Ticket original (parcours séparé)" IsExpanded="False" Margin="0,14,0,8"
                           AutomationProperties.Name="Persisted original sale lookup">
                     <StackPanel Margin="8">
                         <TextBox x:Name="OriginalSaleSearch" MinHeight="36" TextChanged="OriginalSaleSearch_TextChanged"
@@ -110,11 +132,7 @@
                         <TextBlock x:Name="OriginalSaleStatus" Text="No original sale selected — refunds unavailable"
                                    TextWrapping="Wrap" AutomationProperties.Name="Original sale review status"/>
                     </StackPanel>
-                </GroupBox>
-                <Button Content="Read trusted basket total" Click="RefreshTrustedBasketTotal_Click"
-                        MinHeight="44" Margin="0,8,0,4" AutomationProperties.Name="Read trusted basket total"/>
-                <TextBlock x:Name="TrustedBasketTotal" Text="Trusted basket total unavailable"
-                           TextWrapping="Wrap" AutomationProperties.Name="Trusted basket total MAD"/>
+                </Expander>
                 <TextBlock Text="Authorized cashier / payment context" FontWeight="SemiBold" Margin="0,16,0,4"/>
                 <Button Content="Enter cashier / register / cash tender" Click="CashierEntry_Click" MinHeight="44" Padding="12,8" Margin="0,8,0,8" AutomationProperties.Name="Enter cashier and fresh cash tender"/>
                 <Button Content="End cashier session" Click="EndFinancialSession_Click" MinHeight="40"
@@ -124,7 +142,6 @@
                 <TextBlock Text="{Binding PaymentContext.TenderCode, TargetNullValue=No tender}" AutomationProperties.Name="Tender type"/>
                 <TextBlock Text="{Binding PaymentContext.TenderedAmount, StringFormat='Tendered: {0:N2}'}" AutomationProperties.Name="Tendered amount"/>
                 <TextBlock Text="Payment remains disabled until an authorized contextual adapter and trusted cashier session are registered." TextWrapping="Wrap" Foreground="DimGray" Margin="0,6,0,0"/>
-                <Button Content="Complete checkout" Command="{Binding CommitCommand}" IsEnabled="{Binding CanCommit}" MinHeight="44" Padding="12,8" Margin="0,18,0,0" AutomationProperties.Name="Complete checkout"/>
                 <TextBlock Text="{Binding PendingOperationId, StringFormat='Operation: {0}'}" TextWrapping="Wrap" AutomationProperties.Name="Pending operation identity" Margin="0,8,0,0"/>
                 <Button Content="Check durable checkout status" Command="{Binding ReconcileCommand}" IsEnabled="{Binding CheckoutUncertain}" MinHeight="44" Padding="12,8" Margin="0,8,0,0" AutomationProperties.Name="Reconcile uncertain checkout"/>
                 <Button Content="Review result and start a new basket" Click="ReviewResolvedCheckout_Click"
@@ -134,7 +151,8 @@
                 <TextBlock Text="Stock posting, printing and licensing require separately verified application contracts."
                            Margin="0,22,0,0" TextWrapping="Wrap" Foreground="DimGray"/>
                 </StackPanel>
-            </ScrollViewer>
+                </ScrollViewer>
+            </DockPanel>
         </Grid>
     </DockPanel>
 </Window>

@@ -188,6 +188,12 @@ namespace Hanouty.Checkout.MariaDb
         // Application session lines. No UI prices, basket/claim/stock writes,
         // schema initialization or authorization grant. Commit revalidates SQL.
         public static decimal ReadCashSaleTotal(Func<MySqlConnection> connections,
+            IReadOnlyList<CheckoutBatchLine> lines) =>
+            ReadCashSaleBasket(connections, lines).Sum(line => line.Amount);
+
+        public sealed record CashSaleBasketLine(string ArticleId, string ArticleName, int Quantity, decimal UnitPrice, decimal Amount);
+
+        public static IReadOnlyList<CashSaleBasketLine> ReadCashSaleBasket(Func<MySqlConnection> connections,
             IReadOnlyList<CheckoutBatchLine> lines)
         {
             if (connections == null) throw new ArgumentNullException(nameof(connections));
@@ -205,9 +211,10 @@ namespace Hanouty.Checkout.MariaDb
                         if (!string.Equals(Convert.ToString(command.ExecuteScalar()), "InnoDB", StringComparison.Ordinal))
                             throw new InvalidOperationException("Price preview requires transactional article storage.");
                     }
-                    decimal total = MariaDbCashCheckoutPreparation.ReadCashSaleTotal(snapshot, connection, transaction);
+                    var basket = MariaDbCashCheckoutPreparation.ReadCashSaleLines(snapshot, connection, transaction);
                     transaction.Commit();
-                    return total;
+                    return basket.Select(line => new CashSaleBasketLine(line.ArticleId, line.ArticleName,
+                        line.Quantity, line.UnitPrice, line.Amount)).ToArray();
                 }
             }
         }

@@ -642,6 +642,10 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                     workstation.ViewModel.ScanCommand.Execute(null);
                     Require(workstation.ViewModel.ScanFeedback == "Selection accepted",
                         "Authenticated workstation scan did not reach its single Application basket.");
+                    var displayedLine = workstation.ViewModel.BasketLines.Single();
+                    Require(displayedLine.ArticleId == "W2-Article" &&
+                        displayedLine.Quantity == n + 1 && displayedLine.UnitPriceMad == 5.25m,
+                        "Cashier basket did not display the actual MariaDB-backed staged quantity and price.");
                 }
             }
             Stage(1);

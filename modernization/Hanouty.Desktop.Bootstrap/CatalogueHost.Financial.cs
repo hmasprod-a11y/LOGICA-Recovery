@@ -11,6 +11,15 @@ namespace Hanouty.Desktop.Bootstrap;
 // Included only when the build explicitly references the real Checkout library.
 public sealed partial record CatalogueHost
 {
+    private sealed class CashierBasketReader(Func<MySqlConnection> connections, CheckoutSession session)
+        : ICurrentBasketReader
+    {
+        public IReadOnlyList<BasketDisplayLine> ReadCurrentBasket() =>
+            MariaDbCashCheckoutServices.ReadCashSaleBasket(connections, session.PendingLines)
+                .Select(line => new BasketDisplayLine(line.ArticleId, line.ArticleName, line.Quantity, line.UnitPrice))
+                .ToArray();
+    }
+
     private Func<string, CheckoutResolution, Func<string>, bool>? reviewedReset;
     private Func<AuthorizedCheckoutPaymentContext, bool>? setFinancialContext;
     private Func<bool>? endFinancialSession;
@@ -124,7 +133,9 @@ public sealed partial record CatalogueHost
         var services = AuthorizedWpfServiceRegistration.CreateSessionBound(
             binding.Catalogue, binding.Checkout, binding.Submission,
             () => contextConsumed && context?.TenderedAmount != 0m ? null! : context!);
-        var window = new MainWindow(services.Catalogue, services.Checkout, services.Submission, context, requireFreshPaymentContext: true);
+        var basketReader = new CashierBasketReader(connections, binding.Session);
+        var window = new MainWindow(services.Catalogue, services.Checkout, services.Submission, context,
+            requireFreshPaymentContext: true, basketReader: basketReader);
         window.ConfigureOriginalSaleLookup(returnHost);
         var vm = (CatalogueViewModel)window.DataContext;
         vm.FinancialSessionActive = captured is not null;
