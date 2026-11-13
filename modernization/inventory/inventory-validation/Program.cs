@@ -38,3 +38,46 @@ ExpectDenied("case-sensitive distinct identities still require grant",
     new InventoryValidationRequest("INV-TEST-001", new[] { "ART-A", "art-a" }));
 if (rejected != 6) throw new Exception("Missing denial assertions.");
 Console.WriteLine("PASS: six fail-closed boundary cases; no database opened or modified.");
+
+
+var baseline = new[] {
+    new LOGICA.ApplicationLayer.Inventory.StockBaselineLine("ART-A", 8m),
+    new LOGICA.ApplicationLayer.Inventory.StockBaselineLine("ART-B", 4m)
+};
+var counted = new[] {
+    new LOGICA.ApplicationLayer.Inventory.StockCountLine("ART-A", 8m, 6m),
+    new LOGICA.ApplicationLayer.Inventory.StockCountLine("ART-B", 4m, 4m)
+};
+var plan = InventoryValidationPreparation.RequireCompleteFreshCount(baseline, counted, baseline);
+if (plan.Adjustments.Count != 1 || plan.Adjustments[0].ArticleId != "ART-A" ||
+    plan.Adjustments[0].Delta != -2m)
+    throw new Exception("Complete fresh inventory plan mismatch.");
+Console.WriteLine("PASS: complete fresh count proposes only changed article.");
+
+int refusedPlans = 0;
+void ExpectPlanRefused(string label,
+    LOGICA.ApplicationLayer.Inventory.StockBaselineLine[] initial,
+    LOGICA.ApplicationLayer.Inventory.StockCountLine[] physical,
+    LOGICA.ApplicationLayer.Inventory.StockBaselineLine[] current)
+{
+    try
+    {
+        InventoryValidationPreparation.RequireCompleteFreshCount(initial, physical, current);
+        throw new Exception("FAIL: " + label + " accepted.");
+    }
+    catch (InvalidOperationException)
+    {
+        refusedPlans++;
+        Console.WriteLine("PASS: " + label + " refused");
+    }
+}
+ExpectPlanRefused("missing count", baseline, new[] { counted[0] }, baseline);
+ExpectPlanRefused("unknown count", baseline, new[] { counted[0], counted[1],
+    new LOGICA.ApplicationLayer.Inventory.StockCountLine("ART-X", 0m, 1m) }, baseline);
+ExpectPlanRefused("stale zero-delta article", baseline, counted, new[] {
+    baseline[0], new LOGICA.ApplicationLayer.Inventory.StockBaselineLine("ART-B", 5m) });
+ExpectPlanRefused("added article after count", baseline, counted, new[] {
+    baseline[0], baseline[1], new LOGICA.ApplicationLayer.Inventory.StockBaselineLine("ART-C", 0m) });
+ExpectPlanRefused("removed article after count", baseline, counted, new[] { baseline[0] });
+if (refusedPlans != 5) throw new Exception("Missing inventory preparation refusal assertions.");
+Console.WriteLine("PASS: read-only coverage/freshness checks; no database opened or modified.");
