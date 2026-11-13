@@ -706,6 +706,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             var twoArticleSales = Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE");
             var firstStock = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
             Sql(settings, "INSERT INTO TABLE_ARTICLES VALUES ('W2-Second',15,'W2-SECOND','Second test product',NULL,'Food',1,1,8,20,'G',0,0)");
+            workstation.ViewModel.ReloadCatalogue();
             Stage(2);
             workstation.ViewModel.ScannerText = "W2-SECOND";
             workstation.ViewModel.ScanCommand.Execute(null);
