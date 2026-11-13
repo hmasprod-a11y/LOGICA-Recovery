@@ -915,8 +915,12 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             throw new InvalidOperationException("Receipt exceeded the remaining order quantity.");
         }
         catch (InvalidOperationException ex) when (ex.Message.StartsWith("Quantité supérieure", StringComparison.Ordinal)) { }
-        var cancelled = receipt.CreateFromOrder("BC-TEST", "W2-Article", 3m, "Test manager", "5678");
         var beforeCancellation = Snapshot(settings);
+        RunPartialReceiptFromWindow(settings, cancel: true);
+        Require(Snapshot(settings) == beforeCancellation &&
+            Number(settings, "SELECT COUNT(*) FROM hanouty_purchase_receipt_order WHERE RECEIPT_ID='BR000002'") == 0,
+            "The receipt cancellation button did not release its reservation.");
+        var cancelled = receipt.CreateFromOrder("BC-TEST", "W2-Article", 3m, "Test manager", "5678");
         Sql(settings, "CREATE TRIGGER test_receipt_cancel_failure BEFORE DELETE ON TABLE_RECEPTIONS_ENTETE FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='receipt cancel rollback'");
         try
         {
@@ -925,25 +929,25 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         }
         catch (MySqlException) { }
         finally { Sql(settings, "DROP TRIGGER test_receipt_cancel_failure"); }
-        Require(Number(settings, "SELECT COUNT(*) FROM hanouty_purchase_receipt_order WHERE RECEIPT_ID='BR000002'") == 1 &&
-            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_DETAILS WHERE ID_BR='BR000002'") == 1,
+        Require(Number(settings, "SELECT COUNT(*) FROM hanouty_purchase_receipt_order WHERE RECEIPT_ID='BR000003'") == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_DETAILS WHERE ID_BR='BR000003'") == 1,
             "Cancellation rollback lost a reserved receipt.");
         receipt.Cancel(cancelled, "Test manager", "5678");
         Require(Snapshot(settings) == beforeCancellation &&
-            Number(settings, "SELECT COUNT(*) FROM hanouty_purchase_receipt_order WHERE RECEIPT_ID='BR000002'") == 0 &&
-            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_ENTETE WHERE ID_BR='BR000002'") == 0 &&
-            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_DETAILS WHERE ID_BR='BR000002'") == 0,
+            Number(settings, "SELECT COUNT(*) FROM hanouty_purchase_receipt_order WHERE RECEIPT_ID='BR000003'") == 0 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_ENTETE WHERE ID_BR='BR000003'") == 0 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_DETAILS WHERE ID_BR='BR000003'") == 0,
             "Cancellation did not free the balance without moving stock.");
         var remainder = receipt.CreateFromOrder("BC-TEST", "W2-Article", 3m, "Test manager", "5678");
         receipt.Validate(remainder, "Test manager", "5678");
-        Require(remainder.Id == "BR000003" &&
+        Require(remainder.Id == "BR000004" &&
             Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == startingStock + 5m &&
             Number(settings, "SELECT SUM(QUANTITY) FROM hanouty_purchase_receipt_order WHERE ORDER_ID='BC-TEST'") == 5m &&
-            Number(settings, "SELECT BR FROM TABLE_NUM WHERE ID=0") == 4,
+            Number(settings, "SELECT BR FROM TABLE_NUM WHERE ID=0") == 5,
             "Two partial receipts did not exhaust the order and update the stock exactly once.");
     }
 
-    private static void RunPartialReceiptFromWindow(CatalogueSettings settings)
+    private static void RunPartialReceiptFromWindow(CatalogueSettings settings, bool cancel = false)
     {
         var host = CatalogueHost.CreateCashierWorkstation(settings, "01");
         host.Window.Show();
@@ -984,19 +988,26 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                             Controls<System.Windows.Controls.Button>(window).Single(button => Equals(button.Content, label));
                         Field("Commande").Text = "BC-TEST";
                         Field("Identifiant article").Text = "W2-Article";
-                        Field("Quantité reçue").Text = "2";
+                        Field("Quantité reçue").Text = cancel ? "3" : "2";
+                        var id = cancel ? "BR000002" : "BR000001";
                         var before = Snapshot(settings);
                         timer.Start();
                         Click(Button("Créer le bon"));
                         Require(Snapshot(settings) == before &&
-                            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_ENTETE WHERE ID_BR='BR000001' AND ETAT='ENREGISTRER'") == 1,
+                            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_ENTETE WHERE ID_BR=@id AND ETAT='ENREGISTRER'", id) == 1,
                             "Saving the receipt moved stock before confirmation.");
                         timer.Start();
-                        Click(Button("Valider la réception"));
+                        Click(Button(cancel ? "Annuler le bon enregistré" : "Valider la réception"));
                         Require(Controls<System.Windows.Controls.TextBlock>(window).Any(text =>
-                            text.Text == "Bon BR000001 validé. Stock et coûts mis à jour."),
+                            text.Text == (cancel ? $"Bon {id} annulé. Quantité libérée." : $"Bon {id} validé. Stock et coûts mis à jour.")),
                             "Receipt screen did not confirm the saved receipt.");
                         window.Close();
+                    }
+                    else if (cancel && step == 4)
+                    {
+                        var dialog = Application.Current.Windows.Cast<Window>().Single(window =>
+                            window.Owner == host.Window && window.IsVisible && window.Title == "Annulation du bon");
+                        Click(Controls<System.Windows.Controls.Button>(dialog).Single(button => Equals(button.Content, "Confirmer")));
                     }
                     else
                     {
@@ -1004,6 +1015,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                             window.Owner == host.Window && window.IsVisible &&
                             Controls<System.Windows.Controls.PasswordBox>(window).Any());
                         Controls<System.Windows.Controls.PasswordBox>(prompt).Single().Password = "5678";
+                        if (cancel && step == 3) timer.Start();
                         Click(Controls<System.Windows.Controls.Button>(prompt).Single(button => button.IsDefault));
                     }
                 }
@@ -1023,7 +1035,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             }
             finally { timer.Stop(); }
             if (failure is not null) throw new InvalidOperationException("Receipt window acceptance failed.", failure);
-            Require(step == 3, "Receipt UI did not complete creation and validation.");
+            Require(step == (cancel ? 4 : 3), "Receipt UI did not complete creation and validation.");
         }
         finally { host.Window.Close(); }
     }
