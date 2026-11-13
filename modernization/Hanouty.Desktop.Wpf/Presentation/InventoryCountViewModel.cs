@@ -124,8 +124,15 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
             Lines.Clear();
+            NotifyCountProgress();
             _loaded = false;
             _openedDocumentId = null;
+            // A failed Inventory call invalidates the entire local snapshot.
+            // Do not keep an old article/quantity ready for a second document.
+            _articleId = "";
+            _physicalText = "";
+            Changed(nameof(ArticleId));
+            Changed(nameof(PhysicalText));
             Status = "Opération refusée — vérifier le document dans Inventory";
         }
         finally { _busy = false; NotifyActions(); }
