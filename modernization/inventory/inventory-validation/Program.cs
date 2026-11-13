@@ -143,3 +143,31 @@ ExpectMalformedRefused<ArgumentException>("blank article identity in baseline",
     }, counted, baseline);
 if (malformedRejected != 5) throw new Exception("Missing malformed inventory refusal assertions.");
 Console.WriteLine("PASS: five additional malformed count/identity cases; no database opened or modified.");
+
+ 
+// Fail closed before even enumerating untrusted or stale UI-provided data.
+// The authorization check must be the first operation at the write boundary.
+IEnumerable<LOGICA.ApplicationLayer.Inventory.StockBaselineLine> ExplodingBaseline()
+{
+    throw new Exception("FAIL: baseline enumerated before authorization.");
+#pragma warning disable CS0162
+    yield break;
+#pragma warning restore CS0162
+}
+IEnumerable<LOGICA.ApplicationLayer.Inventory.StockCountLine> ExplodingCount()
+{
+    throw new Exception("FAIL: physical count enumerated before authorization.");
+#pragma warning disable CS0162
+    yield break;
+#pragma warning restore CS0162
+}
+try
+{
+    InventoryValidationReadiness.RequireAuthorizedCompleteFreshCount(
+        validShape, null, now, ExplodingBaseline(), ExplodingCount(), ExplodingBaseline());
+    throw new Exception("FAIL: readiness accepted an unmapped capability.");
+}
+catch (UnauthorizedAccessException)
+{
+    Console.WriteLine("PASS: readiness denied before baseline/count enumeration.");
+}
