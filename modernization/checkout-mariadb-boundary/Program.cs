@@ -524,6 +524,28 @@ namespace LOGICA.Infrastructure.Checkout
                 Scalar("SELECT CL FROM TABLE_NUM") == sequenceValue &&
                 !journal.IsPersisted("preview-only"),
                 "Read-only authoritative preview staged, claimed or wrote financial/stock state.");
+            // Two distinct WPF basket selections: change quantity before payment.
+            // Only the existing authoritative MariaDB preview may determine MAD.
+            Sql("INSERT INTO TABLE_ARTICLES (ID_ARTICLE,STOCK,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V_1,TAUX_TVA,GROUPE,PROMOTION,PRIX_QTE) " +
+                "VALUES ('CSharp-Second',50,'CODE-2','Second','Food',1,1,6.50,20,'G',0,0)");
+            var twoProductBasket = new[] {
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 1),
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Second", 1)
+            };
+            Require(Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
+                NewConnection, twoProductBasket) == 11.75m,
+                "Two-product authoritative basket preview is incorrect.");
+            var quantityChangedBasket = new[] {
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2),
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Second", 1)
+            };
+            Require(Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
+                NewConnection, quantityChangedBasket) == 17.00m &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Second'") == 50m &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == headers &&
+                Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movementCount &&
+                Scalar("SELECT COUNT(*) FROM TABLE_01") == 0,
+                "Quantity change preview wrote business state or used stale basket prices.");
             rejected("preview-duplicate-lines", () =>
                 Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
                     NewConnection, new[] {
