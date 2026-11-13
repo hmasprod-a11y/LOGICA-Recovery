@@ -904,17 +904,17 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
             """);
         var startingStock = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
-        var firstPart = receipt.CreateFromOrder("BC-TEST", "W2-Article", 2m, "Test manager", "5678");
-        Require(firstPart.Id == "BR000001" &&
-            Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == startingStock,
-            "Saved receipt changed stock before validation or used the wrong LOGICA sequence.");
+        RunPartialReceiptFromWindow(settings);
+        var firstPartId = Convert.ToString(Value(settings, "SELECT RECEIPT_ID FROM hanouty_purchase_receipt_order WHERE ORDER_ID='BC-TEST'"));
+        var reservedStock = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+        Require(firstPartId == "BR000001" && reservedStock == startingStock + 2m,
+            "The receipt window did not create and validate the first part.");
         try
         {
             receipt.CreateFromOrder("BC-TEST", "W2-Article", 4m, "Test manager", "5678");
             throw new InvalidOperationException("Receipt exceeded the remaining order quantity.");
         }
         catch (InvalidOperationException ex) when (ex.Message.StartsWith("Quantité supérieure", StringComparison.Ordinal)) { }
-        receipt.Validate(firstPart, "Test manager", "5678");
         var remainder = receipt.CreateFromOrder("BC-TEST", "W2-Article", 3m, "Test manager", "5678");
         receipt.Validate(remainder, "Test manager", "5678");
         Require(remainder.Id == "BR000002" &&
@@ -922,6 +922,91 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Number(settings, "SELECT SUM(QUANTITY) FROM hanouty_purchase_receipt_order WHERE ORDER_ID='BC-TEST'") == 5m &&
             Number(settings, "SELECT BR FROM TABLE_NUM WHERE ID=0") == 3,
             "Two partial receipts did not exhaust the order and update the stock exactly once.");
+    }
+
+    private static void RunPartialReceiptFromWindow(CatalogueSettings settings)
+    {
+        var host = CatalogueHost.CreateCashierWorkstation(settings, "01");
+        host.Window.Show();
+        try
+        {
+            Require(CashierEntry(host, "Test manager", "01", "0", 0m, "5678"),
+                "Receipt manager could not sign in.");
+            static IEnumerable<T> Controls<T>(DependencyObject parent) where T : DependencyObject
+            {
+                foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+                {
+                    if (child is T control) yield return control;
+                    foreach (var descendant in Controls<T>(child)) yield return descendant;
+                }
+            }
+            static void Click(System.Windows.Controls.Button button)
+            {
+                Require(button.IsEnabled, "Receipt control is disabled.");
+                button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            }
+
+            var step = 0;
+            Exception? failure = null;
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(75) };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                try
+                {
+                    if (step++ == 0)
+                    {
+                        var window = Application.Current.Windows.OfType<PurchaseReceiptDialog>()
+                            .Single(dialog => dialog.IsVisible && dialog.Owner == host.Window);
+                        System.Windows.Controls.TextBox Field(string name) =>
+                            Controls<System.Windows.Controls.TextBox>(window).Single(field =>
+                                System.Windows.Automation.AutomationProperties.GetName(field) == name);
+                        System.Windows.Controls.Button Button(string label) =>
+                            Controls<System.Windows.Controls.Button>(window).Single(button => Equals(button.Content, label));
+                        Field("Commande").Text = "BC-TEST";
+                        Field("Identifiant article").Text = "W2-Article";
+                        Field("Quantité reçue").Text = "2";
+                        var before = Snapshot(settings);
+                        timer.Start();
+                        Click(Button("Créer le bon"));
+                        Require(Snapshot(settings) == before &&
+                            Number(settings, "SELECT COUNT(*) FROM TABLE_RECEPTIONS_ENTETE WHERE ID_BR='BR000001' AND ETAT='ENREGISTRER'") == 1,
+                            "Saving the receipt moved stock before confirmation.");
+                        timer.Start();
+                        Click(Button("Valider la réception"));
+                        Require(Controls<System.Windows.Controls.TextBlock>(window).Any(text =>
+                            text.Text == "Bon BR000001 validé. Stock et coûts mis à jour."),
+                            "Receipt screen did not confirm the saved receipt.");
+                        window.Close();
+                    }
+                    else
+                    {
+                        var prompt = Application.Current.Windows.Cast<Window>().Single(window =>
+                            window.Owner == host.Window && window.IsVisible &&
+                            Controls<System.Windows.Controls.PasswordBox>(window).Any());
+                        Controls<System.Windows.Controls.PasswordBox>(prompt).Single().Password = "5678";
+                        Click(Controls<System.Windows.Controls.Button>(prompt).Single(button => button.IsDefault));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                    foreach (var window in Application.Current.Windows.Cast<Window>()
+                        .Where(window => window.Owner == host.Window && window.IsVisible).ToArray().Reverse())
+                        window.Close();
+                }
+            };
+            timer.Start();
+            try
+            {
+                Click(Controls<System.Windows.Controls.Button>(host.Window).Single(button =>
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "Open purchase receipt"));
+            }
+            finally { timer.Stop(); }
+            if (failure is not null) throw new InvalidOperationException("Receipt window acceptance failed.", failure);
+            Require(step == 3, "Receipt UI did not complete creation and validation.");
+        }
+        finally { host.Window.Close(); }
     }
 
     private static void VerifyInventoryValidation(CatalogueSettings settings)
