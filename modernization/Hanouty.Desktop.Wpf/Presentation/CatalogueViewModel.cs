@@ -6,6 +6,14 @@ namespace Hanouty.Desktop.Wpf.Presentation;
 
 public sealed record ProductSummary(string Id, string Name, string Barcode, string? ImagePath = null);
 
+// Read-only projection of the EXISTING Host basket, never a WPF-owned basket.
+// The production composition root must implement this using its active cashier session.
+public sealed record BasketDisplayLine(string ArticleId, string ArticleName, decimal Quantity, decimal UnitPriceMad);
+public interface ICurrentBasketReader
+{
+    IReadOnlyList<BasketDisplayLine> ReadCurrentBasket();
+}
+
 public interface ICatalogueReader
 {
     IReadOnlyList<ProductSummary> ReadProducts();
@@ -31,6 +39,36 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private bool _checkoutUncertain;
     public bool CheckoutUncertain { get => _checkoutUncertain; private set { if (_checkoutUncertain == value) return; _checkoutUncertain = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanSelectProduct)); OnPropertyChanged(nameof(CanCommit)); OnPropertyChanged(nameof(CanReviewResolvedCheckout)); } }
     private readonly IProductSelection _selection;
+    private readonly ICurrentBasketReader? _basketReader;
+    public ObservableCollection<BasketDisplayLine> BasketLines { get; } = new();
+    public string BasketStatus { get; private set; } = "Host basket reader not connected";
+    public bool RefreshBasketLines()
+    {
+        BasketLines.Clear();
+        if (_basketReader is null || !FinancialSessionActive || CheckoutUncertain || _selectionInFlight)
+        {
+            BasketStatus = "Authorized Host basket unavailable";
+            OnPropertyChanged(nameof(BasketStatus));
+            return false;
+        }
+        try
+        {
+            var lines = _basketReader.ReadCurrentBasket();
+            if (lines is null || lines.Any(x => string.IsNullOrWhiteSpace(x.ArticleId) || x.Quantity <= 0m || x.UnitPriceMad < 0m))
+                throw new InvalidOperationException("Invalid Host basket snapshot");
+            foreach (var line in lines) BasketLines.Add(line);
+            BasketStatus = lines.Count == 0 ? "Panier vide" : $"{lines.Count} ligne(s) du panier Host";
+            OnPropertyChanged(nameof(BasketStatus));
+            return true;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            BasketLines.Clear();
+            BasketStatus = "Host basket unavailable";
+            OnPropertyChanged(nameof(BasketStatus));
+            return false;
+        }
+    }
     private bool _selectionInFlight;
     public bool CheckoutBusy => _selectionInFlight;
     public bool RequireFreshPaymentContext { get; init; }
@@ -45,6 +83,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             if (!value)
             {
                 ClearConsumedPaymentContext();
+                BasketLines.Clear();
+                BasketStatus = "Cashier session required";
+                OnPropertyChanged(nameof(BasketStatus));
                 // Logout invalidates the selection/variant choice from the old cashier.
                 // Never allow a re-login to submit a previously staged article.
                 _selectedProduct = null;
@@ -85,12 +126,13 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public System.Windows.Input.ICommand CommitCommand { get; }
     private readonly IProductImageAvailability _images;
 
-    public CatalogueViewModel(ICatalogueReader reader, IProductSelection selection, IProductImageAvailability? images = null, ICheckoutSubmission? submission = null, ICheckoutOutcomeReconciliation? reconciliation = null)
+    public CatalogueViewModel(ICatalogueReader reader, IProductSelection selection, IProductImageAvailability? images = null, ICheckoutSubmission? submission = null, ICheckoutOutcomeReconciliation? reconciliation = null, ICurrentBasketReader? basketReader = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         _reader = reader;
         _all = Array.Empty<ProductSummary>();
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
+        _basketReader = basketReader ?? selection as ICurrentBasketReader;
         _images = images ?? new LocalProductImageAvailability();
         _submission = submission;
         _reconciliation = reconciliation;
