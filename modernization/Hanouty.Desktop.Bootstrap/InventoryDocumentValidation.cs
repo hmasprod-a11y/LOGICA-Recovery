@@ -138,7 +138,7 @@ internal sealed class InventoryDocumentValidation(string connectionString)
             if (audit.Length > 255) throw new InvalidOperationException("Inventory audit exceeds the LOGICA column.");
             Write("INSERT INTO TABLE_MOUVEMENTS_STOCK (DATES,HEURE,LIBELLE,ID_ARTICLE,CODE_ARTICLE,ARTICLE,QUANTITE) " +
                 "VALUES (@date,@time,@audit,@article,@code,@name,@quantity)", 1,
-                ("@date", now.Date), ("@time", now.ToString("HH:mm:ss", CultureInfo.InvariantCulture)),
+                ("@date", now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), ("@time", now.ToString("HH:mm:ss", CultureInfo.InvariantCulture)),
                 ("@audit", audit), ("@article", line.Id), ("@code", article.Code),
                 ("@name", article.Name), ("@quantity", line.Physical.ToString(CultureInfo.InvariantCulture)));
         }
