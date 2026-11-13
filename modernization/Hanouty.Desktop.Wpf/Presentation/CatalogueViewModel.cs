@@ -42,6 +42,13 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private readonly ICurrentBasketReader? _basketReader;
     public ObservableCollection<BasketDisplayLine> BasketLines { get; } = new();
     public string BasketStatus { get; private set; } = "Host basket reader not connected";
+    private void RefreshBasketLinesAfterSelection()
+    {
+        // Selection is still marked in-flight until the Host call returns.
+        // Read the same Host-owned basket only after this guard is released.
+        _basketRefreshPending = true;
+    }
+    private bool _basketRefreshPending;
     public bool RefreshBasketLines()
     {
         BasketLines.Clear();
@@ -323,6 +330,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(CanSelectProduct));
             OnPropertyChanged(nameof(CanCommit));
             ScanFeedback = _selection.Select(SelectedProduct) ? "Selection accepted" : "Selection rejected";
+            if (ScanFeedback == "Selection accepted") RefreshBasketLinesAfterSelection();
             if (ScanFeedback == "Selection accepted" && HasBarcodeAmbiguity)
             {
                 BarcodeCandidates = Array.Empty<ProductSummary>();
