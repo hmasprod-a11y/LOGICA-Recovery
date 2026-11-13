@@ -117,6 +117,12 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     }
     private void InvalidateDocument()
     {
+        // The physical-count editor belongs to the opened document. Never carry
+        // a previous article/quantity into a different document identity.
+        _articleId = "";
+        _physicalText = "";
+        Changed(nameof(ArticleId));
+        Changed(nameof(PhysicalText));
         Lines.Clear();
         _loaded = false;
         _openedDocumentId = null;
