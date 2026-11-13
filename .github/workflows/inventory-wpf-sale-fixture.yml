@@ -1,0 +1,46 @@
+name: Inventory WPF fictitious sale fixture MariaDB acceptance
+on:
+  push:
+    branches: [fix/inventory-catalogue-parameterized-lookup-20261102]
+    paths:
+      - 'modernization/inventory/wpf-sale-fixture/**'
+      - 'modernization/inventory/Hanouty.Inventory.WpfFixtureAcceptance/**'
+      - 'modernization/inventory/Hanouty.Inventory.MariaDb/**'
+      - '.github/workflows/inventory-wpf-sale-fixture.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  disposable-mariadb-readers:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: fixture-ci-only
+          MARIADB_DATABASE: hanouty_wpf_fixture
+        ports: ['3307:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install disposable database client
+        run: sudo apt-get update && sudo apt-get install -y mariadb-client
+      - name: Install fixture in isolated CI-only MariaDB
+        env:
+          MYSQL_PWD: fixture-ci-only
+        run: |
+          mariadb --protocol=TCP -h 127.0.0.1 -P 3307 -u root hanouty_wpf_fixture < modernization/inventory/wpf-sale-fixture/fixture.sql
+          mariadb --protocol=TCP -h 127.0.0.1 -P 3307 -u root -e "CREATE USER 'fixture_reader'@'%' IDENTIFIED BY 'fixture-read-only'; GRANT SELECT ON hanouty_wpf_fixture.* TO 'fixture_reader'@'%';"
+      - name: Generate deterministic local PNG
+        run: python3 modernization/inventory/wpf-sale-fixture/create_fixture_image.py --data-dir "$RUNNER_TEMP/hanouty-fixture-data"
+      - name: Execute actual net10 catalogue and inventory reader acceptance
+        env:
+          HANOUTY_WPF_FIXTURE_DB: Server=127.0.0.1;Port=3307;Database=hanouty_wpf_fixture;Uid=fixture_reader;Pwd=fixture-read-only;SslMode=Disabled;
+        run: |
+          export HANOUTY_WPF_FIXTURE_DATA="$RUNNER_TEMP/hanouty-fixture-data"
+          dotnet run --project modernization/inventory/Hanouty.Inventory.WpfFixtureAcceptance/Hanouty.Inventory.WpfFixtureAcceptance.csproj -c Release
