@@ -1027,6 +1027,34 @@ namespace LOGICA.Infrastructure.Checkout
                 Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-original' AND OPERATION='VENTE'") == 2m,
                 "Multi-line original sale must persist two exact lines and decrement each stock once.");
 
+            // Host evidence is read from the persisted original, never from WPF
+            // quantities, current article prices, or a partially selected line.
+            var evidence = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                .ReadFullCashReturnEvidence(NewConnection, "multi-original");
+            Require(evidence.OriginalTicketId == "multi-original" && evidence.CashAmount == 13.50m &&
+                evidence.Lines.Count == 2 &&
+                evidence.Lines.Any(x => x.ArticleId == "CSharp-Stock" && x.Quantity == 2m) &&
+                evidence.Lines.Any(x => x.ArticleId == "CSharp-Other" && x.Quantity == 1m),
+                "Trusted return preparation must provide every persisted original line and exact cash total.");
+            bool missingEvidenceDenied = false;
+            try {
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                    .ReadFullCashReturnEvidence(NewConnection, "missing-original-ticket");
+            } catch (InvalidOperationException) { missingEvidenceDenied = true; }
+            Require(missingEvidenceDenied, "Missing original must fail closed before WPF posting.");
+            // Inject an ambiguous payment in the disposable database; read-only
+            // preparation must refuse it without creating a return claim.
+            Sql("INSERT INTO TABLE_VENTES_REGLEMENTS SELECT ID_TICKET,TICKET,DATES,CAISSIER,ID_CLIENT,CODE_CLIENT,CLIENT,POSTE,0.01,MODE_P,OPERATION,NOTES_REMARQUE FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='multi-original'");
+            bool ambiguousEvidenceDenied = false;
+            try {
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                    .ReadFullCashReturnEvidence(NewConnection, "multi-original");
+            } catch (InvalidOperationException) { ambiguousEvidenceDenied = true; }
+            finally { Sql("DELETE FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='multi-original' AND MONTANT=0.01"); }
+            Require(ambiguousEvidenceDenied &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0,
+                "Ambiguous original payment must be rejected without mutation.");
+
             var refund = MultiLineRequest("multi-refund", true, "multi-original");
             var partial = refund with
             {
