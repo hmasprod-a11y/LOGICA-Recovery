@@ -51,7 +51,8 @@ public partial class MainWindow : Window
             selectionVm.ScanFeedback == "Selection accepted")
         {
             _trustedTotalRevision++;
-            TrustedBasketTotal.Text = "Basket changed — refresh trusted total";
+            TrustedBasketTotal.Text = "Basket changed — reading Host total";
+            Dispatcher.BeginInvoke(new Action(() => RefreshTrustedBasketTotal()), System.Windows.Threading.DispatcherPriority.Background);
             return;
         }
         if (e.PropertyName is not (nameof(CatalogueViewModel.FinancialSessionActive) or
