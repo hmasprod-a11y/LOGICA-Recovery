@@ -38,6 +38,33 @@ internal static class MultiArticleReceiptQuantityPreflight
     }
 }
 
+
+// Pure replay policy: receipt ID is immutable and must bind to an exact canonical
+// payload. This is not a durable idempotency store or a substitute for DB locks.
+internal static class ReceiptReplayPreflight
+{
+    internal static bool ShouldPost(string receiptId,
+        IReadOnlyDictionary<string, decimal> proposed,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, decimal>> committed)
+    {
+        if (String.IsNullOrWhiteSpace(receiptId) || proposed == null || committed == null)
+            throw new InvalidOperationException("Receipt identity and payload are required.");
+        if (proposed.Count == 0)
+            throw new InvalidOperationException("Empty receipt.");
+        foreach (var line in proposed)
+            if (String.IsNullOrWhiteSpace(line.Key) || line.Value <= 0m)
+                throw new InvalidOperationException("Invalid receipt line.");
+        if (!committed.TryGetValue(receiptId, out var previous))
+            return true;
+        if (previous.Count != proposed.Count)
+            throw new InvalidOperationException("Receipt ID replay with changed line count.");
+        foreach (var line in proposed)
+            if (!previous.TryGetValue(line.Key, out var prior) || prior != line.Value)
+                throw new InvalidOperationException("Receipt ID replay with changed payload.");
+        return false;
+    }
+}
+
 internal static class Program
 {
     private static int assertions;
@@ -77,6 +104,24 @@ internal static class Program
         Check(MultiArticleReceiptQuantityPreflight.Remaining(Q("A", 1.25m), Q(), Q("A", 0.25m))["A"] == 1m,
             "fractional quantity allowed only after canonical-unit contract");
         Check(first["A"] == 6m && ordered["A"] == 10m, "pure preflight does not mutate inputs");
+        var committed = new Dictionary<string, IReadOnlyDictionary<string, decimal>>(StringComparer.Ordinal)
+        {
+            ["R-001"] = Q("A", 4m, "B", 3m)
+        };
+        Check(!ReceiptReplayPreflight.ShouldPost("R-001", Q("B", 3m, "A", 4m), committed),
+            "exact replay in different line order must not post");
+        Check(ReceiptReplayPreflight.ShouldPost("R-002", Q("A", 1m), committed),
+            "new receipt ID may proceed to transactional checks");
+        Reject(() => ReceiptReplayPreflight.ShouldPost("R-001", Q("A", 5m, "B", 3m), committed),
+            "same receipt ID with changed quantity");
+        Reject(() => ReceiptReplayPreflight.ShouldPost("R-001", Q("A", 4m), committed),
+            "same receipt ID with missing line");
+        Reject(() => ReceiptReplayPreflight.ShouldPost("R-001", Q("A", 4m, "X", 3m), committed),
+            "same receipt ID with substituted article");
+        Reject(() => ReceiptReplayPreflight.ShouldPost(" ", Q("A", 1m), committed),
+            "empty receipt ID");
+        Reject(() => ReceiptReplayPreflight.ShouldPost("R-002", Q("A", 0m), committed),
+            "invalid quantity before replay lookup");
         Console.WriteLine("PASS: " + assertions + " isolated quantity assertions; no database writes.");
         return 0;
     }
