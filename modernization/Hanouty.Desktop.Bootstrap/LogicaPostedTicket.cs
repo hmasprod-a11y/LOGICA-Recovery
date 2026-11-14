@@ -14,6 +14,23 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
         Lines.Select(line => LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Line(
             formatQuantity(line.Quantity), line.Article, formatAmount(line.Net)));
 
+    internal IReadOnlyList<string> FormatFrenchThreeColumnCashPayment(Func<decimal, string> formatAmount)
+    {
+        if (Payments.Any(payment => payment.Mode != "ESPECES") ||
+            Payments.Count(payment => payment.Amount > 0m) != 1 ||
+            Payments.Count(payment => payment.Amount < 0m) > 1 ||
+            Payments.Any(payment => payment.Amount == 0m))
+            throw new InvalidOperationException("Expected one cash tender and at most one change row.");
+
+        var tender = Payments.Single(payment => payment.Amount > 0m).Amount;
+        var change = -Payments.Where(payment => payment.Amount < 0m).Sum(payment => payment.Amount);
+        return new[]
+        {
+            LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Payment("ESPECES", formatAmount(tender)),
+            LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Payment("RENDU", formatAmount(change))
+        };
+    }
+
     internal static LogicaPostedTicket? Read(MySqlConnection connection, string id, string cashier, string register)
     {
         using var transaction = connection.BeginTransaction(IsolationLevel.RepeatableRead);

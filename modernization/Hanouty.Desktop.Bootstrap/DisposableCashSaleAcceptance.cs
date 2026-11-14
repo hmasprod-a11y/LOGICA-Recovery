@@ -791,7 +791,11 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                     ticket.Payments.Any(payment => payment.Amount == 20m) &&
                     ticket.Payments.Any(payment => payment.Amount == -1.50m),
                     "Persisted print data does not preserve the two sale lines, tender and change.");
-                var renderedLines = ticket!.FormatFrenchThreeColumnLines(
+                var paymentLines = ticket!.FormatFrenchThreeColumnCashPayment(
+                    amount => amount.ToString("0.00", CultureInfo.InvariantCulture));
+                Require(paymentLines.SequenceEqual(new[] { "* ESPECES   : 20.00 DH", "* RENDU     : 1.50 DH" }),
+                    "The French three-column ticket did not preserve the cash tender and positive change display.");
+                var renderedLines = ticket.FormatFrenchThreeColumnLines(
                     amount => amount.ToString("0.###", CultureInfo.InvariantCulture),
                     amount => amount.ToString("0.00", CultureInfo.InvariantCulture)).ToArray();
                 Require(renderedLines.Length == 2 && renderedLines.All(line => line.Length == 43) &&

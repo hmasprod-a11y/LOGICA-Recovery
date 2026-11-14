@@ -13243,7 +13243,7 @@ public class Form_3_VENTE : Form
 						if (MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows.Count == 1)
 						{
 							_string = _string + Strings.LSet(Conversions.ToString(Operators.ConcatenateObject("* ", MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[0].Cells["MODE_P"].Value)), 11) + " : " + Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Strings.RSet(Conversions.ToString(MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[0].Cells["PAYER"].Value), 6)))) + " DH\r\n";
-							_string = _string + Strings.LSet("* RENDU", 11) + " : " + Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Strings.RSet(Conversions.ToString(MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[0].Cells["RENDU"].Value), 6)))) + " DH\r\n";
+							_string += LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Payment("RENDU", Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(Strings.RSet(Conversions.ToString(MyProject.Forms.FormDialog_calc.DataGridView_CALC.Rows[0].Cells["RENDU"].Value), 6))))) + "\r\n";
 						}
 						else
 						{
