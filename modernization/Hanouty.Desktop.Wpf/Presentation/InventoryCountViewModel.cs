@@ -66,7 +66,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     public int SearchResultCount => SearchResults.Count;
     public void SelectArticle(InventoryCountLine? line)
     {
-        if (!_loaded || _openedDocumentId != DocumentId || line is null ||
+        if (_busy || !_loaded || _openedDocumentId != DocumentId || line is null ||
             !SearchResults.Any(x => ReferenceEquals(x, line))) return;
         _selectedArticleId = line.ArticleId;
         ArticleId = line.ArticleId;
@@ -171,6 +171,9 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
                 x.ExpectedQuantity < 0m || x.PhysicalQuantity < 0m) ||
             document.Lines.Select(x => x.ArticleId).Distinct(StringComparer.Ordinal).Count() != document.Lines.Count)
             throw new InvalidOperationException("Invalid Inventory document");
+        // A refreshed Inventory snapshot invalidates any prior row reference.
+        // Selection must be made again against the newly returned document.
+        ClearArticleSelection();
         Lines.Clear();
         foreach (var line in document.Lines) Lines.Add(line);
         RefreshSearchResults();
