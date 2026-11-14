@@ -1950,10 +1950,13 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         {
             var settings = CatalogueSettings.FromEnvironment();
             var cs = new MySqlConnectionStringBuilder(settings.ConnectionString);
-            Require(Environment.GetEnvironmentVariable("HANOUTY_W2_DISPOSABLE_MARKER") ==
+            var launcherPort = Environment.GetEnvironmentVariable("HANOUTY_W2_DISPOSABLE_PORT");
+            var expectedPort = launcherPort is null ? 3307 :
+                int.TryParse(launcherPort, out var port) && port is > 0 and <= 65535 ? port : 0;
+            Require(expectedPort > 0 && Environment.GetEnvironmentVariable("HANOUTY_W2_DISPOSABLE_MARKER") ==
                 "I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY" && cs.Server == "127.0.0.1" &&
-                cs.Database == "logica_ci" && cs.Port == 3307,
-                "W2 requires explicitly disposable 127.0.0.1:3307/logica_ci.");
+                cs.Database == "logica_ci" && cs.Port == expectedPort,
+                "W2 requires the explicitly disposable loopback logica_ci database on the expected test port.");
             var pin = Environment.GetEnvironmentVariable("HANOUTY_W2_TEST_PIN") ??
                 throw new InvalidOperationException("Disposable fixture PIN required.");
             var replay = Environment.GetEnvironmentVariable("HANOUTY_W2_REPLAY_OPERATION");

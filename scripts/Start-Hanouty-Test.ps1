@@ -11,8 +11,8 @@ $exe = Join-Path $appDir 'Hanouty.Desktop.Bootstrap.exe'
 $evidenceRoot = Join-Path $env:LOCALAPPDATA 'HANOUTY-Test\evidence'
 $runtimeRoot = Join-Path $env:LOCALAPPDATA 'HANOUTY-Test\mariadb-10.11.14'
 $sessionRoot = Join-Path $env:TEMP ('HANOUTY-Test-' + [guid]::NewGuid().ToString('N'))
-$port = 3307
-$dbPassword = 'hanouty-test-only'
+$port = 0
+$dbPassword = [guid]::NewGuid().ToString('N')
 $dbProcess = $null
 $dbBin = $null
 $dbData = Join-Path $sessionRoot 'data'
@@ -22,11 +22,15 @@ $completed = $false
 function Stop-HanoutyTestDatabase {
     if ($null -eq $script:dbProcess) { return }
     if (-not $script:dbProcess.HasExited -and $script:dbBin) {
-        & (Join-Path $script:dbBin 'mariadb-admin.exe') --host=127.0.0.1 --port=3307 --user=root "--password=$script:dbPassword" shutdown 2>$null | Out-Null
+        & (Join-Path $script:dbBin 'mariadb-admin.exe') --host=127.0.0.1 "--port=$script:port" --user=root "--password=$script:dbPassword" shutdown 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) { $script:dbProcess.WaitForExit(15000) }
     }
     if ($script:dbProcess.HasExited) {
-        Remove-Item -LiteralPath $script:sessionRoot -Recurse -Force -ErrorAction SilentlyContinue
+        $resolvedSession = [IO.Path]::GetFullPath($script:sessionRoot)
+        $tempPrefix = [IO.Path]::GetFullPath($env:TEMP).TrimEnd([char[]]@('/', '\')) + [IO.Path]::DirectorySeparatorChar
+        if ($resolvedSession.StartsWith($tempPrefix + 'HANOUTY-Test-', [StringComparison]::OrdinalIgnoreCase)) {
+            Remove-Item -LiteralPath $resolvedSession -Recurse -Force -ErrorAction SilentlyContinue
+        }
     } else {
         Write-Warning "The temporary test database is still stopping; its files were kept at $script:sessionRoot"
     }
@@ -105,8 +109,10 @@ try {
     $dbBin = $installer.Directory.FullName
 
     $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $port)
-    try { $probe.Start() } catch { throw 'Local test port 3307 is already in use. Close the other local database and retry.' }
-    finally { $probe.Stop() }
+    try {
+        $probe.Start()
+        $port = ([Net.IPEndPoint]$probe.LocalEndpoint).Port
+    } finally { $probe.Stop() }
 
     New-Item -ItemType Directory -Path $sessionRoot -Force | Out-Null
     & $installer.FullName "--datadir=$dbData" "--password=$dbPassword" "--port=$port" *> (Join-Path $sessionRoot 'database-setup.log')
@@ -117,7 +123,15 @@ try {
     for ($i = 0; $i -lt 40; $i++) {
         Start-Sleep -Milliseconds 750
         & (Join-Path $dbBin 'mariadb-admin.exe') --host=127.0.0.1 "--port=$port" --user=root "--password=$dbPassword" ping 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+        if ($LASTEXITCODE -eq 0 -and -not $dbProcess.HasExited) {
+            $reportedData = & (Join-Path $dbBin 'mariadb.exe') --host=127.0.0.1 "--port=$port" --user=root "--password=$dbPassword" --batch --skip-column-names --execute='SELECT @@datadir' 2>$null
+            if ($LASTEXITCODE -eq 0 -and $reportedData -and
+                [IO.Path]::GetFullPath(([string]$reportedData).Trim()).TrimEnd([char[]]@('/', '\')) -eq
+                [IO.Path]::GetFullPath($dbData).TrimEnd([char[]]@('/', '\'))) {
+                $ready = $true
+                break
+            }
+        }
         if ($dbProcess.HasExited) { throw 'The isolated MariaDB server stopped during startup.' }
     }
     if (-not $ready) { throw 'The isolated MariaDB server did not become ready.' }
@@ -134,7 +148,8 @@ GRANT ALL PRIVILEGES ON logica_ci.* TO 'w2_test'@'127.0.0.1';
 
     $dataDirectory = Join-Path $sessionRoot 'app-data'
     New-Item -ItemType Directory -Path $dataDirectory -Force | Out-Null
-    $env:HANOUTY_CATALOGUE_CONNECTION = 'Server=127.0.0.1;Port=3307;Database=logica_ci;Uid=w2_test;Pwd=w2-disposable-only;SslMode=Disabled;'
+    $env:HANOUTY_CATALOGUE_CONNECTION = "Server=127.0.0.1;Port=$port;Database=logica_ci;Uid=w2_test;Pwd=w2-disposable-only;SslMode=Disabled;"
+    $env:HANOUTY_W2_DISPOSABLE_PORT = [string]$port
     $env:HANOUTY_DATA_DIRECTORY = $dataDirectory
     $env:HANOUTY_WORKSTATION = '01'
     $env:HANOUTY_W2_DISPOSABLE_MARKER = 'I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY'
@@ -156,6 +171,7 @@ GRANT ALL PRIVILEGES ON logica_ci.* TO 'w2_test'@'127.0.0.1';
     }
     $env:HANOUTY_W2_DISPOSABLE_MARKER = $null
     $env:HANOUTY_W2_TEST_PIN = $null
+    $env:HANOUTY_W2_DISPOSABLE_PORT = $null
     Write-Host 'PASS: cash sale, full-ticket return, rollback and reconciliation verified on disposable data.' -ForegroundColor Green
     if (-not $VerifyOnly) {
         Write-Host "Opening the test cashier. Login: O'Neil | PIN: 1234. All records in this session are disposable." -ForegroundColor Cyan
