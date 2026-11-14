@@ -238,13 +238,20 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                     {
                         bool Displays(string expected) => Children(modal!).OfType<System.Windows.Controls.TextBlock>()
                             .Any(t => t.Text == expected);
-                        tenderField.Text = "4";
+                        Require(tenderField.IsReadOnly, "Touch payment unexpectedly required typing.");
+                        void Touch(string label) => Children(modal!).OfType<System.Windows.Controls.Button>()
+                            .Single(b => Equals(b.Content, label))
+                            .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                        Touch("4");
                         Require(Displays($"Montant manquant : {1.25m:N2} MAD"), "Incorrect cash shortfall.");
-                        tenderField.Text = "4.";
+                        Touch(".");
                         Require(!Children(modal!).OfType<System.Windows.Controls.TextBlock>()
                             .Any(t => t.Text.StartsWith("Montant manquant") || t.Text.StartsWith("Monnaie à rendre")),
                             "Incomplete tender kept a stale cash preview.");
-                        tenderField.Text = tender;
+                        Touch("Effacer");
+                        Touch("5 MAD");
+                        Touch("5 MAD");
+                        Require(tenderField.Text == tender, "Repeated denomination taps did not accumulate.");
                         Require(Displays($"Monnaie à rendre : {4.75m:N2} MAD"), "Incorrect cash change.");
                     }
                     else

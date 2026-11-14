@@ -1,6 +1,9 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Globalization;
+using Hanouty.ArchitectureBridge;
 using Hanouty.Desktop.Wpf.Presentation;
 
 namespace Hanouty.Desktop.Wpf;
@@ -27,6 +30,7 @@ public sealed class CashierEntryDialog : Window
             _register.Text = context.RegisterId;
             _cashier.IsReadOnly = true;
             _register.IsReadOnly = true;
+            _tender.IsReadOnly = true;
         }
         Width = 420;
         SizeToContent = SizeToContent.Height;
@@ -60,6 +64,23 @@ public sealed class CashierEntryDialog : Window
                     : $"Montant manquant : {paymentTotal - received:N2} MAD";
             };
         }
+        if (context is not null)
+        {
+            panel.Children.Add(new TextBlock { Text = "Billets et pièces", Margin = new Thickness(0, 10, 0, 4) });
+            var cash = new UniformGrid { Columns = 4 };
+            foreach (var denomination in CashDrawerCount.Denominations)
+            {
+                var label = denomination.ToString("0.##", CultureInfo.InvariantCulture) + " MAD";
+                AddTouchButton(cash, label, () => AddDenomination(denomination));
+            }
+            panel.Children.Add(cash);
+
+            var keypad = new UniformGrid { Columns = 3, Margin = new Thickness(0, 8, 0, 0) };
+            foreach (var key in new[] { "7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "⌫" })
+                AddTouchButton(keypad, key, () => EnterDigit(key));
+            AddTouchButton(keypad, "Effacer", () => _tender.Clear());
+            panel.Children.Add(keypad);
+        }
         panel.Children.Add(_error);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
         var confirm = new Button { Content = "Review cash tender", MinHeight = 40, MinWidth = 160, IsDefault = true };
@@ -71,8 +92,45 @@ public sealed class CashierEntryDialog : Window
         actions.Children.Add(confirm);
         actions.Children.Add(cancel);
         panel.Children.Add(actions);
-        Content = panel;
+        MaxHeight = SystemParameters.WorkArea.Height;
+        Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         Loaded += (_, _) => (context is null ? _cashier : _tender).Focus();
+    }
+
+    private static void AddTouchButton(Panel panel, string label, Action action)
+    {
+        var button = new Button { Content = label, MinHeight = 40, Margin = new Thickness(2), FontSize = 16 };
+        button.Click += (_, _) => action();
+        panel.Children.Add(button);
+    }
+
+    private void AddDenomination(decimal denomination)
+    {
+        var input = _tender.Text.TrimEnd('.');
+        if (!decimal.TryParse(input, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var current))
+            current = 0m;
+        if (current <= decimal.MaxValue - denomination)
+            _tender.Text = (current + denomination).ToString("0.##", CultureInfo.InvariantCulture);
+    }
+
+    private void EnterDigit(string key)
+    {
+        var input = _tender.Text;
+        if (key == "⌫")
+        {
+            if (input.Length > 0) _tender.Text = input[..^1];
+            return;
+        }
+
+        if (key == ".")
+        {
+            if (!input.Contains('.')) _tender.Text = input.Length == 0 ? "0." : input + ".";
+            return;
+        }
+
+        var next = input == "0" ? key : input + key;
+        if (CashierEntryDraft.TryParse(_cashier.Text, _register.Text, next, out _, out _, out _))
+            _tender.Text = next;
     }
 
     private static void AddField(Panel panel, string label, TextBox field)
