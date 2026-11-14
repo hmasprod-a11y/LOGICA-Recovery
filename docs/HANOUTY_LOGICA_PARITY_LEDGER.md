@@ -36,7 +36,11 @@ La [recette Windows/MariaDB](https://github.com/hmasprod-a11y/LOGICA-Recovery/ac
 
 La [recette Windows/MariaDB](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/43500365368) sur `c433b93146c4563db63a0ba1297c45df14adaa17` ouvre l’écran WPF, crée puis valide un premier bon de 2 unités à partir d’une ligne commandée de 5. Le stock reste inchangé à l’enregistrement et augmente à la validation. Un essai à 4 unités est refusé. Un second bon de 3 unités solde la quantité commandée. La transaction de validation applique la moyenne pondérée de LOGICA et écrit le mouvement. Le test couvre aussi le rollback et la validation en double.
 
-Le lien durable entre une commande et un bon est une extension HANOUTY. Installer la [migration de liaison](../input/migrations/20261113-purchase-receipt-order.sql) sur une copie protégée avant d’utiliser la création. Le flux actuel crée un bon pour une ligne de commande et requiert une commande déjà validée. La création de commande dans WPF, la sélection de plusieurs articles dans un même bon, l’annulation de réservation et le rapprochement du compte fournisseur restent à traiter.
+La [recette Windows/MariaDB](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/43531510980) sur `b79733f415eeb2efdab8d94b1722dae281d10d37` valide aussi depuis WPF la création d’une commande et d’un bon avec deux articles, l’affichage du solde fournisseur, les quantités réservées et le stock final. Le rapprochement suit le calcul LOGICA : crédit initial + réceptions + sorties signées − règlements. Les tests couvrent l’annulation d’un bon enregistré et la restitution de sa réservation sans mouvement de stock.
+
+Statut : parcours achats livré en recette logicielle sur base jetable. Le lien commande-bon est une extension HANOUTY qui demande les migrations [liaison](../input/migrations/20261113-purchase-receipt-order.sql) puis [lignes multiples](../input/migrations/20261114-purchase-receipt-multiple-lines.sql) avant recette sur une copie protégée. La consultation du solde utilise les règlements présents. La saisie de règlements et la recette magasin restent à couvrir avec les parcours financiers.
+
+Prochaine section : catalogue et prix, à partir de `Form_2_ARTICLES.cs`.
 
 ## Ordre d’exécution
 
