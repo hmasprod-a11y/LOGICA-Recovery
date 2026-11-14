@@ -18,9 +18,16 @@ public sealed class CashierEntryDialog : Window
 
     // The displayed amount is supplied by Application; this dialog never calculates totals.
     // Fresh tender is required on every dialog invocation, including a second operation.
-    public CashierEntryDialog(decimal? authoritativeTotalMad = null)
+    public CashierEntryDialog(decimal? authoritativeTotalMad = null, CashierPaymentContext? context = null)
     {
-        Title = "Cashier session and cash tender";
+        Title = context is null ? "Cashier session and cash tender" : "Paiement en espèces";
+        if (context is not null)
+        {
+            _cashier.Text = context.CashierId;
+            _register.Text = context.RegisterId;
+            _cashier.IsReadOnly = true;
+            _register.IsReadOnly = true;
+        }
         Width = 420;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -47,7 +54,7 @@ public sealed class CashierEntryDialog : Window
         actions.Children.Add(cancel);
         panel.Children.Add(actions);
         Content = panel;
-        Loaded += (_, _) => _cashier.Focus();
+        Loaded += (_, _) => (context is null ? _cashier : _tender).Focus();
     }
 
     private static void AddField(Panel panel, string label, TextBox field)

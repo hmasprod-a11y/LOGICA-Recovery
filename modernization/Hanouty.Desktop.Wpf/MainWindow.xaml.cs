@@ -434,7 +434,11 @@ public partial class MainWindow : Window
 
     private void EndFinancialSession_Click(object sender, RoutedEventArgs e) => EndFinancialSession();
 
-    public bool ShowCashierEntry()
+    public bool ShowCashierEntry() => ShowCashierEntry(forPayment: false);
+
+    private void EnterTender_Click(object sender, RoutedEventArgs e) => ShowCashierEntry(forPayment: true);
+
+    private bool ShowCashierEntry(bool forPayment)
     {
         if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
@@ -447,7 +451,10 @@ public partial class MainWindow : Window
             var total = _readTrustedCashTotal();
             if (total is null || total < 0m) return false;
             var identity = _readBasketIdentity?.Invoke();
-            var dialog = new CashierEntryDialog(total) { Owner = this };
+            var context = forPayment ? vm.PaymentContext : null;
+            if (forPayment && (!vm.FinancialSessionActive || context is null || total <= 0m))
+                return false;
+            var dialog = new CashierEntryDialog(total, context) { Owner = this };
             if (dialog.ShowDialog() != true || dialog.Draft is not { } draft) return false;
             if (vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
                 _readTrustedCashTotal() != total || _readBasketIdentity?.Invoke() != identity)
