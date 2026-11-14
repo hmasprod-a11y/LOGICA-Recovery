@@ -73,13 +73,13 @@ public sealed partial record CatalogueHost
     // Real development cashier entry uses the SAME production graph, initially
     // signed out and without a dummy payment/identity/price.
     public static CatalogueHost CreateCashierWorkstation(CatalogueSettings settings,
-        string twoDigitWorkstation)
+        string twoDigitWorkstation, Func<System.Windows.Window, string?>? selectImportFile = null)
     {
         MainWindow? window = null;
         var host = CreateFinancialCore(settings, twoDigitWorkstation,
             () => window?.PromptCashierPin() ??
                 throw new InvalidOperationException("Cashier window unavailable."),
-            null, null, null);
+            null, null, null, selectImportFile);
         window = host.Window;
         return host;
     }
@@ -103,7 +103,8 @@ public sealed partial record CatalogueHost
     private static CatalogueHost CreateFinancialCore(CatalogueSettings settings,
         string twoDigitWorkstation, Func<string> transientPinProvider,
         AuthorizedCheckoutPaymentContext? initialContext, Action? afterCommitAcknowledgementFault,
-        Action<Exception>? postingFailureDiagnostic)
+        Action<Exception>? postingFailureDiagnostic,
+        Func<System.Windows.Window, string?>? selectImportFile = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(transientPinProvider);
@@ -493,7 +494,7 @@ public sealed partial record CatalogueHost
                     return string.IsNullOrWhiteSpace(pin) ? null : editor.Import(lines, actor, pin).Count;
                 }
                 finally { reviewing = false; }
-            }) { Owner = window };
+            }, selectImportFile) { Owner = window };
             dialog.ShowDialog();
             vm.ReloadCatalogue();
         });

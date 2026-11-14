@@ -7,10 +7,16 @@ namespace Hanouty.Desktop.Bootstrap;
 
 internal sealed class CataloguePriceDialog : Window
 {
+    private static string? SelectWorkbook(Window owner)
+    {
+        var picker = new Microsoft.Win32.OpenFileDialog { Filter = "Excel (*.xlsx)|*.xlsx" };
+        return picker.ShowDialog(owner) == true ? picker.FileName : null;
+    }
+
     internal CataloguePriceDialog(CataloguePriceEditor service, Func<CataloguePriceEditor.Price, decimal, bool> save,
         Func<string, string, string, decimal, string?, string?> create,
         Func<CataloguePriceEditor.Card, string, string, string, bool> saveCard,
-        Func<IReadOnlyList<CataloguePriceEditor.ImportLine>, int?> import)
+        Func<IReadOnlyList<CataloguePriceEditor.ImportLine>, int?> import, Func<Window, string?>? selectImportFile = null)
     {
         Title = "Prix du catalogue";
         Width = 460;
@@ -36,8 +42,8 @@ internal sealed class CataloguePriceDialog : Window
         panel.Children.Add(importButton);
         importButton.Click += (_, _) =>
         {
-            var picker = new Microsoft.Win32.OpenFileDialog { Filter = "Excel (*.xlsx)|*.xlsx" };
-            if (picker.ShowDialog(this) == true) ReviewImport(picker.FileName);
+            var file = (selectImportFile ?? SelectWorkbook)(this);
+            if (file is not null) ReviewImport(file);
         };
 
         void ReviewImport(string file)

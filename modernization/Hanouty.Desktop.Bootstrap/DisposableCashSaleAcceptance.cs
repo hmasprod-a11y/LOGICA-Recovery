@@ -1087,6 +1087,99 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         finally { variantHost.Window.Close(); }
     }
 
+    private static void RunCatalogueImportFromWindow(CatalogueSettings settings, string file)
+    {
+        var pickerCalls = 0;
+        var host = CatalogueHost.CreateCashierWorkstation(settings, "01", _ => { pickerCalls++; return file; });
+        host.Window.Show();
+        try
+        {
+            Require(CashierEntry(host, "Test admin", "01", "0", 0m, "6789"), "Catalogue import administrator could not sign in.");
+            static IEnumerable<T> Controls<T>(DependencyObject parent) where T : DependencyObject
+            {
+                foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+                {
+                    if (child is T control) yield return control;
+                    foreach (var nested in Controls<T>(child)) yield return nested;
+                }
+            }
+            static void Click(System.Windows.Controls.Button button)
+            {
+                Require(button.IsEnabled, "Catalogue import control is disabled.");
+                button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            }
+
+            var step = 0;
+            Exception? failure = null;
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(75) };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                try
+                {
+                    var windows = Application.Current.Windows.Cast<Window>().Where(window => window.IsVisible).ToArray();
+                    switch (step++)
+                    {
+                        case 0:
+                            var dialog = windows.OfType<CataloguePriceDialog>().Single(window => window.Owner == host.Window);
+                            var import = Controls<System.Windows.Controls.Button>(dialog).Single(button =>
+                                Equals(button.Content, "Importer les articles Excel"));
+                            timer.Start();
+                            Click(import);
+                            Require(Number(settings, "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Code IN ('000101','000102')") == 0,
+                                "Closing the import preview wrote to the catalogue.");
+                            timer.Start();
+                            Click(import);
+                            Require(Controls<System.Windows.Controls.TextBlock>(dialog).Any(text =>
+                                text.Text == "2 article(s) importé(s)."), "Catalogue dialog did not confirm the import.");
+                            dialog.Close();
+                            break;
+                        case 1:
+                        case 2:
+                            var review = windows.Single(window => window.Title == "Vérifier les articles à importer");
+                            var grid = Controls<System.Windows.Controls.DataGrid>(review).Single();
+                            Require(grid.Items.Count == 2 && Number(settings,
+                                "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Code IN ('000101','000102')") == 0,
+                                "Preview did not display the file without changing MariaDB.");
+                            if (step == 2) review.Close();
+                            else
+                            {
+                                timer.Start();
+                                Click(Controls<System.Windows.Controls.Button>(review).Single(button =>
+                                    Equals(button.Content, "Importer 2 article(s)")));
+                            }
+                            break;
+                        case 3:
+                            var prompt = windows.Single(window => window.Owner == host.Window &&
+                                Controls<System.Windows.Controls.PasswordBox>(window).Any());
+                            Require(Number(settings, "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Code IN ('000101','000102')") == 0,
+                                "Import wrote before the administrator PIN was confirmed.");
+                            Controls<System.Windows.Controls.PasswordBox>(prompt).Single().Password = "6789";
+                            Click(Controls<System.Windows.Controls.Button>(prompt).Single(button => button.IsDefault));
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failure ??= ex;
+                    foreach (var window in Application.Current.Windows.Cast<Window>()
+                        .Where(window => window.IsVisible && (window.Owner == host.Window ||
+                            window.Owner is CataloguePriceDialog)).ToArray().Reverse()) window.Close();
+                }
+            };
+            timer.Start();
+            try
+            {
+                Click(Controls<System.Windows.Controls.Button>(host.Window).Single(button =>
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "Open catalogue prices"));
+            }
+            finally { timer.Stop(); }
+            if (failure is not null) throw new InvalidOperationException("Catalogue import UI acceptance failed.", failure);
+            Require(step == 4 && pickerCalls == 2, "Catalogue import did not exercise cancellation and approval.");
+        }
+        finally { host.Window.Close(); }
+    }
+
     private static void VerifyCatalogueImport(CatalogueSettings settings)
     {
         var path = Path.Combine(EvidenceDirectory, "catalogue-import-test.xlsx");
@@ -1127,8 +1220,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Number(settings, "SELECT ARTICLE FROM TABLE_NUM WHERE ID=0") == before &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movements,
             "A failed import left a partial catalogue, movement or sequence.");
-        var ids = editor.Import(lines, "Test admin", "6789");
-        Require(ids.Count == 2 && ids.Distinct().Count() == 2 &&
+        RunCatalogueImportFromWindow(settings, path);
+        Require(Number(settings, "SELECT COUNT(DISTINCT ID_ARTICLE) FROM TABLE_ARTICLES WHERE Code IN ('000101','000102')") == 2 &&
             Number(settings, "SELECT ARTICLE FROM TABLE_NUM WHERE ID=0") == before + 2 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movements + 2 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Code='000101' AND PRIX_A=4.25 AND PRIX_MP=4.25 AND PRIX_V_1=6.75 AND PRIX_V_2=6.75 AND STOCK=2.5 AND STOCK_INITIAL=2.5 AND TAUX_TVA=20") == 1,
