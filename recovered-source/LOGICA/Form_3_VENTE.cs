@@ -19,6 +19,7 @@ using System.Threading;
 using System.Windows.Forms;
 using System.Windows.Forms.Layout;
 using LOGICA.My;
+using Route = LOGICA.ApplicationLayer.Checkout.ReceiptPrintRoute;
 using Microsoft.VisualBasic;
 using Microsoft.VisualBasic.CompilerServices;
 using Microsoft.VisualBasic.Devices;
@@ -11804,150 +11805,39 @@ public class Form_3_VENTE : Form
 		{
 			try
 			{
-				if (Operators.CompareString(Text_PRINTER_SOLDER.Text, "0", TextCompare: false) != 0)
+				string action = Conversions.ToString(NewLateBinding.LateGet(_sender, null, "name", new object[0], null, null, null));
+				string printer = Text_PRINTER_SOLDER.Text;
+				var route = LOGICA.ApplicationLayer.Checkout.ReceiptPrintRouting.Select(
+					printer, action == "Button_SOLDER_PRINTER" || action == "Button_SOLDER_CREDIT",
+					((ButtonBase)Button_OPERATION).Text, MyProject.Forms.Form_0_TEMPLATE.TextBox_BRANCHEMENT.Text,
+					Text_MODELE_TICKET.Text, out int copies);
+				if (route == Route.Drawer)
 				{
-					if (Conversions.ToBoolean(Operators.OrObject(Operators.CompareObjectEqual(NewLateBinding.LateGet(_sender, null, "name", new object[0], null, null, null), "Button_SOLDER_PRINTER", TextCompare: false), Operators.CompareObjectEqual(NewLateBinding.LateGet(_sender, null, "name", new object[0], null, null, null), "Button_SOLDER_CREDIT", TextCompare: false))))
+					string command = "\u001bp\0<" + Conversions.ToString(Strings.Chr(255));
+					RawPrinterHelperr.SendStringToPrinter(printer, command);
+				}
+				else if (copies > 0)
+				{
+					PrintDocument document = route switch
 					{
-						if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) == 0)
-						{
-							if (Operators.CompareString(MyProject.Forms.Form_0_TEMPLATE.TextBox_BRANCHEMENT.Text, "USB", TextCompare: false) == 0)
-							{
-								if (Operators.CompareString(Text_MODELE_TICKET.Text, "FR_3C", TextCompare: false) == 0)
-								{
-									if (Operators.CompareString(Text_PRINTER_SOLDER.Text, "", TextCompare: false) != 0)
-									{
-										CL_FR_3C.PrinterSettings.PrinterName = Text_PRINTER_SOLDER.Text;
-									}
-									CL_FR_3C.PrintController = (PrintController)new StandardPrintController();
-									CL_FR_3C.Print();
-								}
-								else if (Operators.CompareString(Text_MODELE_TICKET.Text, "FR_4C", TextCompare: false) == 0)
-								{
-									if (Operators.CompareString(Text_PRINTER_SOLDER.Text, "", TextCompare: false) != 0)
-									{
-										CL_FR_4C.PrinterSettings.PrinterName = Text_PRINTER_SOLDER.Text;
-									}
-									CL_FR_4C.PrintController = (PrintController)new StandardPrintController();
-									CL_FR_4C.Print();
-								}
-								else if (Operators.CompareString(Text_MODELE_TICKET.Text, "FR_2L", TextCompare: false) == 0)
-								{
-									if (Operators.CompareString(Text_PRINTER_SOLDER.Text, "", TextCompare: false) != 0)
-									{
-										CL_FR_2L.PrinterSettings.PrinterName = Text_PRINTER_SOLDER.Text;
-									}
-									CL_FR_2L.PrintController = (PrintController)new StandardPrintController();
-									CL_FR_2L.Print();
-								}
-								else if (Operators.CompareString(Text_MODELE_TICKET.Text, "AR_3C", TextCompare: false) == 0)
-								{
-									if (Operators.CompareString(Text_PRINTER_SOLDER.Text, "", TextCompare: false) != 0)
-									{
-										CL_AR_3C.PrinterSettings.PrinterName = Text_PRINTER_SOLDER.Text;
-									}
-									CL_AR_3C.PrintController = (PrintController)new StandardPrintController();
-									CL_AR_3C.Print();
-								}
-								else if (Operators.CompareString(Text_MODELE_TICKET.Text, "AR_4C", TextCompare: false) == 0)
-								{
-									if (Operators.CompareString(Text_PRINTER_SOLDER.Text, "", TextCompare: false) != 0)
-									{
-										CL_AR_4C.PrinterSettings.PrinterName = Text_PRINTER_SOLDER.Text;
-									}
-									CL_AR_4C.PrintController = (PrintController)new StandardPrintController();
-									CL_AR_4C.Print();
-								}
-							}
-							else
-							{
-								CL_COM();
-							}
-						}
-						else if (((ButtonBase)Button_OPERATION).Text.Contains("RETOUR"))
-						{
-							if (Operators.CompareString(MyProject.Forms.Form_0_TEMPLATE.TextBox_BRANCHEMENT.Text, "USB", TextCompare: false) == 0)
-							{
-								if (Operators.CompareString(Text_PRINTER_SOLDER.Text, "", TextCompare: false) != 0)
-								{
-									BON_RETOUR.PrinterSettings.PrinterName = Text_PRINTER_SOLDER.Text;
-								}
-								BON_RETOUR.PrintController = (PrintController)new StandardPrintController();
-								BON_RETOUR.Print();
-								BON_RETOUR.Print();
-							}
-							else
-							{
-								BON_RETOUR_COM();
-								BON_RETOUR_COM();
-							}
-						}
-						else if (Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "CREDIT", TextCompare: false) == 0)
-						{
-							if (Operators.CompareString(MyProject.Forms.Form_0_TEMPLATE.TextBox_BRANCHEMENT.Text, "USB", TextCompare: false) == 0)
-							{
-								if (Operators.CompareString(Text_MODELE_TICKET.Text, "FR_3C", TextCompare: false) == 0)
-								{
-									if (Operators.CompareString(Text_PRINTER_SOLDER.Text, "", TextCompare: false) != 0)
-									{
-										CL_FR_3C.PrinterSettings.PrinterName = Text_PRINTER_SOLDER.Text;
-									}
-									CL_FR_3C.PrintController = (PrintController)new StandardPrintController();
-									CL_FR_3C.Print();
-									CL_FR_3C.Print();
-								}
-								else if (Operators.CompareString(Text_MODELE_TICKET.Text, "FR_4C", TextCompare: false) == 0)
-								{
-									if (Operators.CompareString(Text_PRINTER_SOLDER.Text, "", TextCompare: false) != 0)
-									{
-										CL_FR_4C.PrinterSettings.PrinterName = Text_PRINTER_SOLDER.Text;
-									}
-									CL_FR_4C.PrintController = (PrintController)new StandardPrintController();
-									CL_FR_4C.Print();
-									CL_FR_4C.Print();
-								}
-								else if (Operators.CompareString(Text_MODELE_TICKET.Text, "FR_2L", TextCompare: false) == 0)
-								{
-									if (Operators.CompareString(Text_PRINTER_SOLDER.Text, "", TextCompare: false) != 0)
-									{
-										CL_FR_2L.PrinterSettings.PrinterName = Text_PRINTER_SOLDER.Text;
-									}
-									CL_FR_2L.PrintController = (PrintController)new StandardPrintController();
-									CL_FR_2L.Print();
-									CL_FR_2L.Print();
-								}
-								else if (Operators.CompareString(Text_MODELE_TICKET.Text, "AR_3C", TextCompare: false) == 0)
-								{
-									if (Operators.CompareString(Text_PRINTER_SOLDER.Text, "", TextCompare: false) != 0)
-									{
-										CL_AR_3C.PrinterSettings.PrinterName = Text_PRINTER_SOLDER.Text;
-									}
-									CL_AR_3C.PrintController = (PrintController)new StandardPrintController();
-									CL_AR_3C.Print();
-									CL_AR_3C.Print();
-								}
-								else if (Operators.CompareString(Text_MODELE_TICKET.Text, "AR_4C", TextCompare: false) == 0)
-								{
-									if (Operators.CompareString(Text_PRINTER_SOLDER.Text, "", TextCompare: false) != 0)
-									{
-										CL_AR_4C.PrinterSettings.PrinterName = Text_PRINTER_SOLDER.Text;
-									}
-									CL_AR_4C.PrintController = (PrintController)new StandardPrintController();
-									CL_AR_4C.Print();
-									CL_AR_4C.Print();
-								}
-							}
-							else
-							{
-								CL_COM();
-								CL_COM();
-							}
-						}
+						Route.FrenchThreeColumn => CL_FR_3C,
+						Route.FrenchFourColumn => CL_FR_4C,
+						Route.FrenchTwoLine => CL_FR_2L,
+						Route.ArabicThreeColumn => CL_AR_3C,
+						Route.ArabicFourColumn => CL_AR_4C,
+						Route.Return => BON_RETOUR,
+						_ => null
+					};
+					if (document != null)
+					{
+						if (printer != "") document.PrinterSettings.PrinterName = printer;
+						document.PrintController = new StandardPrintController();
 					}
-					else
+					for (int copy = 0; copy < copies; copy++)
 					{
-						string command = "\u001bp\0<" + Conversions.ToString(Strings.Chr(255));
-						string text = Text_PRINTER_SOLDER.Text;
-						RawPrinterHelperr.SendStringToPrinter(text, command);
+						if (document != null) document.Print();
+						else if (route == Route.SerialReturn) BON_RETOUR_COM();
+						else CL_COM();
 					}
 				}
 				if (!Operators.ConditionalCompareObjectEqual(NewLateBinding.LateGet(_sender, null, "name", new object[0], null, null, null), "Button_SOLDER_PRINTER", TextCompare: false) || Operators.CompareString(((ButtonBase)Button_OPERATION).Text, "VENTE", TextCompare: false) != 0 || Operators.CompareString(Text_PRINTER_C1.Text, "0", TextCompare: false) == 0)
