@@ -32,7 +32,7 @@ public sealed class CashierEntryDialog : Window
             _register.IsReadOnly = true;
             _tender.IsReadOnly = true;
         }
-        Width = 420;
+        Width = context is null ? 420 : 520;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         ResizeMode = ResizeMode.NoResize;
@@ -67,13 +67,29 @@ public sealed class CashierEntryDialog : Window
         if (context is not null)
         {
             panel.Children.Add(new TextBlock { Text = "Billets et pièces", Margin = new Thickness(0, 10, 0, 4) });
-            var cash = new UniformGrid { Columns = 4 };
-            // FormDialog_calc: Button_DEVISE_* values for payment, distinct from drawer counting.
-            foreach (var denomination in new[] { 200m, 100m, 50m, 20m, 10m, 5m, 2m, 1m, 0.5m })
+            var cash = new Grid();
+            foreach (var width in new[] { 139, 139, 60, 60 })
+                cash.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(width, GridUnitType.Star) });
+            for (var row = 0; row < 3; row++)
+                cash.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            // Panel_DEVIS in FormDialog_calc places notes on the left and coins on the right.
+            foreach (var (denomination, row, column) in new[]
+            {
+                (200m, 0, 0), (100m, 0, 1), (10m, 0, 2), (5m, 0, 3),
+                (50m, 1, 0), (20m, 1, 1), (2m, 1, 2), (1m, 1, 3),
+                (0.5m, 2, 2)
+            })
             {
                 var label = denomination.ToString("0.##", CultureInfo.InvariantCulture) + " MAD";
                 var button = AddTouchButton(cash, label, () => AddDenomination(denomination));
-                if (denomination == 0.5m) continue;
+                Grid.SetRow(button, row);
+                Grid.SetColumn(button, column);
+                if (denomination == 0.5m)
+                {
+                    Grid.SetColumnSpan(button, 2);
+                    continue;
+                }
 
                 var extension = denomination >= 20m ? "jpg" : "png";
                 var imageUri = new Uri($"/Hanouty.Desktop.Wpf;component/Assets/Cash/{denomination.ToString("0", CultureInfo.InvariantCulture)}.{extension}", UriKind.Relative);
