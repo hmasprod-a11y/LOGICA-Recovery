@@ -813,6 +813,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyCashDrawerClosing(settings, pin);
         VerifyInventoryValidation(settings);
         VerifyPurchaseReceipt(settings);
+        VerifyCataloguePrice(settings);
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -824,6 +825,127 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             FullCashReturnThroughWpfUi = true, FullCashReturnSqlReadback = true, FullCashReturnRollback = true, FullCashReturnIdempotency = true,
             W2Accepted = true, Remaining = "Partial returns, mixed tenders, discounts/credit, device parity, and commercial rollout acceptance"
         }));
+    }
+
+    private static void VerifyCataloguePrice(CatalogueSettings settings)
+    {
+        Sql(settings, """
+            CREATE TABLE IF NOT EXISTS hanouty_catalogue_price_audit (
+                ID BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                ARTICLE_ID VARCHAR(255) NOT NULL,
+                ACTOR VARCHAR(255) NOT NULL,
+                PREVIOUS_PRICE DECIMAL(19,4) NOT NULL,
+                NEW_PRICE DECIMAL(19,4) NOT NULL,
+                CHANGED_UTC TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+                KEY ix_catalogue_price_article (ARTICLE_ID, ID)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            """);
+        var editor = new CataloguePriceEditor(settings.ConnectionString);
+        var original = editor.Read("W2-Article");
+        var price = original.Amount + 1.25m;
+        var before = Snapshot(settings);
+        try
+        {
+            editor.Update(original, price, "Test manager", "5678");
+            throw new InvalidOperationException("A non-administrator modified the catalogue price.");
+        }
+        catch (UnauthorizedAccessException) { }
+        Sql(settings, "CREATE TRIGGER test_price_audit_failure BEFORE INSERT ON hanouty_catalogue_price_audit FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='price rollback'");
+        try
+        {
+            editor.Update(original, price, "Test admin", "6789");
+            throw new InvalidOperationException("Catalogue price ignored a failed audit.");
+        }
+        catch (MySqlException) { }
+        finally { Sql(settings, "DROP TRIGGER test_price_audit_failure"); }
+        Require(editor.Read("W2-Article") == original, "Failed audit left a price change behind.");
+
+        var host = CatalogueHost.CreateCashierWorkstation(settings, "01");
+        host.Window.Show();
+        try
+        {
+            Require(CashierEntry(host, "Test admin", "01", "0", 0m, "6789"), "Price administrator could not sign in.");
+            static IEnumerable<T> Controls<T>(DependencyObject parent) where T : DependencyObject
+            {
+                foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+                {
+                    if (child is T control) yield return control;
+                    foreach (var descendant in Controls<T>(child)) yield return descendant;
+                }
+            }
+            static void Click(System.Windows.Controls.Button button)
+            {
+                Require(button.IsEnabled, "Catalogue price control is disabled.");
+                button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            }
+            var step = 0;
+            Exception? failure = null;
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(75) };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                try
+                {
+                    if (step++ == 0)
+                    {
+                        var dialog = Application.Current.Windows.OfType<CataloguePriceDialog>()
+                            .Single(window => window.IsVisible && window.Owner == host.Window);
+                        System.Windows.Controls.TextBox Field(string name) =>
+                            Controls<System.Windows.Controls.TextBox>(dialog).Single(field =>
+                                System.Windows.Automation.AutomationProperties.GetName(field) == name);
+                        System.Windows.Controls.Button Button(string text) =>
+                            Controls<System.Windows.Controls.Button>(dialog).Single(button => Equals(button.Content, text));
+                        Field("Identifiant de l’article").Text = "W2-Article";
+                        Click(Button("Lire le prix"));
+                        Require(decimal.Parse(Field("Nouveau prix de vente").Text, CultureInfo.CurrentCulture) == original.Amount,
+                            "Catalogue dialog displayed the wrong starting price.");
+                        Field("Nouveau prix de vente").Text = price.ToString(CultureInfo.InvariantCulture);
+                        timer.Start();
+                        Click(Button("Enregistrer le prix"));
+                        Require(Controls<System.Windows.Controls.TextBlock>(dialog).Any(text => text.Text.Contains("enregistré")),
+                            "Catalogue dialog did not confirm the saved price.");
+                        dialog.Close();
+                    }
+                    else
+                    {
+                        var prompt = Application.Current.Windows.Cast<Window>().Single(window =>
+                            window.Owner == host.Window && window.IsVisible &&
+                            Controls<System.Windows.Controls.PasswordBox>(window).Any());
+                        Controls<System.Windows.Controls.PasswordBox>(prompt).Single().Password = "6789";
+                        Click(Controls<System.Windows.Controls.Button>(prompt).Single(button => button.IsDefault));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                    foreach (var window in Application.Current.Windows.Cast<Window>()
+                        .Where(window => window.Owner == host.Window && window.IsVisible).ToArray().Reverse())
+                        window.Close();
+                }
+            };
+            timer.Start();
+            try
+            {
+                Click(Controls<System.Windows.Controls.Button>(host.Window).Single(button =>
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "Open catalogue prices"));
+            }
+            finally { timer.Stop(); }
+            if (failure is not null) throw new InvalidOperationException("Catalogue price UI acceptance failed.", failure);
+            Require(step == 2 && editor.Read("W2-Article").Amount == price && Snapshot(settings) == before &&
+                Number(settings, "SELECT COUNT(*) FROM hanouty_catalogue_price_audit WHERE ARTICLE_ID='W2-Article' AND ACTOR='Test admin' AND NEW_PRICE-PREVIOUS_PRICE=1.25") == 1,
+                "Catalogue price did not persist with its actor audit or changed stock.");
+            host.ViewModel.ScannerText = "CODE'1";
+            host.ViewModel.ScanCommand.Execute(null);
+            Require(host.ViewModel.BasketLines.Single().UnitPriceMad == price && host.Window.RefreshTrustedBasketTotal(),
+                "Cashier basket did not use the updated catalogue price.");
+            try
+            {
+                editor.Update(original, price + 1m, "Test admin", "6789");
+                throw new InvalidOperationException("A stale catalogue price was overwritten.");
+            }
+            catch (InvalidOperationException ex) when (ex.Message.StartsWith("Le prix ou l’article a changé.", StringComparison.Ordinal)) { }
+        }
+        finally { host.Window.Close(); }
     }
 
     private static void VerifyPurchaseReceipt(CatalogueSettings settings)

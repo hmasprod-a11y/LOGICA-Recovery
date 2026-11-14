@@ -44,6 +44,17 @@ public partial class MainWindow : Window
             _openPurchaseReceipt();
     }
 
+    private Action? _openCataloguePrices;
+
+    public void ConfigureCataloguePrices(Action openCataloguePrices) =>
+        _openCataloguePrices = openCataloguePrices;
+
+    private void OpenCataloguePrices_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false, CheckoutUncertain: false })
+            _openCataloguePrices?.Invoke();
+    }
+
     private void CountCashDrawer_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is not CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false })

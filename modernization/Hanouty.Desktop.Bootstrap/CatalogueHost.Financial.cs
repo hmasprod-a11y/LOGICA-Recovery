@@ -439,6 +439,28 @@ public sealed partial record CatalogueHost
             dialog.Owner = window;
             dialog.ShowDialog();
         });
+        window.ConfigureCataloguePrices(() =>
+        {
+            if (!CanChangeContext() || activeCashierId is not { } actor || binding.Session.PendingCount != 0)
+                return;
+            var editor = new CataloguePriceEditor(settings.ConnectionString);
+            var dialog = new CataloguePriceDialog(editor, (reviewed, price) =>
+            {
+                if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                    binding.Session.PendingCount != 0) return false;
+                reviewing = true;
+                try
+                {
+                    var pin = window.PromptCashierPin(actor);
+                    if (string.IsNullOrWhiteSpace(pin)) return false;
+                    editor.Update(reviewed, price, actor, pin);
+                    return true;
+                }
+                finally { reviewing = false; }
+            }) { Owner = window };
+            dialog.ShowDialog();
+            vm.ReloadCatalogue();
+        });
         window.ConfigureReviewedCheckout(result.TryReviewResolvedCheckout);
         return result;
     }
