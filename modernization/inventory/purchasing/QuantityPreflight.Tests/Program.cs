@@ -205,6 +205,29 @@ internal static class Program
             "null committed receipt payload");
         Check(ReceiptReplayPreflight.ShouldPost("R-NEW", Q("A", 1m), corruptCommitted),
             "unrelated corrupt receipt does not grant replay identity");
+        // Regression: exact capacity and a rejected multi-line proposal must not
+        // mutate the caller's quantities, including prior committed receipts.
+        var priorSnapshot = Q("A", 7m, "B", 2m);
+        var candidate = Q("A", 3m, "B", 6m);
+        var boundary = ReceiptUnitPreflight.Remaining(ordered, priorSnapshot, candidate,
+            bcUnits, matchingUnits);
+        Check(boundary["A"] == 0m && boundary["B"] == 0m,
+            "multi-article exact remaining boundary");
+        Check(priorSnapshot["A"] == 7m && priorSnapshot["B"] == 2m &&
+            candidate["A"] == 3m && candidate["B"] == 6m,
+            "capacity preflight leaves committed and proposed maps untouched");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, priorSnapshot,
+            Q("A", 3m, "B", 7m), bcUnits, matchingUnits),
+            "second line over capacity rejects entire receipt");
+        Check(priorSnapshot["A"] == 7m && priorSnapshot["B"] == 2m,
+            "failed multi-article preflight does not consume first line");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered,
+            Q("A", 10m, "B", 8m), Q("A", 1m), bcUnits,
+            new Dictionary<string, string> { ["A"] = "piece" }),
+            "fully received article cannot be received again");
+        Reject(() => ReceiptReplayPreflight.ShouldPost("R-001",
+            Q("A", 4m, "B", 3m, "C", 1m), committed),
+            "replay cannot add a new article");
         Console.WriteLine("PASS: " + assertions + " isolated quantity assertions; no database writes.");
         return 0;
     }
