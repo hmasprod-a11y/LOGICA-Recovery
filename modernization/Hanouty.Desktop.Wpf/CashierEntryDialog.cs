@@ -42,6 +42,24 @@ public sealed class CashierEntryDialog : Window
         AddField(panel, "Cashier identity", _cashier);
         AddField(panel, "Register identity", _register);
         AddField(panel, "Cash MAD (decimal, no thousands separator)", _tender);
+        if (context is not null && authoritativeTotalMad is decimal paymentTotal)
+        {
+            var change = new TextBlock { FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) };
+            panel.Children.Add(change);
+            _tender.TextChanged += (_, _) =>
+            {
+                if (!CashierEntryDraft.TryParse(_cashier.Text, _register.Text, _tender.Text,
+                    out _, out _, out var received))
+                {
+                    change.Text = "";
+                    return;
+                }
+
+                change.Text = received >= paymentTotal
+                    ? $"Monnaie à rendre : {received - paymentTotal:N2} MAD"
+                    : $"Montant manquant : {paymentTotal - received:N2} MAD";
+            };
+        }
         panel.Children.Add(_error);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
         var confirm = new Button { Content = "Review cash tender", MinHeight = 40, MinWidth = 160, IsDefault = true };
