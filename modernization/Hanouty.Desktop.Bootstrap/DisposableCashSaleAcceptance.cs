@@ -163,7 +163,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
 
     private static bool CashierEntry(CatalogueHost host, string cashier, string register,
         string tender, decimal expectedTotal, string? pin = null, bool confirm = true,
-        Action? duringEntry = null)
+        Action? duringEntry = null, bool fromPaymentPanel = false)
     {
         host.Window.Show();
         Exception? failure = null;
@@ -221,8 +221,18 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                         "Tender from an earlier operation was retained.");
                     Require(!host.Window.ShowCashierEntry() && !host.Window.EndFinancialSession(),
                         "Tender modal allowed nested entry/logout.");
-                    Field("Cashier identity").Text = cashier;
-                    Field("Register identity").Text = register;
+                    if (fromPaymentPanel)
+                    {
+                        Require(modal!.Title == "Paiement en espèces" &&
+                            Field("Cashier identity").IsReadOnly && Field("Cashier identity").Text == cashier &&
+                            Field("Register identity").IsReadOnly && Field("Register identity").Text == register,
+                            "Payment panel did not preserve the active cashier and register.");
+                    }
+                    else
+                    {
+                        Field("Cashier identity").Text = cashier;
+                        Field("Register identity").Text = register;
+                    }
                     Field("Cash MAD (decimal, no thousands separator)").Text = tender;
                     duringEntry?.Invoke();
                     if (confirm)
@@ -233,7 +243,19 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 catch (Exception ex) { failure = ex; modal?.Close(); }
             }));
         bool accepted;
-        try { accepted = host.Window.ShowCashierEntry(); }
+        try
+        {
+            if (fromPaymentPanel)
+            {
+                var button = Children(host.Window).OfType<System.Windows.Controls.Button>().Single(b =>
+                    System.Windows.Automation.AutomationProperties.GetName(b) == "Enter sale cash tender");
+                Require(button.IsEnabled, "Payment tender button was disabled for the active cashier.");
+                button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                accepted = host.ViewModel.CanCommit;
+            }
+            else
+                accepted = host.Window.ShowCashierEntry();
+        }
         finally { timer.Stop(); }
         if (failure is not null) throw new InvalidOperationException("Cashier entry UI acceptance failed.", failure);
         if (pin is not null)
@@ -658,7 +680,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 Sql(settings, "UPDATE TABLE_ARTICLES SET PRIX_V_1=6 WHERE ID_ARTICLE='W2-Article'")),
                 "Price changed during modal entry but old quote was approved.");
             Sql(settings, "UPDATE TABLE_ARTICLES SET PRIX_V_1=5.25 WHERE ID_ARTICLE='W2-Article'");
-            Require(CashierEntry(workstation, "O'Neil", "01", "10", 5.25m) &&
+            Require(CashierEntry(workstation, "O'Neil", "01", "10", 5.25m, fromPaymentPanel: true) &&
                 workstation.ViewModel.CanCommit && Snapshot(settings) == before,
                 "Fresh tender entry failed or wrote before payment confirmation.");
             ReviewThroughDialog(workstation, pin, true,
