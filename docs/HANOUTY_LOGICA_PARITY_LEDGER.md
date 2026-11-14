@@ -42,6 +42,12 @@ Statut : parcours achats livré en recette logicielle sur base jetable. Le lien 
 
 Prochaine section : catalogue et prix, à partir de `Form_2_ARTICLES.cs`.
 
+## Catalogue et prix — recette du parcours de base
+
+La [recette Windows/MariaDB](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/43541214050) sur `5b7123f1f87c039b0951fbae31875ab5824c1268` couvre la création de fiche de base et sa modification depuis WPF, la sélection d’une famille LOGICA, la modification du prix avec audit, puis la sélection explicite d’une variante par code-barres partagé. Le test d’import lit un vrai fichier .xlsx (`Feuil1`, `Code`, `Article`, `Famille`, `PRIX_A`, `PRIX_V`, `STOCK`), conserve les zéros des codes texte et prouve le rollback de l’ensemble des articles, mouvements et numéros à l’échec de la deuxième ligne.
+
+La lecture et l’écriture de l’import ont été testées; la sélection du fichier et la confirmation de l’aperçu dans WPF restent à exercer en recette manuelle. Les familles doivent déjà exister. Les champs avancés de la fiche LOGICA restent à couvrir. Les droits d’administration et le [schéma d’audit des prix](../input/migrations/20261114-catalogue-price-audit.sql) s’appliquent à la copie de recette.
+
 ## Ordre d’exécution
 
 1. **Caisse** — partir du fond de caisse, du comptage et des variantes de clôture du code LOGICA. Extraire les sélections et règles de rapprochement qui déterminent le contenu d’une clôture. Réutiliser le service de comptage, puis raccorder les écritures et le parcours WPF. Vérifier clôture et rollback sur la même version.
