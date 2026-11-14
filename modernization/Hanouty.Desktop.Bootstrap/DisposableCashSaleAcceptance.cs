@@ -1909,7 +1909,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             timer.Start();
             try
             {
-                Click(Controls<System.Windows.Controls.Button>(host.Window).Single(button => Equals(button.Content, "Compter la caisse")));
+                var action = opening ? "Fond de caisse" : "Clôture de caisse";
+                Click(Controls<System.Windows.Controls.Button>(host.Window).Single(button => Equals(button.Content, action)));
             }
             finally { timer.Stop(); }
             if (failure is not null) throw new InvalidOperationException("Cash drawer UI acceptance failed.", failure);

@@ -60,7 +60,17 @@ public partial class MainWindow : Window
         if (DataContext is not CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false })
             return;
 
-        new CashDrawerCountDialog(_closeCashDrawer, _setOpeningCash) { Owner = this }.ShowDialog();
+        if (_closeCashDrawer is not null)
+            new CashDrawerCountDialog(_closeCashDrawer, null) { Owner = this }.ShowDialog();
+    }
+
+    private void SetOpeningCash_Click(object sender, RoutedEventArgs e)
+    {
+        if (_setOpeningCash is null ||
+            DataContext is not CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false })
+            return;
+
+        new CashDrawerCountDialog(null, _setOpeningCash) { Owner = this }.ShowDialog();
     }
 
     // Test assembly only: permits recording adapters for STA view tests. Production callers

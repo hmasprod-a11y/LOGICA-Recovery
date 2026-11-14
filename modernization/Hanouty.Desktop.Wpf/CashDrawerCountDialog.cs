@@ -16,7 +16,7 @@ internal sealed class CashDrawerCountDialog : Window
 
     public CashDrawerCountDialog(Func<decimal, bool, bool>? closeCashDrawer, Func<decimal, bool>? setOpeningCash)
     {
-        Title = "Comptage de caisse";
+        Title = setOpeningCash is not null ? "Fond de caisse" : "Comptage et clôture de caisse";
         Width = 350;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
