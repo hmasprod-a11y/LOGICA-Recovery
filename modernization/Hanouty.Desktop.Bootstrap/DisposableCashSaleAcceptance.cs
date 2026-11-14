@@ -990,18 +990,13 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             """);
         var accountBefore = receipt.ReadSupplierAccount("SUP-TEST");
         var beforeMultiStock = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
-        var multiOrder = receipt.CreateOrder("SUP-TEST",
-            [new("W2-Article", 2m), new("W2-PURCHASE-SECOND", 3m)], "Test manager", "5678");
+        RunPartialReceiptFromWindow(settings, createOrder: true, multipleLines: true);
+        const string multiOrder = "BC000002";
         Require(multiOrder == "BC000002" &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_COMMANDES_DETAILS WHERE ID_BC='BC000002' AND ETAT='VALIDER'") == 2,
             "Multi-line order did not store both articles under one LOGICA number.");
-        var multiReceipt = receipt.CreateFromOrder(multiOrder,
-            [new("W2-Article", 1m), new("W2-PURCHASE-SECOND", 2m)], "Test manager", "5678");
-        Require(multiReceipt.Lines.Count == 2 &&
-            Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == beforeMultiStock &&
-            Number(settings, "SELECT COUNT(*) FROM hanouty_purchase_receipt_order WHERE RECEIPT_ID=@id", multiReceipt.Id) == 2,
-            "Multi-line receipt did not reserve both articles without writing stock.");
-        receipt.Validate(multiReceipt, "Test manager", "5678");
+        Require(Number(settings, "SELECT COUNT(*) FROM hanouty_purchase_receipt_order WHERE ORDER_ID=@id", multiOrder) == 2,
+            "Multi-line receipt did not reserve both articles.");
         var account = receipt.ReadSupplierAccount("SUP-TEST");
         Require(Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == beforeMultiStock + 1 &&
             Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-PURCHASE-SECOND'") == 6 &&
@@ -1011,7 +1006,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
 
     }
 
-    private static void RunPartialReceiptFromWindow(CatalogueSettings settings, bool cancel = false, bool createOrder = false)
+    private static void RunPartialReceiptFromWindow(CatalogueSettings settings, bool cancel = false, bool createOrder = false, bool multipleLines = false)
     {
         var host = CatalogueHost.CreateCashierWorkstation(settings, "01");
         host.Window.Show();
@@ -1050,20 +1045,36 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                                 System.Windows.Automation.AutomationProperties.GetName(field) == name);
                         System.Windows.Controls.Button Button(string label) =>
                             Controls<System.Windows.Controls.Button>(window).Single(button => Equals(button.Content, label));
+                        void AddLine(string id, string amount)
+                        {
+                            Field("Identifiant article").Text = id;
+                            Field("Quantité reçue").Text = amount;
+                            Click(Button("Ajouter la ligne"));
+                        }
                         Field("Identifiant article").Text = "W2-Article";
                         if (createOrder)
                         {
                             Field("Identifiant fournisseur").Text = "SUP-TEST";
                             Field("Quantité reçue").Text = "4";
+                            if (multipleLines)
+                            {
+                                AddLine("W2-Article", "2");
+                                AddLine("W2-PURCHASE-SECOND", "3");
+                            }
                             var beforeOrder = Snapshot(settings);
                             timer.Start();
                             Click(Button("Créer et valider la commande"));
-                            Require(Field("Commande").Text == "BC000001" && Snapshot(settings) == beforeOrder,
+                            Require(Field("Commande").Text == (multipleLines ? "BC000002" : "BC000001") && Snapshot(settings) == beforeOrder,
                                 "The order button did not allocate the LOGICA number without moving stock.");
                         }
                         else Field("Commande").Text = "BC-TEST";
                         Field("Quantité reçue").Text = cancel ? "3" : "2";
-                        var id = createOrder ? "BR000005" : cancel ? "BR000002" : "BR000001";
+                        if (multipleLines)
+                        {
+                            AddLine("W2-Article", "1");
+                            AddLine("W2-PURCHASE-SECOND", "2");
+                        }
+                        var id = multipleLines ? "BR000006" : createOrder ? "BR000005" : cancel ? "BR000002" : "BR000001";
                         var before = Snapshot(settings);
                         timer.Start();
                         Click(Button("Créer le bon"));
@@ -1075,6 +1086,12 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                         Require(Controls<System.Windows.Controls.TextBlock>(window).Any(text =>
                             text.Text == (cancel ? $"Bon {id} annulé. Quantité libérée." : $"Bon {id} validé. Stock et coûts mis à jour.")),
                             "Receipt screen did not confirm the saved receipt.");
+                        if (multipleLines)
+                        {
+                            Click(Button("Solde fournisseur"));
+                            Require(Controls<System.Windows.Controls.TextBlock>(window).Any(text => text.Text.Contains("Solde :")),
+                                "The supplier account did not render from the real database.");
+                        }
                         window.Close();
                     }
                     else if (cancel && step == 4)
