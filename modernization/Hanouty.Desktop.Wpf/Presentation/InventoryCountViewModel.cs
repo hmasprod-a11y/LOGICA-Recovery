@@ -1,0 +1,223 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+
+namespace Hanouty.Desktop.Wpf.Presentation;
+
+// UI projection only. Inventory owns the real document, authorization and stock writer.
+public sealed record InventoryCountLine(string ArticleId, string ArticleName,
+    decimal ExpectedQuantity, decimal? PhysicalQuantity)
+{
+    public decimal? Difference => PhysicalQuantity - ExpectedQuantity;
+}
+public sealed record InventoryCountDocument(string DocumentId, IReadOnlyList<InventoryCountLine> Lines);
+public interface IInventoryCountWorkflow
+{
+    InventoryCountDocument Open(string documentId);
+    InventoryCountDocument RecordPhysicalQuantity(string documentId, string articleId, decimal physicalQuantity);
+    bool Confirm(string documentId);
+}
+public sealed class InventoryCountViewModel : INotifyPropertyChanged
+{
+    private readonly IInventoryCountWorkflow? _workflow;
+    private string _documentId = "";
+    private string _articleId = "";
+    private string _searchText = "";
+    private string _physicalText = "";
+    private string? _selectedArticleId;
+    private string _status = "Contrat Inventory non raccordé — validation indisponible";
+    private bool _busy;
+    private bool _loaded;
+    private string? _openedDocumentId;
+    public ObservableCollection<InventoryCountLine> Lines { get; } = new();
+    // Search only the opened Inventory snapshot; never search or mutate store stock.
+    public ObservableCollection<InventoryCountLine> SearchResults { get; } = new();
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (_searchText == (value ?? "")) return;
+            _searchText = value ?? "";
+            // A new query must not leave a previously selected, now hidden article
+            // armed for physical-count recording.
+            ClearArticleSelection();
+            Changed();
+            RefreshSearchResults();
+        }
+    }
+    private void RefreshSearchResults()
+    {
+        SearchResults.Clear();
+        var term = _searchText.Trim();
+        foreach (var line in Lines.Where(x => term.Length == 0 ||
+            x.ArticleId.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+            x.ArticleName.Contains(term, StringComparison.OrdinalIgnoreCase)))
+            SearchResults.Add(line);
+        Changed(nameof(SearchResultCount));
+    }
+    private void ClearArticleSelection()
+    {
+        _selectedArticleId = null;
+        ArticleId = "";
+        PhysicalText = "";
+        Changed(nameof(CanRecord));
+    }
+    public int SearchResultCount => SearchResults.Count;
+    public void SelectArticle(InventoryCountLine? line)
+    {
+        if (_busy || !_loaded || _openedDocumentId != DocumentId || line is null ||
+            !SearchResults.Any(x => ReferenceEquals(x, line))) return;
+        _selectedArticleId = line.ArticleId;
+        ArticleId = line.ArticleId;
+        PhysicalText = line.PhysicalQuantity?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
+        Changed(nameof(CanRecord));
+    }
+    public InventoryCountViewModel(IInventoryCountWorkflow? workflow = null) => _workflow = workflow;
+    public string DocumentId { get => _documentId; set { if (_documentId == (value ?? "")) return; _documentId = value ?? ""; InvalidateDocument(); Changed(); Changed(nameof(CanOpen)); } }
+    public string ArticleId { get => _articleId; set { _articleId = value ?? ""; Changed(); Changed(nameof(CanRecord)); } }
+    public string PhysicalText { get => _physicalText; set { _physicalText = value ?? ""; Changed(); Changed(nameof(CanRecord)); } }
+    public string Status { get => _status; private set { _status = value; Changed(); } }
+    // Read-only progress is derived exclusively from the Inventory document snapshot.
+    // Never infer missing physical counts as zero stock.
+    public int CountedLines => Lines.Count(x => x.PhysicalQuantity.HasValue);
+    public int RemainingLines => Lines.Count - CountedLines;
+    public int DifferenceLines => Lines.Count(x => x.Difference is { } difference && difference != 0m);
+    public string CountProgress => $"{CountedLines}/{Lines.Count} articles comptés — {RemainingLines} restants — {DifferenceLines} écarts";
+    private void NotifyCountProgress()
+    {
+        Changed(nameof(CountedLines));
+        Changed(nameof(RemainingLines));
+        Changed(nameof(DifferenceLines));
+        Changed(nameof(CountProgress));
+    }
+    public bool CanOpen => _workflow is not null && !_busy && !string.IsNullOrWhiteSpace(DocumentId);
+    public bool CanRecord => _workflow is not null && _loaded && !_busy && _openedDocumentId == DocumentId &&
+        _selectedArticleId is not null && _selectedArticleId == ArticleId &&
+        SearchResults.Any(x => x.ArticleId == _selectedArticleId) &&
+        TryParsePhysicalQuantity(PhysicalText, out var quantity) && quantity >= 0m;
+    public bool CanConfirm => _workflow is not null && _loaded && !_busy && _openedDocumentId == DocumentId &&
+        Lines.Count > 0 && Lines.All(x => x.PhysicalQuantity is >= 0m);
+    public void Open()
+    {
+        if (!CanOpen) return;
+        // Reopening the same document must not retain an armed article from the old snapshot.
+        ClearArticleSelection();
+        Execute(() => Apply(_workflow!.Open(DocumentId)));
+    }
+    public void Record()
+    {
+        if (!CanRecord || _selectedArticleId != ArticleId ||
+            !SearchResults.Any(x => x.ArticleId == ArticleId) ||
+            !Lines.Any(x => x.ArticleId == ArticleId) ||
+            !TryParsePhysicalQuantity(PhysicalText, out var quantity) ||
+            quantity < 0m)
+        {
+            Status = "Article ou quantité physique invalide";
+            return;
+        }
+        // Freeze the reviewed document/article and disarm the editor before calling
+        // the Inventory port. A successful write requires a fresh explicit selection.
+        var documentId = _openedDocumentId!;
+        var articleId = _selectedArticleId!;
+        ClearArticleSelection();
+        Execute(() =>
+        {
+            if (DocumentId != documentId)
+                throw new InvalidOperationException("Inventory document changed before count write");
+            Apply(_workflow!.RecordPhysicalQuantity(documentId, articleId, quantity));
+        });
+    }
+    public void Confirm()
+    {
+        if (!CanConfirm) return;
+        // Freeze the reviewed identity before invoking an external Inventory port.
+        // A reentrant UI callback must not redirect confirmation to another document.
+        var reviewedDocumentId = _openedDocumentId;
+        Execute(() =>
+        {
+            if (reviewedDocumentId is null || reviewedDocumentId != DocumentId)
+                throw new InvalidOperationException("Inventory document changed before confirmation");
+            if (!_workflow!.Confirm(reviewedDocumentId)) throw new InvalidOperationException("Inventory refused confirmation");
+            if (reviewedDocumentId != DocumentId)
+                throw new InvalidOperationException("Inventory document changed during confirmation");
+            ClearArticleSelection();
+            Lines.Clear();
+            RefreshSearchResults();
+            NotifyCountProgress();
+            _loaded = false;
+            _openedDocumentId = null;
+            Status = "Document confirmé par Inventory";
+        });
+    }
+    // Physical stock is a quantity, never a monetary value: no thousands grouping,
+    // signs, exponents or currency symbols. Accept decimal comma and decimal dot
+    // regardless of the workstation locale, without silently changing magnitude.
+    private static bool TryParsePhysicalQuantity(string input, out decimal quantity)
+    {
+        quantity = 0m;
+        var value = input.Trim();
+        if (value.Length == 0 || value.Any(c => c is not (>= '0' and <= '9') and not '.' and not ','))
+            return false;
+        if (value.Count(c => c == '.' || c == ',') > 1)
+            return false;
+        return decimal.TryParse(value.Replace(',', '.'),
+            System.Globalization.NumberStyles.AllowDecimalPoint,
+            System.Globalization.CultureInfo.InvariantCulture, out quantity);
+    }
+    private void Apply(InventoryCountDocument document)
+    {
+        if (document is null || document.DocumentId != DocumentId ||
+            document.Lines is null || document.Lines.Any(x => x is null || string.IsNullOrWhiteSpace(x.ArticleId) ||
+                x.ExpectedQuantity < 0m || x.PhysicalQuantity < 0m) ||
+            document.Lines.Select(x => x.ArticleId).Distinct(StringComparer.Ordinal).Count() != document.Lines.Count)
+            throw new InvalidOperationException("Invalid Inventory document");
+        // A refreshed Inventory snapshot invalidates any prior row reference.
+        // Selection must be made again against the newly returned document.
+        ClearArticleSelection();
+        Lines.Clear();
+        foreach (var line in document.Lines) Lines.Add(line);
+        RefreshSearchResults();
+        NotifyCountProgress();
+        _loaded = true;
+        _openedDocumentId = document.DocumentId;
+        NotifyActions();
+        Status = "Document Inventory chargé — écarts affichés";
+    }
+    private void Execute(Action action)
+    {
+        _busy = true;
+        NotifyActions();
+        try { action(); }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            Lines.Clear();
+            // Rejected Inventory calls invalidate the document and its search projection.
+            RefreshSearchResults();
+            NotifyCountProgress();
+            _loaded = false;
+            _openedDocumentId = null;
+            // A failed Inventory call invalidates the entire local snapshot.
+            // Do not keep an old article/quantity ready for a second document.
+            ClearArticleSelection();
+            Status = "Opération refusée — vérifier le document dans Inventory";
+        }
+        finally { _busy = false; NotifyActions(); }
+    }
+    private void InvalidateDocument()
+    {
+        // The physical-count editor belongs to the opened document. Never carry
+        // a previous article/quantity into a different document identity.
+        ClearArticleSelection();
+        Lines.Clear();
+        RefreshSearchResults();
+        NotifyCountProgress();
+        _loaded = false;
+        _openedDocumentId = null;
+        Status = "Document modifié — ouvrir le nouveau document avant comptage";
+        NotifyActions();
+    }
+    private void NotifyActions() { Changed(nameof(CanOpen)); Changed(nameof(CanRecord)); Changed(nameof(CanConfirm)); }
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void Changed([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+}
