@@ -7,7 +7,8 @@ namespace Hanouty.Desktop.Bootstrap;
 
 internal sealed class CataloguePriceDialog : Window
 {
-    internal CataloguePriceDialog(CataloguePriceEditor service, Func<CataloguePriceEditor.Price, decimal, bool> save)
+    internal CataloguePriceDialog(CataloguePriceEditor service, Func<CataloguePriceEditor.Price, decimal, bool> save,
+        Func<string, string, string, decimal, string?> create)
     {
         Title = "Prix du catalogue";
         Width = 460;
@@ -28,6 +29,56 @@ internal sealed class CataloguePriceDialog : Window
         panel.Children.Add(price);
         panel.Children.Add(write);
         panel.Children.Add(status);
+        var card = new Expander { Header = "Nouvel article", Margin = new Thickness(0, 14, 0, 0) };
+        var fields = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+        TextBox Field(string label)
+        {
+            fields.Children.Add(new TextBlock { Text = label });
+            var field = new TextBox { MinHeight = 32, Margin = new Thickness(0, 2, 0, 6) };
+            System.Windows.Automation.AutomationProperties.SetName(field, label);
+            fields.Children.Add(field);
+            return field;
+        }
+        var name = Field("Nom du nouvel article");
+        var code = Field("Code-barres du nouvel article");
+        var family = Field("Famille du nouvel article");
+        var newPrice = Field("Prix du nouvel article");
+        var add = new Button { Content = "Créer l’article", MinHeight = 36 };
+        add.Click += (_, _) =>
+        {
+            if (!decimal.TryParse(newPrice.Text.Trim().Replace(',', '.'), NumberStyles.AllowDecimalPoint,
+                CultureInfo.InvariantCulture, out var amount) || amount < 0 || decimal.Round(amount, 2) != amount)
+            {
+                status.Text = "Saisissez un prix à deux décimales.";
+                return;
+            }
+            add.IsEnabled = false;
+            try
+            {
+                var articleId = create(name.Text.Trim(), code.Text.Trim(), family.Text.Trim(), amount);
+                if (articleId is not null)
+                {
+                    id.Text = articleId;
+                    status.Text = $"Article {articleId} créé.";
+                    name.Clear();
+                    code.Clear();
+                    family.Clear();
+                    newPrice.Clear();
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                status.Text = "Création réservée à un administrateur authentifié.";
+            }
+            catch (Exception ex) when (ex is MySqlException or InvalidOperationException or ArgumentException)
+            {
+                status.Text = ex is InvalidOperationException or ArgumentException ? ex.Message : "Création non confirmée.";
+            }
+            finally { add.IsEnabled = true; }
+        };
+        fields.Children.Add(add);
+        card.Content = fields;
+        panel.Children.Add(card);
         Content = panel;
 
         CataloguePriceEditor.Price? reviewed = null;

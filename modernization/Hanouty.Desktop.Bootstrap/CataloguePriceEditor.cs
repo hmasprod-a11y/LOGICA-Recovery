@@ -7,6 +7,64 @@ internal sealed class CataloguePriceEditor(string connectionString)
 {
     internal sealed record Price(string Id, string Name, decimal Amount);
 
+    internal string Create(string name, string barcode, string family, decimal price, string actor, string pin)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 128 || barcode.Length > 128 ||
+            family.Length > 128 || price < 0 || decimal.Round(price, 2) != price)
+            throw new ArgumentException("Vérifiez le nom, le code, la famille et le prix.");
+
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
+        InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_PASS",
+            "TABLE_NUM", "TABLE_ARTICLES", "TABLE_MOUVEMENTS_STOCK");
+        Authorize(connection, transaction, actor, pin);
+
+        long number;
+        using (var counter = new MySqlCommand("SELECT ARTICLE FROM TABLE_NUM WHERE ID=0 FOR UPDATE", connection, transaction))
+        using (var reader = counter.ExecuteReader())
+        {
+            if (!reader.Read() || reader.IsDBNull(0))
+                throw new InvalidOperationException("Compteur article indisponible.");
+            number = reader.GetInt64(0);
+            if (number < 0 || reader.Read())
+                throw new InvalidOperationException("Compteur article invalide.");
+        }
+
+        var id = "ART" + number.ToString("D6", System.Globalization.CultureInfo.InvariantCulture);
+        using (var duplicate = new MySqlCommand(
+            "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id OR " +
+            "(@code<>'' AND BINARY Code=BINARY @code)", connection, transaction))
+        {
+            duplicate.Parameters.AddWithValue("@id", id);
+            duplicate.Parameters.AddWithValue("@code", barcode);
+            if (Convert.ToInt64(duplicate.ExecuteScalar()) != 0)
+                throw new InvalidOperationException("Identifiant ou code-barres déjà utilisé.");
+        }
+
+        void Write(string sql, params (string Name, object Value)[] parameters)
+        {
+            using var command = new MySqlCommand(sql, connection, transaction);
+            foreach (var (key, value) in parameters) command.Parameters.AddWithValue(key, value);
+            if (command.ExecuteNonQuery() != 1)
+                throw new InvalidOperationException("Création d’article non confirmée.");
+        }
+
+        var now = DateTime.Now;
+        Write("INSERT INTO TABLE_ARTICLES (ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V_1,PRIX_V_2," +
+            "STOCK,STOCK_INITIAL,TAUX_TVA,PROMOTION,Images,DATES,DATE_INVENTAIRE) " +
+            "VALUES (@id,@code,@name,@family,0,0,@price,0,0,0,0,0,'0.png',@date,@date)",
+            ("@id", id), ("@code", barcode), ("@name", name), ("@family", family),
+            ("@price", price), ("@date", now.Date));
+        Write("INSERT INTO TABLE_MOUVEMENTS_STOCK (DATES,HEURE,LIBELLE,ID_ARTICLE,CODE_ARTICLE,ARTICLE,QUANTITE) " +
+            "VALUES (@date,@time,'Création d''article',@id,@code,@name,0)",
+            ("@date", now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)),
+            ("@time", now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)),
+            ("@id", id), ("@code", barcode), ("@name", name));
+        Write("UPDATE TABLE_NUM SET ARTICLE=ARTICLE+1 WHERE ID=0 AND ARTICLE=@number", ("@number", number));
+        transaction.Commit();
+        return id;
+    }
+
     internal Price Read(string id)
     {
         using var connection = Open();
@@ -22,17 +80,7 @@ internal sealed class CataloguePriceEditor(string connectionString)
         using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
         InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_PASS",
             "TABLE_ARTICLES", "hanouty_catalogue_price_audit");
-        // Form_2_ARTICLES.FUN_CAT_ACCES reserves catalogue editing for ADMIN.
-        using (var auth = new MySqlCommand(
-            "SELECT ListPass, Catégorie FROM TABLE_PASS WHERE BINARY ListUser=BINARY @actor FOR UPDATE",
-            connection, transaction))
-        {
-            auth.Parameters.AddWithValue("@actor", actor);
-            using var reader = auth.ExecuteReader();
-            if (string.IsNullOrWhiteSpace(pin) || !reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1) ||
-                reader.GetString(0) != pin || reader.GetString(1) != "ADMIN" || reader.Read())
-                throw new UnauthorizedAccessException("Modification du catalogue réservée à un administrateur.");
-        }
+        Authorize(connection, transaction, actor, pin);
         if (Read(connection, transaction, reviewed.Id, lockRow: true) != reviewed)
             throw new InvalidOperationException("Le prix ou l’article a changé. Rechargez l’article.");
         if (price == reviewed.Amount) return;
@@ -58,6 +106,21 @@ internal sealed class CataloguePriceEditor(string connectionString)
             if (audit.ExecuteNonQuery() != 1) throw new InvalidOperationException("Historique de prix non enregistré.");
         }
         transaction.Commit();
+    }
+
+    private static void Authorize(MySqlConnection connection, MySqlTransaction transaction, string actor, string pin)
+    {
+        // Form_2_ARTICLES.FUN_CAT_ACCES reserves catalogue editing for ADMIN.
+        using (var auth = new MySqlCommand(
+            "SELECT ListPass, Catégorie FROM TABLE_PASS WHERE BINARY ListUser=BINARY @actor FOR UPDATE",
+            connection, transaction))
+        {
+            auth.Parameters.AddWithValue("@actor", actor);
+            using var reader = auth.ExecuteReader();
+            if (string.IsNullOrWhiteSpace(pin) || !reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1) ||
+                reader.GetString(0) != pin || reader.GetString(1) != "ADMIN" || reader.Read())
+                throw new UnauthorizedAccessException("Modification du catalogue réservée à un administrateur.");
+        }
     }
 
     private static Price Read(MySqlConnection connection, MySqlTransaction transaction, string id, bool lockRow = false)

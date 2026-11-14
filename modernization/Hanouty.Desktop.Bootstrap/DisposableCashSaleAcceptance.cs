@@ -841,6 +841,21 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """);
         var editor = new CataloguePriceEditor(settings.ConnectionString);
+        Sql(settings, """
+            ALTER TABLE TABLE_NUM ADD ARTICLE INT NOT NULL DEFAULT 1;
+            ALTER TABLE TABLE_ARTICLES ADD PRIX_V_2 DECIMAL(16,3), ADD DATES DATE;
+            """);
+        var id = editor.Create("Article d'essai", "CARD'1", "Food", 9.75m, "Test admin", "6789");
+        Require(id == "ART000001" &&
+            Number(settings, "SELECT ARTICLE FROM TABLE_NUM WHERE ID=0") == 2 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE ID_ARTICLE='ART000001' AND QUANTITE=0") == 1 &&
+            editor.Read(id).Amount == 9.75m, "Article creation did not persist price, movement and LOGICA number.");
+        try
+        {
+            editor.Create("Duplicated code", "CARD'1", "Food", 1m, "Test admin", "6789");
+            throw new InvalidOperationException("Article creation accepted a duplicate barcode.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.StartsWith("Identifiant ou code-barres", StringComparison.Ordinal)) { }
         var original = editor.Read("W2-Article");
         var price = original.Amount + 1.25m;
         var before = Snapshot(settings);
@@ -934,9 +949,14 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Require(step == 2 && editor.Read("W2-Article").Amount == price && Snapshot(settings) == before &&
                 Number(settings, "SELECT COUNT(*) FROM hanouty_catalogue_price_audit WHERE ARTICLE_ID='W2-Article' AND ACTOR='Test admin' AND NEW_PRICE-PREVIOUS_PRICE=1.25") == 1,
                 "Catalogue price did not persist with its actor audit or changed stock.");
+            host.ViewModel.ScannerText = "CARD'1";
+            host.ViewModel.ScanCommand.Execute(null);
+            Require(host.ViewModel.BasketLines.Single().ArticleId == "ART000001" &&
+                host.ViewModel.BasketLines.Single().UnitPriceMad == 9.75m,
+                "Cashier catalogue did not load the newly created article.");
             host.ViewModel.ScannerText = "CODE'1";
             host.ViewModel.ScanCommand.Execute(null);
-            Require(host.ViewModel.BasketLines.Single().UnitPriceMad == price && host.Window.RefreshTrustedBasketTotal(),
+            Require(host.ViewModel.BasketLines.Single(line => line.ArticleId == "W2-Article").UnitPriceMad == price && host.Window.RefreshTrustedBasketTotal(),
                 "Cashier basket did not use the updated catalogue price.");
             try
             {
