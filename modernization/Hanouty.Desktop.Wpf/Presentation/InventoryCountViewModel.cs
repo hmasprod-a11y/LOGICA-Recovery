@@ -115,7 +115,17 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
             Status = "Article ou quantité physique invalide";
             return;
         }
-        Execute(() => Apply(_workflow!.RecordPhysicalQuantity(DocumentId, ArticleId, quantity)));
+        // Freeze the reviewed document/article and disarm the editor before calling
+        // the Inventory port. A successful write requires a fresh explicit selection.
+        var documentId = _openedDocumentId!;
+        var articleId = _selectedArticleId!;
+        ClearArticleSelection();
+        Execute(() =>
+        {
+            if (DocumentId != documentId)
+                throw new InvalidOperationException("Inventory document changed before count write");
+            Apply(_workflow!.RecordPhysicalQuantity(documentId, articleId, quantity));
+        });
     }
     public void Confirm()
     {
