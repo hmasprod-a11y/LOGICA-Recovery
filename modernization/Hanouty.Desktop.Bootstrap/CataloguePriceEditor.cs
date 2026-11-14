@@ -30,17 +30,47 @@ internal sealed class CataloguePriceEditor(string connectionString)
             throw new InvalidOperationException("Cette famille n’est plus disponible. Rechargez le catalogue.");
     }
 
+    internal sealed record ImportLine(string Name, string Barcode, string Family, decimal Cost, decimal Price, decimal Stock);
+
     internal string Create(string name, string barcode, string family, decimal price, string actor, string pin, string? variantOf = null)
     {
-        if (string.IsNullOrWhiteSpace(name) || name.Length > 128 || barcode.Length > 128 ||
-            family.Length > 128 || price < 0 || decimal.Round(price, 2) != price)
-            throw new ArgumentException("Vérifiez le nom, le code, la famille et le prix.");
-
         using var connection = Open();
         using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
+        RequireCreationAccess(connection, transaction, actor, pin);
+        var id = Create(connection, transaction, new ImportLine(name, barcode, family, 0m, price, 0m), variantOf, imported: false);
+        transaction.Commit();
+        return id;
+    }
+
+    internal IReadOnlyList<string> Import(IReadOnlyList<ImportLine> lines, string actor, string pin)
+    {
+        if (lines.Count == 0 || lines.Any(line => string.IsNullOrWhiteSpace(line.Barcode)) ||
+            lines.Select(line => line.Barcode).Distinct(StringComparer.Ordinal).Count() != lines.Count)
+            throw new ArgumentException("Le fichier doit contenir des articles et des codes-barres distincts.");
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
+        RequireCreationAccess(connection, transaction, actor, pin);
+        var ids = new List<string>(lines.Count);
+        foreach (var line in lines) ids.Add(Create(connection, transaction, line, variantOf: null, imported: true));
+        transaction.Commit();
+        return ids.AsReadOnly();
+    }
+
+    private static void RequireCreationAccess(MySqlConnection connection, MySqlTransaction transaction, string actor, string pin)
+    {
         InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_PASS",
             "TABLE_NUM", "TABLE_ARTICLES", "TABLE_MOUVEMENTS_STOCK", "TABLE_FAMILLES");
         Authorize(connection, transaction, actor, pin);
+    }
+
+    private static string Create(MySqlConnection connection, MySqlTransaction transaction,
+        ImportLine line, string? variantOf, bool imported)
+    {
+        var (name, barcode, family, cost, price, stock) = line;
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 128 || barcode.Length > 128 ||
+            family.Length > 128 || price < 0 || decimal.Round(price, 2) != price ||
+            cost < 0 || decimal.Round(cost, 2) != cost || stock < 0 || decimal.Round(stock, 3) != stock)
+            throw new ArgumentException("Vérifiez le nom, le code, la famille, les prix et le stock.");
         RequireFamily(connection, transaction, family);
 
         long number;
@@ -85,16 +115,16 @@ internal sealed class CataloguePriceEditor(string connectionString)
         var now = DateTime.Now;
         Write("INSERT INTO TABLE_ARTICLES (ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V_1,PRIX_V_2," +
             "STOCK,STOCK_INITIAL,TAUX_TVA,PROMOTION,Images,DATES,DATE_INVENTAIRE) " +
-            "VALUES (@id,@code,@name,@family,0,0,@price,0,0,0,0,0,'0.png',@date,@date)",
+            "VALUES (@id,@code,@name,@family,@cost,@cost,@price,@second,@stock,@stock,@tax,0,'0.png',@date,@date)",
             ("@id", id), ("@code", barcode), ("@name", name), ("@family", family),
-            ("@price", price), ("@date", now.Date));
+            ("@price", price), ("@cost", cost), ("@stock", stock), ("@tax", imported ? 20m : 0m),
+            ("@second", imported ? price : 0m), ("@date", now.Date));
         Write("INSERT INTO TABLE_MOUVEMENTS_STOCK (DATES,HEURE,LIBELLE,ID_ARTICLE,CODE_ARTICLE,ARTICLE,QUANTITE) " +
-            "VALUES (@date,@time,'Création d''article',@id,@code,@name,0)",
+            "VALUES (@date,@time,'Création d''article',@id,@code,@name,@stock)",
             ("@date", now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)),
             ("@time", now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)),
-            ("@id", id), ("@code", barcode), ("@name", name));
+            ("@id", id), ("@code", barcode), ("@name", name), ("@stock", stock));
         Write("UPDATE TABLE_NUM SET ARTICLE=ARTICLE+1 WHERE ID=0 AND ARTICLE=@number", ("@number", number));
-        transaction.Commit();
         return id;
     }
 

@@ -9,7 +9,8 @@ internal sealed class CataloguePriceDialog : Window
 {
     internal CataloguePriceDialog(CataloguePriceEditor service, Func<CataloguePriceEditor.Price, decimal, bool> save,
         Func<string, string, string, decimal, string?, string?> create,
-        Func<CataloguePriceEditor.Card, string, string, string, bool> saveCard)
+        Func<CataloguePriceEditor.Card, string, string, string, bool> saveCard,
+        Func<IReadOnlyList<CataloguePriceEditor.ImportLine>, int?> import)
     {
         Title = "Prix du catalogue";
         Width = 460;
@@ -30,6 +31,46 @@ internal sealed class CataloguePriceDialog : Window
         panel.Children.Add(price);
         panel.Children.Add(write);
         panel.Children.Add(status);
+        var importButton = new Button { Content = "Importer les articles Excel", MinHeight = 36,
+            Margin = new Thickness(0, 8, 0, 0) };
+        panel.Children.Add(importButton);
+        importButton.Click += (_, _) =>
+        {
+            var picker = new Microsoft.Win32.OpenFileDialog { Filter = "Excel (*.xlsx)|*.xlsx" };
+            if (picker.ShowDialog(this) == true) ReviewImport(picker.FileName);
+        };
+
+        void ReviewImport(string file)
+        {
+            try
+            {
+                var lines = CatalogueWorkbook.Read(file);
+                var review = new Window
+                {
+                    Title = "Vérifier les articles à importer", Owner = this, Width = 800, Height = 520,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner
+                };
+                var layout = new DockPanel { Margin = new Thickness(16) };
+                var confirm = new Button { Content = $"Importer {lines.Count} article(s)", MinHeight = 42,
+                    Margin = new Thickness(0, 8, 0, 0) };
+                DockPanel.SetDock(confirm, Dock.Bottom);
+                layout.Children.Add(confirm);
+                layout.Children.Add(new DataGrid
+                {
+                    ItemsSource = lines, IsReadOnly = true, CanUserAddRows = false
+                });
+                confirm.Click += (_, _) => review.DialogResult = true;
+                review.Content = layout;
+                if (review.ShowDialog() != true) return;
+                var count = import(lines);
+                if (count.HasValue) status.Text = $"{count.Value} article(s) importé(s).";
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+            {
+                status.Text = ex is ArgumentException or System.IO.InvalidDataException or UnauthorizedAccessException or InvalidOperationException
+                    ? ex.Message : "Import non confirmé. Vérifiez le fichier et le catalogue.";
+            }
+        }
         var card = new Expander { Header = "Nouvel article", Margin = new Thickness(0, 14, 0, 0) };
         var fields = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
         TextBox Field(string label)

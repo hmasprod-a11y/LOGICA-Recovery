@@ -814,6 +814,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyInventoryValidation(settings);
         VerifyPurchaseReceipt(settings);
         VerifyCataloguePrice(settings);
+        VerifyCatalogueImport(settings);
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -1084,6 +1085,54 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 "Explicit variant selection did not stage the correct article and price.");
         }
         finally { variantHost.Window.Close(); }
+    }
+
+    private static void VerifyCatalogueImport(CatalogueSettings settings)
+    {
+        var path = Path.Combine(EvidenceDirectory, "catalogue-import-test.xlsx");
+        using (var workbook = new ClosedXML.Excel.XLWorkbook())
+        {
+            var sheet = workbook.Worksheets.Add("Feuil1");
+            var headers = new[] { "Code", "Article", "Famille", "PRIX_A", "PRIX_V", "STOCK" };
+            for (var index = 0; index < headers.Length; index++) sheet.Cell(1, index + 1).Value = headers[index];
+            sheet.Cell(2, 1).Value = "000101";
+            sheet.Cell(2, 2).Value = "Import d'essai";
+            sheet.Cell(2, 3).Value = "Food";
+            sheet.Cell(2, 4).Value = 4.25;
+            sheet.Cell(2, 5).Value = "6,75";
+            sheet.Cell(2, 6).Value = 2.5;
+            sheet.Cell(3, 1).Value = "000102";
+            sheet.Cell(3, 2).Value = "Second import";
+            sheet.Cell(3, 3).Value = "Test famille";
+            sheet.Cell(3, 4).Value = 7;
+            sheet.Cell(3, 5).Value = 11;
+            sheet.Cell(3, 6).Value = 0;
+            workbook.SaveAs(path);
+        }
+        var lines = CatalogueWorkbook.Read(path);
+        Require(lines.Count == 2 && lines[0].Barcode == "000101" && lines[0].Price == 6.75m &&
+            lines[0].Stock == 2.5m, "Workbook import changed a barcode, amount or quantity.");
+        var editor = new CataloguePriceEditor(settings.ConnectionString);
+        var before = Number(settings, "SELECT ARTICLE FROM TABLE_NUM WHERE ID=0");
+        var movements = Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK");
+        Sql(settings, "CREATE TRIGGER test_import_rollback BEFORE INSERT ON TABLE_MOUVEMENTS_STOCK FOR EACH ROW BEGIN IF NEW.CODE_ARTICLE='000102' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='import rollback'; END IF; END");
+        try
+        {
+            editor.Import(lines, "Test admin", "6789");
+            throw new InvalidOperationException("Catalogue import ignored a second-row failure.");
+        }
+        catch (MySqlException) { }
+        finally { Sql(settings, "DROP TRIGGER test_import_rollback"); }
+        Require(Number(settings, "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Code IN ('000101','000102')") == 0 &&
+            Number(settings, "SELECT ARTICLE FROM TABLE_NUM WHERE ID=0") == before &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movements,
+            "A failed import left a partial catalogue, movement or sequence.");
+        var ids = editor.Import(lines, "Test admin", "6789");
+        Require(ids.Count == 2 && ids.Distinct().Count() == 2 &&
+            Number(settings, "SELECT ARTICLE FROM TABLE_NUM WHERE ID=0") == before + 2 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movements + 2 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Code='000101' AND PRIX_A=4.25 AND PRIX_MP=4.25 AND PRIX_V_1=6.75 AND PRIX_V_2=6.75 AND STOCK=2.5 AND STOCK_INITIAL=2.5 AND TAUX_TVA=20") == 1,
+            "Workbook import did not commit stock, price and numbering together.");
     }
 
     private static void VerifyPurchaseReceipt(CatalogueSettings settings)
