@@ -436,7 +436,7 @@ public class FormDialog_PATIENTER : Form
 				newpoint.X -= x;
 				newpoint.Y -= y;
 				((Form)this).Location = newpoint;
-				Application.DoEvents();
+				global::System.Windows.Forms.Application.DoEvents();
 			}
 		}
 	}

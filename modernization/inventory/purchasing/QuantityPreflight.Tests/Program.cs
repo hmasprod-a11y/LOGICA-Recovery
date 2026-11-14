@@ -1,0 +1,234 @@
+using System;
+using System.Collections.Generic;
+
+// Isolated preflight for BC quantity invariants. No SQL, no posting, no permission grant.
+internal static class MultiArticleReceiptQuantityPreflight
+{
+    internal static IReadOnlyDictionary<string, decimal> Remaining(
+        IReadOnlyDictionary<string, decimal> ordered,
+        IReadOnlyDictionary<string, decimal> alreadyReceived,
+        IReadOnlyDictionary<string, decimal> proposed)
+    {
+        if (ordered == null || alreadyReceived == null || proposed == null)
+            throw new ArgumentNullException("quantity maps");
+        if (ordered.Count == 0 || proposed.Count == 0)
+            throw new InvalidOperationException("Order and receipt must not be empty.");
+        var result = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        foreach (var line in ordered)
+        {
+            if (String.IsNullOrWhiteSpace(line.Key) || line.Value <= 0m)
+                throw new InvalidOperationException("Invalid BC line.");
+            result.Add(line.Key, line.Value);
+        }
+        foreach (var line in alreadyReceived)
+        {
+            decimal quantity;
+            if (!result.TryGetValue(line.Key, out quantity) || line.Value < 0m || line.Value > quantity)
+                throw new InvalidOperationException("Invalid previously received quantity.");
+            result[line.Key] = checked(quantity - line.Value);
+        }
+        foreach (var line in proposed)
+        {
+            decimal remaining;
+            if (!result.TryGetValue(line.Key, out remaining) || line.Value <= 0m || line.Value > remaining)
+                throw new InvalidOperationException("Unknown article, invalid quantity or over-receipt.");
+            result[line.Key] = checked(remaining - line.Value);
+        }
+        return result;
+    }
+}
+
+
+// Pure replay policy: receipt ID is immutable and must bind to an exact canonical
+// payload. This is not a durable idempotency store or a substitute for DB locks.
+internal static class ReceiptReplayPreflight
+{
+    internal static bool ShouldPost(string receiptId,
+        IReadOnlyDictionary<string, decimal> proposed,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, decimal>> committed)
+    {
+        if (String.IsNullOrWhiteSpace(receiptId) || proposed == null || committed == null)
+            throw new InvalidOperationException("Receipt identity and payload are required.");
+        if (proposed.Count == 0)
+            throw new InvalidOperationException("Empty receipt.");
+        foreach (var line in proposed)
+            if (String.IsNullOrWhiteSpace(line.Key) || line.Value <= 0m)
+                throw new InvalidOperationException("Invalid receipt line.");
+        if (!committed.TryGetValue(receiptId, out var previous))
+            return true;
+        if (previous == null)
+            throw new InvalidOperationException("Corrupt committed receipt payload.");
+        if (previous.Count != proposed.Count)
+            throw new InvalidOperationException("Receipt ID replay with changed line count.");
+        foreach (var line in proposed)
+            if (!previous.TryGetValue(line.Key, out var prior) || prior != line.Value)
+                throw new InvalidOperationException("Receipt ID replay with changed payload.");
+        return false;
+    }
+}
+
+
+/* Quantity maps alone cannot establish a unit conversion. Require an exact
+ * canonical unit for every BC line before applying the quantity preflight.
+ * No conversion is guessed from a barcode, display label or decimal precision. */
+internal static class ReceiptUnitPreflight
+{
+    internal static IReadOnlyDictionary<string, decimal> Remaining(
+        IReadOnlyDictionary<string, decimal> ordered,
+        IReadOnlyDictionary<string, decimal> alreadyReceived,
+        IReadOnlyDictionary<string, decimal> proposed,
+        IReadOnlyDictionary<string, string> orderUnits,
+        IReadOnlyDictionary<string, string> receiptUnits)
+    {
+        if (ordered == null || alreadyReceived == null || proposed == null ||
+            orderUnits == null || receiptUnits == null)
+            throw new InvalidOperationException("Quantity maps and canonical units are required.");
+        if (orderUnits.Count != ordered.Count || receiptUnits.Count != proposed.Count)
+            throw new InvalidOperationException("Incomplete or extra unit identities.");
+        foreach (var line in ordered)
+        {
+            if (!orderUnits.TryGetValue(line.Key, out var unit) || String.IsNullOrWhiteSpace(unit))
+                throw new InvalidOperationException("Missing BC canonical unit.");
+        }
+        foreach (var line in proposed)
+        {
+            if (!orderUnits.TryGetValue(line.Key, out var expected) ||
+                !receiptUnits.TryGetValue(line.Key, out var actual) ||
+                String.IsNullOrWhiteSpace(actual) ||
+                !String.Equals(expected, actual, StringComparison.Ordinal))
+                throw new InvalidOperationException("Receipt unit differs from BC canonical unit.");
+        }
+        return MultiArticleReceiptQuantityPreflight.Remaining(ordered, alreadyReceived, proposed);
+    }
+}
+
+internal static class Program
+{
+    private static int assertions;
+    private static Dictionary<string, decimal> Q(params object[] entries)
+    {
+        var map = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        for (int i = 0; i < entries.Length; i += 2)
+            map.Add((string)entries[i], (decimal)entries[i + 1]);
+        return map;
+    }
+    private static void Check(bool condition, string message)
+    {
+        assertions++;
+        if (!condition) throw new Exception(message);
+    }
+    private static void Reject(Action action, string message)
+    {
+        assertions++;
+        try { action(); }
+        catch (InvalidOperationException) { return; }
+        throw new Exception("Expected rejection: " + message);
+    }
+    public static int Main()
+    {
+        var ordered = Q("A", 10m, "B", 8m);
+        var first = MultiArticleReceiptQuantityPreflight.Remaining(ordered, Q(), Q("A", 4m, "B", 3m));
+        Check(first["A"] == 6m && first["B"] == 5m, "multi-article partial");
+        var second = MultiArticleReceiptQuantityPreflight.Remaining(ordered,
+            Q("A", 4m, "B", 3m), Q("A", 6m, "B", 5m));
+        Check(second["A"] == 0m && second["B"] == 0m, "cumulative exact boundary");
+        Reject(() => MultiArticleReceiptQuantityPreflight.Remaining(ordered, Q("A", 7m), Q("A", 4m)), "over-receipt");
+        Reject(() => MultiArticleReceiptQuantityPreflight.Remaining(ordered, Q(), Q("A", 2m, "B", 9m)), "whole batch invalid");
+        Reject(() => MultiArticleReceiptQuantityPreflight.Remaining(ordered, Q(), Q("A", 0m)), "zero");
+        Reject(() => MultiArticleReceiptQuantityPreflight.Remaining(ordered, Q(), Q("A", -1m)), "negative");
+        Reject(() => MultiArticleReceiptQuantityPreflight.Remaining(ordered, Q(), Q("X", 1m)), "unknown article");
+        Reject(() => MultiArticleReceiptQuantityPreflight.Remaining(ordered, Q("A", 11m), Q("B", 1m)), "corrupt prior receipt");
+        Check(MultiArticleReceiptQuantityPreflight.Remaining(Q("A", 1.25m), Q(), Q("A", 0.25m))["A"] == 1m,
+            "fractional quantity allowed only after canonical-unit contract");
+        Check(first["A"] == 6m && ordered["A"] == 10m, "pure preflight does not mutate inputs");
+        var committed = new Dictionary<string, IReadOnlyDictionary<string, decimal>>(StringComparer.Ordinal)
+        {
+            ["R-001"] = Q("A", 4m, "B", 3m)
+        };
+        Check(!ReceiptReplayPreflight.ShouldPost("R-001", Q("B", 3m, "A", 4m), committed),
+            "exact replay in different line order must not post");
+        Check(ReceiptReplayPreflight.ShouldPost("R-002", Q("A", 1m), committed),
+            "new receipt ID may proceed to transactional checks");
+        Reject(() => ReceiptReplayPreflight.ShouldPost("R-001", Q("A", 5m, "B", 3m), committed),
+            "same receipt ID with changed quantity");
+        Reject(() => ReceiptReplayPreflight.ShouldPost("R-001", Q("A", 4m), committed),
+            "same receipt ID with missing line");
+        Reject(() => ReceiptReplayPreflight.ShouldPost("R-001", Q("A", 4m, "X", 3m), committed),
+            "same receipt ID with substituted article");
+        Reject(() => ReceiptReplayPreflight.ShouldPost(" ", Q("A", 1m), committed),
+            "empty receipt ID");
+        Reject(() => ReceiptReplayPreflight.ShouldPost("R-002", Q("A", 0m), committed),
+            "invalid quantity before replay lookup");
+
+        var bcUnits = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["A"] = "piece", ["B"] = "kg"
+        };
+        var matchingUnits = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["A"] = "piece", ["B"] = "kg"
+        };
+        var remainingWithUnits = ReceiptUnitPreflight.Remaining(ordered, Q(),
+            Q("A", 2m, "B", 1.5m), bcUnits, matchingUnits);
+        Check(remainingWithUnits["A"] == 8m && remainingWithUnits["B"] == 6.5m,
+            "canonical-unit multi-article quantities");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, Q(), Q("A", 1m),
+            bcUnits, new Dictionary<string, string> { ["A"] = "box" }),
+            "box cannot silently convert to piece");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, Q(), Q("B", 1m),
+            bcUnits, new Dictionary<string, string> { ["B"] = "KG" }),
+            "unit identifiers are exact and case sensitive");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, Q(), Q("A", 1m),
+            bcUnits, new Dictionary<string, string>()),
+            "missing receipt unit");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, Q(), Q("A", 1m),
+            new Dictionary<string, string> { ["A"] = "piece" },
+            new Dictionary<string, string> { ["A"] = "piece" }),
+            "missing BC line unit");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, Q(), Q("A", 1m),
+            bcUnits, new Dictionary<string, string> { ["A"] = "piece", ["X"] = "kg" }),
+            "unexpected receipt unit identity");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, Q(), Q("A", 1m),
+            bcUnits, new Dictionary<string, string> { ["A"] = " " }),
+            "blank canonical unit");
+        // Malformed caller-supplied DTOs must fail closed with domain errors, not
+        // NullReferenceException or an accidental partial posting decision.
+        Reject(() => ReceiptUnitPreflight.Remaining(null, Q(), Q("A", 1m),
+            bcUnits, matchingUnits), "null BC quantities");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, null, Q("A", 1m),
+            bcUnits, matchingUnits), "null previously received quantities");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, Q(), null,
+            bcUnits, matchingUnits), "null proposed quantities");
+        var corruptCommitted = new Dictionary<string, IReadOnlyDictionary<string, decimal>>(
+            StringComparer.Ordinal) { ["R-CORRUPT"] = null! };
+        Reject(() => ReceiptReplayPreflight.ShouldPost("R-CORRUPT", Q("A", 1m), corruptCommitted),
+            "null committed receipt payload");
+        Check(ReceiptReplayPreflight.ShouldPost("R-NEW", Q("A", 1m), corruptCommitted),
+            "unrelated corrupt receipt does not grant replay identity");
+        // Regression: exact capacity and a rejected multi-line proposal must not
+        // mutate the caller's quantities, including prior committed receipts.
+        var priorSnapshot = Q("A", 7m, "B", 2m);
+        var candidate = Q("A", 3m, "B", 6m);
+        var boundary = ReceiptUnitPreflight.Remaining(ordered, priorSnapshot, candidate,
+            bcUnits, matchingUnits);
+        Check(boundary["A"] == 0m && boundary["B"] == 0m,
+            "multi-article exact remaining boundary");
+        Check(priorSnapshot["A"] == 7m && priorSnapshot["B"] == 2m &&
+            candidate["A"] == 3m && candidate["B"] == 6m,
+            "capacity preflight leaves committed and proposed maps untouched");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, priorSnapshot,
+            Q("A", 3m, "B", 7m), bcUnits, matchingUnits),
+            "second line over capacity rejects entire receipt");
+        Check(priorSnapshot["A"] == 7m && priorSnapshot["B"] == 2m,
+            "failed multi-article preflight does not consume first line");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered,
+            Q("A", 10m, "B", 8m), Q("A", 1m), bcUnits,
+            new Dictionary<string, string> { ["A"] = "piece" }),
+            "fully received article cannot be received again");
+        Reject(() => ReceiptReplayPreflight.ShouldPost("R-001",
+            Q("A", 4m, "B", 3m, "C", 1m), committed),
+            "replay cannot add a new article");
+        Console.WriteLine("PASS: " + assertions + " isolated quantity assertions; no database writes.");
+        return 0;
+    }
+}
