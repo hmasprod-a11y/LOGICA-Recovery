@@ -65,6 +65,67 @@ internal sealed class CataloguePriceEditor(string connectionString)
         return id;
     }
 
+    internal sealed record Card(long RowId, string Id, string Name, string Barcode, string Family);
+
+    internal Card ReadCard(string id)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        return ReadCard(connection, transaction, id, false);
+    }
+
+    internal void UpdateCard(Card reviewed, string name, string barcode, string family, string actor, string pin)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 128 || barcode.Length > 128 || family.Length > 128)
+            throw new ArgumentException("Vérifiez le nom, le code-barres et la famille.");
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
+        InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_PASS", "TABLE_ARTICLES");
+        Authorize(connection, transaction, actor, pin);
+        if (ReadCard(connection, transaction, reviewed.Id, true) != reviewed)
+            throw new InvalidOperationException("La fiche a changé. Rechargez l’article.");
+        if (reviewed.Name == name && reviewed.Barcode == barcode && reviewed.Family == family) return;
+
+        if (barcode.Length != 0 && barcode != reviewed.Barcode)
+        {
+            using var duplicate = new MySqlCommand(
+                "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE BINARY Code=BINARY @code AND ID<>@row",
+                connection, transaction);
+            duplicate.Parameters.AddWithValue("@code", barcode);
+            duplicate.Parameters.AddWithValue("@row", reviewed.RowId);
+            if (Convert.ToInt64(duplicate.ExecuteScalar()) != 0)
+                throw new InvalidOperationException("Ce code-barres est déjà utilisé.");
+        }
+
+        using var update = new MySqlCommand(
+            "UPDATE TABLE_ARTICLES SET Article=@name, Code=@code, Famille=@family " +
+            "WHERE ID=@row AND BINARY ID_ARTICLE=BINARY @id", connection, transaction);
+        update.Parameters.AddWithValue("@name", name);
+        update.Parameters.AddWithValue("@code", barcode);
+        update.Parameters.AddWithValue("@family", family);
+        update.Parameters.AddWithValue("@row", reviewed.RowId);
+        update.Parameters.AddWithValue("@id", reviewed.Id);
+        if (update.ExecuteNonQuery() != 1 ||
+            ReadCard(connection, transaction, reviewed.Id, true) != (reviewed with { Name = name, Barcode = barcode, Family = family }))
+            throw new InvalidOperationException("Modification de la fiche non confirmée.");
+        transaction.Commit();
+    }
+
+    private static Card ReadCard(MySqlConnection connection, MySqlTransaction transaction, string id, bool lockRow)
+    {
+        using var command = new MySqlCommand(
+            "SELECT ID, Article, Code, Famille FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id" +
+            (lockRow ? " FOR UPDATE" : ""), connection, transaction);
+        command.Parameters.AddWithValue("@id", id);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1))
+            throw new InvalidOperationException("Fiche article introuvable.");
+        var card = new Card(reader.GetInt64(0), id, reader.GetString(1),
+            reader.IsDBNull(2) ? "" : reader.GetString(2), reader.IsDBNull(3) ? "" : reader.GetString(3));
+        if (reader.Read()) throw new InvalidOperationException("Identifiant article ambigu.");
+        return card;
+    }
+
     internal Price Read(string id)
     {
         using var connection = Open();

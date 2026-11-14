@@ -827,6 +827,92 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         }));
     }
 
+    private static void RunCatalogueCardFromWindow(CatalogueSettings settings)
+    {
+        var host = CatalogueHost.CreateCashierWorkstation(settings, "01");
+        host.Window.Show();
+        try
+        {
+            Require(CashierEntry(host, "Test admin", "01", "0", 0m, "6789"), "Catalogue administrator could not sign in.");
+            static IEnumerable<T> Controls<T>(DependencyObject parent) where T : DependencyObject
+            {
+                foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+                {
+                    if (child is T control) yield return control;
+                    foreach (var nested in Controls<T>(child)) yield return nested;
+                }
+            }
+            static void Click(System.Windows.Controls.Button button)
+            {
+                Require(button.IsEnabled, "Catalogue card control is disabled.");
+                button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            }
+
+            var step = 0;
+            Exception? failure = null;
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(75) };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                try
+                {
+                    if (step++ == 0)
+                    {
+                        var dialog = Application.Current.Windows.OfType<CataloguePriceDialog>()
+                            .Single(window => window.IsVisible && window.Owner == host.Window);
+                        System.Windows.Controls.TextBox Field(string name) =>
+                            Controls<System.Windows.Controls.TextBox>(dialog).Single(field =>
+                                System.Windows.Automation.AutomationProperties.GetName(field) == name);
+                        System.Windows.Controls.Button Button(string text) =>
+                            Controls<System.Windows.Controls.Button>(dialog).Single(button => Equals(button.Content, text));
+                        foreach (var expander in Controls<System.Windows.Controls.Expander>(dialog)) expander.IsExpanded = true;
+                        Field("Nom du nouvel article").Text = "Article d'essai";
+                        Field("Code-barres du nouvel article").Text = "CARD'1";
+                        Field("Famille du nouvel article").Text = "Food";
+                        Field("Prix du nouvel article").Text = "9.75";
+                        timer.Start();
+                        Click(Button("Créer l’article"));
+                        Require(Field("Identifiant de l’article").Text == "ART000001", "Article creation did not display its ID.");
+                        Click(Button("Charger la fiche"));
+                        Require(Field("Nom de la fiche").Text == "Article d'essai", "Article card did not reload.");
+                        Field("Nom de la fiche").Text = "Article corrigé";
+                        Field("Famille de la fiche").Text = "Test famille";
+                        timer.Start();
+                        Click(Button("Enregistrer la fiche"));
+                        Require(Controls<System.Windows.Controls.TextBlock>(dialog).Any(text =>
+                            text.Text == "Fiche ART000001 enregistrée."), "Article card edit was not confirmed.");
+                        dialog.Close();
+                    }
+                    else
+                    {
+                        var prompt = Application.Current.Windows.Cast<Window>().Single(window =>
+                            window.Owner == host.Window && window.IsVisible &&
+                            Controls<System.Windows.Controls.PasswordBox>(window).Any());
+                        Controls<System.Windows.Controls.PasswordBox>(prompt).Single().Password = "6789";
+                        Click(Controls<System.Windows.Controls.Button>(prompt).Single(button => button.IsDefault));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                    foreach (var window in Application.Current.Windows.Cast<Window>()
+                        .Where(window => window.Owner == host.Window && window.IsVisible).ToArray().Reverse())
+                        window.Close();
+                }
+            };
+            timer.Start();
+            try
+            {
+                Click(Controls<System.Windows.Controls.Button>(host.Window).Single(button =>
+                    System.Windows.Automation.AutomationProperties.GetName(button) == "Open catalogue prices"));
+            }
+            finally { timer.Stop(); }
+            if (failure is not null) throw new InvalidOperationException("Catalogue card UI acceptance failed.", failure);
+            Require(step == 3, "Catalogue creation and edit did not each request authorization.");
+        }
+        finally { host.Window.Close(); }
+    }
+
     private static void VerifyCataloguePrice(CatalogueSettings settings)
     {
         Sql(settings, """
@@ -843,13 +929,15 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         var editor = new CataloguePriceEditor(settings.ConnectionString);
         Sql(settings, """
             ALTER TABLE TABLE_NUM ADD ARTICLE INT NOT NULL DEFAULT 1;
-            ALTER TABLE TABLE_ARTICLES ADD PRIX_V_2 DECIMAL(16,3), ADD DATES DATE;
+            ALTER TABLE TABLE_ARTICLES ADD PRIX_V_2 DECIMAL(16,3), ADD DATES DATE, ADD ID INT NOT NULL AUTO_INCREMENT UNIQUE;
             """);
-        var id = editor.Create("Article d'essai", "CARD'1", "Food", 9.75m, "Test admin", "6789");
-        Require(id == "ART000001" &&
+        RunCatalogueCardFromWindow(settings);
+        const string id = "ART000001";
+        var card = editor.ReadCard(id);
+        Require(card.Name == "Article corrigé" && card.Family == "Test famille" &&
             Number(settings, "SELECT ARTICLE FROM TABLE_NUM WHERE ID=0") == 2 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE ID_ARTICLE='ART000001' AND QUANTITE=0") == 1 &&
-            editor.Read(id).Amount == 9.75m, "Article creation did not persist price, movement and LOGICA number.");
+            editor.Read(id).Amount == 9.75m, "Article controls did not preserve identity, price and opening movement.");
         try
         {
             editor.Create("Duplicated code", "CARD'1", "Food", 1m, "Test admin", "6789");

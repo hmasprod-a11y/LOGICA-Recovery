@@ -8,7 +8,8 @@ namespace Hanouty.Desktop.Bootstrap;
 internal sealed class CataloguePriceDialog : Window
 {
     internal CataloguePriceDialog(CataloguePriceEditor service, Func<CataloguePriceEditor.Price, decimal, bool> save,
-        Func<string, string, string, decimal, string?> create)
+        Func<string, string, string, decimal, string?> create,
+        Func<CataloguePriceEditor.Card, string, string, string, bool> saveCard)
     {
         Title = "Prix du catalogue";
         Width = 460;
@@ -79,7 +80,65 @@ internal sealed class CataloguePriceDialog : Window
         fields.Children.Add(add);
         card.Content = fields;
         panel.Children.Add(card);
-        Content = panel;
+        var edit = new Expander { Header = "Modifier la fiche", Margin = new Thickness(0, 14, 0, 0) };
+        var editFields = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+        var readCard = new Button { Content = "Charger la fiche", MinHeight = 36 };
+        editFields.Children.Add(readCard);
+        TextBox EditField(string label)
+        {
+            editFields.Children.Add(new TextBlock { Text = label });
+            var field = new TextBox { MinHeight = 32, Margin = new Thickness(0, 2, 0, 6) };
+            System.Windows.Automation.AutomationProperties.SetName(field, label);
+            editFields.Children.Add(field);
+            return field;
+        }
+        var editName = EditField("Nom de la fiche");
+        var editCode = EditField("Code-barres de la fiche");
+        var editFamily = EditField("Famille de la fiche");
+        var apply = new Button { Content = "Enregistrer la fiche", MinHeight = 36, IsEnabled = false };
+        editFields.Children.Add(apply);
+        edit.Content = editFields;
+        panel.Children.Add(edit);
+        Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        MaxHeight = SystemParameters.WorkArea.Height;
+
+        CataloguePriceEditor.Card? reviewedCard = null;
+        id.TextChanged += (_, _) => { reviewedCard = null; apply.IsEnabled = false; };
+        readCard.Click += (_, _) =>
+        {
+            reviewedCard = null;
+            apply.IsEnabled = false;
+            try
+            {
+                reviewedCard = service.ReadCard(id.Text.Trim());
+                editName.Text = reviewedCard.Name;
+                editCode.Text = reviewedCard.Barcode;
+                editFamily.Text = reviewedCard.Family;
+                apply.IsEnabled = true;
+            }
+            catch (Exception ex) when (ex is MySqlException or InvalidOperationException)
+            { status.Text = "Fiche article indisponible."; }
+        };
+        apply.Click += (_, _) =>
+        {
+            if (reviewedCard is not { } current) return;
+            apply.IsEnabled = false;
+            try
+            {
+                if (saveCard(current, editName.Text.Trim(), editCode.Text.Trim(), editFamily.Text.Trim()))
+                {
+                    reviewedCard = null;
+                    status.Text = $"Fiche {current.Id} enregistrée.";
+                }
+                else apply.IsEnabled = true;
+            }
+            catch (Exception ex) when (ex is MySqlException or InvalidOperationException or ArgumentException or UnauthorizedAccessException)
+            {
+                reviewedCard = null;
+                status.Text = ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException
+                    ? ex.Message : "Modification non confirmée. Rechargez la fiche.";
+            }
+        };
 
         CataloguePriceEditor.Price? reviewed = null;
         void Reset(string message)
