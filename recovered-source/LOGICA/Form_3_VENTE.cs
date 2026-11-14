@@ -13286,10 +13286,11 @@ public class Form_3_VENTE : Form
 					_string = _string + "* CLIENT    : " + ((ButtonBase)Button_CLIENT).Text + "\r\n";
 					_string = _string + "* ID        : " + Button_CLIENT._ID_Button + "\r\n";
 				}
-				_string = _string + "* CAISSIER  : " + ((ButtonBase)Button_CAISSIER).Text + "." + ((ButtonBase)Button_VENDEUR).Text + "\r\n";
+				_string += LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Cashier(
+                    ((ButtonBase)Button_CAISSIER).Text, ((ButtonBase)Button_VENDEUR).Text) + "\r\n";
 				if (CheckBox_AFFICHER_N_TICKET.Checked)
 				{
-					_string = _string + "* N° TICKET : " + _N_TICKET_SOLDER + "\r\n";
+					_string += LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.TicketNumber(_N_TICKET_SOLDER) + "\r\n";
 				}
 				_string += Text_pied.Text;
 				_string += "\r\n";

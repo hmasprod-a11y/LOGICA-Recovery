@@ -7,7 +7,7 @@ internal sealed record LogicaTicketLine(string Article, decimal Quantity, decima
 internal sealed record LogicaTicketPayment(string Mode, decimal Amount);
 
 internal sealed record LogicaPostedTicket(string Number, string Date, string Cashier, string Register,
-    string Operation, decimal Total, IReadOnlyList<LogicaTicketLine> Lines, IReadOnlyList<LogicaTicketPayment> Payments)
+    string Operation, string Seller, decimal Total, IReadOnlyList<LogicaTicketLine> Lines, IReadOnlyList<LogicaTicketPayment> Payments)
 {
     internal IEnumerable<string> FormatFrenchThreeColumnLines(
         Func<decimal, string> formatQuantity, Func<decimal, string> formatAmount) =>
@@ -29,6 +29,13 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
             LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Payment("ESPECES", formatAmount(tender)),
             LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Payment("RENDU", formatAmount(change))
         };
+    }
+
+    internal IEnumerable<string> FormatFrenchThreeColumnIdentity(bool showTicketNumber)
+    {
+        yield return LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Cashier(Cashier, Seller);
+        if (showTicketNumber)
+            yield return LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.TicketNumber(Number);
     }
 
     internal static LogicaPostedTicket? Read(MySqlConnection connection, string id, string cashier, string register)
@@ -57,15 +64,23 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
         }
 
         command.CommandText = """
-            SELECT Article, Qté, PRIX_V, Remise, Total_NET
+            SELECT Article, Qté, PRIX_V, Remise, Total_NET, Vendeur
             FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET = BINARY @id
             ORDER BY BINARY ID_ARTICLE
             """;
         var lines = new List<LogicaTicketLine>();
+        string? seller = null;
         using (var reader = command.ExecuteReader())
+        {
             while (reader.Read())
+            {
+                var rowSeller = reader.IsDBNull(5) ? "" : reader.GetString(5);
+                if (seller is not null && seller != rowSeller) return null;
+                seller = rowSeller;
                 lines.Add(new LogicaTicketLine(reader.GetString(0), reader.GetDecimal(1), reader.GetDecimal(2),
                     reader.GetDecimal(3), reader.GetDecimal(4)));
+            }
+        }
 
         command.CommandText = """
             SELECT MODE_P, MONTANT FROM TABLE_VENTES_REGLEMENTS WHERE BINARY ID_TICKET = BINARY @id
@@ -80,7 +95,7 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
             return null;
 
         transaction.Commit();
-        return new LogicaPostedTicket(number, date, cashier, register, operation, total,
+        return new LogicaPostedTicket(number, date, cashier, register, operation, seller ?? "", total,
             lines.AsReadOnly(), payments.AsReadOnly());
     }
 }
