@@ -152,8 +152,6 @@
                             <Button Content="Actualiser le total du panier" Click="RefreshTrustedBasketTotal_Click" MinHeight="40" AutomationProperties.Name="Read trusted basket total"/>
                             <Button Content="Saisir le montant reçu" Click="EnterTender_Click" MinHeight="40"
                                     IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Enter sale cash tender"/>
-                            <Button Content="Dernier ticket" Click="OpenLastTicket_Click" MinHeight="36"
-                                    Margin="0,6,0,0" AutomationProperties.Name="Open last sale ticket"/>
                             <Button Content="ENCAISSER · PAIEMENT" Command="{Binding CommitCommand}" IsEnabled="{Binding CanCommit}" MinHeight="58" FontSize="17" FontWeight="Bold" Margin="0,10,0,0" AutomationProperties.Name="Complete checkout"/>
                                 </StackPanel>
                     </Border>

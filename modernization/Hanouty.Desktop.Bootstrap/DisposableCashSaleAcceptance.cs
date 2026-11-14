@@ -716,45 +716,6 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 () => workstation.ViewModel.CommitCommand.Execute(null));
             Require(workstation.ViewModel.CommitFeedback == "Checkout committed" &&
                 workstation.ViewModel.PaymentContext is null, "First dialog-driven payment failed.");
-            Exception? previewFailure = null;
-            var previewShown = false;
-            workstation.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
-                new Action(() =>
-                {
-                    var preview = Application.Current.Windows.Cast<Window>()
-                        .SingleOrDefault(w => w.Owner == workstation.Window && w.IsVisible);
-                    try
-                    {
-                        Require(preview?.Title.StartsWith("Ticket ") == true &&
-                            preview.Content is System.Windows.Controls.DockPanel panel,
-                            "The last committed sale did not open its ticket.");
-                        var viewer = ((System.Windows.Controls.DockPanel)preview!.Content).Children
-                            .OfType<System.Windows.Controls.FlowDocumentScrollViewer>().Single();
-                        var text = new System.Windows.Documents.TextRange(
-                            viewer.Document.ContentStart, viewer.Document.ContentEnd).Text;
-                        Require(text.Contains("Lait d'été") && text.Contains($"TOTAL NET  {5.25m:N2} DH"),
-                            "The ticket did not show the persisted sale lines and total.");
-                        previewShown = true;
-                    }
-                    catch (Exception ex) { previewFailure = ex; }
-                    finally { preview?.Close(); }
-                }));
-            var snapshotBeforePreview = Snapshot(settings);
-            var lastTicketButton = LogicalTreeHelper.GetChildren(workstation.Window).OfType<DependencyObject>()
-                .SelectMany(FindTicketButtons).Single();
-            lastTicketButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-            Require(previewShown && previewFailure is null && Snapshot(settings) == snapshotBeforePreview,
-                $"Ticket preview failed or changed financial data. {previewFailure?.Message}");
-
-            static IEnumerable<System.Windows.Controls.Button> FindTicketButtons(DependencyObject parent)
-            {
-                if (parent is System.Windows.Controls.Button button &&
-                    System.Windows.Automation.AutomationProperties.GetName(button) == "Open last sale ticket")
-                    yield return button;
-                foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
-                    foreach (var match in FindTicketButtons(child))
-                        yield return match;
-            }
             Stage(2);
             Require(!workstation.ViewModel.CanCommit &&
                 CashierEntry(workstation, "O'Neil", "01", "20", 10.50m),
