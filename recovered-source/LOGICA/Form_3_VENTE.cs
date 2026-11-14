@@ -13200,7 +13200,10 @@ public class Form_3_VENTE : Form
 					{
 						break;
 					}
-					text = Strings.LSet(Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(DataGridView1.Rows[num3].Cells["Qté"].Value))), 7) + Strings.LSet(Conversions.ToString(DataGridView1.Rows[num3].Cells["Article"].Value), 27) + " " + Strings.RSet(Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(DataGridView1.Rows[num3].Cells["TOTAL_NET"].Value))), 8);
+					text = LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Line(
+                        Conversions.ToString(Conversion.Val(RuntimeHelpers.GetObjectValue(DataGridView1.Rows[num3].Cells["Qté"].Value))),
+                        Conversions.ToString(DataGridView1.Rows[num3].Cells["Article"].Value),
+                        Conversions.ToString(Module1.FLOUSS(Conversions.ToDecimal(DataGridView1.Rows[num3].Cells["TOTAL_NET"].Value))));
 					e.Graphics.DrawString(text, new Font("Inconsolata Condensed", 11f, (FontStyle)1), Brushes.Black, 0f, (float)(((Control)Panel_LOGO).Height + num * 16 + 10), new StringFormat((StringFormatFlags)8192));
 					num++;
 					num3++;

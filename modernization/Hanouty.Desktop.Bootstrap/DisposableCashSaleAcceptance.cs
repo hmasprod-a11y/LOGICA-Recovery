@@ -791,6 +791,12 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                     ticket.Payments.Any(payment => payment.Amount == 20m) &&
                     ticket.Payments.Any(payment => payment.Amount == -1.50m),
                     "Persisted print data does not preserve the two sale lines, tender and change.");
+                var renderedLines = ticket!.FormatFrenchThreeColumnLines(
+                    amount => amount.ToString("0.###", CultureInfo.InvariantCulture),
+                    amount => amount.ToString("0.00", CultureInfo.InvariantCulture)).ToArray();
+                Require(renderedLines.Length == 2 && renderedLines.All(line => line.Length == 43) &&
+                    renderedLines.Any(line => line.Substring(7, 27).TrimEnd() == "Lait d'été"),
+                    "The persisted ticket did not use the original French three-column layout.");
                 Require(LogicaPostedTicket.Read(ticketConnection, twoArticleTicket, "O'Neil", "01") is null &&
                     LogicaPostedTicket.Read(ticketConnection, twoArticleTicket, "Second cashier", "02") is null,
                     "Ticket data escaped its authorized cashier or workstation.");

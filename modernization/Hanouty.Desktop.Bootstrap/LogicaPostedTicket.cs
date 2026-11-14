@@ -9,6 +9,11 @@ internal sealed record LogicaTicketPayment(string Mode, decimal Amount);
 internal sealed record LogicaPostedTicket(string Number, string Date, string Cashier, string Register,
     string Operation, decimal Total, IReadOnlyList<LogicaTicketLine> Lines, IReadOnlyList<LogicaTicketPayment> Payments)
 {
+    internal IEnumerable<string> FormatFrenchThreeColumnLines(
+        Func<decimal, string> formatQuantity, Func<decimal, string> formatAmount) =>
+        Lines.Select(line => LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Line(
+            formatQuantity(line.Quantity), line.Article, formatAmount(line.Net)));
+
     internal static LogicaPostedTicket? Read(MySqlConnection connection, string id, string cashier, string register)
     {
         using var transaction = connection.BeginTransaction(IsolationLevel.RepeatableRead);

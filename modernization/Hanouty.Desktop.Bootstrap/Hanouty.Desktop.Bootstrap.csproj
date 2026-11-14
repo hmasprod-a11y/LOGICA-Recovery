@@ -5,6 +5,7 @@
     <StartupObject>Hanouty.Desktop.Bootstrap.Program</StartupObject>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../recovered-source/LOGICA/Application/Checkout/LogicaFrenchThreeColumn.cs" Link="LogicaFrenchThreeColumn.cs" />
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <ProjectReference Include="../Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj"/>
     <ProjectReference Include="../architecture/Hanouty.WpfContractAdapter/Hanouty.WpfContractAdapter.csproj"/>
