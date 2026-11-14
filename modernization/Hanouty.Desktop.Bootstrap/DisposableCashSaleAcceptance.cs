@@ -233,7 +233,22 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                         Field("Cashier identity").Text = cashier;
                         Field("Register identity").Text = register;
                     }
-                    Field("Cash MAD (decimal, no thousands separator)").Text = tender;
+                    var tenderField = Field("Cash MAD (decimal, no thousands separator)");
+                    if (fromPaymentPanel)
+                    {
+                        bool Displays(string expected) => Children(modal!).OfType<System.Windows.Controls.TextBlock>()
+                            .Any(t => t.Text == expected);
+                        tenderField.Text = "4";
+                        Require(Displays($"Montant manquant : {1.25m:N2} MAD"), "Incorrect cash shortfall.");
+                        tenderField.Text = "4.";
+                        Require(!Children(modal!).OfType<System.Windows.Controls.TextBlock>()
+                            .Any(t => t.Text.StartsWith("Montant manquant") || t.Text.StartsWith("Monnaie à rendre")),
+                            "Incomplete tender kept a stale cash preview.");
+                        tenderField.Text = tender;
+                        Require(Displays($"Monnaie à rendre : {4.75m:N2} MAD"), "Incorrect cash change.");
+                    }
+                    else
+                        tenderField.Text = tender;
                     duringEntry?.Invoke();
                     if (confirm)
                         Children(modal!).OfType<System.Windows.Controls.Button>().Single(b => b.IsDefault)
