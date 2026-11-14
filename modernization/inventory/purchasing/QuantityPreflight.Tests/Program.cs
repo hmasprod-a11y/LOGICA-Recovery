@@ -56,6 +56,8 @@ internal static class ReceiptReplayPreflight
                 throw new InvalidOperationException("Invalid receipt line.");
         if (!committed.TryGetValue(receiptId, out var previous))
             return true;
+        if (previous == null)
+            throw new InvalidOperationException("Corrupt committed receipt payload.");
         if (previous.Count != proposed.Count)
             throw new InvalidOperationException("Receipt ID replay with changed line count.");
         foreach (var line in proposed)
@@ -78,8 +80,9 @@ internal static class ReceiptUnitPreflight
         IReadOnlyDictionary<string, string> orderUnits,
         IReadOnlyDictionary<string, string> receiptUnits)
     {
-        if (orderUnits == null || receiptUnits == null)
-            throw new InvalidOperationException("Canonical units are required.");
+        if (ordered == null || alreadyReceived == null || proposed == null ||
+            orderUnits == null || receiptUnits == null)
+            throw new InvalidOperationException("Quantity maps and canonical units are required.");
         if (orderUnits.Count != ordered.Count || receiptUnits.Count != proposed.Count)
             throw new InvalidOperationException("Incomplete or extra unit identities.");
         foreach (var line in ordered)
@@ -188,6 +191,20 @@ internal static class Program
         Reject(() => ReceiptUnitPreflight.Remaining(ordered, Q(), Q("A", 1m),
             bcUnits, new Dictionary<string, string> { ["A"] = " " }),
             "blank canonical unit");
+        // Malformed caller-supplied DTOs must fail closed with domain errors, not
+        // NullReferenceException or an accidental partial posting decision.
+        Reject(() => ReceiptUnitPreflight.Remaining(null, Q(), Q("A", 1m),
+            bcUnits, matchingUnits), "null BC quantities");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, null, Q("A", 1m),
+            bcUnits, matchingUnits), "null previously received quantities");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, Q(), null,
+            bcUnits, matchingUnits), "null proposed quantities");
+        var corruptCommitted = new Dictionary<string, IReadOnlyDictionary<string, decimal>>(
+            StringComparer.Ordinal) { ["R-CORRUPT"] = null! };
+        Reject(() => ReceiptReplayPreflight.ShouldPost("R-CORRUPT", Q("A", 1m), corruptCommitted),
+            "null committed receipt payload");
+        Check(ReceiptReplayPreflight.ShouldPost("R-NEW", Q("A", 1m), corruptCommitted),
+            "unrelated corrupt receipt does not grant replay identity");
         Console.WriteLine("PASS: " + assertions + " isolated quantity assertions; no database writes.");
         return 0;
     }
