@@ -34,7 +34,16 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     public string SearchText
     {
         get => _searchText;
-        set { _searchText = value ?? ""; Changed(); RefreshSearchResults(); }
+        set
+        {
+            if (_searchText == (value ?? "")) return;
+            _searchText = value ?? "";
+            // A new query must not leave a previously selected, now hidden article
+            // armed for physical-count recording.
+            ClearArticleSelection();
+            Changed();
+            RefreshSearchResults();
+        }
     }
     private void RefreshSearchResults()
     {
@@ -46,11 +55,16 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
             SearchResults.Add(line);
         Changed(nameof(SearchResultCount));
     }
+    private void ClearArticleSelection()
+    {
+        ArticleId = "";
+        PhysicalText = "";
+    }
     public int SearchResultCount => SearchResults.Count;
     public void SelectArticle(InventoryCountLine? line)
     {
         if (!_loaded || _openedDocumentId != DocumentId || line is null ||
-            !Lines.Any(x => x.ArticleId == line.ArticleId)) return;
+            !SearchResults.Any(x => ReferenceEquals(x, line))) return;
         ArticleId = line.ArticleId;
         PhysicalText = line.PhysicalQuantity?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
     }
