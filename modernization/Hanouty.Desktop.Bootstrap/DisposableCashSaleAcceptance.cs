@@ -1866,7 +1866,10 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                     switch (step++)
                     {
                         case 0:
-                            Require(dialog.Title == "Comptage de caisse", "Cash count window was not rendered.");
+                            Require(dialog.Title == (opening ? "Fond de caisse" : "Comptage et clôture de caisse"), "Cash count window was not rendered.");
+                            var forbiddenAction = opening ? "Préparer la clôture" : "Enregistrer le montant compté comme fond de caisse";
+                            Require(!Controls<System.Windows.Controls.Button>(dialog).Any(button => Equals(button.Content, forbiddenAction)),
+                                "The cash drawer dialog exposed the other workflow.");
                             var counts = Controls<System.Windows.Controls.TextBox>(dialog).ToArray();
                             counts[1].Text = "1";
                             counts[3].Text = "1";
@@ -1913,7 +1916,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 Click(Controls<System.Windows.Controls.Button>(host.Window).Single(button => Equals(button.Content, action)));
             }
             finally { timer.Stop(); }
-            if (failure is not null) throw new InvalidOperationException("Cash drawer UI acceptance failed.", failure);
+            if (failure is not null) throw new InvalidOperationException($"Cash drawer UI acceptance failed at step {step}: {failure.Message}", failure);
             Require(step == (opening ? 3 : 4), "Cash drawer UI did not reach its final step.");
         }
         finally { host.Window.Close(); }
