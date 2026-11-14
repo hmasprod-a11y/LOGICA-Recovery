@@ -100,6 +100,8 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     public void Open()
     {
         if (!CanOpen) return;
+        // Reopening the same document must not retain an armed article from the old snapshot.
+        ClearArticleSelection();
         Execute(() => Apply(_workflow!.Open(DocumentId)));
     }
     public void Record()
@@ -128,6 +130,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
             if (!_workflow!.Confirm(reviewedDocumentId)) throw new InvalidOperationException("Inventory refused confirmation");
             if (reviewedDocumentId != DocumentId)
                 throw new InvalidOperationException("Inventory document changed during confirmation");
+            ClearArticleSelection();
             Lines.Clear();
             RefreshSearchResults();
             NotifyCountProgress();
