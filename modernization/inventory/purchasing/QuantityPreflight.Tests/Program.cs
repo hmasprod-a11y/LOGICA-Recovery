@@ -65,6 +65,40 @@ internal static class ReceiptReplayPreflight
     }
 }
 
+
+/* Quantity maps alone cannot establish a unit conversion. Require an exact
+ * canonical unit for every BC line before applying the quantity preflight.
+ * No conversion is guessed from a barcode, display label or decimal precision. */
+internal static class ReceiptUnitPreflight
+{
+    internal static IReadOnlyDictionary<string, decimal> Remaining(
+        IReadOnlyDictionary<string, decimal> ordered,
+        IReadOnlyDictionary<string, decimal> alreadyReceived,
+        IReadOnlyDictionary<string, decimal> proposed,
+        IReadOnlyDictionary<string, string> orderUnits,
+        IReadOnlyDictionary<string, string> receiptUnits)
+    {
+        if (orderUnits == null || receiptUnits == null)
+            throw new InvalidOperationException("Canonical units are required.");
+        if (orderUnits.Count != ordered.Count || receiptUnits.Count != proposed.Count)
+            throw new InvalidOperationException("Incomplete or extra unit identities.");
+        foreach (var line in ordered)
+        {
+            if (!orderUnits.TryGetValue(line.Key, out var unit) || String.IsNullOrWhiteSpace(unit))
+                throw new InvalidOperationException("Missing BC canonical unit.");
+        }
+        foreach (var line in proposed)
+        {
+            if (!orderUnits.TryGetValue(line.Key, out var expected) ||
+                !receiptUnits.TryGetValue(line.Key, out var actual) ||
+                String.IsNullOrWhiteSpace(actual) ||
+                !String.Equals(expected, actual, StringComparison.Ordinal))
+                throw new InvalidOperationException("Receipt unit differs from BC canonical unit.");
+        }
+        return MultiArticleReceiptQuantityPreflight.Remaining(ordered, alreadyReceived, proposed);
+    }
+}
+
 internal static class Program
 {
     private static int assertions;
@@ -122,6 +156,38 @@ internal static class Program
             "empty receipt ID");
         Reject(() => ReceiptReplayPreflight.ShouldPost("R-002", Q("A", 0m), committed),
             "invalid quantity before replay lookup");
+
+        var bcUnits = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["A"] = "piece", ["B"] = "kg"
+        };
+        var matchingUnits = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["A"] = "piece", ["B"] = "kg"
+        };
+        var remainingWithUnits = ReceiptUnitPreflight.Remaining(ordered, Q(),
+            Q("A", 2m, "B", 1.5m), bcUnits, matchingUnits);
+        Check(remainingWithUnits["A"] == 8m && remainingWithUnits["B"] == 6.5m,
+            "canonical-unit multi-article quantities");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, Q(), Q("A", 1m),
+            bcUnits, new Dictionary<string, string> { ["A"] = "box" }),
+            "box cannot silently convert to piece");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, Q(), Q("B", 1m),
+            bcUnits, new Dictionary<string, string> { ["B"] = "KG" }),
+            "unit identifiers are exact and case sensitive");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, Q(), Q("A", 1m),
+            bcUnits, new Dictionary<string, string>()),
+            "missing receipt unit");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, Q(), Q("A", 1m),
+            new Dictionary<string, string> { ["A"] = "piece" },
+            new Dictionary<string, string> { ["A"] = "piece" }),
+            "missing BC line unit");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, Q(), Q("A", 1m),
+            bcUnits, new Dictionary<string, string> { ["A"] = "piece", ["X"] = "kg" }),
+            "unexpected receipt unit identity");
+        Reject(() => ReceiptUnitPreflight.Remaining(ordered, Q(), Q("A", 1m),
+            bcUnits, new Dictionary<string, string> { ["A"] = " " }),
+            "blank canonical unit");
         Console.WriteLine("PASS: " + assertions + " isolated quantity assertions; no database writes.");
         return 0;
     }
