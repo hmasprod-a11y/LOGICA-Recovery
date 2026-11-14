@@ -24,6 +24,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     private string _articleId = "";
     private string _searchText = "";
     private string _physicalText = "";
+    private string? _selectedArticleId;
     private string _status = "Contrat Inventory non raccordé — validation indisponible";
     private bool _busy;
     private bool _loaded;
@@ -57,6 +58,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     }
     private void ClearArticleSelection()
     {
+        _selectedArticleId = null;
         ArticleId = "";
         PhysicalText = "";
     }
@@ -65,6 +67,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     {
         if (!_loaded || _openedDocumentId != DocumentId || line is null ||
             !SearchResults.Any(x => ReferenceEquals(x, line))) return;
+        _selectedArticleId = line.ArticleId;
         ArticleId = line.ArticleId;
         PhysicalText = line.PhysicalQuantity?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
     }
@@ -97,7 +100,9 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     }
     public void Record()
     {
-        if (!CanRecord || !Lines.Any(x => x.ArticleId == ArticleId) ||
+        if (!CanRecord || _selectedArticleId != ArticleId ||
+            !SearchResults.Any(x => x.ArticleId == ArticleId) ||
+            !Lines.Any(x => x.ArticleId == ArticleId) ||
             !TryParsePhysicalQuantity(PhysicalText, out var quantity) ||
             quantity < 0m)
         {
@@ -171,10 +176,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
             _openedDocumentId = null;
             // A failed Inventory call invalidates the entire local snapshot.
             // Do not keep an old article/quantity ready for a second document.
-            _articleId = "";
-            _physicalText = "";
-            Changed(nameof(ArticleId));
-            Changed(nameof(PhysicalText));
+            ClearArticleSelection();
             Status = "Opération refusée — vérifier le document dans Inventory";
         }
         finally { _busy = false; NotifyActions(); }
@@ -183,10 +185,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
     {
         // The physical-count editor belongs to the opened document. Never carry
         // a previous article/quantity into a different document identity.
-        _articleId = "";
-        _physicalText = "";
-        Changed(nameof(ArticleId));
-        Changed(nameof(PhysicalText));
+        ClearArticleSelection();
         Lines.Clear();
         RefreshSearchResults();
         NotifyCountProgress();
