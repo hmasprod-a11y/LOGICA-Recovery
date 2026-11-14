@@ -242,12 +242,18 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                         void Touch(string label) => Children(modal!).OfType<System.Windows.Controls.Button>()
                             .Single(b => Equals(b.Content, label))
                             .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                        Touch("Pavé numérique");
                         Touch("4");
+                        Touch("Appliquer le montant");
                         Require(Displays($"Montant manquant : {1.25m:N2} MAD"), "Incorrect cash shortfall.");
+                        Touch("Reste");
+                        Require(Displays($"Monnaie à rendre : {0m:N2} MAD"), "Remainder did not fill the exact amount.");
+                        Touch("Pavé numérique");
+                        Touch("4");
                         Touch(".");
-                        Require(!Children(modal!).OfType<System.Windows.Controls.TextBlock>()
-                            .Any(t => t.Text.StartsWith("Montant manquant") || t.Text.StartsWith("Monnaie à rendre")),
-                            "Incomplete tender kept a stale cash preview.");
+                        Touch("Appliquer le montant");
+                        Require(tenderField.Text == "5.25", "Incomplete numeric draft replaced the payment.");
+                        Touch("Fermer le pavé");
                         Touch("Effacer");
                         Touch("5 MAD");
                         Touch("5 MAD");

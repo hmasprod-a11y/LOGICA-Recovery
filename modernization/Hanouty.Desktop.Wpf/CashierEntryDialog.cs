@@ -3,7 +3,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Globalization;
-using Hanouty.ArchitectureBridge;
 using Hanouty.Desktop.Wpf.Presentation;
 
 namespace Hanouty.Desktop.Wpf;
@@ -15,6 +14,7 @@ public sealed class CashierEntryDialog : Window
     private readonly TextBox _cashier = new() { MaxLength = 64, MinWidth = 240 };
     private readonly TextBox _register = new() { MaxLength = 64 };
     private readonly TextBox _tender = new() { MaxLength = 32, Text = "" };
+    private readonly TextBlock _numericDraft = new() { FontSize = 20, Margin = new Thickness(4) };
     private readonly TextBlock _error = new() { TextWrapping = TextWrapping.Wrap };
 
     public (string Cashier, string Register, decimal CashMad)? Draft { get; private set; }
@@ -68,18 +68,48 @@ public sealed class CashierEntryDialog : Window
         {
             panel.Children.Add(new TextBlock { Text = "Billets et pièces", Margin = new Thickness(0, 10, 0, 4) });
             var cash = new UniformGrid { Columns = 4 };
-            foreach (var denomination in CashDrawerCount.Denominations)
+            // FormDialog_calc: Button_DEVISE_* values for payment, distinct from drawer counting.
+            foreach (var denomination in new[] { 200m, 100m, 50m, 20m, 10m, 5m, 2m, 1m, 0.5m })
             {
                 var label = denomination.ToString("0.##", CultureInfo.InvariantCulture) + " MAD";
                 AddTouchButton(cash, label, () => AddDenomination(denomination));
             }
             panel.Children.Add(cash);
 
-            var keypad = new UniformGrid { Columns = 3, Margin = new Thickness(0, 8, 0, 0) };
+            var keypadPanel = new StackPanel { Visibility = Visibility.Collapsed };
+            var entryActions = new UniformGrid { Columns = 3 };
+            AddTouchButton(entryActions, "Pavé numérique", () =>
+            {
+                _numericDraft.Text = "";
+                keypadPanel.Visibility = Visibility.Visible;
+            });
+            AddTouchButton(entryActions, "Effacer", () => _tender.Text = "0");
+            AddTouchButton(entryActions, "Reste", () =>
+            {
+                if (authoritativeTotalMad is decimal totalMad &&
+                    decimal.TryParse(_tender.Text.Length == 0 ? "0" : _tender.Text,
+                        NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var received) &&
+                    received < totalMad)
+                    _tender.Text = totalMad.ToString("0.##", CultureInfo.InvariantCulture);
+            });
+            panel.Children.Add(entryActions);
+
+            keypadPanel.Children.Add(_numericDraft);
+            var keypad = new UniformGrid { Columns = 3 };
             foreach (var key in new[] { "7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "⌫" })
                 AddTouchButton(keypad, key, () => EnterDigit(key));
-            AddTouchButton(keypad, "Effacer", () => _tender.Clear());
-            panel.Children.Add(keypad);
+            keypadPanel.Children.Add(keypad);
+            var keypadActions = new UniformGrid { Columns = 2 };
+            AddTouchButton(keypadActions, "Appliquer le montant", () =>
+            {
+                if (!CashierEntryDraft.TryParse(_cashier.Text, _register.Text, _numericDraft.Text,
+                    out _, out _, out var amount)) return;
+                _tender.Text = amount.ToString("0.##", CultureInfo.InvariantCulture);
+                keypadPanel.Visibility = Visibility.Collapsed;
+            });
+            AddTouchButton(keypadActions, "Fermer le pavé", () => keypadPanel.Visibility = Visibility.Collapsed);
+            keypadPanel.Children.Add(keypadActions);
+            panel.Children.Add(keypadPanel);
         }
         panel.Children.Add(_error);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
@@ -115,22 +145,22 @@ public sealed class CashierEntryDialog : Window
 
     private void EnterDigit(string key)
     {
-        var input = _tender.Text;
+        var input = _numericDraft.Text;
         if (key == "⌫")
         {
-            if (input.Length > 0) _tender.Text = input[..^1];
+            if (input.Length > 0) _numericDraft.Text = input[..^1];
             return;
         }
 
         if (key == ".")
         {
-            if (!input.Contains('.')) _tender.Text = input.Length == 0 ? "0." : input + ".";
+            if (!input.Contains('.')) _numericDraft.Text = input.Length == 0 ? "0." : input + ".";
             return;
         }
 
         var next = input == "0" ? key : input + key;
         if (CashierEntryDraft.TryParse(_cashier.Text, _register.Text, next, out _, out _, out _))
-            _tender.Text = next;
+            _numericDraft.Text = next;
     }
 
     private static void AddField(Panel panel, string label, TextBox field)
