@@ -7,6 +7,29 @@ internal sealed class CataloguePriceEditor(string connectionString)
 {
     internal sealed record Price(string Id, string Name, decimal Amount);
 
+    internal IReadOnlyList<string> ReadFamilies()
+    {
+        using var connection = Open();
+        using var command = new MySqlCommand(
+            "SELECT DISTINCT BINARY Famille, Famille FROM TABLE_FAMILLES WHERE Famille IS NOT NULL AND TRIM(Famille)<>'' ORDER BY Famille", connection);
+        using var reader = command.ExecuteReader();
+        var families = new List<string>();
+        while (reader.Read()) families.Add(reader.GetString(1));
+        return families.AsReadOnly();
+    }
+
+    private static void RequireFamily(MySqlConnection connection, MySqlTransaction transaction, string family)
+    {
+        if (string.IsNullOrWhiteSpace(family))
+            throw new ArgumentException("Choisissez une famille du catalogue.");
+        using var command = new MySqlCommand(
+            "SELECT Famille FROM TABLE_FAMILLES WHERE BINARY Famille=BINARY @family LIMIT 1 FOR UPDATE",
+            connection, transaction);
+        command.Parameters.AddWithValue("@family", family);
+        if (command.ExecuteScalar() is not string)
+            throw new InvalidOperationException("Cette famille n’est plus disponible. Rechargez le catalogue.");
+    }
+
     internal string Create(string name, string barcode, string family, decimal price, string actor, string pin)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 128 || barcode.Length > 128 ||
@@ -16,8 +39,9 @@ internal sealed class CataloguePriceEditor(string connectionString)
         using var connection = Open();
         using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
         InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_PASS",
-            "TABLE_NUM", "TABLE_ARTICLES", "TABLE_MOUVEMENTS_STOCK");
+            "TABLE_NUM", "TABLE_ARTICLES", "TABLE_MOUVEMENTS_STOCK", "TABLE_FAMILLES");
         Authorize(connection, transaction, actor, pin);
+        RequireFamily(connection, transaction, family);
 
         long number;
         using (var counter = new MySqlCommand("SELECT ARTICLE FROM TABLE_NUM WHERE ID=0 FOR UPDATE", connection, transaction))
@@ -85,6 +109,11 @@ internal sealed class CataloguePriceEditor(string connectionString)
         if (ReadCard(connection, transaction, reviewed.Id, true) != reviewed)
             throw new InvalidOperationException("La fiche a changé. Rechargez l’article.");
         if (reviewed.Name == name && reviewed.Barcode == barcode && reviewed.Family == family) return;
+        if (family != reviewed.Family)
+        {
+            InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_FAMILLES");
+            RequireFamily(connection, transaction, family);
+        }
 
         if (barcode.Length != 0 && barcode != reviewed.Barcode)
         {

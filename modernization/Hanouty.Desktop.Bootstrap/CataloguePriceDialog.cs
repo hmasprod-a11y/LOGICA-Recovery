@@ -42,7 +42,23 @@ internal sealed class CataloguePriceDialog : Window
         }
         var name = Field("Nom du nouvel article");
         var code = Field("Code-barres du nouvel article");
-        var family = Field("Famille du nouvel article");
+        IReadOnlyList<string> families;
+        try { families = service.ReadFamilies(); }
+        catch (MySqlException)
+        {
+            families = Array.Empty<string>();
+            status.Text = "Liste des familles indisponible.";
+        }
+
+        ComboBox FamilyField(Panel parent, string label)
+        {
+            parent.Children.Add(new TextBlock { Text = label });
+            var field = new ComboBox { ItemsSource = families, MinHeight = 32, Margin = new Thickness(0, 2, 0, 6) };
+            System.Windows.Automation.AutomationProperties.SetName(field, label);
+            parent.Children.Add(field);
+            return field;
+        }
+        var family = FamilyField(fields, "Famille du nouvel article");
         var newPrice = Field("Prix du nouvel article");
         var add = new Button { Content = "Créer l’article", MinHeight = 36 };
         add.Click += (_, _) =>
@@ -56,14 +72,14 @@ internal sealed class CataloguePriceDialog : Window
             add.IsEnabled = false;
             try
             {
-                var articleId = create(name.Text.Trim(), code.Text.Trim(), family.Text.Trim(), amount);
+                var articleId = create(name.Text.Trim(), code.Text.Trim(), family.SelectedItem as string ?? "", amount);
                 if (articleId is not null)
                 {
                     id.Text = articleId;
                     status.Text = $"Article {articleId} créé.";
                     name.Clear();
                     code.Clear();
-                    family.Clear();
+                    family.SelectedIndex = -1;
                     newPrice.Clear();
                 }
             }
@@ -94,7 +110,7 @@ internal sealed class CataloguePriceDialog : Window
         }
         var editName = EditField("Nom de la fiche");
         var editCode = EditField("Code-barres de la fiche");
-        var editFamily = EditField("Famille de la fiche");
+        var editFamily = FamilyField(editFields, "Famille de la fiche");
         var apply = new Button { Content = "Enregistrer la fiche", MinHeight = 36, IsEnabled = false };
         editFields.Children.Add(apply);
         edit.Content = editFields;
@@ -113,7 +129,9 @@ internal sealed class CataloguePriceDialog : Window
                 reviewedCard = service.ReadCard(id.Text.Trim());
                 editName.Text = reviewedCard.Name;
                 editCode.Text = reviewedCard.Barcode;
-                editFamily.Text = reviewedCard.Family;
+                editFamily.ItemsSource = families.Contains(reviewedCard.Family, StringComparer.Ordinal)
+                    ? families : families.Append(reviewedCard.Family).ToArray();
+                editFamily.SelectedItem = reviewedCard.Family;
                 apply.IsEnabled = true;
             }
             catch (Exception ex) when (ex is MySqlException or InvalidOperationException)
@@ -125,7 +143,7 @@ internal sealed class CataloguePriceDialog : Window
             apply.IsEnabled = false;
             try
             {
-                if (saveCard(current, editName.Text.Trim(), editCode.Text.Trim(), editFamily.Text.Trim()))
+                if (saveCard(current, editName.Text.Trim(), editCode.Text.Trim(), (editFamily.SelectedItem as string ?? current.Family)))
                 {
                     reviewedCard = null;
                     status.Text = $"Fiche {current.Id} enregistrée.";

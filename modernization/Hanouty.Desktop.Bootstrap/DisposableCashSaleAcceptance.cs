@@ -868,7 +868,13 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                         foreach (var expander in Controls<System.Windows.Controls.Expander>(dialog)) expander.IsExpanded = true;
                         Field("Nom du nouvel article").Text = "Article d'essai";
                         Field("Code-barres du nouvel article").Text = "CARD'1";
-                        Field("Famille du nouvel article").Text = "Food";
+                        System.Windows.Controls.ComboBox Family(string name) =>
+                            Controls<System.Windows.Controls.ComboBox>(dialog).Single(field =>
+                                System.Windows.Automation.AutomationProperties.GetName(field) == name);
+                        var newFamily = Family("Famille du nouvel article");
+                        Require(newFamily.Items.Cast<string>().SequenceEqual(new[] { "Food", "Test famille" }),
+                            "Catalogue creation did not load LOGICA families.");
+                        newFamily.SelectedItem = "Food";
                         Field("Prix du nouvel article").Text = "9.75";
                         timer.Start();
                         Click(Button("Créer l’article"));
@@ -876,7 +882,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                         Click(Button("Charger la fiche"));
                         Require(Field("Nom de la fiche").Text == "Article d'essai", "Article card did not reload.");
                         Field("Nom de la fiche").Text = "Article corrigé";
-                        Field("Famille de la fiche").Text = "Test famille";
+                        Family("Famille de la fiche").SelectedItem = "Test famille";
                         timer.Start();
                         Click(Button("Enregistrer la fiche"));
                         Require(Controls<System.Windows.Controls.TextBlock>(dialog).Any(text =>
@@ -929,6 +935,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         var editor = new CataloguePriceEditor(settings.ConnectionString);
         Sql(settings, """
             ALTER TABLE TABLE_NUM ADD ARTICLE INT NOT NULL DEFAULT 1;
+            CREATE TABLE TABLE_FAMILLES (Famille VARCHAR(128)) ENGINE=InnoDB;
+            INSERT INTO TABLE_FAMILLES VALUES ('Food'), ('Test famille');
             ALTER TABLE TABLE_ARTICLES ADD PRIX_V_2 DECIMAL(16,3), ADD DATES DATE, ADD ID INT NOT NULL AUTO_INCREMENT UNIQUE;
             """);
         RunCatalogueCardFromWindow(settings);
