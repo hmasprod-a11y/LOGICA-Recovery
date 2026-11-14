@@ -1776,6 +1776,31 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         finally { host.Window.Close(); }
     }
 
+    private static void VerifyReceiptSettings(CatalogueSettings settings)
+    {
+        var directory = Directory.CreateTempSubdirectory("hanouty-printer-");
+        try
+        {
+            using var connection = new MySqlConnection(settings.ConnectionString);
+            connection.Open();
+            Require(LogicaReceiptSettings.Read(connection, directory.FullName) is null,
+                "Missing workstation file was accepted.");
+            var file = Path.Combine(directory.FullName, "PRINTER_CL.sni");
+            File.WriteAllText(file, "0");
+            Require(LogicaReceiptSettings.Read(connection, directory.FullName)?.Printer == "0",
+                "Disabled LOGICA printer was not recognized.");
+            File.WriteAllText(file, "");
+            Sql(settings, "INSERT INTO TABLE_PARAMETRES VALUES ('BRANCHEMENT','USB'),('MODELE_TICKET','AR_4C')");
+            Require(LogicaReceiptSettings.Read(connection, directory.FullName) ==
+                new LogicaReceiptSettings("", "USB", "AR_4C"), "LOGICA settings did not preserve the default printer and Arabic template.");
+            Sql(settings, "INSERT INTO TABLE_PARAMETRES VALUES ('MODELE_TICKET','FR_3C')");
+            Require(LogicaReceiptSettings.Read(connection, directory.FullName) is null,
+                "Conflicting ticket templates were accepted.");
+            Sql(settings, "DELETE FROM TABLE_PARAMETRES WHERE OBJET IN ('BRANCHEMENT','MODELE_TICKET')");
+        }
+        finally { directory.Delete(recursive: true); }
+    }
+
     private static void VerifyCashDrawerClosing(CatalogueSettings settings, string pin)
     {
         Sql(settings, """
@@ -1795,6 +1820,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             INSERT INTO TABLE_FOURNISSEURS_REGLE VALUES (4,'ESPECES',NULL);
             INSERT INTO TABLE_POUBELLE VALUES (NULL);
             """);
+        VerifyReceiptSettings(settings);
         var closing = new CashDrawerClosing(settings.ConnectionString);
         RunCashDrawerFromWindow(settings, pin, opening: true);
         Require(Convert.ToString(Value(settings, "SELECT VALEUR FROM TABLE_PARAMETRES WHERE OBJET='FONDS_CAISSE'")) == "120.50",
