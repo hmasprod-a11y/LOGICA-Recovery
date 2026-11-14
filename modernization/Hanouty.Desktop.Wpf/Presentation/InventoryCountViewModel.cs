@@ -61,6 +61,7 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
         _selectedArticleId = null;
         ArticleId = "";
         PhysicalText = "";
+        Changed(nameof(CanRecord));
     }
     public int SearchResultCount => SearchResults.Count;
     public void SelectArticle(InventoryCountLine? line)
@@ -70,10 +71,11 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
         _selectedArticleId = line.ArticleId;
         ArticleId = line.ArticleId;
         PhysicalText = line.PhysicalQuantity?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
+        Changed(nameof(CanRecord));
     }
     public InventoryCountViewModel(IInventoryCountWorkflow? workflow = null) => _workflow = workflow;
     public string DocumentId { get => _documentId; set { if (_documentId == (value ?? "")) return; _documentId = value ?? ""; InvalidateDocument(); Changed(); Changed(nameof(CanOpen)); } }
-    public string ArticleId { get => _articleId; set { _articleId = value ?? ""; Changed(); } }
+    public string ArticleId { get => _articleId; set { _articleId = value ?? ""; Changed(); Changed(nameof(CanRecord)); } }
     public string PhysicalText { get => _physicalText; set { _physicalText = value ?? ""; Changed(); } }
     public string Status { get => _status; private set { _status = value; Changed(); } }
     // Read-only progress is derived exclusively from the Inventory document snapshot.
@@ -90,7 +92,9 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
         Changed(nameof(CountProgress));
     }
     public bool CanOpen => _workflow is not null && !_busy && !string.IsNullOrWhiteSpace(DocumentId);
-    public bool CanRecord => _workflow is not null && _loaded && !_busy && _openedDocumentId == DocumentId;
+    public bool CanRecord => _workflow is not null && _loaded && !_busy && _openedDocumentId == DocumentId &&
+        _selectedArticleId is not null && _selectedArticleId == ArticleId &&
+        SearchResults.Any(x => x.ArticleId == _selectedArticleId);
     public bool CanConfirm => _workflow is not null && _loaded && !_busy && _openedDocumentId == DocumentId &&
         Lines.Count > 0 && Lines.All(x => x.PhysicalQuantity is >= 0m);
     public void Open()
