@@ -498,6 +498,20 @@ public sealed partial record CatalogueHost
             dialog.ShowDialog();
             vm.ReloadCatalogue();
         });
+        window.ConfigureSaleTicket(operation =>
+        {
+            if (!CanChangeContext() || activeCashierId is not { } cashier) return;
+            try
+            {
+                using var connection = connections();
+                if (connection.State != System.Data.ConnectionState.Open) connection.Open();
+                CashSaleTicket.Show(window, connection, operation, cashier, twoDigitWorkstation);
+            }
+            catch (MySqlException)
+            {
+                System.Windows.MessageBox.Show(window, "Lecture du ticket impossible.", "Ticket");
+            }
+        });
         window.ConfigureReviewedCheckout(result.TryReviewResolvedCheckout);
         return result;
     }

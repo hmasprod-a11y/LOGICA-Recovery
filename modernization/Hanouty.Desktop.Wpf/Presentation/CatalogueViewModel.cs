@@ -134,6 +134,8 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private string _commitFeedback = "Checkout submission unavailable";
     private CashierPaymentContext? _paymentContext;
     public CashierPaymentContext? PaymentContext { get => _paymentContext; set { if (_selectionInFlight || CheckoutUncertain) return; _paymentContext = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanCommit)); } }
+    public string? LastCommittedSaleId { get; private set; }
+
     public string? PendingOperationId => _pendingOperationId;
     private CheckoutResolution _reviewedResolution = CheckoutResolution.Unknown;
     // A durable result is evidence for a cashier review, never permission to retry.
@@ -490,6 +492,11 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
                 CheckoutSubmissionResult.Invalidated => "Cart invalidated — cashier must review",
                 _ => "Checkout status unknown — reconcile before retry"
             };
+            if (result == CheckoutSubmissionResult.Committed)
+            {
+                LastCommittedSaleId = _pendingOperationId;
+                OnPropertyChanged(nameof(LastCommittedSaleId));
+            }
             if (result is CheckoutSubmissionResult.Committed or CheckoutSubmissionResult.Empty)
             {
                 _pendingOperationId = null;

@@ -533,6 +533,17 @@ public partial class MainWindow : Window
         return System.Windows.LogicalTreeHelper.GetParent(node);
     }
 
+    private Action<string>? _openSaleTicket;
+
+    public void ConfigureSaleTicket(Action<string> openSaleTicket) => _openSaleTicket = openSaleTicket;
+
+    private void OpenLastTicket_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false,
+            CheckoutUncertain: false, LastCommittedSaleId: { } operation })
+            _openSaleTicket?.Invoke(operation);
+    }
+
     private void CashierEntry_Click(object sender, RoutedEventArgs e) => ShowCashierEntry();
 
     private Func<string, CheckoutResolution, Func<string>, bool>? _review;
