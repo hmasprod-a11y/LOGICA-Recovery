@@ -178,6 +178,8 @@ public sealed class InventoryCountViewModel : INotifyPropertyChanged
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
             Lines.Clear();
+            // Rejected Inventory calls invalidate the document and its search projection.
+            RefreshSearchResults();
             NotifyCountProgress();
             _loaded = false;
             _openedDocumentId = null;
