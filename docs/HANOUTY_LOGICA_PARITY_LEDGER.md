@@ -2,6 +2,12 @@
 
 Référence de code examinée `aa836f0f58782f0a18fd256545647af2503d901c`, branche d’intégration QA [#93](https://github.com/hmasprod-a11y/LOGICA-Recovery/pull/93). Le cahier fonctionnel V1 et les [contrats V2](HANOUTY_MASTER_MODERNIZATION_V2.md) et [V3](HANOUTY_EXECUTION_CONTRACT_V3_2026-11-04.md) gouvernent la livraison. LOGICA sert de référence pour les règles métier, les parcours et les résultats sur les données. La cible reste WPF/.NET 10 et MariaDB locale.
 
+## Règle de reprise validée par le propriétaire
+
+Pour chaque section, écran, point d’entrée et fonction, partir de l’implémentation LOGICA et du cahier des charges. Avant de modifier HANOUTY, identifier l’écran et ses ressources, l’action qui l’ouvre, ses commandes, les droits, les règles de calcul et les écritures ou sorties concernées. Reprendre les composants existants et conserver le parcours, l’ordre des actions et les résultats observables. Vérifier le parcours depuis son vrai point d’entrée avec un scénario commun à LOGICA et HANOUTY.
+
+Une conception nouvelle est réservée à une fonction réellement absente de LOGICA. Une fonction dont la référence reste à retrouver demeure à examiner. Pour une fonction absente, consigner l’exigence du cahier et la décision de conception. Une recette technique réussie ne suffit pas à accepter une différence dans le parcours ou l’interface.
+
 ## État des parcours
 
 Une preuve de code indique où se trouve le comportement. L’acceptation exige son exécution sur le parcours et la version identifiés. Le terme « à tracer » signale un audit incomplet.
