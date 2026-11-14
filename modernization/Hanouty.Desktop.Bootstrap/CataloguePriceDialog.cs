@@ -8,7 +8,7 @@ namespace Hanouty.Desktop.Bootstrap;
 internal sealed class CataloguePriceDialog : Window
 {
     internal CataloguePriceDialog(CataloguePriceEditor service, Func<CataloguePriceEditor.Price, decimal, bool> save,
-        Func<string, string, string, decimal, string?> create,
+        Func<string, string, string, decimal, string?, string?> create,
         Func<CataloguePriceEditor.Card, string, string, string, bool> saveCard)
     {
         Title = "Prix du catalogue";
@@ -60,6 +60,7 @@ internal sealed class CataloguePriceDialog : Window
         }
         var family = FamilyField(fields, "Famille du nouvel article");
         var newPrice = Field("Prix du nouvel article");
+        var variant = Field("Identifiant de l’article source (variante, facultatif)");
         var add = new Button { Content = "Créer l’article", MinHeight = 36 };
         add.Click += (_, _) =>
         {
@@ -72,7 +73,8 @@ internal sealed class CataloguePriceDialog : Window
             add.IsEnabled = false;
             try
             {
-                var articleId = create(name.Text.Trim(), code.Text.Trim(), family.SelectedItem as string ?? "", amount);
+                var articleId = create(name.Text.Trim(), code.Text.Trim(), family.SelectedItem as string ?? "", amount,
+                    string.IsNullOrWhiteSpace(variant.Text) ? null : variant.Text.Trim());
                 if (articleId is not null)
                 {
                     id.Text = articleId;
@@ -81,6 +83,7 @@ internal sealed class CataloguePriceDialog : Window
                     code.Clear();
                     family.SelectedIndex = -1;
                     newPrice.Clear();
+                    variant.Clear();
                 }
             }
             catch (UnauthorizedAccessException)

@@ -457,7 +457,7 @@ public sealed partial record CatalogueHost
                     return true;
                 }
                 finally { reviewing = false; }
-            }, (name, barcode, family, price) =>
+            }, (name, barcode, family, price, variantOf) =>
             {
                 if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
                     binding.Session.PendingCount != 0) return null;
@@ -466,7 +466,7 @@ public sealed partial record CatalogueHost
                 {
                     var pin = window.PromptCashierPin(actor);
                     return string.IsNullOrWhiteSpace(pin) ? null :
-                        editor.Create(name, barcode, family, price, actor, pin);
+                        editor.Create(name, barcode, family, price, actor, pin, variantOf);
                 }
                 finally { reviewing = false; }
             }, (card, name, barcode, family) =>

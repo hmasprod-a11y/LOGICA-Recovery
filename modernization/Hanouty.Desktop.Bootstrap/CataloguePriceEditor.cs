@@ -30,7 +30,7 @@ internal sealed class CataloguePriceEditor(string connectionString)
             throw new InvalidOperationException("Cette famille n’est plus disponible. Rechargez le catalogue.");
     }
 
-    internal string Create(string name, string barcode, string family, decimal price, string actor, string pin)
+    internal string Create(string name, string barcode, string family, decimal price, string actor, string pin, string? variantOf = null)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 128 || barcode.Length > 128 ||
             family.Length > 128 || price < 0 || decimal.Round(price, 2) != price)
@@ -55,11 +55,20 @@ internal sealed class CataloguePriceEditor(string connectionString)
         }
 
         var id = "ART" + number.ToString("D6", System.Globalization.CultureInfo.InvariantCulture);
+        if (variantOf is not null)
+        {
+            var parent = ReadCard(connection, transaction, variantOf, true);
+            if (string.IsNullOrEmpty(parent.Barcode) || family != parent.Family || barcode != parent.Barcode ||
+                string.Equals(name, parent.Name, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("La variante doit partager le code-barres et la famille de l’article source, avec un nom distinct.");
+        }
         using (var duplicate = new MySqlCommand(
             "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id OR " +
-            "(@code<>'' AND BINARY Code=BINARY @code)", connection, transaction))
+            "(@code<>'' AND BINARY Code=BINARY @code AND (@variant=0 OR Article=@name))", connection, transaction))
         {
             duplicate.Parameters.AddWithValue("@id", id);
+            duplicate.Parameters.AddWithValue("@variant", variantOf is null ? 0 : 1);
+            duplicate.Parameters.AddWithValue("@name", name);
             duplicate.Parameters.AddWithValue("@code", barcode);
             if (Convert.ToInt64(duplicate.ExecuteScalar()) != 0)
                 throw new InvalidOperationException("Identifiant ou code-barres déjà utilisé.");

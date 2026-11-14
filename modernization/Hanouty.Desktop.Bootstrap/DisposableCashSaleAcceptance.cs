@@ -1062,6 +1062,28 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             catch (InvalidOperationException ex) when (ex.Message.StartsWith("Le prix ou l’article a changé.", StringComparison.Ordinal)) { }
         }
         finally { host.Window.Close(); }
+
+        var variantId = editor.Create("Article corrigé — bleu", "CARD'1", "Test famille", 11.25m,
+            "Test admin", "6789", variantOf: id);
+        Require(variantId == "ART000002" && editor.ReadCard(variantId).Barcode == editor.ReadCard(id).Barcode,
+            "Variant did not get its own LOGICA identity and shared barcode.");
+        var variantHost = CatalogueHost.CreateCashierWorkstation(settings, "01");
+        try
+        {
+            Require(CashierEntry(variantHost, "Test admin", "01", "0", 0m, "6789"),
+                "Variant cashier could not sign in.");
+            variantHost.ViewModel.ScannerText = "CARD'1";
+            variantHost.ViewModel.ScanCommand.Execute(null);
+            Require(variantHost.ViewModel.BasketLines.Count == 0 &&
+                variantHost.ViewModel.BarcodeCandidates.Count == 2,
+                "Shared barcode silently selected one article.");
+            variantHost.ViewModel.SelectedProduct = variantHost.ViewModel.BarcodeCandidates.Single(product => product.Id == variantId);
+            variantHost.ViewModel.SelectCommand.Execute(null);
+            Require(variantHost.ViewModel.BasketLines.Single().ArticleId == variantId &&
+                variantHost.ViewModel.BasketLines.Single().UnitPriceMad == 11.25m,
+                "Explicit variant selection did not stage the correct article and price.");
+        }
+        finally { variantHost.Window.Close(); }
     }
 
     private static void VerifyPurchaseReceipt(CatalogueSettings settings)
