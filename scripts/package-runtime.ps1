@@ -11,7 +11,10 @@ if(Test-Path input/original-startup.json){
  foreach($p in $original.PSObject.Properties){
   # Only the known visual/layout settings may extend the portable defaults.
   # Never copy arbitrary shop-specific files from the recovered startup fixture.
-  if($defaults.ContainsKey($p.Name) -or $p.Name -in @('interfaces_a.sni','interfaces_f.sni','splitterdistance.sni')){
+  # Only harmless screen-layout preferences are inherited. The presence of a
+  # key in $defaults does NOT make it safe to copy: workstation identity,
+  # credit/RFID modes, printers, and license data must stay at clean defaults.
+  if($p.Name -in @('interfaces_a.sni','interfaces_f.sni','splitterdistance.sni','splitterdistance_v.sni')){
    $defaults[$p.Name]=[string]$p.Value
   }
  }
@@ -51,7 +54,9 @@ Do not run the migration on an unknown or unbacked-up database.
 The SQL is repeatable and adds missing columns only; it never drops rows.
 '@ | Set-Content -LiteralPath (Join-Path $dist 'ARTICLE-SCHEMA-MIGRATION-README.txt') -Encoding UTF8
 
-Remove-Item dist/PosSmoke* -Force -ErrorAction SilentlyContinue
+# Never package isolated QA executables/configs, even if the POS test script
+# exited early before its own cleanup stage.
+Remove-Item dist/PosSmoke*,dist/DesktopPaymentCultureSmoke*,dist/DesktopArticleDeleteSmoke*,dist/DesktopSolderGuardSmoke*,dist/CatalogueDuplicateMariaDbSmoke*,dist/CatalogueCreationMariaDbSmoke* -Force -ErrorAction SilentlyContinue
 $manifest=@(Get-ChildItem dist -File | ForEach-Object {
  $hash=(Get-FileHash $_.FullName -Algorithm SHA256).Hash
  $version=$null

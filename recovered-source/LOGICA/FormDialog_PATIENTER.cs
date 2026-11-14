@@ -436,7 +436,7 @@ public class FormDialog_PATIENTER : Form
 				newpoint.X -= x;
 				newpoint.Y -= y;
 				((Form)this).Location = newpoint;
-				Application.DoEvents();
+				global::System.Windows.Forms.Application.DoEvents();
 			}
 		}
 	}
@@ -447,10 +447,19 @@ public class FormDialog_PATIENTER : Form
 	{
 		((Form)this).TopMost = true;
 		((Form)this).TopLevel = true;
-		// Fail-safe: the waiting overlay must never remain indefinitely if the
-		// article form throws before setting _QUITTER_PATIENTER.
+		// Journal/report operations run on a separate STA thread. Reset the
+		// lifetime at the actual display time, not at construction, and always
+		// arm the UI timer even when the shared completion flag is never raised.
+		_shownUtc = DateTime.UtcNow;
 		Timer1.Interval = 250;
+		Timer1.Enabled = true;
 		Timer1.Start();
+	}
+
+	protected override void OnFormClosed(FormClosedEventArgs e)
+	{
+		Timer1.Stop();
+		base.OnFormClosed(e);
 	}
 
 	private void PictureBox1_DoubleClick(object sender, EventArgs e)

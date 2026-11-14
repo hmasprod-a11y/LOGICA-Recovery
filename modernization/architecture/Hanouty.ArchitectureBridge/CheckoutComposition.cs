@@ -1,0 +1,191 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Hanouty.ArchitectureBridge;
+
+// Shared Application-facing read contract; implemented by Inventory's local MariaDB
+// infrastructure, not by a ViewModel or a second SQL implementation here.
+public sealed record ProductSummary(
+    string ArticleId, string Barcode, string DisplayName,
+    string? ImagePath, string? VariantId = null)
+{
+    public bool HasImage => !string.IsNullOrWhiteSpace(ImagePath);
+}
+
+public interface ICatalogueReader
+{
+    IReadOnlyList<ProductSummary> ListAll();
+    IReadOnlyList<ProductSummary> FindBarcode(string barcode);
+    IReadOnlyList<ProductSummary> RefreshBarcode(string barcode);
+    IReadOnlyList<ProductSummary> RefreshArticle(string articleId);
+}
+
+public interface ICheckoutOperationJournal
+{
+    // Unknown is NOT absent. Never allow a new write on an unknown outcome.
+    CheckoutOperationOutcome Lookup(string operationId);
+}
+public enum CheckoutOperationOutcome { Unknown, Persisted, Absent }
+
+// No implicit demo fallback. The host must explicitly supply all production
+// dependencies; these are the seams for Inventory, Checkout and WPF owners.
+public sealed class CheckoutComposition
+{
+    private readonly ICatalogueReader _reader;
+    private readonly ICheckoutVariantPrompt _variantPrompt;
+    private readonly IAtomicCheckoutBatchPort _cart;
+    private readonly ICheckoutOperationJournal _journal;
+
+    public CheckoutComposition(ICatalogueReader reader, ICheckoutVariantPrompt variantPrompt,
+        IAtomicCheckoutBatchPort cart, ICheckoutOperationJournal journal)
+    {
+        _reader = reader ?? throw new ArgumentNullException(nameof(reader));
+        _variantPrompt = variantPrompt ?? throw new ArgumentNullException(nameof(variantPrompt));
+        _cart = cart ?? throw new ArgumentNullException(nameof(cart));
+        _journal = journal ?? throw new ArgumentNullException(nameof(journal));
+    }
+
+    public IReadOnlyList<ProductSummary> AllProducts() => Validate(_reader.ListAll());
+    public IReadOnlyList<ProductSummary> ImageProducts() =>
+        Array.AsReadOnly(AllProducts().Where(p => p.HasImage).ToArray());
+
+    // The tile is a UI snapshot, not authority to sell. Inventory must confirm
+    // the exact article, variant and photo are still present before staging.
+    internal bool IsCurrentImage(ProductSummary tile)
+    {
+        if (tile is null || string.IsNullOrWhiteSpace(tile.ArticleId)) return false;
+        var live = Validate(_reader.RefreshArticle(tile.ArticleId));
+        // A display-name rename is not an identity, variant or photo change.
+        // Preserve QA's accepted live-tile contract without trusting the UI snapshot.
+        return live.Count == 1 && live[0].HasImage &&
+            string.Equals(live[0].ArticleId, tile.ArticleId, StringComparison.Ordinal) &&
+            string.Equals(live[0].Barcode, tile.Barcode, StringComparison.Ordinal) &&
+            string.Equals(live[0].VariantId, tile.VariantId, StringComparison.Ordinal) &&
+            string.Equals(live[0].ImagePath, tile.ImagePath, StringComparison.Ordinal);
+    }
+
+    internal bool IsCurrentArticle(ProductSummary selected)
+    {
+        if (selected is null || string.IsNullOrWhiteSpace(selected.ArticleId)) return false;
+        var live = Validate(_reader.RefreshArticle(selected.ArticleId));
+        return live.Count == 1 && live[0] == selected;
+    }
+
+    // Explicit variant choice must still refer to a live duplicate barcode set.
+    // A stale UI snapshot cannot authorize a different, now-unique article.
+    internal bool IsCurrentDuplicateVariant(ProductSummary selected)
+    {
+        if (selected is null || string.IsNullOrWhiteSpace(selected.ArticleId) ||
+            string.IsNullOrWhiteSpace(selected.Barcode) || !IsCurrentArticle(selected))
+            return false;
+        var candidates = Validate(_reader.RefreshBarcode(selected.Barcode));
+        return candidates.Count >= 2 && candidates.Count(p => p == selected) == 1 &&
+            candidates.All(p => string.Equals(p.Barcode, selected.Barcode, StringComparison.Ordinal));
+    }
+
+    // One WPF session owns one batch and one stable operation ID. No demo fallback.
+    public CheckoutSession CreateSession() => new(this, CreateCheckoutBatch());
+
+    public CheckoutBatchController CreateCheckoutBatch() =>
+        new(new CatalogueSelectionAdapter(_reader), _variantPrompt, _cart);
+
+    public CheckoutOperationOutcome Reconcile(CheckoutBatchController batch)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        var id = batch.UncertainOperationId;
+        if (id is null) throw new InvalidOperationException("No uncertain checkout operation.");
+        var outcome = _journal.Lookup(id);
+        // An invalid journal value is not proof of absence. Never unlock an
+        // uncertain payment unless durable storage explicitly says Persisted or Absent.
+        if (outcome == CheckoutOperationOutcome.Unknown) return outcome;
+        if (outcome != CheckoutOperationOutcome.Persisted &&
+            outcome != CheckoutOperationOutcome.Absent)
+            throw new InvalidOperationException("Checkout journal returned an unsupported durable outcome.");
+        batch.ReconcileUnknownOutcome(id, outcome == CheckoutOperationOutcome.Persisted);
+        return outcome;
+    }
+
+    private static IReadOnlyList<ProductSummary> Validate(IReadOnlyList<ProductSummary> products)
+    {
+        ArgumentNullException.ThrowIfNull(products);
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var product in products)
+        {
+            if (product is null || string.IsNullOrWhiteSpace(product.ArticleId))
+                throw new InvalidOperationException("Catalogue returned a product without stable identity.");
+            // Legacy DataRow mappings may surface DBNull as null at runtime even
+            // when the modern DTO declares a non-null display name. Refuse a
+            // malformed snapshot rather than passing it into WPF bindings.
+            if (string.IsNullOrWhiteSpace(product.DisplayName))
+                throw new InvalidOperationException("Catalogue returned a product without a usable display name.");
+            if (!ids.Add(product.ArticleId))
+                throw new InvalidOperationException("Catalogue returned duplicate article identity.");
+        }
+        // A caller must not mutate a catalogue snapshot through IList<T>.
+        // The reader may reuse its own mutable buffer, so detach before wrapping.
+        return Array.AsReadOnly(products.ToArray());
+    }
+
+    private sealed class CatalogueSelectionAdapter : ICheckoutSelectionCatalogue
+    {
+        private readonly ICatalogueReader _source;
+        public CatalogueSelectionAdapter(ICatalogueReader source) => _source = source;
+        public IReadOnlyList<ArticleCandidate> FindBarcode(string barcode)
+        {
+            RequireBarcode(barcode);
+            return Convert(_source.FindBarcode(barcode), barcode);
+        }
+        public IReadOnlyList<ArticleCandidate> RefreshBarcode(string barcode)
+        {
+            RequireBarcode(barcode);
+            return Convert(_source.RefreshBarcode(barcode), barcode);
+        }
+        private static void RequireBarcode(string barcode)
+        {
+            if (string.IsNullOrWhiteSpace(barcode))
+                throw new ArgumentException("A scanned barcode must not be blank.", nameof(barcode));
+        }
+        public IReadOnlyList<ArticleCandidate> RefreshArticle(string articleId)
+        {
+            // A missing identity must never become an unfiltered catalogue query.
+            // The caller must not be allowed to turn a stale tile into a sale.
+            if (string.IsNullOrWhiteSpace(articleId))
+                throw new ArgumentException("An article identity must not be blank.", nameof(articleId));
+            return Convert(_source.RefreshArticle(articleId), null, articleId);
+        }
+
+        private static IReadOnlyList<ArticleCandidate> Convert(
+            IReadOnlyList<ProductSummary> products, string? requestedBarcode = null,
+            string? requestedArticleId = null)
+        {
+            ArgumentNullException.ThrowIfNull(products);
+            // A scan must never turn an empty/whitespace barcode into a
+            // catalogue-wide lookup or an accidental sale of the first item.
+            if (requestedBarcode is not null && string.IsNullOrWhiteSpace(requestedBarcode))
+                throw new ArgumentException("A scanned barcode must not be blank.", nameof(requestedBarcode));
+            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var result = new List<ArticleCandidate>(products.Count);
+            foreach (var product in products)
+            {
+                if (product is null || string.IsNullOrWhiteSpace(product.ArticleId) ||
+                    !ids.Add(product.ArticleId))
+                    throw new InvalidOperationException("Catalogue returned invalid or duplicate article identity.");
+                // Selection and display snapshots share the same fail-closed
+                // catalogue boundary: a malformed legacy display name must not
+                // be accepted merely because the caller used barcode selection.
+                if (string.IsNullOrWhiteSpace(product.DisplayName))
+                    throw new InvalidOperationException("Catalogue returned a product without a display name.");
+                if (requestedBarcode is not null &&
+                    !string.Equals(product.Barcode, requestedBarcode, StringComparison.Ordinal))
+                    throw new InvalidOperationException("Catalogue returned an article for a different barcode.");
+                if (requestedArticleId is not null &&
+                    !string.Equals(product.ArticleId, requestedArticleId, StringComparison.Ordinal))
+                    throw new InvalidOperationException("Catalogue returned an article for a different identity.");
+                result.Add(new ArticleCandidate(product.ArticleId, product.Barcode ?? ""));
+            }
+            // Do not expose a mutable selection buffer across the checkout boundary.
+            return Array.AsReadOnly(result.ToArray());
+        }
+    }
+}

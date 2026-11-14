@@ -1,5 +1,6 @@
 <Project>
   <ItemGroup>
+    <Compile Include="../recovered-source/LOGICA/Application/Checkout/ReceiptPrintRoute.cs" Link="Application/Checkout/ReceiptPrintRoute.cs" />
     <Compile Include="../recovered-source/LOGICA/Domain/ILegacyCashSemantics.cs" Link="Domain/ILegacyCashSemantics.cs" />
     <Compile Include="../recovered-source/LOGICA/Domain/CashCountInputRules.cs" Link="Domain/CashCountInputRules.cs" />
     <Compile Include="../recovered-source/LOGICA/Domain/CashDenominationTotal.cs" Link="Domain/CashDenominationTotal.cs" />

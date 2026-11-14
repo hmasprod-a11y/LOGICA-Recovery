@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+    <StartupObject>Hanouty.Desktop.Bootstrap.Program</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../recovered-source/LOGICA/Application/Checkout/LogicaFrenchThreeColumn.cs" Link="LogicaFrenchThreeColumn.cs" />
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
+    <ProjectReference Include="../Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj"/>
+    <ProjectReference Include="../architecture/Hanouty.WpfContractAdapter/Hanouty.WpfContractAdapter.csproj"/>
+    <ProjectReference Include="../inventory/Hanouty.Inventory.MariaDb/Hanouty.Inventory.MariaDb.csproj"/>
+  </ItemGroup>
+  <PropertyGroup Condition="'$(CheckoutProductionProject)' != ''"><DefineConstants>$(DefineConstants);HANOUTY_FINANCIAL</DefineConstants></PropertyGroup>
+  <ItemGroup Condition="'$(CheckoutProductionProject)' != ''">
+    <ProjectReference Include="$(CheckoutProductionProject)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(CheckoutProductionProject)' == ''">
+    <Compile Remove="CatalogueHost.Financial.cs" />
+    <Compile Remove="CashDrawerClosing.cs" />
+    <Compile Remove="CataloguePriceDialog.cs" />
+    <Compile Remove="PurchaseReceiptDialog.cs" />
+    <Compile Remove="DisposableCashSaleAcceptance.cs" />
+  </ItemGroup>
+</Project>
+

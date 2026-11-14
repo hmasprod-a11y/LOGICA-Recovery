@@ -62,7 +62,7 @@ internal class MyApplication : WindowsFormsApplicationBase
 	{
 		try
 		{
-			Application.SetCompatibleTextRenderingDefault(WindowsFormsApplicationBase.UseCompatibleTextRendering);
+			System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(WindowsFormsApplicationBase.UseCompatibleTextRendering);
 		}
 		finally
 		{
@@ -72,7 +72,7 @@ internal class MyApplication : WindowsFormsApplicationBase
 		// duplicate the per-user DPAPI-protected database credentials.
 		if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("LOGICA_DB_CONNECTION_STRING")))
 		{
-			string launcher = System.IO.Path.Combine(Application.StartupPath, "Launch-LOGICA.ps1");
+			string launcher = System.IO.Path.Combine(System.Windows.Forms.Application.StartupPath, "Launch-LOGICA.ps1");
 			if (System.IO.File.Exists(launcher))
 			{
 				try
@@ -80,7 +80,7 @@ internal class MyApplication : WindowsFormsApplicationBase
 					var start = new ProcessStartInfo("powershell.exe",
 						"-NoLogo -NoProfile -ExecutionPolicy Bypass -File \""+ launcher + "\"")
 					{
-						WorkingDirectory = Application.StartupPath,
+						WorkingDirectory = System.Windows.Forms.Application.StartupPath,
 						UseShellExecute = false
 					};
 					Process.Start(start);

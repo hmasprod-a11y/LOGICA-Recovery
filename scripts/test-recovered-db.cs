@@ -202,7 +202,12 @@ class RecoveredCheck {
  }
  if(verified!=125)throw new Exception("Not all original data tables were checked: "+verified);
  Console.WriteLine("PASS all 125 original table row counts preserved (one documented compatibility setting added)");
- connection.Close();form.Show();Application.DoEvents();
+ connection.Close();
+ var folder=Convert.ToString(module.GetField("_CHEMIN_FOLDER").GetValue(null));
+ if(!string.Equals(Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar),AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar),StringComparison.OrdinalIgnoreCase))
+  throw new Exception("Legacy Application.StartupPath configuration sentinel did not resolve to executable directory");
+ Console.WriteLine("PASS original Application.StartupPath sentinel resolves to executable directory");
+ form.Show();Application.DoEvents();
  if(((Control)Get(form,"Panel_TENTATIVE_CONNEXION")).Visible)throw new Exception("Original startup connection failure: "+((Control)Get(form,"Label_ERREUR")).Text);
  lock(errors){if(errors.Count>0)throw new Exception("Original startup modal errors: "+string.Join(" | ",errors.ToArray()));}
  Console.WriteLine("PASS original startup connected to recovered database; connection error panel hidden");Console.WriteLine("Activation panel visible="+((Control)Get(form,"Panel_clé")).Visible+" (original activation mechanism preserved)");

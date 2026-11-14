@@ -588,7 +588,7 @@ public class FormDialog_RACCOURCIES : Form
 	{
 		try
 		{
-			string[] array = File.ReadAllLines(Application.StartupPath + "/raccourcies.sni");
+			string[] array = File.ReadAllLines(global::System.Windows.Forms.Application.StartupPath + "/raccourcies.sni");
 			ListBox2.Items.Clear();
 			string[] array2 = array;
 			foreach (string text in array2)
@@ -639,7 +639,7 @@ public class FormDialog_RACCOURCIES : Form
 				text = text + "\r\n" + ListBox2.Items[num2].ToString();
 				num2++;
 			}
-			File.WriteAllText(Application.StartupPath + "\\raccourcies.sni", text);
+			File.WriteAllText(global::System.Windows.Forms.Application.StartupPath + "\\raccourcies.sni", text);
 			MessageBox.Show("Modifié avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
 			((Form)this).Close();
 		}

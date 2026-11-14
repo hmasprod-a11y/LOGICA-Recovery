@@ -1,0 +1,124 @@
+name: QA WPF Architecture real adapter source gate
+on:
+  push:
+    branches: [integration/hanouty-qa-desktop-inventory-20261102]
+    paths: ['.github/workflows/qa-wpf-architecture-adapter.yml']
+  pull_request:
+    paths:
+      - '.github/workflows/qa-w1-disposable-mariadb.yml'
+      - '.github/workflows/qa-wpf-architecture-adapter.yml'
+      - 'qa/tests/Hanouty.W1.RealMariaDb/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  adapter:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: qa
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 6d34e06139f9f10c992a926f5cce090ead72a97e
+          path: combined
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 6d34e06139f9f10c992a926f5cce090ead72a97e
+          path: architecture
+          persist-credentials: false
+      - name: Verify exact provenance and compose real production source graph
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force evidence | Out-Null
+          $sources = @{
+            qa = '${{ github.sha }}'
+            combined = '6d34e06139f9f10c992a926f5cce090ead72a97e'
+            architecture = '6d34e06139f9f10c992a926f5cce090ead72a97e'
+          }
+          foreach ($key in $sources.Keys) {
+            $actual = (git -C $key rev-parse HEAD).Trim()
+            if ($actual -cne $sources[$key]) { throw "SHA mismatch $key : $actual" }
+            "$key=$actual" | Add-Content evidence/source-manifest.txt
+          }
+          foreach ($name in @('Hanouty.WpfContractAdapter','Hanouty.WpfContractAdapter.Tests','Hanouty.ArchitectureBridge')) {
+            $relative = "modernization/architecture/$name"
+            if (!(Test-Path "architecture/$relative")) { throw "Missing real source $relative" }
+            if (Test-Path "combined/$relative") { Remove-Item "combined/$relative" -Recurse -Force }
+            New-Item -ItemType Directory -Force "combined/modernization/architecture" | Out-Null
+            Copy-Item "architecture/$relative" "combined/$relative" -Recurse -Force
+          }
+          if (!(Test-Path combined/modernization/Hanouty.Desktop.Wpf/App.xaml.cs)) { throw 'Missing WPF host' }
+          # Preserve a rollback/reproducibility manifest for the exact compiled source graph.
+          $manifest = @('qa','combined','architecture') | ForEach-Object {
+            $root = $_
+            $sha = (git -C $root rev-parse HEAD).Trim()
+            $dirty = (git -C $root status --porcelain)
+            if ($root -eq 'qa' -and $dirty) { throw 'QA checkout unexpectedly dirty before compilation' }
+            [pscustomobject]@{ source=$root; sha=$sha; original_checkout_clean=([bool](-not $dirty)) }
+          }
+          $manifest | ConvertTo-Json -Depth 3 | Set-Content evidence/rollback-source-manifest.json
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Scope baseline nullable diagnostics to recovered legacy files only
+        shell: pwsh
+        run: |
+          $path = 'combined/recovered-source/LOGICA/.editorconfig'
+          @'
+          [**/*.cs]
+          dotnet_diagnostic.CS8600.severity = none
+          dotnet_diagnostic.CS8603.severity = none
+          dotnet_diagnostic.CS8618.severity = none
+          '@ | Set-Content $path
+          Write-Host 'Nullable baseline suppression applies only under recovered-source/LOGICA; new Architecture/Inventory/WPF code retains warnaserror.'
+      - name: Compile real WPF Architecture production adapter and contract test graph
+        shell: pwsh
+        run: |
+          dotnet build combined/modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'Actual adapter graph compilation failed' }
+      - name: Execute adapter regression against compiled real WPF source
+        shell: pwsh
+        run: |
+          dotnet run --no-build -c Release --project combined/modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj
+          if ($LASTEXITCODE -ne 0) { throw 'Actual adapter regression failed' }
+      - name: Assert real executable dependency direction and production adapter path
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $wpfProject = Get-Content combined/modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj -Raw
+          $adapterProject = Get-Content combined/modernization/architecture/Hanouty.WpfContractAdapter/Hanouty.WpfContractAdapter.csproj -Raw
+          if ($wpfProject -match 'Hanouty.WpfContractAdapter') { throw 'Circular reference: WPF must not depend on Adapter' }
+          if ($adapterProject -notmatch 'Hanouty.Desktop.Wpf.csproj') { throw 'Production adapter must reference WPF presentation contract' }
+          if (!(Test-Path combined/modernization/architecture/Hanouty.WpfContractAdapter/ProductionWpfAdapters.cs)) { throw 'Missing real production adapter' }
+      - name: Enforce W1 fail closed pending real MariaDB host registration
+        shell: pwsh
+        run: |
+          $app = Get-Content combined/modernization/Hanouty.Desktop.Wpf/App.xaml.cs -Raw
+          if ($app -notmatch 'ResolveServices\s+is\s+null' -or $app -notmatch 'Shutdown\(2\)') { throw 'WPF must reject missing production services' }
+          Write-Host 'Source graph compiled; W1 actual MariaDB/EXE acceptance remains unproven.'
+      - name: Capture compiled production adapter and WPF binary digests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $paths = @(
+            'combined/modernization/architecture/Hanouty.WpfContractAdapter/bin/Release/net10.0-windows/Hanouty.WpfContractAdapter.dll',
+            'combined/modernization/Hanouty.Desktop.Wpf/bin/Release/net10.0-windows/Hanouty.Desktop.Wpf.dll'
+          )
+          foreach ($path in $paths) {
+            if (!(Test-Path -LiteralPath $path)) { throw "Compiled production binary missing: $path" }
+            $digest = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+            "$path=$digest" | Add-Content evidence/compiled-binaries-sha256.txt
+          }
+          Write-Host 'Compiled binary hashes captured; no live WPF/MariaDB acceptance inferred.'
+      - name: Preserve exact source manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wpf-architecture-exact-source
+          path: evidence/
+          if-no-files-found: error

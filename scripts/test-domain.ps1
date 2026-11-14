@@ -1,7 +1,15 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $framework = Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319'
-$compiler = Join-Path $framework 'csc.exe'
+# Use the Visual Studio Roslyn compiler: the .NET Framework 4.x in-box csc.exe
+# cannot parse the nullable reference syntax used by the shared production sources.
+# Keep the same x86/.NET Framework references and execute the same test binaries.
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio vswhere.exe missing; modern C# compiler required.' }
+$vs = (& $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -property installationPath | Select-Object -First 1)
+if (-not $vs) { throw 'Visual Studio MSBuild installation missing; cannot compile domain tests.' }
+$compiler = Join-Path $vs 'MSBuild/Current/Bin/Roslyn/csc.exe'
+if (-not (Test-Path -LiteralPath $compiler)) { throw 'Visual Studio Roslyn csc.exe missing.' }
 $visualBasic = Join-Path $framework 'Microsoft.VisualBasic.dll'
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('logica-domain-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temporary | Out-Null
