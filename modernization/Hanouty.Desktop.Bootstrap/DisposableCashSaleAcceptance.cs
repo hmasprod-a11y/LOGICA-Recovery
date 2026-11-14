@@ -883,11 +883,19 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                         Click(Button("Charger la fiche"));
                         Require(Field("Nom de la fiche").Text == "Article d'essai", "Article card did not reload.");
                         Field("Nom de la fiche").Text = "Article corrigé";
+                        Field("Description").Text = "Description d'essai";
+                        Field("Référence").Text = "REF-1";
+                        Field("Unité").Text = "Pièce";
+                        Field("Emplacement").Text = "Rayon B";
                         Family("Famille de la fiche").SelectedItem = "Test famille";
                         timer.Start();
                         Click(Button("Enregistrer la fiche"));
                         Require(Controls<System.Windows.Controls.TextBlock>(dialog).Any(text =>
                             text.Text == "Fiche ART000001 enregistrée."), "Article card edit was not confirmed.");
+                        Click(Button("Charger la fiche"));
+                        Require(Field("Description").Text == "Description d'essai" && Field("Référence").Text == "REF-1" &&
+                            Field("Unité").Text == "Pièce" && Field("Emplacement").Text == "Rayon B",
+                            "Advanced catalogue fields did not reload from MariaDB.");
                         dialog.Close();
                     }
                     else
@@ -938,12 +946,14 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             ALTER TABLE TABLE_NUM ADD ARTICLE INT NOT NULL DEFAULT 1;
             CREATE TABLE TABLE_FAMILLES (Famille VARCHAR(128)) ENGINE=InnoDB;
             INSERT INTO TABLE_FAMILLES VALUES ('Food'), ('Test famille');
-            ALTER TABLE TABLE_ARTICLES ADD PRIX_V_2 DECIMAL(16,3), ADD DATES DATE, ADD ID INT NOT NULL AUTO_INCREMENT UNIQUE;
+            ALTER TABLE TABLE_ARTICLES ADD PRIX_V_2 DECIMAL(16,3), ADD DATES DATE, ADD ID INT NOT NULL AUTO_INCREMENT UNIQUE,
+                ADD Description VARCHAR(255), ADD Reference VARCHAR(255), ADD Unite VARCHAR(255), ADD Emplacement VARCHAR(255);
             """);
         RunCatalogueCardFromWindow(settings);
         const string id = "ART000001";
         var card = editor.ReadCard(id);
         Require(card.Name == "Article corrigé" && card.Family == "Test famille" &&
+            card.Details == new CataloguePriceEditor.CardDetails("Description d'essai", "REF-1", "Pièce", "Rayon B") &&
             Number(settings, "SELECT ARTICLE FROM TABLE_NUM WHERE ID=0") == 2 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE ID_ARTICLE='ART000001' AND QUANTITE=0") == 1 &&
             editor.Read(id).Amount == 9.75m, "Article controls did not preserve identity, price and opening movement.");

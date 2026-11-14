@@ -15,7 +15,7 @@ internal sealed class CataloguePriceDialog : Window
 
     internal CataloguePriceDialog(CataloguePriceEditor service, Func<CataloguePriceEditor.Price, decimal, bool> save,
         Func<string, string, string, decimal, string?, string?> create,
-        Func<CataloguePriceEditor.Card, string, string, string, bool> saveCard,
+        Func<CataloguePriceEditor.Card, string, string, string, CataloguePriceEditor.CardDetails, bool> saveCard,
         Func<IReadOnlyList<CataloguePriceEditor.ImportLine>, int?> import, Func<Window, string?>? selectImportFile = null)
     {
         Title = "Prix du catalogue";
@@ -161,6 +161,10 @@ internal sealed class CataloguePriceDialog : Window
         var editName = EditField("Nom de la fiche");
         var editCode = EditField("Code-barres de la fiche");
         var editFamily = FamilyField(editFields, "Famille de la fiche");
+        var description = EditField("Description");
+        var reference = EditField("Référence");
+        var unit = EditField("Unité");
+        var location = EditField("Emplacement");
         var apply = new Button { Content = "Enregistrer la fiche", MinHeight = 36, IsEnabled = false };
         editFields.Children.Add(apply);
         edit.Content = editFields;
@@ -182,6 +186,10 @@ internal sealed class CataloguePriceDialog : Window
                 editFamily.ItemsSource = families.Contains(reviewedCard.Family, StringComparer.Ordinal)
                     ? families : families.Append(reviewedCard.Family).ToArray();
                 editFamily.SelectedItem = reviewedCard.Family;
+                description.Text = reviewedCard.Details.Description;
+                reference.Text = reviewedCard.Details.Reference;
+                unit.Text = reviewedCard.Details.Unit;
+                location.Text = reviewedCard.Details.Location;
                 apply.IsEnabled = true;
             }
             catch (Exception ex) when (ex is MySqlException or InvalidOperationException)
@@ -193,7 +201,10 @@ internal sealed class CataloguePriceDialog : Window
             apply.IsEnabled = false;
             try
             {
-                if (saveCard(current, editName.Text.Trim(), editCode.Text.Trim(), (editFamily.SelectedItem as string ?? current.Family)))
+                var details = new CataloguePriceEditor.CardDetails(description.Text.Trim(), reference.Text.Trim(),
+                    unit.Text.Trim(), location.Text.Trim());
+                if (saveCard(current, editName.Text.Trim(), editCode.Text.Trim(),
+                    editFamily.SelectedItem as string ?? current.Family, details))
                 {
                     reviewedCard = null;
                     status.Text = $"Fiche {current.Id} enregistrée.";

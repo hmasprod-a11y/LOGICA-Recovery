@@ -128,7 +128,8 @@ internal sealed class CataloguePriceEditor(string connectionString)
         return id;
     }
 
-    internal sealed record Card(long RowId, string Id, string Name, string Barcode, string Family);
+    internal sealed record CardDetails(string Description, string Reference, string Unit, string Location);
+    internal sealed record Card(long RowId, string Id, string Name, string Barcode, string Family, CardDetails Details);
 
     internal Card ReadCard(string id)
     {
@@ -137,7 +138,7 @@ internal sealed class CataloguePriceEditor(string connectionString)
         return ReadCard(connection, transaction, id, false);
     }
 
-    internal void UpdateCard(Card reviewed, string name, string barcode, string family, string actor, string pin)
+    internal void UpdateCard(Card reviewed, string name, string barcode, string family, CardDetails details, string actor, string pin)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 128 || barcode.Length > 128 || family.Length > 128)
             throw new ArgumentException("Vérifiez le nom, le code-barres et la famille.");
@@ -147,7 +148,13 @@ internal sealed class CataloguePriceEditor(string connectionString)
         Authorize(connection, transaction, actor, pin);
         if (ReadCard(connection, transaction, reviewed.Id, true) != reviewed)
             throw new InvalidOperationException("La fiche a changé. Rechargez l’article.");
-        if (reviewed.Name == name && reviewed.Barcode == barcode && reviewed.Family == family) return;
+        var updated = reviewed with { Name = name, Barcode = barcode, Family = family, Details = details };
+        if (updated == reviewed) return;
+        var hasLocation = HasLocation(connection, transaction);
+        if (!hasLocation && details.Location.Length != 0)
+            throw new InvalidOperationException("L’emplacement n’est pas disponible dans ce schéma LOGICA.");
+        if (new[] { details.Description, details.Reference, details.Unit, details.Location }.Any(value => value.Length > 255))
+            throw new ArgumentException("Les champs de la fiche sont limités à 255 caractères.");
         if (family != reviewed.Family)
         {
             InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_FAMILLES");
@@ -166,30 +173,47 @@ internal sealed class CataloguePriceEditor(string connectionString)
         }
 
         using var update = new MySqlCommand(
-            "UPDATE TABLE_ARTICLES SET Article=@name, Code=@code, Famille=@family " +
+            "UPDATE TABLE_ARTICLES SET Article=@name, Code=@code, Famille=@family, " +
+            "Description=@description, Reference=@reference, Unite=@unit" +
+            (hasLocation ? ", Emplacement=@location " : " ") +
             "WHERE ID=@row AND BINARY ID_ARTICLE=BINARY @id", connection, transaction);
         update.Parameters.AddWithValue("@name", name);
         update.Parameters.AddWithValue("@code", barcode);
         update.Parameters.AddWithValue("@family", family);
+        update.Parameters.AddWithValue("@description", details.Description);
+        update.Parameters.AddWithValue("@reference", details.Reference);
+        update.Parameters.AddWithValue("@unit", details.Unit);
+        if (hasLocation) update.Parameters.AddWithValue("@location", details.Location);
         update.Parameters.AddWithValue("@row", reviewed.RowId);
         update.Parameters.AddWithValue("@id", reviewed.Id);
         if (update.ExecuteNonQuery() != 1 ||
-            ReadCard(connection, transaction, reviewed.Id, true) != (reviewed with { Name = name, Barcode = barcode, Family = family }))
+            ReadCard(connection, transaction, reviewed.Id, true) != updated)
             throw new InvalidOperationException("Modification de la fiche non confirmée.");
         transaction.Commit();
+    }
+
+    private static bool HasLocation(MySqlConnection connection, MySqlTransaction transaction)
+    {
+        using var query = new MySqlCommand(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() " +
+            "AND TABLE_NAME='TABLE_ARTICLES' AND COLUMN_NAME='Emplacement'", connection, transaction);
+        return Convert.ToInt64(query.ExecuteScalar()) == 1;
     }
 
     private static Card ReadCard(MySqlConnection connection, MySqlTransaction transaction, string id, bool lockRow)
     {
         using var command = new MySqlCommand(
-            "SELECT ID, Article, Code, Famille FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id" +
+            "SELECT ID, Article, Code, Famille, Description, Reference, Unite, " +
+            (HasLocation(connection, transaction) ? "Emplacement" : "NULL") +
+            " FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id" +
             (lockRow ? " FOR UPDATE" : ""), connection, transaction);
         command.Parameters.AddWithValue("@id", id);
         using var reader = command.ExecuteReader();
         if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1))
             throw new InvalidOperationException("Fiche article introuvable.");
-        var card = new Card(reader.GetInt64(0), id, reader.GetString(1),
-            reader.IsDBNull(2) ? "" : reader.GetString(2), reader.IsDBNull(3) ? "" : reader.GetString(3));
+        string Field(int index) => reader.IsDBNull(index) ? "" : reader.GetString(index);
+        var card = new Card(reader.GetInt64(0), id, reader.GetString(1), Field(2), Field(3),
+            new CardDetails(Field(4), Field(5), Field(6), Field(7)));
         if (reader.Read()) throw new InvalidOperationException("Identifiant article ambigu.");
         return card;
     }
