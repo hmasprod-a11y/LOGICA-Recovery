@@ -72,7 +72,21 @@ public sealed class CashierEntryDialog : Window
             foreach (var denomination in new[] { 200m, 100m, 50m, 20m, 10m, 5m, 2m, 1m, 0.5m })
             {
                 var label = denomination.ToString("0.##", CultureInfo.InvariantCulture) + " MAD";
-                AddTouchButton(cash, label, () => AddDenomination(denomination));
+                var button = AddTouchButton(cash, label, () => AddDenomination(denomination));
+                if (denomination == 0.5m) continue;
+
+                var extension = denomination >= 20m ? "jpg" : "png";
+                var imageUri = new Uri($"/Hanouty.Desktop.Wpf;component/Assets/Cash/{denomination.ToString("0", CultureInfo.InvariantCulture)}.{extension}", UriKind.Relative);
+                var tile = new StackPanel();
+                tile.Children.Add(new Image
+                {
+                    Source = new System.Windows.Media.Imaging.BitmapImage(imageUri),
+                    Height = 36,
+                    Stretch = System.Windows.Media.Stretch.Uniform
+                });
+                tile.Children.Add(new TextBlock { Text = label, HorizontalAlignment = HorizontalAlignment.Center });
+                button.Content = tile;
+                System.Windows.Automation.AutomationProperties.SetName(button, label);
             }
             panel.Children.Add(cash);
 
@@ -127,11 +141,12 @@ public sealed class CashierEntryDialog : Window
         Loaded += (_, _) => (context is null ? _cashier : _tender).Focus();
     }
 
-    private static void AddTouchButton(Panel panel, string label, Action action)
+    private static Button AddTouchButton(Panel panel, string label, Action action)
     {
         var button = new Button { Content = label, MinHeight = 40, Margin = new Thickness(2), FontSize = 16 };
         button.Click += (_, _) => action();
         panel.Children.Add(button);
+        return button;
     }
 
     private void AddDenomination(decimal denomination)

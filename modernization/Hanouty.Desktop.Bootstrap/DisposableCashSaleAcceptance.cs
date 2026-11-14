@@ -240,7 +240,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                             .Any(t => t.Text == expected);
                         Require(tenderField.IsReadOnly, "Touch payment unexpectedly required typing.");
                         void Touch(string label) => Children(modal!).OfType<System.Windows.Controls.Button>()
-                            .Single(b => Equals(b.Content, label))
+                            .Single(b => Equals(b.Content, label) ||
+                                System.Windows.Automation.AutomationProperties.GetName(b) == label)
                             .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                         Touch("Pavé numérique");
                         Touch("4");
