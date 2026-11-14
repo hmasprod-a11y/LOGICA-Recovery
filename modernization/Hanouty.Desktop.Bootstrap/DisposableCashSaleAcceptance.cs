@@ -784,6 +784,18 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             var twoArticleTicket = Convert.ToString(Value(settings,
                 "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE WHERE TICKET='" +
                 twoArticleSequence.ToString("000000", CultureInfo.InvariantCulture) + "'"))!;
+            using (var ticketConnection = Open(settings))
+            {
+                var ticket = LogicaPostedTicket.Read(ticketConnection, twoArticleTicket, "Second cashier", "01");
+                Require(ticket is not null && ticket.Total == 18.50m && ticket.Lines.Count == 2 &&
+                    ticket.Payments.Any(payment => payment.Amount == 20m) &&
+                    ticket.Payments.Any(payment => payment.Amount == -1.50m),
+                    "Persisted print data does not preserve the two sale lines, tender and change.");
+                Require(LogicaPostedTicket.Read(ticketConnection, twoArticleTicket, "O'Neil", "01") is null &&
+                    LogicaPostedTicket.Read(ticketConnection, twoArticleTicket, "Second cashier", "02") is null,
+                    "Ticket data escaped its authorized cashier or workstation.");
+            }
+
             Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == twoArticleSales + 1 &&
                 Number(settings, "SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id", twoArticleTicket) == 18.50m &&
                 Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET=@id", twoArticleTicket) == 2 &&
