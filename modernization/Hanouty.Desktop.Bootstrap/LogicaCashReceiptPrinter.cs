@@ -49,6 +49,13 @@ internal static class LogicaCashReceiptPrinter
             DateTime.Now.ToString("            dd/MM/yyy HH:mm:ss", CultureInfo.CurrentCulture) +
             "(" + Microsoft.VisualBasic.Conversion.Val(register).ToString(CultureInfo.CurrentCulture) + ")";
 
+        using var logoStream = typeof(LogicaCashReceiptPrinter).Assembly.GetManifestResourceStream("LogicaReceiptLogo.jpg")
+            ?? throw new InvalidOperationException("Logo LOGICA introuvable.");
+        using var logo = Image.FromStream(logoStream);
+        // Picture_LOGO.Location/Size and Panel_LOGO.Size in LOGICA.Form_3_VENTE.resx.
+        var logoBounds = new Rectangle(3, 2, 258, 52);
+        const int headerHeight = 58;
+
         using var document = new PrintDocument { DocumentName = ticket.Number, PrintController = new StandardPrintController() };
         if (settings.Printer.Length != 0) document.PrinterSettings.PrinterName = settings.Printer;
         document.PrintPage += (_, page) =>
@@ -58,8 +65,9 @@ internal static class LogicaCashReceiptPrinter
             using var bold = new Font("Inconsolata Condensed", 11, FontStyle.Bold);
             using var total = new Font("Inconsolata ExtraBold", 16, FontStyle.Bold);
             using var format = new StringFormat(StringFormatFlags.NoClip);
-            graphics.DrawString(Separator, regular, Brushes.Black, 0, 0, format);
-            var y = 10;
+            graphics.DrawImage(logo, logoBounds);
+            graphics.DrawString(Separator, regular, Brushes.Black, 0, headerHeight, format);
+            var y = headerHeight + 10;
             foreach (var line in lines)
             {
                 graphics.DrawString(line, bold, Brushes.Black, 0, y, format);
