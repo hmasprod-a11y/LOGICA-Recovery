@@ -21,6 +21,22 @@ internal sealed class StockIssueDialog : Window
         input.Children.Add(new Label { Content = "N° du bon de sortie", Target = number });
         input.Children.Add(number);
         input.Children.Add(open);
+        var create = new Button { Content = "Nouveau bon", MinHeight = 36 };
+        input.Children.Add(create);
+        create.Click += (_, _) =>
+        {
+            try
+            {
+                var editor = new StockIssueCreateDialog(service, actor, readPin) { Owner = this };
+                if (editor.ShowDialog() == true && editor.DocumentId is { } id)
+                {
+                    number.Text = id;
+                    open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or MySqlException)
+            { MessageBox.Show(this, ex.Message, Title); }
+        };
         panel.Children.Add(input);
 
         var validate = new Button { Content = "Valider", MinHeight = 38, IsEnabled = false };

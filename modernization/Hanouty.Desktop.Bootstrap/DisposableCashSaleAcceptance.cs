@@ -1321,17 +1321,29 @@ INSERT INTO TABLE_NUM VALUES (0,1);
     private static void VerifyStockIssue(CatalogueSettings settings)
     {
         Sql(settings, """
-            ALTER TABLE TABLE_SORTIES_ENTETE ADD ID_BS VARCHAR(64) UNIQUE, ADD ETAT VARCHAR(32);
+            ALTER TABLE TABLE_NUM ADD BS INT NOT NULL DEFAULT 1;
+            ALTER TABLE TABLE_SORTIES_ENTETE ADD ID INT UNIQUE, ADD ID_BS VARCHAR(64) UNIQUE, ADD ETAT VARCHAR(32),
+                ADD Dates DATE, ADD UTILISATEUR TEXT, ADD CODE_FOURNISSEUR TEXT, ADD FOURNISSEUR TEXT, ADD TYPE TEXT,
+                ADD TOTAL_NET_VENTES DECIMAL(16,3), ADD NOTES TEXT;
             CREATE TABLE TABLE_SORTIES_DETAILS (ID_BS VARCHAR(64), ID_ARTICLE VARCHAR(64), Code TEXT, Article TEXT,
-                Qté DECIMAL(16,3), ETAT VARCHAR(32)) ENGINE=InnoDB;
+                Qté DECIMAL(16,3), ETAT VARCHAR(32), Dates DATE, ID_FOURNISSEUR TEXT, CODE_FOURNISSEUR TEXT, FOURNISSEUR TEXT,
+                TYPE TEXT, Prix_A DECIMAL(16,3), Prix_V DECIMAL(16,3), TOTAL_NET_ACHATS DECIMAL(16,3), TOTAL_NET_VENTES DECIMAL(16,3)) ENGINE=InnoDB;
             INSERT INTO TABLE_SORTIES_ENTETE (ID_BS, ETAT) VALUES ('BS-TEST','ENREGISTRER'),('BS-ROLLBACK','ENREGISTRER');
-            INSERT INTO TABLE_SORTIES_DETAILS VALUES
+            INSERT INTO TABLE_SORTIES_DETAILS (ID_BS, ID_ARTICLE, Code, Article, Qté, ETAT) VALUES
                 ('BS-TEST','W2-Article','CODE''1','Lait d''été',2,'ENREGISTRER'),
                 ('BS-ROLLBACK','W2-Article','CODE''1','Lait d''été',2,'ENREGISTRER'),
                 ('BS-ROLLBACK','zz-missing','X','Absent',1,'ENREGISTRER');
             """);
         var service = new StockIssueValidation(settings.ConnectionString);
         var before = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+        var created = service.Create(DateTime.Today, "PERTE", "Test", new Dictionary<string, decimal>
+        {
+            ["W2-Article"] = 1m
+        }, "Test manager", "5678");
+        Require(created == "BS000001" && service.Read(created).Single().Quantity == 1m &&
+            Number(settings, "SELECT BS FROM TABLE_NUM WHERE ID=0") == 2 &&
+            Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == before,
+            "Creating a stock issue did not preserve its number, quantity or unposted stock.");
         var reviewed = service.Read("BS-TEST");
         try
         {
