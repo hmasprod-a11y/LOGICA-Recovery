@@ -892,6 +892,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyCashDrawerClosing(settings, pin);
         VerifyInventoryValidation(settings);
         VerifyPurchaseReceipt(settings);
+        VerifyStockIssue(settings);
         VerifyCataloguePrice(settings);
         VerifyCatalogueImport(settings);
 
@@ -1315,6 +1316,50 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movements + 2 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Code='000101' AND PRIX_A=4.25 AND PRIX_MP=4.25 AND PRIX_V_1=6.75 AND PRIX_V_2=6.75 AND STOCK=2.5 AND STOCK_INITIAL=2.5 AND TAUX_TVA=20") == 1,
             "Workbook import did not commit stock, price and numbering together.");
+    }
+
+    private static void VerifyStockIssue(CatalogueSettings settings)
+    {
+        Sql(settings, """
+            CREATE TABLE TABLE_SORTIES_ENTETE (ID_BS VARCHAR(64) PRIMARY KEY, ETAT VARCHAR(32)) ENGINE=InnoDB;
+            CREATE TABLE TABLE_SORTIES_DETAILS (ID_BS VARCHAR(64), ID_ARTICLE VARCHAR(64), Code TEXT, Article TEXT,
+                Qté DECIMAL(16,3), ETAT VARCHAR(32)) ENGINE=InnoDB;
+            INSERT INTO TABLE_SORTIES_ENTETE VALUES ('BS-TEST','ENREGISTRER'),('BS-ROLLBACK','ENREGISTRER');
+            INSERT INTO TABLE_SORTIES_DETAILS VALUES
+                ('BS-TEST','W2-Article','CODE''1','Lait d''été',2,'ENREGISTRER'),
+                ('BS-ROLLBACK','W2-Article','CODE''1','Lait d''été',2,'ENREGISTRER'),
+                ('BS-ROLLBACK','zz-missing','X','Absent',1,'ENREGISTRER');
+            """);
+        var service = new StockIssueValidation(settings.ConnectionString);
+        var before = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+        var reviewed = service.Read("BS-TEST");
+        try
+        {
+            service.Validate("BS-TEST", reviewed, "O'Neil", "1234");
+            throw new Exception("Cashier validated a stock issue.");
+        }
+        catch (UnauthorizedAccessException) { }
+        try
+        {
+            service.Validate("BS-ROLLBACK", service.Read("BS-ROLLBACK"), "Test manager", "5678");
+            throw new Exception("Missing article accepted.");
+        }
+        catch (InvalidOperationException) { }
+        Require(Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == before &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE LIKE 'Bon de Sortie | BS-%'") == 0,
+            "Refused stock issue left a partial movement.");
+        service.Validate("BS-TEST", reviewed, "Test manager", "5678");
+        try
+        {
+            service.Validate("BS-TEST", reviewed, "Test manager", "5678");
+            throw new Exception("Duplicate stock issue accepted.");
+        }
+        catch (InvalidOperationException) { }
+        Require(Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == before - 2 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE='Bon de Sortie | BS-TEST' AND QUANTITE=2") == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_SORTIES_ENTETE WHERE ID_BS='BS-TEST' AND ETAT='VALIDER'") == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_SORTIES_DETAILS WHERE ID_BS='BS-TEST' AND ETAT='VALIDER'") == 1,
+            "Stock, movement and issue document diverged.");
     }
 
     private static void VerifyPurchaseReceipt(CatalogueSettings settings)

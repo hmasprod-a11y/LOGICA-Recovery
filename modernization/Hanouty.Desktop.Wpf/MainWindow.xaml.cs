@@ -32,6 +32,12 @@ public partial class MainWindow : Window
         new InventoryCountWindow(workflow) { Owner = this }.ShowDialog();
     }
 
+    private Action? _openStockIssues;
+
+    public void ConfigureStockIssues(Action openStockIssues) => _openStockIssues = openStockIssues;
+
+    private void OpenStockIssues_Click(object sender, RoutedEventArgs e) => _openStockIssues?.Invoke();
+
     private Action? _openPurchaseReceipt;
 
     public void ConfigurePurchaseReceipt(Action openPurchaseReceipt) =>
