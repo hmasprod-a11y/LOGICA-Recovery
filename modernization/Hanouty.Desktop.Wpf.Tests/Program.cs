@@ -784,6 +784,24 @@ committedVm.CommitCheckout();
 committedVm.CommitCheckout();
 Check(committedPort.Ids.Count == 2 && committedPort.Ids[0] != committedPort.Ids[1],
     "only acknowledged commit may release operation ID for next checkout");
+var printPort = new RecordingSubmission { Result = CheckoutSubmissionResult.Committed };
+var printVm = new CatalogueViewModel(new Reader(items), new RecordingSelection(), submission: printPort)
+{
+    PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "cash", 10m)
+};
+var printCalls = 0;
+printVm.PrintCommittedSale = (operation, payment) =>
+{
+    Check(printPort.Ids.Single() == operation && printVm.PendingOperationId is null &&
+        payment.CashierId == "cashier", "printing must receive the acknowledged operation and cashier");
+    printCalls++;
+    throw new InvalidOperationException("printer offline");
+};
+printVm.CommitCommand.Execute(null);
+Check(printCalls == 1 && printPort.Ids.Count == 1 && !printVm.CheckoutUncertain &&
+    printVm.CommitFeedback.Contains("Vente enregistrée") && printVm.PendingOperationId is null,
+    "a printer failure must preserve the acknowledged sale without retrying payment");
+
 var unregisteredVm = new CatalogueViewModel(new Reader(items), new RecordingSelection());
 Check(!unregisteredVm.CanCommit, "unregistered checkout must fail closed");
 unregisteredVm.CommitCheckout();
