@@ -6,6 +6,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../recovered-source/LOGICA/Application/Checkout/LogicaFrenchThreeColumn.cs" Link="LogicaFrenchThreeColumn.cs" />
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+    <Compile Include="../../recovered-source/LOGICA/Application/Checkout/ReceiptPrintRoute.cs" Link="ReceiptPrintRoute.cs" />
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <ProjectReference Include="../Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj"/>
     <ProjectReference Include="../architecture/Hanouty.WpfContractAdapter/Hanouty.WpfContractAdapter.csproj"/>

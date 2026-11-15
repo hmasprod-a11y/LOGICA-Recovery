@@ -498,6 +498,14 @@ public sealed partial record CatalogueHost
             dialog.ShowDialog();
             vm.ReloadCatalogue();
         });
+        vm.PrintCommittedSale = (operation, payment) =>
+        {
+            var directory = AppContext.BaseDirectory;
+            if (!System.IO.File.Exists(System.IO.Path.Combine(directory, "PRINTER_CL.sni"))) return;
+            using var connection = connections();
+            if (connection.State != System.Data.ConnectionState.Open) connection.Open();
+            LogicaCashReceiptPrinter.Print(connection, directory, operation, payment.CashierId, payment.RegisterId);
+        };
         window.ConfigureReviewedCheckout(result.TryReviewResolvedCheckout);
         return result;
     }

@@ -463,6 +463,8 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         }
     }
 
+    public Action<string, CashierPaymentContext>? PrintCommittedSale { private get; set; }
+
     public void CommitCheckout()
     {
         if (_selectionInFlight) { CommitFeedback = "Checkout already in progress"; return; }
@@ -482,7 +484,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             _selectionInFlight = true;
             OnPropertyChanged(nameof(CanSelectProduct));
             OnPropertyChanged(nameof(CanCommit));
-            var result = contextual.Submit(_pendingOperationId, PaymentContext);
+            var operation = _pendingOperationId;
+            var payment = PaymentContext;
+            var result = contextual.Submit(operation, payment);
             CommitFeedback = result switch
             {
                 CheckoutSubmissionResult.Committed => "Checkout committed",
@@ -502,6 +506,15 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             // Unknown and future/unrecognized results are likewise fail-closed.
             if (result is not (CheckoutSubmissionResult.Committed or CheckoutSubmissionResult.Empty))
                 CheckoutUncertain = true;
+
+            if (result == CheckoutSubmissionResult.Committed && PrintCommittedSale is { } print)
+            {
+                try { print(operation, payment); }
+                catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+                {
+                    CommitFeedback = "Vente enregistrée. Impression impossible : " + ex.Message;
+                }
+            }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         {
