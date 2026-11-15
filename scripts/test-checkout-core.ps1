@@ -44,6 +44,7 @@ try {
         'modernization/PortablePostingSmoke.cs',
         'modernization/PortableTransactionSmoke.cs',
         'modernization/PortableTicketSequenceSmoke.cs',
+        'recovered-source/LOGICA/Application/Checkout/ReceiptPrintRoute.cs',
         'modernization/PortableTicketPostingSmoke.cs',
         'tests/CheckoutCoreIsolationEntry.cs'
     ) | ForEach-Object { Join-Path $root $_ }
