@@ -11,7 +11,15 @@ public partial class InventoryCountWindow : Window
     public InventoryCountWindow(IInventoryCountWorkflow? workflow = null)
     {
         InitializeComponent();
-        DataContext = new InventoryCountViewModel(workflow);
+        var model = new InventoryCountViewModel(workflow);
+        DataContext = model;
+        // A new search disarms the ViewModel selection. Disarm the WPF grid too:
+        // otherwise its still-selected row cannot be clicked again to reselect it.
+        model.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(InventoryCountViewModel.SearchText))
+                InventoryLinesGrid.SelectedItem = null;
+        };
     }
     private InventoryCountViewModel Model => (InventoryCountViewModel)DataContext;
     private void Open_Click(object sender, RoutedEventArgs e) => Model.Open();
