@@ -519,6 +519,23 @@ public sealed partial record CatalogueHost
             if (connection.State != System.Data.ConnectionState.Open) connection.Open();
             LogicaCashReceiptPrinter.Print(connection, directory, operation, payment.CashierId, payment.RegisterId);
         };
+        window.ConfigureWaitingSale(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } cashier ||
+                binding.Session.PendingCount == 0) return null;
+            reviewing = true;
+            try
+            {
+                var waitingId = LogicaWaitingSale.Save(connections, binding.Session.PendingLines, cashier, twoDigitWorkstation);
+                binding.Session.Clear();
+                captured = null;
+                contextConsumed = true;
+                context = new CashierPaymentContext(cashier, twoDigitWorkstation, "MAD", "Cash", 0m);
+                vm.PaymentContext = context;
+                return waitingId;
+            }
+            finally { reviewing = false; }
+        });
         window.ConfigureReviewedCheckout(result.TryReviewResolvedCheckout);
         return result;
     }

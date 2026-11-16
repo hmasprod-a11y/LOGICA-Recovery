@@ -32,6 +32,27 @@ public partial class MainWindow : Window
         new InventoryCountWindow(workflow) { Owner = this }.ShowDialog();
     }
 
+    private Func<string?>? _parkSale;
+
+    public void ConfigureWaitingSale(Func<string?> parkSale) => _parkSale = parkSale;
+
+    private void ParkSale_Click(object sender, RoutedEventArgs e)
+    {
+        if (_parkSale is null || DataContext is not CatalogueViewModel vm || vm.CheckoutBusy ||
+            vm.CheckoutUncertain || !vm.FinancialSessionActive) return;
+        try
+        {
+            if (_parkSale() is not { } id) return;
+            vm.RefreshBasketLines();
+            RefreshTrustedBasketTotal();
+            MessageBox.Show(this, $"Vente mise en attente n° {id}.", "Attentes");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            MessageBox.Show(this, "La mise en attente n’a pas été confirmée. Vérifiez la liste des attentes.", "Attentes");
+        }
+    }
+
     private Action? _openStockIssues;
 
     public void ConfigureStockIssues(Action openStockIssues) => _openStockIssues = openStockIssues;

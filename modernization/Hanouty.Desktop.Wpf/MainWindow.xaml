@@ -160,6 +160,8 @@
                     <ScrollViewer x:Name="CashierWorkflowScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                               CanContentScroll="True" AutomationProperties.Name="Cashier workflow scroll region">
                     <StackPanel Margin="0,0,8,0">
+                    <Button Content="Mettre en attente" Click="ParkSale_Click" MinHeight="36"
+                            Margin="0,0,0,8" IsEnabled="{Binding FinancialSessionActive}"/>
                     <GroupBox Header="Panier" Margin="0,0,0,12" AutomationProperties.Name="Current Host basket">
                         <DockPanel Margin="8">
                             <TextBlock DockPanel.Dock="Bottom" Text="{Binding BasketStatus}" Foreground="DimGray" TextWrapping="Wrap" Margin="0,6,0,0"/>

@@ -893,6 +893,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyInventoryValidation(settings);
         VerifyPurchaseReceipt(settings);
         VerifyStockIssue(settings);
+        VerifyWaitingSale(settings);
         VerifyCataloguePrice(settings);
         VerifyCatalogueImport(settings);
 
@@ -1316,6 +1317,27 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Number(settings, "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movements + 2 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Code='000101' AND PRIX_A=4.25 AND PRIX_MP=4.25 AND PRIX_V_1=6.75 AND PRIX_V_2=6.75 AND STOCK=2.5 AND STOCK_INITIAL=2.5 AND TAUX_TVA=20") == 1,
             "Workbook import did not commit stock, price and numbering together.");
+    }
+
+    private static void VerifyWaitingSale(CatalogueSettings settings)
+    {
+        Sql(settings, """
+            ALTER TABLE TABLE_ARTICLES ADD PRINTER TEXT, ADD PRINTER_DUPLICATA TEXT;
+            CREATE TABLE TABLE_ATTENTE (
+                ID INT AUTO_INCREMENT PRIMARY KEY, Dates TEXT, Heure TEXT, ID_ARTICLE VARCHAR(64), Code TEXT, Article TEXT,
+                Famille TEXT, PRIX_A DECIMAL(16,3), PRIX_MP DECIMAL(16,3), PRIX_V DECIMAL(16,3), Qté DECIMAL(16,3),
+                Remise DECIMAL(16,3), TOTAL_NET DECIMAL(16,3), Caissier TEXT, TAUX_TVA DECIMAL(16,3), PRINTER TEXT,
+                PRINTER_DUPLICATA TEXT, GROUPE TEXT, V BIGINT, POSTE TEXT, ID_CLIENT TEXT, CODE_CLIENT TEXT, CLIENT TEXT
+            ) ENGINE=InnoDB;
+            """);
+        var before = Snapshot(settings);
+        var id = LogicaWaitingSale.Save(() => new MySqlConnection(settings.ConnectionString),
+            new[] { new CheckoutBatchLine("W2-Article", 2) }, "O'Neil", "01");
+        Require(Number(settings, """
+            SELECT COUNT(*) FROM TABLE_ATTENTE WHERE V=@id AND ID_ARTICLE='W2-Article'
+                AND Caissier='O''Neil' AND POSTE='01' AND Qté=2 AND TOTAL_NET=PRIX_V*2
+            """, id) == 1 && Snapshot(settings) == before,
+            "Parking a sale did not preserve its LOGICA rows or changed posted sales and stock.");
     }
 
     private static void VerifyStockIssue(CatalogueSettings settings)
