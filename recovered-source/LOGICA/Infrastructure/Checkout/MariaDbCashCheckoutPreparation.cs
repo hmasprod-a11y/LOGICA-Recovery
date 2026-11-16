@@ -20,13 +20,15 @@ namespace LOGICA.Infrastructure.Checkout
     {
         private readonly string workstation;
         private readonly Func<string> readPin;
+        private readonly Func<string?>? readWaitingSale;
 
-        internal MariaDbCashCheckoutPreparation(string workstation, Func<string> readPin)
+        internal MariaDbCashCheckoutPreparation(string workstation, Func<string> readPin, Func<string?>? readWaitingSale = null)
         {
             if (workstation == null || workstation.Length != 2 ||
                 workstation.Any(c => c < '0' || c > '9'))
                 throw new ArgumentException("An explicit two-digit workstation is required.", nameof(workstation));
             this.workstation = workstation;
+            this.readWaitingSale = readWaitingSale;
             this.readPin = readPin ?? throw new ArgumentNullException(nameof(readPin));
         }
 
@@ -96,6 +98,8 @@ namespace LOGICA.Infrastructure.Checkout
                     "Workstation basket is occupied; refusing to replace another cashier's sale.");
             if (request.IsReturn)
                 return PrepareFullCashReturn(request, connection, transaction, cashier, ticket);
+            var waitingId = readWaitingSale?.Invoke();
+            var waiting = waitingId is null ? null : ReadWaitingSale(connection, transaction, request, waitingId);
             foreach (var line in request.Lines)
             {
                 var authoritative = Read(connection, transaction,
@@ -106,6 +110,8 @@ namespace LOGICA.Infrastructure.Checkout
                 var article = authoritative.Rows[0];
                 decimal unit = Number(article, "PRIX_V_1");
                 decimal net = StandardCashLineTotal(article, line.Quantity);
+                if (waiting is not null && (waiting[line.ArticleId].Price != unit || waiting[line.ArticleId].Net != net))
+                    throw new InvalidOperationException("Le prix du panier en attente a changé.");
                 using (var write = connection.CreateCommand())
                 {
                     write.Transaction = transaction;
@@ -449,6 +455,38 @@ namespace LOGICA.Infrastructure.Checkout
                 throw new InvalidOperationException("Authoritative price or quantity is invalid.");
             return Math.Round(SalesLinePricing.CalculateNetAmount(unit, quantity, 0m),
                 2, MidpointRounding.ToEven);
+        }
+
+        private static Dictionary<string, (decimal Price, decimal Net)> ReadWaitingSale(
+            MySqlConnection connection, MySqlTransaction transaction, AuthorizedCheckoutRequest request, string id)
+        {
+            var engine = Read(connection, transaction,
+                "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='TABLE_ATTENTE'");
+            if (engine.Rows.Count != 1 || Convert.ToString(engine.Rows[0][0]) != "InnoDB")
+                throw new InvalidOperationException("Les ventes en attente exigent une table transactionnelle.");
+
+            var rows = Read(connection, transaction,
+                "SELECT ID_ARTICLE, Qté, PRIX_V, TOTAL_NET, Remise, ID_CLIENT FROM TABLE_ATTENTE WHERE V=@id FOR UPDATE",
+                ("@id", id));
+            if (rows.Rows.Count != request.Lines.Count)
+                throw new InvalidOperationException("La vente en attente est indisponible ou a changé.");
+            var result = new Dictionary<string, (decimal Price, decimal Net)>(StringComparer.Ordinal);
+            foreach (DataRow row in rows.Rows)
+            {
+                var article = Convert.ToString(row["ID_ARTICLE"]);
+                var line = request.Lines.SingleOrDefault(x => x.ArticleId == article);
+                var customer = Convert.ToString(row["ID_CLIENT"]);
+                if (line is null || Number(row, "Qté") != line.Quantity || Number(row, "Remise") != 0m ||
+                    (customer != "0" && !string.IsNullOrEmpty(customer)) ||
+                    !result.TryAdd(line.ArticleId, (Number(row, "PRIX_V"), Number(row, "TOTAL_NET"))))
+                    throw new InvalidOperationException("La vente en attente ne correspond plus au panier.");
+            }
+
+            using var consume = new MySqlCommand("DELETE FROM TABLE_ATTENTE WHERE V=@id", connection, transaction);
+            consume.Parameters.AddWithValue("@id", id);
+            if (consume.ExecuteNonQuery() != rows.Rows.Count)
+                throw new InvalidOperationException("La vente en attente a déjà été reprise.");
+            return result;
         }
 
         private static decimal Number(DataRow row, string column)

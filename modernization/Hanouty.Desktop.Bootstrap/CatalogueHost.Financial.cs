@@ -111,13 +111,15 @@ public sealed partial record CatalogueHost
         AuthorizedCheckoutPaymentContext? captured = initialContext;
         string? activeCashierId = captured?.CashierId;
         var contextConsumed = false;
+        string? waitingSaleId = null;
         Func<MySqlConnection> connections = () => new MySqlConnection(settings.ConnectionString);
         var posting = MariaDbCashCheckoutServices.CreatePostingPort(
-            connections, twoDigitWorkstation, transientPinProvider);
+            connections, twoDigitWorkstation, transientPinProvider, () => waitingSaleId);
         posting = new AcknowledgementFaultPort(posting, () => {
             // Consume at the real financial boundary, not merely in UI state.
             // Retain the immutable context for lost-ack journal review only.
             contextConsumed = true;
+            waitingSaleId = null;
             afterCommitAcknowledgementFault?.Invoke();
         }, postingFailureDiagnostic);
         var journal = MariaDbCashCheckoutServices.CreateOperationJournal(connections);
@@ -173,6 +175,7 @@ public sealed partial record CatalogueHost
             if (!CanChangeContext() || binding.Session.PendingCount != 0) return false;
             captured = null;
             activeCashierId = null;
+            waitingSaleId = null;
             contextConsumed = true;
             context = null;
             vm.PaymentContext = null;
@@ -204,6 +207,7 @@ public sealed partial record CatalogueHost
                     !vm.RestoreAuthorizedPaymentContextAfterReview(context))
                     return false;
                 binding.Session.DiscardInvalidated();
+                waitingSaleId = null;
                 contextConsumed = true;
                 lastReviewed = operation;
                 return true; // UI owner may now explicitly reset its review state.
@@ -224,6 +228,7 @@ public sealed partial record CatalogueHost
             if (!CanChangeContext() || !vm.FinancialSessionActive ||
                 activeCashierId is null || !binding.Session.SetPendingQuantity(articleId, quantity))
                 return false;
+            if (binding.Session.PendingCount == 0) waitingSaleId = null;
             captured = null;
             contextConsumed = true;
             context = new CashierPaymentContext(activeCashierId, twoDigitWorkstation, "MAD", "Cash", 0m);
@@ -523,6 +528,8 @@ public sealed partial record CatalogueHost
         {
             if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } cashier ||
                 binding.Session.PendingCount == 0) return null;
+            if (waitingSaleId is not null)
+                throw new InvalidOperationException("Cette vente figure déjà dans les attentes.");
             reviewing = true;
             try
             {
@@ -533,6 +540,58 @@ public sealed partial record CatalogueHost
                 context = new CashierPaymentContext(cashier, twoDigitWorkstation, "MAD", "Cash", 0m);
                 vm.PaymentContext = context;
                 return waitingId;
+            }
+            finally { reviewing = false; }
+        });
+        window.ConfigureRestoreWaitingSale(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } cashier ||
+                binding.Session.PendingCount != 0) return false;
+            reviewing = true;
+            try
+            {
+                var list = new System.Windows.Controls.ListBox
+                {
+                    ItemsSource = LogicaWaitingSale.List(connections),
+                    DisplayMemberPath = "Label"
+                };
+                var resume = new System.Windows.Controls.Button { Content = "Reprendre", MinHeight = 40 };
+                var panel = new System.Windows.Controls.DockPanel { Margin = new System.Windows.Thickness(12) };
+                System.Windows.Controls.DockPanel.SetDock(resume, System.Windows.Controls.Dock.Bottom);
+                panel.Children.Add(resume);
+                panel.Children.Add(list);
+                var dialog = new System.Windows.Window { Owner = window, Title = "Attentes", Content = panel,
+                    Width = 520, Height = 350, WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner };
+                resume.Click += (_, _) =>
+                {
+                    if (list.SelectedItem is LogicaWaitingSale.Waiting) dialog.DialogResult = true;
+                };
+                if (dialog.ShowDialog() != true || list.SelectedItem is not LogicaWaitingSale.Waiting selected)
+                    return false;
+
+                var lines = LogicaWaitingSale.Read(connections, selected.Id);
+                binding.Session.RefreshCatalogue();
+                try
+                {
+                    foreach (var line in lines)
+                    {
+                        var product = binding.Session.Products.SingleOrDefault(x => x.ArticleId == line.ArticleId);
+                        if (product is null || binding.Session.SelectArticle(product, line.Quantity).Outcome != SelectionOutcome.Selected)
+                            throw new InvalidOperationException("Un article en attente n’est plus disponible.");
+                    }
+                }
+                catch
+                {
+                    binding.Session.Clear();
+                    throw;
+                }
+
+                waitingSaleId = selected.Id;
+                captured = null;
+                contextConsumed = true;
+                context = new CashierPaymentContext(cashier, twoDigitWorkstation, "MAD", "Cash", 0m);
+                vm.PaymentContext = context;
+                return true;
             }
             finally { reviewing = false; }
         });

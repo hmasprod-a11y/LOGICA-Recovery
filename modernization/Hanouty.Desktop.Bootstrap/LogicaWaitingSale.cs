@@ -8,6 +8,51 @@ namespace Hanouty.Desktop.Bootstrap;
 
 internal static class LogicaWaitingSale
 {
+    internal sealed record Waiting(string Id, string Cashier, string Date, decimal Total)
+    {
+        public string Label => $"{Id} · {Cashier} · {Date} · {Total:N2} MAD";
+    }
+
+    internal static Waiting[] List(Func<MySqlConnection> connections)
+    {
+        using var connection = connections();
+        if (connection.State != ConnectionState.Open) connection.Open();
+        using var command = new MySqlCommand("""
+            SELECT V, MAX(Caissier), MAX(Dates), SUM(TOTAL_NET)
+            FROM TABLE_ATTENTE GROUP BY V ORDER BY MAX(Dates) DESC, V DESC
+            """, connection);
+        using var rows = command.ExecuteReader();
+        var sales = new List<Waiting>();
+        while (rows.Read())
+            sales.Add(new Waiting(Convert.ToString(rows.GetValue(0), CultureInfo.InvariantCulture)!,
+                Convert.ToString(rows.GetValue(1)) ?? "", Convert.ToString(rows.GetValue(2)) ?? "", rows.GetDecimal(3)));
+        return sales.ToArray();
+    }
+
+    internal static CheckoutBatchLine[] Read(Func<MySqlConnection> connections, string id)
+    {
+        using var connection = connections();
+        if (connection.State != ConnectionState.Open) connection.Open();
+        using var command = new MySqlCommand(
+            "SELECT ID_ARTICLE, Qté, Remise, ID_CLIENT FROM TABLE_ATTENTE WHERE V=@id ORDER BY ID",
+            connection);
+        command.Parameters.AddWithValue("@id", id);
+        using var rows = command.ExecuteReader();
+        var lines = new List<CheckoutBatchLine>();
+        while (rows.Read())
+        {
+            var quantity = rows.GetDecimal(1);
+            var customer = Convert.ToString(rows.GetValue(3));
+            if (quantity <= 0 || quantity > int.MaxValue || decimal.Truncate(quantity) != quantity ||
+                rows.GetDecimal(2) != 0m || (customer != "0" && !string.IsNullOrEmpty(customer)))
+                throw new InvalidOperationException("Reprenez ce panier dans LOGICA pour conserver ses conditions d’origine.");
+            lines.Add(new CheckoutBatchLine(rows.GetString(0), (int)quantity));
+        }
+        if (lines.Count == 0 || lines.Select(x => x.ArticleId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != lines.Count)
+            throw new InvalidOperationException("Vente en attente indisponible ou contenant des lignes en double.");
+        return lines.ToArray();
+    }
+
     internal static string Save(Func<MySqlConnection> connections, IReadOnlyList<CheckoutBatchLine> basket,
         string cashier, string register)
     {

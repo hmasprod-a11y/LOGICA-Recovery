@@ -32,6 +32,26 @@ public partial class MainWindow : Window
         new InventoryCountWindow(workflow) { Owner = this }.ShowDialog();
     }
 
+    private Func<bool>? _restoreWaitingSale;
+
+    public void ConfigureRestoreWaitingSale(Func<bool> restore) => _restoreWaitingSale = restore;
+
+    private void RestoreWaitingSale_Click(object sender, RoutedEventArgs e)
+    {
+        if (_restoreWaitingSale is null || DataContext is not CatalogueViewModel vm ||
+            !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain) return;
+        try
+        {
+            if (!_restoreWaitingSale()) return;
+            vm.RefreshBasketLines();
+            RefreshTrustedBasketTotal();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+        {
+            MessageBox.Show(this, "La vente en attente n’a pas pu être reprise. " + ex.Message, "Attentes");
+        }
+    }
+
     private Func<string?>? _parkSale;
 
     public void ConfigureWaitingSale(Func<string?> parkSale) => _parkSale = parkSale;

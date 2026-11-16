@@ -12,12 +12,12 @@ namespace Hanouty.Checkout.MariaDb
     public static class MariaDbCashCheckoutServices
     {
         public static IAuthorizedCheckoutPort CreatePostingPort(Func<MySqlConnection> connections,
-            string workstation, Func<string> readAuthenticatedCashierPin)
+            string workstation, Func<string> readAuthenticatedCashierPin, Func<string?>? readWaitingSale = null)
         {
             if (connections == null) throw new ArgumentNullException(nameof(connections));
             return new AuthorizedCheckoutMariaDbPort(
                 () => LocalConnection(connections),
-                new MariaDbCashCheckoutPreparation(workstation, readAuthenticatedCashierPin));
+                new MariaDbCashCheckoutPreparation(workstation, readAuthenticatedCashierPin, readWaitingSale));
         }
 
         public static ICheckoutOperationJournal CreateOperationJournal(Func<MySqlConnection> connections)

@@ -1338,6 +1338,39 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 AND Caissier='O''Neil' AND POSTE='01' AND Qté=2 AND TOTAL_NET=PRIX_V*2
             """, id) == 1 && Snapshot(settings) == before,
             "Parking a sale did not preserve its LOGICA rows or changed posted sales and stock.");
+        MySqlConnection Connect() => new(settings.ConnectionString);
+        var parked = LogicaWaitingSale.List(Connect).Single(row => row.Id == id);
+        var lines = LogicaWaitingSale.Read(Connect, id);
+        Require(lines.Single().Quantity == 2 && parked.Cashier == "O'Neil", "The original waiting sale could not be loaded.");
+        Sql(settings, "CREATE TABLE TABLE_02 LIKE TABLE_01");
+        var first = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(
+            Connect, "01", () => "1234", () => id);
+        var second = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(
+            Connect, "02", () => "1234", () => id);
+        var request = new AuthorizedCheckoutRequest(Guid.NewGuid().ToString("N"), "O'Neil", "MAD", false,
+            lines, new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, parked.Total) }, parked.Total);
+
+        try
+        {
+            first.Commit(request with { ExpectedTotal = parked.Total + 1m });
+            throw new Exception("Invalid waiting-sale quote was accepted.");
+        }
+        catch (InvalidOperationException) { }
+        Require(Snapshot(settings) == before && LogicaWaitingSale.Read(Connect, id).Length == 1,
+            "Failed settlement consumed the waiting sale or changed the ledger.");
+
+        first.Commit(request);
+        var posted = Snapshot(settings);
+        try
+        {
+            second.Commit(request with { OperationId = Guid.NewGuid().ToString("N") });
+            throw new Exception("A second workstation sold the same waiting basket.");
+        }
+        catch (InvalidOperationException) { }
+        Require(Snapshot(settings) == posted &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_ATTENTE WHERE V=@id", id) == 0 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id", request.OperationId) == 1,
+            "A waiting sale was not consumed exactly once with its durable ticket.");
     }
 
     private static void VerifyStockIssue(CatalogueSettings settings)
