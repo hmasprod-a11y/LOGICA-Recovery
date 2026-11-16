@@ -466,7 +466,7 @@ namespace LOGICA.Infrastructure.Checkout
                 throw new InvalidOperationException("Les ventes en attente exigent une table transactionnelle.");
 
             var rows = Read(connection, transaction,
-                "SELECT ID_ARTICLE, Qté, PRIX_V, TOTAL_NET, Remise, ID_CLIENT FROM TABLE_ATTENTE WHERE V=@id FOR UPDATE",
+                "SELECT ID_ARTICLE, Qté AS waiting_quantity, PRIX_V, TOTAL_NET, Remise, ID_CLIENT FROM TABLE_ATTENTE WHERE V=@id FOR UPDATE",
                 ("@id", id));
             if (rows.Rows.Count != request.Lines.Count)
                 throw new InvalidOperationException("La vente en attente est indisponible ou a changé.");
@@ -476,7 +476,7 @@ namespace LOGICA.Infrastructure.Checkout
                 var article = Convert.ToString(row["ID_ARTICLE"]);
                 var line = request.Lines.SingleOrDefault(x => x.ArticleId == article);
                 var customer = Convert.ToString(row["ID_CLIENT"]);
-                if (line is null || Number(row, "Qté") != line.Quantity || Number(row, "Remise") != 0m ||
+                if (line is null || Number(row, "waiting_quantity") != line.Quantity || Number(row, "Remise") != 0m ||
                     (customer != "0" && !string.IsNullOrEmpty(customer)) ||
                     !result.TryAdd(line.ArticleId, (Number(row, "PRIX_V"), Number(row, "TOTAL_NET"))))
                     throw new InvalidOperationException("La vente en attente ne correspond plus au panier.");
