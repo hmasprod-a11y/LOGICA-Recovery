@@ -458,6 +458,15 @@ public sealed partial record CatalogueHost
             dialog.Owner = window;
             dialog.ShowDialog();
         });
+        var customerCredits = new CustomerCreditStatementReader(settings.ConnectionString);
+        window.ConfigureCustomerCreditStatement((from, to) =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is null ||
+                binding.Session.PendingCount != 0)
+                throw new InvalidOperationException("Ouvrez une session et terminez le panier en cours.");
+            return customerCredits.Read(from, to);
+        });
+
         window.ConfigureCataloguePrices(() =>
         {
             if (!CanChangeContext() || activeCashierId is not { } actor || binding.Session.PendingCount != 0)
