@@ -1020,7 +1020,9 @@ namespace LOGICA.Infrastructure.Checkout
             // original sale identity, or a padded ticket, before any database write.
             foreach (var invalid in new[] {
                 (Operation: "multi-original", Original: "multi-original"),
-                (Operation: "padded-return", Original: " multi-original ")
+                (Operation: "padded-return", Original: " multi-original "),
+                (Operation: " padded-return ", Original: "multi-original"),
+                (Operation: new string('x', 65), Original: "multi-original")
             })
             {
                 bool rejectedInvalidIdentity = false;
