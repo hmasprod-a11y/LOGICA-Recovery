@@ -514,6 +514,28 @@ namespace LOGICA.Infrastructure.Checkout
             rejected("review-wrong-identity", () =>
                 Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.VerifyCashierSession(
                     NewConnection, "other-cashier", () => "1234"));
+            // The real WPF basket preview must fail closed before even asking
+            // for a connection when a scan supplies an invalid line identity/quantity.
+            foreach (var invalidLine in new[]
+            {
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine(" CSharp-Stock", 1),
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 0),
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", -1),
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine(new string('x', 65), 1)
+            })
+            {
+                bool opened = false;
+                bool invalidRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleBasket(
+                        () => { opened = true; return NewConnection(); },
+                        new[] { invalidLine });
+                }
+                catch (ArgumentException) { invalidRejected = true; }
+                Require(invalidRejected && !opened,
+                    "Invalid basket preview must reject before opening MariaDB.");
+            }
             Func<decimal> preview = () =>
                 Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
                     NewConnection, TrustedRequest("preview-only").Lines);
