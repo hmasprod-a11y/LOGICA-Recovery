@@ -82,7 +82,12 @@ internal sealed class StockIssueDialog : Window
                     ? reviewed.Type
                     : $"{reviewed.Type} · {reviewed.Notes}";
                 if (reviewed.Type == "AVOIR")
+                {
                     status.Text += $"\nFournisseur : {reviewed.SupplierName} [{reviewed.SupplierId}]";
+                    status.Text += reviewed.PurchaseTotal is decimal total
+                        ? $"\nTotal net d’achat enregistré : {total:N2}"
+                        : "\nTotal net d’achat non renseigné.";
+                }
                 validate.IsEnabled = true;
             }
             catch (Exception ex) when (ex is InvalidOperationException or MySqlException)
