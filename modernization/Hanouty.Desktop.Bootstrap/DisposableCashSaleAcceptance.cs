@@ -893,7 +893,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyInventoryValidation(settings);
         VerifyPurchaseReceipt(settings);
         VerifyStockIssue(settings);
-        VerifyWaitingSale(settings);
+        VerifyWaitingSale(settings, pin);
         VerifyCataloguePrice(settings);
         VerifyCatalogueImport(settings);
 
@@ -1319,7 +1319,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             "Workbook import did not commit stock, price and numbering together.");
     }
 
-    private static void VerifyWaitingSale(CatalogueSettings settings)
+    private static void VerifyWaitingSale(CatalogueSettings settings, string pin)
     {
         Sql(settings, """
             ALTER TABLE TABLE_ARTICLES ADD PRINTER TEXT, ADD PRINTER_DUPLICATA TEXT;
@@ -1359,7 +1359,63 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         Require(Snapshot(settings) == before && LogicaWaitingSale.Read(Connect, id).Length == 1,
             "Failed settlement consumed the waiting sale or changed the ledger.");
 
-        first.Commit(request);
+        var nextTicket = Number(settings, "SELECT CL FROM TABLE_NUM WHERE ID=0");
+        var host = CatalogueHost.CreateCashierWorkstation(settings, "01");
+        try
+        {
+            Require(CashierEntry(host, "O'Neil", "01", "0", 0m, pin),
+                "Waiting sale operator could not sign in.");
+            static IEnumerable<DependencyObject> Controls(DependencyObject root)
+            {
+                foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
+                {
+                    yield return child;
+                    foreach (var descendant in Controls(child)) yield return descendant;
+                }
+            }
+            static void Click(System.Windows.Controls.Button button) =>
+                button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+
+            Exception? restoreFailure = null;
+            var restored = false;
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                var dialog = Application.Current.Windows.Cast<Window>()
+                    .SingleOrDefault(window => window.Owner == host.Window && window.IsVisible);
+                try
+                {
+                    Require(dialog?.Title == "Attentes", "Waiting sale list was not shown.");
+                    var list = Controls(dialog!).OfType<System.Windows.Controls.ListBox>().Single();
+                    list.SelectedItem = list.Items.Cast<LogicaWaitingSale.Waiting>().Single(item => item.Id == id);
+                    Click(Controls(dialog!).OfType<System.Windows.Controls.Button>().Single(button => Equals(button.Content, "Reprendre")));
+                    restored = true;
+                }
+                catch (Exception ex) { restoreFailure = ex; dialog?.Close(); }
+            };
+            timer.Start();
+            try
+            {
+                Click(Controls(host.Window).OfType<System.Windows.Controls.Button>().Single(button => Equals(button.Content, "Attentes")));
+            }
+            finally { timer.Stop(); }
+            Require(restored && restoreFailure is null &&
+                host.ViewModel.BasketLines.Single().Quantity == 2 && Snapshot(settings) == before,
+                $"Waiting sale UI did not restore the basket. {restoreFailure?.Message}");
+            Require(CashierEntry(host, "O'Neil", "01", parked.Total.ToString("0.00", CultureInfo.InvariantCulture), parked.Total),
+                "The restored waiting sale did not accept cash tender.");
+            ReviewThroughDialog(host, pin, true, () =>
+                Controls(host.Window).OfType<System.Windows.Controls.Button>()
+                    .Single(button => Equals(System.Windows.Automation.AutomationProperties.GetName(button), "Complete checkout"))
+                    .Command.Execute(null));
+            Require(host.ViewModel.CommitFeedback == "Checkout committed", "The restored basket was not posted from WPF.");
+        }
+        finally { host.Window.Close(); }
+        var ticketNumber = nextTicket.ToString("000000", CultureInfo.InvariantCulture);
+        var postedId = Convert.ToString(Value(settings,
+            "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE WHERE TICKET=@id", ticketNumber));
+        Require(!string.IsNullOrEmpty(postedId), "No durable ticket was posted for the resumed basket.");
         var posted = Snapshot(settings);
         try
         {
@@ -1369,7 +1425,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         catch (InvalidOperationException) { }
         Require(Snapshot(settings) == posted &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_ATTENTE WHERE V=@id", id) == 0 &&
-            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id", request.OperationId) == 1,
+            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id", postedId!) == 1,
             "A waiting sale was not consumed exactly once with its durable ticket.");
     }
 
