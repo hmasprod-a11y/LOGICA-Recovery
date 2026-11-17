@@ -11,7 +11,7 @@ internal sealed class StockIssueDialog : Window
     {
         Title = "Bons de sortie";
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Width = 620;
+        Width = 850;
         Height = 410;
         var panel = new DockPanel { Margin = new Thickness(16) };
         var input = new StackPanel();
@@ -37,6 +37,8 @@ internal sealed class StockIssueDialog : Window
             catch (Exception ex) when (ex is InvalidOperationException or MySqlException)
             { MessageBox.Show(this, ex.Message, Title); }
         };
+        var status = new TextBlock { Margin = new Thickness(0, 8, 0, 8), TextWrapping = TextWrapping.Wrap };
+        input.Children.Add(status);
         panel.Children.Add(input);
 
         var validate = new Button { Content = "Valider", MinHeight = 38, IsEnabled = false };
@@ -49,11 +51,19 @@ internal sealed class StockIssueDialog : Window
         panel.Children.Add(grid);
         Content = panel;
 
-        StockIssueValidation.Line[]? reviewed = null;
+        StockIssueValidation.Document? reviewed = null;
+        var movementColumns = new[]
+        {
+            new DataGridTextColumn { Header = "Stock avant", Binding = new Binding(nameof(StockIssueValidation.Movement.StockBefore)) },
+            new DataGridTextColumn { Header = "Stock après", Binding = new Binding(nameof(StockIssueValidation.Movement.StockAfter)) }
+        };
         void Reset()
         {
             reviewed = null;
             grid.ItemsSource = null;
+            status.Text = "";
+            foreach (var column in movementColumns)
+                grid.Columns.Remove(column);
             validate.IsEnabled = false;
         }
 
@@ -64,7 +74,10 @@ internal sealed class StockIssueDialog : Window
             try
             {
                 reviewed = service.Read(number.Text.Trim());
-                grid.ItemsSource = reviewed;
+                grid.ItemsSource = reviewed.Lines;
+                status.Text = string.IsNullOrWhiteSpace(reviewed.Notes)
+                    ? reviewed.Type
+                    : $"{reviewed.Type} · {reviewed.Notes}";
                 validate.IsEnabled = true;
             }
             catch (Exception ex) when (ex is InvalidOperationException or MySqlException)
@@ -80,9 +93,13 @@ internal sealed class StockIssueDialog : Window
             if (pin.Length == 0) return;
             try
             {
-                service.Validate(id, reviewed, actor, pin);
+                var movements = service.Validate(id, reviewed, actor, pin);
                 Reset();
-                MessageBox.Show(this, "Validé avec succès.", Title);
+                foreach (var column in movementColumns)
+                    grid.Columns.Add(column);
+                grid.ItemsSource = movements;
+                var movement = movements[0];
+                status.Text = $"Bon {movement.Reference} validé par {movement.Actor}\nMotif : {movement.Reason}";
             }
             catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or MySqlException)
             {

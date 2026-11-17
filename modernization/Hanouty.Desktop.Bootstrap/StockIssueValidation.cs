@@ -7,6 +7,10 @@ internal sealed class StockIssueValidation(string connectionString)
 {
     internal sealed record Line(string ArticleId, string Code, string Article, decimal Quantity);
 
+    internal sealed record Document(string Type, string Notes, Line[] Lines);
+    internal sealed record Movement(string Reference, string Actor, string Reason, string Code,
+        string Article, decimal Quantity, decimal StockBefore, decimal StockAfter);
+
     internal sealed record ArticleChoice(string Id, string Code, string Name)
     {
         public string Label => Name + " — " + Code;
@@ -92,7 +96,7 @@ internal sealed class StockIssueValidation(string connectionString)
         }
     }
 
-    internal Line[] Read(string id)
+    internal Document Read(string id)
     {
         using var connection = Open();
         using var transaction = connection.BeginTransaction(IsolationLevel.RepeatableRead);
@@ -101,7 +105,7 @@ internal sealed class StockIssueValidation(string connectionString)
         return lines;
     }
 
-    internal void Validate(string id, IReadOnlyList<Line> reviewed, string actor, string pin)
+    internal Movement[] Validate(string id, Document reviewed, string actor, string pin)
     {
         if (string.IsNullOrWhiteSpace(pin)) throw new UnauthorizedAccessException();
         using var connection = Open();
@@ -109,16 +113,23 @@ internal sealed class StockIssueValidation(string connectionString)
         InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_PASS",
             "TABLE_ARTICLES", "TABLE_SORTIES_ENTETE", "TABLE_SORTIES_DETAILS", "TABLE_MOUVEMENTS_STOCK");
         InventoryDocumentValidation.Authenticate(connection, transaction, actor, pin, validationOnly: true);
-        var lines = ReadDocument(connection, transaction, id, true);
-        if (!lines.SequenceEqual(reviewed))
+        var document = ReadDocument(connection, transaction, id, true);
+        var lines = document.Lines;
+        if (document.Type != reviewed.Type || document.Notes != reviewed.Notes || !lines.SequenceEqual(reviewed.Lines))
             throw new InvalidOperationException("Le bon a changé. Ouvrez-le de nouveau.");
 
         // LOGICA records a positive issue quantity in the journal and subtracts it from stock.
         var now = DateTime.Now;
+        var movements = new List<Movement>(lines.Length);
+        var reason = string.IsNullOrWhiteSpace(document.Notes)
+            ? document.Type
+            : $"{document.Type} · {document.Notes}";
         foreach (var line in lines)
         {
+            var stockBefore = ReadStock(line.ArticleId);
             Execute("UPDATE TABLE_ARTICLES SET STOCK = STOCK - @quantity WHERE BINARY ID_ARTICLE = BINARY @article", 1,
                 ("@quantity", line.Quantity), ("@article", line.ArticleId));
+            var stockAfter = ReadStock(line.ArticleId);
             Execute("""
                 INSERT INTO TABLE_MOUVEMENTS_STOCK (DATES, HEURE, LIBELLE, ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE)
                 VALUES (@date, @time, @label, @article, @code, @name, @quantity)
@@ -126,12 +137,29 @@ internal sealed class StockIssueValidation(string connectionString)
                 ("@time", now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)),
                 ("@label", "Bon de Sortie | " + id), ("@article", line.ArticleId), ("@code", line.Code),
                 ("@name", line.Article), ("@quantity", line.Quantity));
+            movements.Add(new Movement(id, actor, reason, line.Code, line.Article, line.Quantity, stockBefore, stockAfter));
         }
         Execute("UPDATE TABLE_SORTIES_DETAILS SET ETAT='VALIDER' WHERE BINARY ID_BS=BINARY @id AND ETAT='ENREGISTRER'",
             lines.Length, ("@id", id));
         Execute("UPDATE TABLE_SORTIES_ENTETE SET ETAT='VALIDER' WHERE BINARY ID_BS=BINARY @id AND ETAT='ENREGISTRER'",
             1, ("@id", id));
         transaction.Commit();
+        return movements.ToArray();
+
+        decimal ReadStock(string articleId)
+        {
+            using var command = new MySqlCommand(
+                "SELECT STOCK FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @article FOR UPDATE",
+                connection, transaction);
+            command.Parameters.AddWithValue("@article", articleId);
+            using var reader = command.ExecuteReader();
+            if (!reader.Read() || reader.IsDBNull(0))
+                throw new InvalidOperationException("Stock de l’article introuvable.");
+            var stock = reader.GetDecimal(0);
+            if (reader.Read())
+                throw new InvalidOperationException("Article en double.");
+            return stock;
+        }
 
         void Execute(string sql, int count, params (string Name, object Value)[] parameters)
         {
@@ -152,15 +180,22 @@ internal sealed class StockIssueValidation(string connectionString)
         catch { connection.Dispose(); throw; }
     }
 
-    private static Line[] ReadDocument(MySqlConnection connection, MySqlTransaction transaction, string id, bool locked)
+    private static Document ReadDocument(MySqlConnection connection, MySqlTransaction transaction, string id, bool locked)
     {
         var lockRows = locked ? " FOR UPDATE" : "";
         using var command = new MySqlCommand(
-            "SELECT ETAT FROM TABLE_SORTIES_ENTETE WHERE BINARY ID_BS=BINARY @id" + lockRows, connection, transaction);
+            "SELECT ETAT, TYPE, NOTES FROM TABLE_SORTIES_ENTETE WHERE BINARY ID_BS=BINARY @id" + lockRows, connection, transaction);
         command.Parameters.AddWithValue("@id", id);
+        string type, notes;
         using (var header = command.ExecuteReader())
-            if (!header.Read() || header.GetString(0) != "ENREGISTRER" || header.Read())
+        {
+            if (!header.Read() || header.GetString(0) != "ENREGISTRER")
                 throw new InvalidOperationException("Bon de sortie enregistré introuvable.");
+            type = header.IsDBNull(1) ? "" : header.GetString(1);
+            notes = header.IsDBNull(2) ? "" : header.GetString(2);
+            if (header.Read())
+                throw new InvalidOperationException("Bon de sortie en double.");
+        }
 
         command.CommandText = """
             SELECT ID_ARTICLE, Code, Article, Qté, ETAT FROM TABLE_SORTIES_DETAILS
@@ -178,6 +213,6 @@ internal sealed class StockIssueValidation(string connectionString)
         }
         if (lines.Count == 0 || lines.Select(x => x.ArticleId).Distinct(StringComparer.Ordinal).Count() != lines.Count)
             throw new InvalidOperationException("Le bon doit contenir des articles distincts.");
-        return lines.ToArray();
+        return new Document(type, notes, lines.ToArray());
     }
 }
