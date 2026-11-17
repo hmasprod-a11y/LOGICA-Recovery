@@ -897,7 +897,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyWaitingSale(settings, pin);
         VerifyCataloguePrice(settings);
         VerifyCatalogueImport(settings);
-        VerifyCustomerCreditStatement(settings);
+        VerifyCustomerCreditStatement(settings, pin);
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -2221,7 +2221,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         }
     }
 
-    private static void VerifyCustomerCreditStatement(CatalogueSettings settings)
+    private static void VerifyCustomerCreditStatement(CatalogueSettings settings, string pin)
     {
         Sql(settings, """
             ALTER TABLE TABLE_CLIENTS_REGLE ADD ID_CLIENT VARCHAR(64), ADD DATES DATETIME;
@@ -2255,9 +2255,58 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 row.CustomerId == "EMPTY_FIXTURE"), "WPF credit statement displayed a settled account.");
         }
         finally { dialog.Close(); }
+        var workstation = Host(settings, pin);
+        try
+        {
+            Require(CashierEntry(workstation, "O'Neil", "01", "0", 0m, pin),
+                "Customer credit entry requires a real active cashier session.");
+            static IEnumerable<DependencyObject> Children(DependencyObject parent)
+            {
+                foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+                {
+                    yield return child;
+                    foreach (var descendant in Children(child)) yield return descendant;
+                }
+            }
+            var entry = Children(workstation.Window).OfType<System.Windows.Controls.Button>()
+                .Single(button => Equals(button.Content, "État des crédits clients"));
+            Exception? failure = null;
+            var opened = false;
+            var timer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(40)
+            };
+            timer.Tick += (_, _) =>
+            {
+                var openedDialog = Application.Current.Windows.OfType<CustomerCreditStatementDialog>().SingleOrDefault();
+                if (openedDialog is null) return;
+                timer.Stop();
+                try
+                {
+                    var grid = ((System.Windows.Controls.DockPanel)openedDialog.Content).Children
+                        .OfType<System.Windows.Controls.DataGrid>().Single();
+                    Require(grid.Items.OfType<CustomerCreditStatementRow>().Any(row =>
+                        row.CustomerId == "CREDIT_FIXTURE" && row.Balance == 80m),
+                        "Cashier credit statement entry did not use the registered MariaDB reader.");
+                    opened = true;
+                }
+                catch (Exception ex) { failure = ex; }
+                finally { openedDialog.Close(); }
+            };
+            timer.Start();
+            try
+            {
+                entry.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            }
+            finally { timer.Stop(); }
+            if (failure is not null) throw failure;
+            Require(opened, "Customer credit statement did not open from its cashier button.");
+        }
+        finally { workstation.Window.Close(); }
+
         File.WriteAllText(Path.Combine(EvidenceDirectory, "customer-credit-statement.json"),
             JsonSerializer.Serialize(new { RealMariaDbReader = true, PeriodBalance = 80m,
-                SignedReturn = true, EmptyAccount = true, WpfLoadedRows = true }));
+                SignedReturn = true, EmptyAccount = true, WpfLoadedRows = true, CashierButtonEntry = true }));
     }
 
     public static int Run(string evidenceDirectory)
