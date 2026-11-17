@@ -24,11 +24,22 @@ internal sealed class StockIssueCreateDialog : Window
         var panel = new StackPanel { Margin = new Thickness(16) };
         var date = new DatePicker { SelectedDate = DateTime.Today };
         var type = new ComboBox { ItemsSource = new[] { "PERTE", "TRANSFERT", "AUTRE" } };
-        var article = new ComboBox { ItemsSource = service.Articles(), DisplayMemberPath = "Label", IsTextSearchEnabled = true };
+        var articles = service.Articles();
+        var search = new TextBox();
+        var article = new ComboBox { ItemsSource = articles, DisplayMemberPath = "Label", IsTextSearchEnabled = true };
+        search.TextChanged += (_, _) =>
+        {
+            var query = search.Text.Trim();
+            var matches = articles.Where(choice => choice.Matches(query)).ToArray();
+            var selected = article.SelectedItem as StockIssueValidation.ArticleChoice;
+            article.ItemsSource = matches;
+            article.SelectedItem = selected is not null && matches.Contains(selected) ? selected : null;
+        };
         var quantity = new TextBox { Text = "1" };
         var notes = new TextBox();
         AddField("Date", date);
         AddField("Type", type);
+        AddField("Rechercher par nom, code ou référence", search);
         AddField("Article", article);
         AddField("Quantité", quantity);
         var lines = new ObservableCollection<DraftLine>();

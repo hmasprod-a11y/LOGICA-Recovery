@@ -14,7 +14,12 @@ internal sealed class StockIssueValidation(string connectionString)
 
     internal sealed record ArticleChoice(string Id, string Code, string Name)
     {
-        public string Label => Name + " — " + Code;
+        public string Label => $"{Name} — {Code} [{Id}]";
+
+        internal bool Matches(string search) =>
+            Name.Contains(search, StringComparison.CurrentCultureIgnoreCase) ||
+            Code.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+            Id.Contains(search, StringComparison.OrdinalIgnoreCase);
     }
 
     internal ArticleChoice[] Articles()

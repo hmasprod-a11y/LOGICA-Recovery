@@ -24,6 +24,18 @@ Execute("""
         ('BS-OLD','A','001','Verre',0.50,'ENREGISTRER');
     """);
 
+var articles = new[]
+{
+    new StockIssueValidation.ArticleChoice("ART-1", "00042", "Verre"),
+    new StockIssueValidation.ArticleChoice("ART-2", "00042", "Verre"),
+    new StockIssueValidation.ArticleChoice("ART-3", "", "Plat")
+};
+Require(articles.Count(article => article.Matches("00042")) == 2 &&
+    articles.Count(article => article.Matches("verre")) == 2 &&
+    articles.Single(article => article.Matches("art-2")).Id == "ART-2" &&
+    articles[0].Label != articles[1].Label,
+    "Article search hid or could not distinguish a shared code.");
+
 var service = new StockIssueValidation(connectionString);
 var old = service.Validate("BS-OLD", service.ReadForValidation("BS-OLD"), "Manager", "1234");
 Require(!old.HistorySaved, "Legacy schema incorrectly reported detailed history.");
