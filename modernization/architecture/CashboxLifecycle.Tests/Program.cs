@@ -34,4 +34,33 @@ catch (OverflowException) { }
 if (extreme.Phase != CashboxPhase.Open || extreme.SessionId != "overflow-session")
     throw new Exception("Overflow closed or reset the cashbox.");
 
+
+// Posting overflow must be atomic: no phantom entry and no consumed operation id.
+var postingOverflow = new CashboxLifecycle();
+postingOverflow.Open("posting-overflow", decimal.MaxValue);
+try
+{
+    postingOverflow.RecordPersisted(new("retryable-operation", CashboxEntryKind.SaleCash, 1m));
+    throw new Exception("Expected posting overflow.");
+}
+catch (OverflowException) { }
+if (postingOverflow.ExpectedCash != decimal.MaxValue ||
+    postingOverflow.Entries.Count != 0 ||
+    postingOverflow.Phase != CashboxPhase.Open)
+    throw new Exception("Overflow mutated the cashbox.");
+postingOverflow.RecordPersisted(new("retryable-operation", CashboxEntryKind.ReturnCash, 1m));
+if (postingOverflow.ExpectedCash != decimal.MaxValue - 1m ||
+    postingOverflow.Entries.Count != 1)
+    throw new Exception("Overflow consumed the durable operation id.");
+
+// Card operations are journaled but must not affect physical cash reconciliation.
+var cardOnly = new CashboxLifecycle();
+cardOnly.Open("card-only", 40m);
+cardOnly.RecordPersisted(new("card-sale", CashboxEntryKind.SaleCard, 25m));
+cardOnly.RecordPersisted(new("card-refund", CashboxEntryKind.ReturnCard, 10m));
+cardOnly.RecordPersisted(new("card-settlement", CashboxEntryKind.CustomerSettlementCard, 5m));
+if (cardOnly.ExpectedCash != 40m || cardOnly.Close(40m) != 0m)
+    throw new Exception("Card movements affected cash reconciliation.");
+MustThrow(() => cardOnly.RecordPersisted(new("after-close", CashboxEntryKind.SaleCash, 1m)));
+
 Console.WriteLine("CashboxLifecycle isolated assertions passed.");
