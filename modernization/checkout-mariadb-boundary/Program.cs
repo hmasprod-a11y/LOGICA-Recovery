@@ -1089,6 +1089,19 @@ namespace LOGICA.Infrastructure.Checkout
             Require(Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
                 .FindFullCashReturnCandidates(NewConnection, "multi-original").Count == 0,
                 "A consumed original ticket must disappear from WPF return lookup.");
+            // A consumed ticket remains hidden even if its old payment evidence
+            // is damaged after refund. The UI must check the claim first.
+            Sql("UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=MONTANT+1 WHERE ID_TICKET='multi-original'");
+            try
+            {
+                Require(Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                    .FindFullCashReturnCandidates(NewConnection, "multi-original").Count == 0,
+                    "Consumed original must stay hidden despite corrupt legacy payment evidence.");
+            }
+            finally
+            {
+                Sql("UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=MONTANT-1 WHERE ID_TICKET='multi-original'");
+            }
             bool consumedPreparationRejected = false;
             try
             {
