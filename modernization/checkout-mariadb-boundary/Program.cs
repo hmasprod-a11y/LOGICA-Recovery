@@ -1037,6 +1037,22 @@ namespace LOGICA.Infrastructure.Checkout
                     Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='padded-return'") == 0,
                     "Invalid WPF return identities must fail closed without consuming the original.");
             }
+            // The authenticated cashier identity must be canonical before any
+            // financial evidence lookup; a padded or oversized identity fails closed.
+            foreach (var invalidCashier in new[] { " O'Neil ", new string('c', 65) })
+            {
+                bool rejectedCashier = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                        NewConnection, "invalid-cashier-return", invalidCashier, "MAD", "multi-original");
+                }
+                catch (ArgumentException) { rejectedCashier = true; }
+                Require(rejectedCashier &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0 &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='invalid-cashier-return'") == 0,
+                    "Invalid WPF cashier identity must not consume or return the original ticket.");
+            }
             Require(hostPrepared.IsReturn && hostPrepared.Lines.Count == 2 &&
                 hostPrepared.Lines.Any(line => line.ArticleId == "CSharp-Stock" && line.Quantity == 2m) &&
                 hostPrepared.Lines.Any(line => line.ArticleId == "CSharp-Other" && line.Quantity == 1m) &&
