@@ -1148,7 +1148,35 @@ namespace LOGICA.Infrastructure.Checkout
                 Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-concurrent-original'") == 1 &&
                 Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE OPERATION='RETOUR REMBOURSEMENT' AND ID_TICKET IN ('multi-concurrent-refund-a','multi-concurrent-refund-b')") == 1,
                 "Two concurrent refund operations must have one winner and one complete loser.");
-            Console.WriteLine("PASS full multi-line refund: exact line set, atomic signed stock/payment/journal/claim, duplicate, rollback/retry, and concurrency.");
+            // The real shop schema may lack the fixture's unique ticket key. Emulate
+            // that legacy corruption only on disposable MariaDB and verify the
+            // WPF entry point refuses it before touching any financial state.
+            Sql("ALTER TABLE TABLE_VENTES_ENTETE DROP PRIMARY KEY");
+            try
+            {
+                Sql("INSERT INTO TABLE_VENTES_ENTETE SELECT 'ambiguous-original',TICKET,DATES,CAISSIER,ID_CLIENT,CODE_CLIENT,CLIENT,POSTE,Total_NET,OPERATION FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-original'");
+                Sql("INSERT INTO TABLE_VENTES_ENTETE SELECT 'ambiguous-original',TICKET,DATES,CAISSIER,ID_CLIENT,CODE_CLIENT,CLIENT,POSTE,Total_NET,OPERATION FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-original'");
+                bool ambiguousRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                        NewConnection, "ambiguous-return-attempt", "O'Neil", "MAD", "ambiguous-original");
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("ambiguous"))
+                {
+                    ambiguousRejected = true;
+                }
+                Require(ambiguousRejected &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='ambiguous-original'") == 0 &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='ambiguous-return-attempt'") == 0,
+                    "Duplicate original ticket headers must fail closed before return preparation or posting.");
+            }
+            finally
+            {
+                Sql("DELETE FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='ambiguous-original'");
+                Sql("ALTER TABLE TABLE_VENTES_ENTETE ADD PRIMARY KEY (ID_TICKET)");
+            }
+            Console.WriteLine("PASS full multi-line refund: exact line set, atomic signed stock/payment/journal/claim, duplicate, rollback/retry, concurrency and ambiguous original rejection.");
         }
 
 
