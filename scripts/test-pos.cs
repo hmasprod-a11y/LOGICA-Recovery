@@ -151,6 +151,65 @@ class PosSmoke {
    grid.Rows.Clear();
    receipt.Invoke(form,null);
    Eq((decimal)receiptBalance.GetValue(form),0m,"receipt lookup without selected journal row");
+   AssertCustomerSettlementDeletesClickedRow(module,connection,form,grid);
+  }
+ }
+
+ static void AssertCustomerSettlementDeletesClickedRow(Type module,IDbConnection connection,Form form,DataGridView grid) {
+  var formType=form.GetType();
+  var adapterType=connection.GetType().Assembly.GetType("MySql.Data.MySqlClient.MySqlDataAdapter",true);
+  using(var adapter=(System.Data.Common.DbDataAdapter)Activator.CreateInstance(adapterType,
+      new object[]{"SELECT * FROM TABLE_CLIENTS_REGLE ORDER BY ID DESC",connection}))
+  using(var rows=new DataTable())
+  using(var timer=new System.Windows.Forms.Timer { Interval=50 }) {
+   adapter.Fill(rows);
+   formType.GetField("DA",Flags).SetValue(form,adapter);
+   formType.GetField("DT",Flags).SetValue(form,rows);
+   grid.DataSource=rows;
+   var category=module.GetField("_USERCATEGORIE",Flags);
+   var previous=category.GetValue(null);
+   try {
+    category.SetValue(null,"ADMIN");
+    formType.GetMethod("FUN_CAT_ACCES",Flags).Invoke(form,null);
+    DataGridViewRow clicked=null;
+    DataGridViewRow other=null;
+    foreach(DataGridViewRow row in grid.Rows) {
+     int id=Convert.ToInt32(((DataRowView)row.DataBoundItem)["ID"]);
+     if(id==90)clicked=row;
+     if(id==91)other=row;
+    }
+    if(clicked==null || other==null)throw new Exception("Settlement deletion fixtures are missing");
+    int column=grid.Columns["supp"].Index;
+    grid.CurrentCell=clicked.Cells[column];
+    uint uiThread=GetCurrentThreadId();
+    bool changedSelection=false;
+    timer.Tick+=delegate {
+     EnumThreadWindows(uiThread,delegate(IntPtr window,IntPtr unused) {
+      var title=new StringBuilder(128);
+      GetWindowText(window,title,title.Capacity);
+      if(title.ToString()!="Suppression")return true;
+      grid.CurrentCell=other.Cells[column];
+      changedSelection=grid.CurrentRow==other;
+      PostMessage(window,0x0111,new IntPtr(1),IntPtr.Zero);
+      return false;
+     },IntPtr.Zero);
+    };
+    timer.Start();
+    formType.GetMethod("DataGridView1_CellClick",Flags).Invoke(form,
+       new object[]{grid,new DataGridViewCellEventArgs(column,clicked.Index)});
+    if(!changedSelection)throw new Exception("Test did not switch rows during deletion confirmation");
+    connection.Open();
+    try {
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE WHERE ID=90"),0m,"admin deleted the clicked settlement");
+     Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE WHERE ID=91"),1m,"admin preserved the newly selected settlement");
+    } finally {
+     connection.Close();
+    }
+   } finally {
+    timer.Stop();
+    category.SetValue(null,previous);
+    grid.DataSource=null;
+   }
   }
  }
 
