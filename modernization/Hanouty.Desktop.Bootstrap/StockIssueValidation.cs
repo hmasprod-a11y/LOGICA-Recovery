@@ -96,7 +96,9 @@ internal sealed class StockIssueValidation(string connectionString)
         }
     }
 
-    internal Document Read(string id)
+    internal Line[] Read(string id) => ReadForValidation(id).Lines;
+
+    internal Document ReadForValidation(string id)
     {
         using var connection = Open();
         using var transaction = connection.BeginTransaction(IsolationLevel.RepeatableRead);
@@ -105,7 +107,14 @@ internal sealed class StockIssueValidation(string connectionString)
         return lines;
     }
 
-    internal Movement[] Validate(string id, Document reviewed, string actor, string pin)
+    internal void Validate(string id, IReadOnlyList<Line> reviewed, string actor, string pin) =>
+        Validate(id, reviewed, null, actor, pin);
+
+    internal Movement[] Validate(string id, Document reviewed, string actor, string pin) =>
+        Validate(id, reviewed.Lines, reviewed, actor, pin);
+
+    private Movement[] Validate(string id, IReadOnlyList<Line> reviewedLines, Document? reviewed,
+        string actor, string pin)
     {
         if (string.IsNullOrWhiteSpace(pin)) throw new UnauthorizedAccessException();
         using var connection = Open();
@@ -115,7 +124,8 @@ internal sealed class StockIssueValidation(string connectionString)
         InventoryDocumentValidation.Authenticate(connection, transaction, actor, pin, validationOnly: true);
         var document = ReadDocument(connection, transaction, id, true);
         var lines = document.Lines;
-        if (document.Type != reviewed.Type || document.Notes != reviewed.Notes || !lines.SequenceEqual(reviewed.Lines))
+        if (!lines.SequenceEqual(reviewedLines) ||
+            (reviewed is not null && (document.Type != reviewed.Type || document.Notes != reviewed.Notes)))
             throw new InvalidOperationException("Le bon a changé. Ouvrez-le de nouveau.");
 
         // LOGICA records a positive issue quantity in the journal and subtracts it from stock.

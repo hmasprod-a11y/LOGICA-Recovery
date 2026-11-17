@@ -73,7 +73,7 @@ internal sealed class StockIssueDialog : Window
             Reset();
             try
             {
-                reviewed = service.Read(number.Text.Trim());
+                reviewed = service.ReadForValidation(number.Text.Trim());
                 grid.ItemsSource = reviewed.Lines;
                 status.Text = string.IsNullOrWhiteSpace(reviewed.Notes)
                     ? reviewed.Type
