@@ -1053,6 +1053,25 @@ namespace LOGICA.Infrastructure.Checkout
                     Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='invalid-cashier-return'") == 0,
                     "Invalid WPF cashier identity must not consume or return the original ticket.");
             }
+            // Session reset must reject a noncanonical cashier before opening
+            // MariaDB or reading a transient PIN (no credential side effects).
+            foreach (var invalidSessionCashier in new[] { "", " O'Neil ", new string('c', 65) })
+            {
+                bool rejectedSessionCashier = false;
+                bool connectionOpened = false;
+                bool pinRead = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.VerifyCashierSession(
+                        () => { connectionOpened = true; return NewConnection(); },
+                        invalidSessionCashier,
+                        () => { pinRead = true; return "not-a-real-pin"; });
+                }
+                catch (ArgumentException) { rejectedSessionCashier = true; }
+                Require(rejectedSessionCashier && !connectionOpened && !pinRead &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0,
+                    "Noncanonical cashier reset must fail before DB/PIN and preserve return claim.");
+            }
             Require(hostPrepared.IsReturn && hostPrepared.Lines.Count == 2 &&
                 hostPrepared.Lines.Any(line => line.ArticleId == "CSharp-Stock" && line.Quantity == 2m) &&
                 hostPrepared.Lines.Any(line => line.ArticleId == "CSharp-Other" && line.Quantity == 1m) &&
