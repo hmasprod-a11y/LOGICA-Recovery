@@ -117,6 +117,20 @@ public sealed class CashboxLifecycle
         return new CashboxClosePreview(_sessionId!, ExpectedCash, countedCash, difference);
     }
 
+    // Safer close entry point for adapters with a complete durable journal readback.
+    // The caller must fetch the journal in a consistent database snapshot and
+    // independently establish that no unresolved outcomes remain. No mutation
+    // happens when exact replay, totals or the current phase disagree.
+    public CashboxClosePreview CloseVerified(
+        IEnumerable<CashboxEntry> persistedEntries, decimal countedCash)
+    {
+        var preview = CashboxJournalReplay.VerifyCloseExact(
+            GetStatus(), Entries, persistedEntries, countedCash);
+        // Verification and close must be serialized by the Host against posting.
+        Close(countedCash);
+        return preview;
+    }
+
     public decimal Close(decimal countedCash)
     {
         var preview = PreviewClose(countedCash);
