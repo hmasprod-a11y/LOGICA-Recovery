@@ -536,6 +536,19 @@ namespace LOGICA.Infrastructure.Checkout
                 Require(invalidRejected && !opened,
                     "Invalid basket preview must reject before opening MariaDB.");
             }
+            // Empty basket must not be treated as a payable zero-MAD preview.
+            // This guard must execute without requesting a DB connection.
+            bool emptyOpened = false;
+            bool emptyRejected = false;
+            try
+            {
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleBasket(
+                    () => { emptyOpened = true; return NewConnection(); },
+                    Array.Empty<Hanouty.ArchitectureBridge.CheckoutBatchLine>());
+            }
+            catch (ArgumentException) { emptyRejected = true; }
+            Require(emptyRejected && !emptyOpened,
+                "Empty basket preview must reject before opening MariaDB.");
             // Duplicate article identities must fail before acquiring a DB connection,
             // including case-exact duplicates in an otherwise valid basket.
             bool duplicateOpened = false;
