@@ -536,6 +536,22 @@ namespace LOGICA.Infrastructure.Checkout
                 Require(invalidRejected && !opened,
                     "Invalid basket preview must reject before opening MariaDB.");
             }
+            // Duplicate article identities must fail before acquiring a DB connection,
+            // including case-exact duplicates in an otherwise valid basket.
+            bool duplicateOpened = false;
+            bool duplicateRejected = false;
+            try
+            {
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleBasket(
+                    () => { duplicateOpened = true; return NewConnection(); },
+                    new[] {
+                        new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 1),
+                        new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2)
+                    });
+            }
+            catch (ArgumentException) { duplicateRejected = true; }
+            Require(duplicateRejected && !duplicateOpened,
+                "Duplicate basket article identities must reject before opening MariaDB.");
             Func<decimal> preview = () =>
                 Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
                     NewConnection, TrustedRequest("preview-only").Lines);
