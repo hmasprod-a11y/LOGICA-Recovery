@@ -47,6 +47,7 @@ internal sealed class StockIssueDialog : Window
         DockPanel.SetDock(validate, Dock.Bottom);
         panel.Children.Add(validate);
         var grid = new DataGrid { IsReadOnly = true, AutoGenerateColumns = false, CanUserAddRows = false };
+        grid.Columns.Add(new DataGridTextColumn { Header = "Réf. article", Binding = new Binding(nameof(StockIssueValidation.Line.ArticleId)) });
         grid.Columns.Add(new DataGridTextColumn { Header = "Code", Binding = new Binding("Code") });
         grid.Columns.Add(new DataGridTextColumn { Header = "Article", Binding = new Binding("Article"), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         grid.Columns.Add(new DataGridTextColumn { Header = "Qté", Binding = new Binding("Quantity") });

@@ -8,7 +8,7 @@ internal sealed class StockIssueValidation(string connectionString)
     internal sealed record Line(string ArticleId, string Code, string Article, decimal Quantity);
 
     internal sealed record Document(string Type, string Notes, Line[] Lines);
-    internal sealed record Movement(string Reference, string Actor, string Reason, string Code,
+    internal sealed record Movement(string Reference, string Actor, string Reason, string ArticleId, string Code,
         string Article, decimal Quantity, decimal? StockBefore, decimal? StockAfter, DateTime? ValidatedUtc);
     internal sealed record ValidationResult(Movement[] Movements, bool HistorySaved);
 
@@ -166,7 +166,7 @@ internal sealed class StockIssueValidation(string connectionString)
                     """, 1, ("@id", id), ("@article", line.ArticleId), ("@actor", actor),
                     ("@reason", reason), ("@code", line.Code), ("@name", line.Article),
                     ("@quantity", line.Quantity), ("@before", stockBefore), ("@after", stockAfter), ("@utc", validatedUtc));
-            movements.Add(new Movement(id, actor, reason, line.Code, line.Article,
+            movements.Add(new Movement(id, actor, reason, line.ArticleId, line.Code, line.Article,
                 line.Quantity, stockBefore, stockAfter, validatedUtc));
         }
         Execute("UPDATE TABLE_SORTIES_DETAILS SET ETAT='VALIDER' WHERE BINARY ID_BS=BINARY @id AND ETAT='ENREGISTRER'",
@@ -208,7 +208,7 @@ internal sealed class StockIssueValidation(string connectionString)
         if (HasMovementHistory(connection, transaction))
         {
             using var command = new MySqlCommand("""
-                SELECT ISSUE_ID, ACTOR, REASON, CODE, ARTICLE, QUANTITY, STOCK_BEFORE, STOCK_AFTER, VALIDATED_UTC
+                SELECT ISSUE_ID, ACTOR, REASON, ARTICLE_ID, CODE, ARTICLE, QUANTITY, STOCK_BEFORE, STOCK_AFTER, VALIDATED_UTC
                 FROM hanouty_stock_issue_history
                 WHERE ISSUE_ID = @id AND BINARY ISSUE_ID = BINARY @id
                 ORDER BY ARTICLE_ID
@@ -217,14 +217,14 @@ internal sealed class StockIssueValidation(string connectionString)
             using var reader = command.ExecuteReader();
             while (reader.Read())
                 movements.Add(new Movement(reader.GetString(0), reader.GetString(1), reader.GetString(2),
-                    reader.GetString(3), reader.GetString(4), reader.GetDecimal(5), reader.GetDecimal(6),
-                    reader.GetDecimal(7), DateTime.SpecifyKind(reader.GetDateTime(8), DateTimeKind.Utc)));
+                    reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetDecimal(6),
+                    reader.GetDecimal(7), reader.GetDecimal(8), DateTime.SpecifyKind(reader.GetDateTime(9), DateTimeKind.Utc)));
         }
 
         if (movements.Count == 0)
         {
             using var command = new MySqlCommand("""
-                SELECT CODE_ARTICLE, ARTICLE, QUANTITE FROM TABLE_MOUVEMENTS_STOCK
+                SELECT ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE FROM TABLE_MOUVEMENTS_STOCK
                 WHERE LIBELLE = @label AND BINARY LIBELLE = BINARY @label
                 ORDER BY DATES, HEURE, ID_ARTICLE
                 """, connection, transaction);
@@ -233,7 +233,7 @@ internal sealed class StockIssueValidation(string connectionString)
             while (reader.Read())
                 movements.Add(new Movement(id, "", "",
                     reader.IsDBNull(0) ? "" : reader.GetString(0), reader.IsDBNull(1) ? "" : reader.GetString(1),
-                    reader.GetDecimal(2), null, null, null));
+                    reader.IsDBNull(2) ? "" : reader.GetString(2), reader.GetDecimal(3), null, null, null));
         }
         transaction.Commit();
         return movements.ToArray();

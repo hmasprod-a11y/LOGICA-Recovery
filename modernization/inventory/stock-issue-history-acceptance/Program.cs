@@ -19,7 +19,7 @@ Execute("""
         ('BS-OK','PERTE','Verre cassé','ENREGISTRER'),('BS-FAIL','TRANSFERT','','ENREGISTRER'),
         ('BS-OLD','AUTRE','','ENREGISTRER');
     INSERT INTO TABLE_SORTIES_DETAILS VALUES
-        ('BS-OK','A','001','Verre',2.25,'ENREGISTRER'),('BS-OK','B','002','Plat',0.50,'ENREGISTRER'),
+        ('BS-OK','A','001','Verre',2.25,'ENREGISTRER'),('BS-OK','B','001','Plat',0.50,'ENREGISTRER'),
         ('BS-FAIL','A','001','Verre',1,'ENREGISTRER'),('BS-FAIL','B','002','Plat',1,'ENREGISTRER'),
         ('BS-OLD','A','001','Verre',0.50,'ENREGISTRER');
     """);
@@ -41,7 +41,7 @@ var old = service.Validate("BS-OLD", service.ReadForValidation("BS-OLD"), "Manag
 Require(!old.HistorySaved, "Legacy schema incorrectly reported detailed history.");
 Execute(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "migration.sql")));
 var legacy = service.ReadHistory("BS-OLD").Single();
-Require(legacy.Quantity == 0.50m && legacy.Article == "Verre" &&
+Require(legacy.ArticleId == "A" && legacy.Quantity == 0.50m && legacy.Article == "Verre" &&
     legacy.Actor == "" && legacy.Reason == "" && legacy.StockBefore is null &&
     legacy.StockAfter is null && legacy.ValidatedUtc is null,
     "Legacy movement was lost or unavailable details were fabricated.");
@@ -59,6 +59,8 @@ Require(result.HistorySaved && movements.Length == 2, "Committed document could 
 Require(movements[0].Actor == "Manager" && movements[0].Reason == "PERTE · Modifiée" &&
     movements[0].Reference == "BS-OK" && movements[0].Code == "001" && movements[0].Article == "Verre" &&
     movements[0].Quantity == 2.25m && movements[0].StockBefore == 12.25m && movements[0].StockAfter == 10m &&
+    result.Movements[0].ArticleId == "A" && result.Movements[1].ArticleId == "B" &&
+    movements[0].ArticleId == "A" && movements[1].ArticleId == "B" && movements[1].Code == "001" &&
     movements[1].StockBefore == 4.125m && movements[1].StockAfter == 3.625m &&
     movements[0].ValidatedUtc?.Kind == DateTimeKind.Utc && movements[0].ValidatedUtc == movements[1].ValidatedUtc,
     "Persistent movement evidence differs from the committed document.");
