@@ -232,6 +232,11 @@ namespace Hanouty.Checkout.MariaDb
                 !string.Equals(line.ArticleId, line.ArticleId.Trim(), StringComparison.Ordinal) ||
                 line.Quantity <= 0))
                 throw new ArgumentException("Basket requires canonical article identities and positive quantities.", nameof(lines));
+            // A repeated live article identity is not a valid basket. Reject it
+            // before opening MariaDB; the posting gate also validates it.
+            var articleIds = new HashSet<string>(StringComparer.Ordinal);
+            if (snapshot.Any(line => !articleIds.Add(line.ArticleId)))
+                throw new ArgumentException("Basket contains duplicate article identities.", nameof(lines));
             using (var connection = LocalConnection(connections))
             {
                 connection.Open();
