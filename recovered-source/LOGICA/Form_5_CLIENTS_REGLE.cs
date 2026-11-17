@@ -3296,68 +3296,52 @@ public class Form_5_CLIENTS_REGLE : Form
 
 	public void _credit()
 	{
-		//IL_00a3: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00aa: Expected Obj, but got Unknown
-		string text = Conversions.ToString(DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_CLIENT"].Value);
-		string text2 = "SELECT SUM(TOTAL_NET)  AS N   FROM TABLE_VENTES_JOURNAL WHERE        ID_CLIENT = '" + text + "'      AND OPERATION = 'CREDIT'   ";
-		string text3 = "SELECT SUM(TOTAL_NET)  AS N   FROM TABLE_VENTES_JOURNAL WHERE        ID_CLIENT = '" + text + "'      AND OPERATION = 'RETOUR CREDIT'    ";
-		string text4 = "SELECT CREDIT_INITIAL  AS N   FROM TABLE_CLIENTS        WHERE        ID_CLIENT = '" + text + "'         ";
-		string text5 = "SELECT SUM(MONTANT)    AS N   FROM TABLE_CLIENTS_REGLE  WHERE        ID_CLIENT = '" + text + "'           ";
+		_total_credit = 0m;
+		string clientId = Conversions.ToString(DataGridView1.CurrentRow.Cells["ID_CLIENT"].Value);
 		try
 		{
 			if (Module1.cn_SQL.State != ConnectionState.Open)
 			{
 				Module1.cn_SQL.Open();
 			}
-			MySqlCommand val = new MySqlCommand();
-			val.Connection = Module1.cn_SQL;
-			MySqlCommand val2 = val;
-			try
+			using (MySqlCommand command = CreateClientCreditCommand(clientId))
+			using (MySqlDataReader reader = command.ExecuteReader())
 			{
-				val2.CommandText = " ( " + text2 + " )       UNION ALL         ( " + text3 + " )        UNION ALL     ( " + text4 + " )      UNION ALL     ( " + text5 + " )         ";
-				MySqlDataReader val3 = val2.ExecuteReader();
-				try
+				if (reader.Read())
 				{
-					List<string> list = new List<string>();
-					while (val3.Read())
-					{
-						list.Add(Information.IsDBNull(RuntimeHelpers.GetObjectValue(val3[0])) ? "0" : val3[0].ToString());
-					}
-					if (list.Count >= 4)
-					{
-						decimal d = Conversions.ToDecimal(list[0]);
-						decimal d2 = Conversions.ToDecimal(list[1]);
-						decimal d3 = Conversions.ToDecimal(list[2]);
-						decimal d4 = Conversions.ToDecimal(list[3]);
-						_total_credit = LOGICA.Domain.ClientCreditBalance.Calculate(d, d2, d3, d4);
-					}
-					else
-					{
-						_total_credit = 0m;
-					}
+					_total_credit = LOGICA.Domain.ClientCreditBalance.Calculate(
+						ReadCreditAmount(reader, 0), ReadCreditAmount(reader, 1),
+						ReadCreditAmount(reader, 2), ReadCreditAmount(reader, 3));
 				}
-				finally
-				{
-					((IDisposable)val3)?.Dispose();
-				}
-				val2.Parameters.Clear();
-			}
-			finally
-			{
-				((IDisposable)val2)?.Dispose();
 			}
 		}
 		catch (Exception ex)
 		{
-			ProjectData.SetProjectError(ex);
-			Exception ex2 = ex;
-			Interaction.MsgBox("Erreur : " + ex2.Message);
-			ProjectData.ClearProjectError();
+			Interaction.MsgBox("Erreur : " + ex.Message);
 		}
 		finally
 		{
 			Module1.cn_SQL.Close();
 		}
+	}
+
+	private static MySqlCommand CreateClientCreditCommand(string clientId)
+	{
+		var command = new MySqlCommand(@"
+			SELECT
+				(SELECT SUM(TOTAL_NET) FROM TABLE_VENTES_JOURNAL WHERE ID_CLIENT = @client AND OPERATION = 'CREDIT'),
+				(SELECT SUM(TOTAL_NET) FROM TABLE_VENTES_JOURNAL WHERE ID_CLIENT = @client AND OPERATION = 'RETOUR CREDIT'),
+				CREDIT_INITIAL,
+				(SELECT SUM(MONTANT) FROM TABLE_CLIENTS_REGLE WHERE ID_CLIENT = @client)
+			FROM TABLE_CLIENTS
+			WHERE ID_CLIENT = @client", Module1.cn_SQL);
+		command.Parameters.AddWithValue("@client", clientId);
+		return command;
+	}
+
+	private static decimal ReadCreditAmount(MySqlDataReader reader, int index)
+	{
+		return reader.IsDBNull(index) ? 0m : Conversions.ToDecimal(reader.GetValue(index));
 	}
 
 	private void Button24_Click(object sender, EventArgs e)
@@ -3704,34 +3688,39 @@ public class Form_5_CLIENTS_REGLE : Form
 		((Form)MyProject.Forms.Form_5_CLIENTS_LISTE).ShowDialog();
 		if (Operators.CompareString(Button_CLIENT._ID_Button, "", TextCompare: false) != 0)
 		{
-			DataTable dataTable = new DataTable();
-			MySqlDataAdapter val = new MySqlDataAdapter();
-			dataTable.Clear();
-			val = new MySqlDataAdapter("SELECT    SUM(TOTAL_NET)      as N          FROM   TABLE_VENTES_JOURNAL     WHERE          ID_CLIENT  =  '" + Button_CLIENT._ID_Button + "'        AND      OPERATION  =  'CREDIT'          ", Module1.cn_SQL);
-			((DbDataAdapter)(object)val).Fill(dataTable);
-			decimal num = 0m;
-			num = ((dataTable.Rows[0]["N"] != DBNull.Value) ? Conversions.ToDecimal(Strings.FormatNumber(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"]))) : Conversions.ToDecimal(Strings.FormatNumber(0)));
-			Label_CREDIT.Text = Conversions.ToString(num);
-			dataTable.Clear();
-			val = new MySqlDataAdapter("SELECT    SUM(TOTAL_NET)      as N          FROM   TABLE_VENTES_JOURNAL     WHERE          ID_CLIENT  =  '" + Button_CLIENT._ID_Button + "'       AND    OPERATION  =  'RETOUR CREDIT'        ", Module1.cn_SQL);
-			((DbDataAdapter)(object)val).Fill(dataTable);
-			decimal num2 = 0m;
-			num2 = ((dataTable.Rows[0]["N"] != DBNull.Value) ? Conversions.ToDecimal(Strings.FormatNumber(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"]))) : Conversions.ToDecimal(Strings.FormatNumber(0)));
-			Label_RETOUR_CREDIT.Text = Conversions.ToString(num2);
-			dataTable.Clear();
-			val = new MySqlDataAdapter("SELECT    CREDIT_INITIAL     as N          FROM   TABLE_CLIENTS     WHERE          ID_CLIENT  =  '" + Button_CLIENT._ID_Button + "'             ", Module1.cn_SQL);
-			((DbDataAdapter)(object)val).Fill(dataTable);
-			decimal num3 = 0m;
-			num3 = ((dataTable.Rows[0]["N"] != DBNull.Value) ? Conversions.ToDecimal(Strings.FormatNumber(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"]))) : Conversions.ToDecimal(Strings.FormatNumber(0)));
-			Label_CREDIT_INITIAL.Text = Conversions.ToString(num3);
-			dataTable.Clear();
-			val = new MySqlDataAdapter("select    SUM(MONTANT)      as N           from   TABLE_CLIENTS_REGLE       WHERE         ID_CLIENT  =  '" + Button_CLIENT._ID_Button + "'                 ", Module1.cn_SQL);
-			((DbDataAdapter)(object)val).Fill(dataTable);
-			decimal num4 = 0m;
-			num4 = ((dataTable.Rows[0]["N"] != DBNull.Value) ? Conversions.ToDecimal(Strings.FormatNumber(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"]))) : Conversions.ToDecimal(Strings.FormatNumber(0)));
-			Label_REGLE_CLIENT.Text = Conversions.ToString(num4);
-			Text_CREDIT.Text = Conversions.ToString(LOGICA.Domain.ClientCreditBalance.Calculate(num, num2, num3, num4)) + " DH";
+			using (MySqlCommand command = CreateClientCreditCommand(Button_CLIENT._ID_Button))
+			using (var adapter = new MySqlDataAdapter(command))
+			using (var balances = new DataTable())
+			{
+				adapter.Fill(balances);
+				if (balances.Rows.Count == 0)
+				{
+					Label_CREDIT.Text = "";
+					Label_RETOUR_CREDIT.Text = "";
+					Label_CREDIT_INITIAL.Text = "";
+					Label_REGLE_CLIENT.Text = "";
+					Text_CREDIT.Text = "";
+					return;
+				}
+
+				DataRow balance = balances.Rows[0];
+				decimal credit = ReadDisplayedCreditAmount(balance, 0);
+				decimal returns = ReadDisplayedCreditAmount(balance, 1);
+				decimal opening = ReadDisplayedCreditAmount(balance, 2);
+				decimal payments = ReadDisplayedCreditAmount(balance, 3);
+				Label_CREDIT.Text = Conversions.ToString(credit);
+				Label_RETOUR_CREDIT.Text = Conversions.ToString(returns);
+				Label_CREDIT_INITIAL.Text = Conversions.ToString(opening);
+				Label_REGLE_CLIENT.Text = Conversions.ToString(payments);
+				Text_CREDIT.Text = Conversions.ToString(
+					LOGICA.Domain.ClientCreditBalance.Calculate(credit, returns, opening, payments)) + " DH";
+			}
 		}
+	}
+
+	private static decimal ReadDisplayedCreditAmount(DataRow row, int index)
+	{
+		return Conversions.ToDecimal(Strings.FormatNumber(row.IsNull(index) ? 0 : row[index]));
 	}
 
 	private void Text_FIND_TextChanged(object sender, EventArgs e)
