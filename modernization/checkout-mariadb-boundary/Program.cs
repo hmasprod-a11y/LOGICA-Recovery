@@ -516,7 +516,7 @@ namespace LOGICA.Infrastructure.Checkout
                     NewConnection, "other-cashier", () => "1234"));
             // Session reauthorization must reject control characters before
             // opening MariaDB or reading the transient cashier PIN.
-            foreach (var invalidCashier in new[] { "O\\nNeil", "O\\tNeil", "O\\0Neil" })
+            foreach (var invalidCashier in new[] { "O\nNeil", "O\tNeil", "O\0Neil" })
             {
                 bool connectionOpened = false;
                 bool pinRead = false;
@@ -1086,7 +1086,7 @@ namespace LOGICA.Infrastructure.Checkout
                 "Host lookup must expose only the exact persisted full cash ticket and amount.");
             // Control characters in a pasted receipt must never reach SQL lookup.
             // Even parameterized SQL must not expose a misleading return candidate.
-            foreach (var invalidReceipt in new[] { "multi-original\\n", "multi\\toriginal", "multi-original\\0" })
+            foreach (var invalidReceipt in new[] { "multi-original\n", "multi\toriginal", "multi-original\0" })
             {
                 bool connectionOpened = false;
                 var invalidCandidates = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
