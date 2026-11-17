@@ -36,6 +36,32 @@ function Stop-HanoutyTestDatabase {
     }
 }
 
+function Assert-HanoutyExtraction {
+    param([string]$Directory, $Acceptance)
+
+    $launcher = Join-Path $Directory 'Hanouty.Desktop.Bootstrap.exe'
+    $manifestPath = Join-Path $Directory 'HANOUTY-MANIFEST.json'
+    if (-not (Test-Path -LiteralPath $launcher -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        throw 'The extracted financial package is missing its executable or manifest.'
+    }
+    if ((Get-FileHash -LiteralPath $launcher -Algorithm SHA256).Hash -ine $Acceptance.ExtractedExeSha256) {
+        throw 'The extracted executable does not match the accepted package.'
+    }
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    if ($manifest.mode -ne 'financial' -or $manifest.financialAcceptance -ne $true -or
+        $manifest.acceptanceSha -cne $Acceptance.SourceSha) {
+        throw 'The extracted package does not match the financial acceptance record.'
+    }
+    foreach ($file in $manifest.files) {
+        $path = Join-Path $Directory ([string]$file.file)
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine [string]$file.sha256) {
+            throw "Package integrity check failed for $($file.file)."
+        }
+    }
+}
+
 function Test-HanoutyBackupRestore {
     $dump = Join-Path $sessionRoot 'logica-ci-backup.sql'
     $connection = @('--host=127.0.0.1', "--port=$port", '--user=root', "--password=$dbPassword")
@@ -90,25 +116,24 @@ try {
 
     if (Test-Path -LiteralPath $appDir) {
         $ownedMarker = Join-Path $appDir '.hanouty-test-package'
-        if (-not (Test-Path -LiteralPath $ownedMarker -PathType Leaf) -or
-            -not (Test-Path -LiteralPath $exe -PathType Leaf)) {
-            throw "The existing extraction folder is incomplete or not owned by this test bundle: $appDir"
+        if (-not (Test-Path -LiteralPath $ownedMarker -PathType Leaf)) {
+            throw "The existing extraction folder is not owned by this test bundle: $appDir"
         }
+        Assert-HanoutyExtraction -Directory $appDir -Acceptance $acceptedPackage
     } else {
-        New-Item -ItemType Directory -Path $appDir -Force | Out-Null
-        Expand-Archive -LiteralPath $appZip -DestinationPath $appDir -Force
-        Set-Content -LiteralPath (Join-Path $appDir '.hanouty-test-package') -Value 'This folder is extracted by the bundled test launcher.' -Encoding UTF8
-    }
-    if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Hanouty cashier executable was not found in the package.' }
-    $manifestPath = Join-Path $appDir 'HANOUTY-MANIFEST.json'
-    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'The package manifest is missing.' }
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    if ($manifest.mode -ne 'financial') { throw 'This bundle does not contain the financial WPF package.' }
-    foreach ($file in $manifest.files) {
-        $path = Join-Path $appDir ([string]$file.file)
-        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
-            (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -cne [string]$file.sha256) {
-            throw "Package integrity check failed for $($file.file)."
+        # Publish the application directory only after extraction and integrity checks succeed.
+        $staging = Join-Path $bundle ('.hanouty-extract-' + [Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $staging | Out-Null
+        try {
+            Expand-Archive -LiteralPath $appZip -DestinationPath $staging
+            Assert-HanoutyExtraction -Directory $staging -Acceptance $acceptedPackage
+            Set-Content -LiteralPath (Join-Path $staging '.hanouty-test-package') -Value 'This folder is extracted by the bundled test launcher.' -Encoding UTF8
+            [IO.Directory]::Move($staging, $appDir)
+        } finally {
+            if ((Split-Path -Parent ([IO.Path]::GetFullPath($staging))) -eq [IO.Path]::GetFullPath($bundle) -and
+                (Test-Path -LiteralPath $staging -PathType Container)) {
+                Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 
