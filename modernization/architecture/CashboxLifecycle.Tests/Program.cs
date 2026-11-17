@@ -190,11 +190,11 @@ MustThrow(() => CashboxJournalReplay.VerifyCloseExact(
     }, 27m));
 
 
-// Same total and row count can conceal compensating durable amount changes.
-// Exact verification must reject them rather than accept a matching cash balance.
+// Card amounts do not affect expected physical cash: a changed card amount can
+// preserve the cash balance and row count but must still fail exact verification.
 var offsetRows = new[]
 {
-    new CashboxEntry("durable-sale", CashboxEntryKind.SaleCash, 10m),
+    new CashboxEntry("durable-sale", CashboxEntryKind.SaleCash, 9m),
     new CashboxEntry("durable-card", CashboxEntryKind.SaleCard, 5m)
 };
 MustThrow(() => CashboxJournalReplay.VerifyCloseExact(
