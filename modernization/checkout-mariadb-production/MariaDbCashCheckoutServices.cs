@@ -80,17 +80,7 @@ namespace Hanouty.Checkout.MariaDb
                                     connection, transaction, saleId);
                                 // A ticket that cannot fit the whole-unit WPF return
                                 // contract must not be offered as returnable.
-                                if (lines.Any(line => line.Quantity <= 0 ||
-                        string.IsNullOrWhiteSpace(line.ArticleId) ||
-                        line.ArticleId.Length > 64 ||
-                        !string.Equals(line.ArticleId, line.ArticleId.Trim(), StringComparison.Ordinal) ||
-                        line.ArticleId.Any(char.IsControl)) ||
-                        lines.Select(line => line.ArticleId).Distinct(StringComparer.Ordinal).Count() != lines.Count)
-                        throw new InvalidOperationException("Original sale has invalid or duplicate return lines.");
-                    if (lines.Any(line => line.Quantity != decimal.Truncate(line.Quantity) ||
-                                    line.Quantity < int.MinValue || line.Quantity > int.MaxValue))
-                                    throw new InvalidOperationException(
-                                        "Original sale quantity cannot be represented by the checkout return contract.");
+                                ValidateOriginalReturnLines(lines.Select(line => (line.ArticleId, line.Quantity)).ToArray());
                                 result.Add(new PersistedCashSaleCandidate(saleId,
                                     lines.Sum(line => line.Amount)));
                             }
@@ -157,17 +147,7 @@ namespace Hanouty.Checkout.MariaDb
                         connection, transaction, originalTicketId);
                     // CheckoutBatchLine is the existing whole-unit contract. Never
                     // round or truncate a persisted fractional sale during refund.
-                    if (lines.Any(line => line.Quantity <= 0 ||
-                        string.IsNullOrWhiteSpace(line.ArticleId) ||
-                        line.ArticleId.Length > 64 ||
-                        !string.Equals(line.ArticleId, line.ArticleId.Trim(), StringComparison.Ordinal) ||
-                        line.ArticleId.Any(char.IsControl)) ||
-                        lines.Select(line => line.ArticleId).Distinct(StringComparer.Ordinal).Count() != lines.Count)
-                        throw new InvalidOperationException("Original sale has invalid or duplicate return lines.");
-                    if (lines.Any(line => line.Quantity != decimal.Truncate(line.Quantity) ||
-                        line.Quantity < int.MinValue || line.Quantity > int.MaxValue))
-                        throw new InvalidOperationException(
-                            "Original sale quantity cannot be represented by the checkout return contract.");
+                    ValidateOriginalReturnLines(lines.Select(line => (line.ArticleId, line.Quantity)).ToArray());
                     var amount = lines.Sum(line => line.Amount);
                     var request = new AuthorizedCheckoutRequest(
                         operationId, cashierId, currency, true,
@@ -180,6 +160,24 @@ namespace Hanouty.Checkout.MariaDb
                     return request;
                 }
             }
+        }
+
+        // Candidate discovery and return preparation must reject the same
+        // corrupt legacy lines; posting independently revalidates transactionally.
+        private static void ValidateOriginalReturnLines(
+            IReadOnlyList<(string ArticleId, decimal Quantity)> lines)
+        {
+            if (lines.Any(line => line.Quantity <= 0 ||
+                string.IsNullOrWhiteSpace(line.ArticleId) ||
+                line.ArticleId.Length > 64 ||
+                !string.Equals(line.ArticleId, line.ArticleId.Trim(), StringComparison.Ordinal) ||
+                line.ArticleId.Any(char.IsControl)) ||
+                lines.Select(line => line.ArticleId).Distinct(StringComparer.Ordinal).Count() != lines.Count)
+                throw new InvalidOperationException("Original sale has invalid or duplicate return lines.");
+            if (lines.Any(line => line.Quantity != decimal.Truncate(line.Quantity) ||
+                line.Quantity < int.MinValue || line.Quantity > int.MaxValue))
+                throw new InvalidOperationException(
+                    "Original sale quantity cannot be represented by the checkout return contract.");
         }
 
         private static void RequireInnoDb(MySqlConnection connection,
