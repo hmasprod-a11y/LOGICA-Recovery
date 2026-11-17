@@ -36,7 +36,8 @@ namespace Hanouty.Checkout.MariaDb
         {
             if (connections == null) throw new ArgumentNullException(nameof(connections));
             if (string.IsNullOrWhiteSpace(receiptId) || receiptId.Length > 64 ||
-                !string.Equals(receiptId, receiptId.Trim(), StringComparison.Ordinal))
+                !string.Equals(receiptId, receiptId.Trim(), StringComparison.Ordinal) ||
+                receiptId.Any(char.IsControl))
                 return Array.Empty<PersistedCashSaleCandidate>();
             using (var connection = LocalConnection(connections))
             {
