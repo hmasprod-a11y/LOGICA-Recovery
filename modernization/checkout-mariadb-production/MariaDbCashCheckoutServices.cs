@@ -180,6 +180,11 @@ namespace Hanouty.Checkout.MariaDb
         {
             if (connections == null) throw new ArgumentNullException(nameof(connections));
             if (transientPinProvider == null) throw new ArgumentNullException(nameof(transientPinProvider));
+            // Fail closed before opening a connection or invoking the transient PIN.
+            // A cashier session must never silently resolve a padded or oversized ID.
+            if (string.IsNullOrWhiteSpace(cashierId) || cashierId.Length > 64 ||
+                !string.Equals(cashierId, cashierId.Trim(), StringComparison.Ordinal))
+                throw new ArgumentException("A canonical authenticated cashier identity is required.", nameof(cashierId));
             using (var connection = LocalConnection(connections))
             {
                 connection.Open();
