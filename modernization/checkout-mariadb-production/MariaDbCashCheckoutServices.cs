@@ -81,7 +81,10 @@ namespace Hanouty.Checkout.MariaDb
                                 // A ticket that cannot fit the whole-unit WPF return
                                 // contract must not be offered as returnable.
                                 if (lines.Any(line => line.Quantity <= 0 ||
-                        string.IsNullOrWhiteSpace(line.ArticleId)) ||
+                        string.IsNullOrWhiteSpace(line.ArticleId) ||
+                        line.ArticleId.Length > 64 ||
+                        !string.Equals(line.ArticleId, line.ArticleId.Trim(), StringComparison.Ordinal) ||
+                        line.ArticleId.Any(char.IsControl)) ||
                         lines.Select(line => line.ArticleId).Distinct(StringComparer.Ordinal).Count() != lines.Count)
                         throw new InvalidOperationException("Original sale has invalid or duplicate return lines.");
                     if (lines.Any(line => line.Quantity != decimal.Truncate(line.Quantity) ||
@@ -155,7 +158,10 @@ namespace Hanouty.Checkout.MariaDb
                     // CheckoutBatchLine is the existing whole-unit contract. Never
                     // round or truncate a persisted fractional sale during refund.
                     if (lines.Any(line => line.Quantity <= 0 ||
-                        string.IsNullOrWhiteSpace(line.ArticleId)) ||
+                        string.IsNullOrWhiteSpace(line.ArticleId) ||
+                        line.ArticleId.Length > 64 ||
+                        !string.Equals(line.ArticleId, line.ArticleId.Trim(), StringComparison.Ordinal) ||
+                        line.ArticleId.Any(char.IsControl)) ||
                         lines.Select(line => line.ArticleId).Distinct(StringComparer.Ordinal).Count() != lines.Count)
                         throw new InvalidOperationException("Original sale has invalid or duplicate return lines.");
                     if (lines.Any(line => line.Quantity != decimal.Truncate(line.Quantity) ||
