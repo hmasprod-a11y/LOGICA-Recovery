@@ -63,4 +63,24 @@ if (cardOnly.ExpectedCash != 40m || cardOnly.Close(40m) != 0m)
     throw new Exception("Card movements affected cash reconciliation.");
 MustThrow(() => cardOnly.RecordPersisted(new("after-close", CashboxEntryKind.SaleCash, 1m)));
 
+// A preview must be repeatable and must not close or mutate the open session.
+var previewBox = new CashboxLifecycle();
+previewBox.Open("preview-session", 25m);
+previewBox.RecordPersisted(new("preview-sale", CashboxEntryKind.SaleCash, 15m));
+var preview = previewBox.PreviewClose(37m);
+if (preview.SessionId != "preview-session" || preview.ExpectedCash != 40m ||
+    preview.CountedCash != 37m || preview.Difference != -3m ||
+    previewBox.Phase != CashboxPhase.Open || previewBox.Entries.Count != 1 ||
+    previewBox.ExpectedCash != 40m)
+    throw new Exception("Preview changed the session or returned an incorrect variance.");
+if (previewBox.Close(37m) != preview.Difference)
+    throw new Exception("Close and preview disagreed.");
+MustThrow(() => previewBox.PreviewClose(37m));
+var unknownPreview = new CashboxLifecycle();
+unknownPreview.Open("unknown-preview", 0m);
+unknownPreview.MarkOutcomeUnknown();
+MustThrow(() => unknownPreview.PreviewClose(0m));
+if (unknownPreview.Phase != CashboxPhase.ReconciliationRequired)
+    throw new Exception("Preview bypassed the journal lock.");
+
 Console.WriteLine("CashboxLifecycle isolated assertions passed.");
