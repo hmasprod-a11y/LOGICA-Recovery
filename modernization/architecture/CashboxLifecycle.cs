@@ -15,6 +15,8 @@ public enum CashboxEntryKind
 
 public sealed record CashboxEntry(string OperationId, CashboxEntryKind Kind, decimal Amount);
 
+public sealed record CashboxClosePreview(string SessionId, decimal ExpectedCash, decimal CountedCash, decimal Difference);
+
 public sealed class CashboxLifecycle
 {
     private readonly HashSet<string> _operations = new(StringComparer.Ordinal);
@@ -92,7 +94,8 @@ public sealed class CashboxLifecycle
         Phase = CashboxPhase.Open;
     }
 
-    public decimal Close(decimal countedCash)
+    // Read-only close preview for the Host/UI; never changes the session state.
+    public CashboxClosePreview PreviewClose(decimal countedCash)
     {
         if (Phase != CashboxPhase.Open)
             throw new InvalidOperationException("Cashbox cannot close while outcomes are unresolved.");
@@ -100,8 +103,14 @@ public sealed class CashboxLifecycle
             throw new ArgumentOutOfRangeException(nameof(countedCash));
         // Overflow must not silently corrupt the closing variance or close the session.
         var difference = checked(countedCash - ExpectedCash);
+        return new CashboxClosePreview(_sessionId!, ExpectedCash, countedCash, difference);
+    }
+
+    public decimal Close(decimal countedCash)
+    {
+        var preview = PreviewClose(countedCash);
         Phase = CashboxPhase.Closed;
         _sessionId = null;
-        return difference;
+        return preview.Difference;
     }
 }
