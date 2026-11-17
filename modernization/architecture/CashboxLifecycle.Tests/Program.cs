@@ -205,4 +205,21 @@ MustThrow(() => CashboxJournalReplay.VerifyCloseExact(
 MustThrow(() => CashboxJournalReplay.VerifyCloseExact(
     durableBox.GetStatus(), durableRows, durableRows, 27m));
 
+
+// A corrupted durable readback must fail closed with a domain rejection,
+// rather than a NullReferenceException or an apparently valid close preview.
+MustThrow(() => CashboxJournalReplay.VerifyCloseExact(
+    durableBox.GetStatus() with { Phase = CashboxPhase.Open },
+    durableRows, new CashboxEntry[] { durableRows[0], null! }, 27m));
+MustThrow(() => CashboxJournalReplay.VerifyCloseExact(
+    durableBox.GetStatus() with { Phase = CashboxPhase.Open },
+    durableRows, new[] { durableRows[0], new CashboxEntry(" ", CashboxEntryKind.SaleCard, 6m) }, 27m));
+try
+{
+    CashboxJournalReplay.VerifyClose(durableBox.GetStatus() with { Phase = CashboxPhase.Open },
+        null!, 27m);
+    throw new Exception("Expected null journal rejection.");
+}
+catch (ArgumentNullException) { }
+
 Console.WriteLine("CashboxLifecycle isolated assertions passed.");
