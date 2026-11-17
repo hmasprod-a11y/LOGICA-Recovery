@@ -3297,7 +3297,12 @@ public class Form_5_CLIENTS_REGLE : Form
 	public void _credit()
 	{
 		_total_credit = 0m;
-		string clientId = Conversions.ToString(DataGridView1.CurrentRow.Cells["ID_CLIENT"].Value);
+		DataGridViewRow selectedRow = DataGridView1.CurrentRow;
+		if (selectedRow == null)
+		{
+			return;
+		}
+		string clientId = Conversions.ToString(selectedRow.Cells["ID_CLIENT"].Value);
 		try
 		{
 			if (Module1.cn_SQL.State != ConnectionState.Open)
@@ -3688,33 +3693,38 @@ public class Form_5_CLIENTS_REGLE : Form
 		((Form)MyProject.Forms.Form_5_CLIENTS_LISTE).ShowDialog();
 		if (Operators.CompareString(Button_CLIENT._ID_Button, "", TextCompare: false) != 0)
 		{
-			using (MySqlCommand command = CreateClientCreditCommand(Button_CLIENT._ID_Button))
-			using (var adapter = new MySqlDataAdapter(command))
-			using (var balances = new DataTable())
-			{
-				adapter.Fill(balances);
-				if (balances.Rows.Count == 0)
-				{
-					Label_CREDIT.Text = "";
-					Label_RETOUR_CREDIT.Text = "";
-					Label_CREDIT_INITIAL.Text = "";
-					Label_REGLE_CLIENT.Text = "";
-					Text_CREDIT.Text = "";
-					return;
-				}
+			RefreshDisplayedClientBalance(Button_CLIENT._ID_Button);
+		}
+	}
 
-				DataRow balance = balances.Rows[0];
-				decimal credit = ReadDisplayedCreditAmount(balance, 0);
-				decimal returns = ReadDisplayedCreditAmount(balance, 1);
-				decimal opening = ReadDisplayedCreditAmount(balance, 2);
-				decimal payments = ReadDisplayedCreditAmount(balance, 3);
-				Label_CREDIT.Text = Conversions.ToString(credit);
-				Label_RETOUR_CREDIT.Text = Conversions.ToString(returns);
-				Label_CREDIT_INITIAL.Text = Conversions.ToString(opening);
-				Label_REGLE_CLIENT.Text = Conversions.ToString(payments);
-				Text_CREDIT.Text = Conversions.ToString(
-					LOGICA.Domain.ClientCreditBalance.Calculate(credit, returns, opening, payments)) + " DH";
+	private void RefreshDisplayedClientBalance(string clientId)
+	{
+		using (MySqlCommand command = CreateClientCreditCommand(clientId))
+		using (var adapter = new MySqlDataAdapter(command))
+		using (var balances = new DataTable())
+		{
+			adapter.Fill(balances);
+			if (balances.Rows.Count == 0)
+			{
+				Label_CREDIT.Text = "";
+				Label_RETOUR_CREDIT.Text = "";
+				Label_CREDIT_INITIAL.Text = "";
+				Label_REGLE_CLIENT.Text = "";
+				Text_CREDIT.Text = "";
+				return;
 			}
+
+			DataRow balance = balances.Rows[0];
+			decimal credit = ReadDisplayedCreditAmount(balance, 0);
+			decimal returns = ReadDisplayedCreditAmount(balance, 1);
+			decimal opening = ReadDisplayedCreditAmount(balance, 2);
+			decimal payments = ReadDisplayedCreditAmount(balance, 3);
+			Label_CREDIT.Text = Conversions.ToString(credit);
+			Label_RETOUR_CREDIT.Text = Conversions.ToString(returns);
+			Label_CREDIT_INITIAL.Text = Conversions.ToString(opening);
+			Label_REGLE_CLIENT.Text = Conversions.ToString(payments);
+			Text_CREDIT.Text = Conversions.ToString(
+				LOGICA.Domain.ClientCreditBalance.Calculate(credit, returns, opening, payments)) + " DH";
 		}
 	}
 
