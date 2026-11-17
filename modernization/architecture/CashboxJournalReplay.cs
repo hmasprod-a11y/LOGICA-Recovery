@@ -56,6 +56,9 @@ public static class CashboxJournalReplay
         }
 
         var persisted = new List<CashboxEntry>(persistedEntries);
+        foreach (var entry in persisted)
+            if (entry is null || string.IsNullOrWhiteSpace(entry.OperationId))
+                throw new InvalidOperationException("Invalid durable operation identity.");
         var preview = VerifyClose(live, persisted, countedCash);
         if (projected.Count != persisted.Count)
             throw new InvalidOperationException("Journal operation identities differ.");
