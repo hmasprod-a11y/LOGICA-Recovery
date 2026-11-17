@@ -158,4 +158,28 @@ MustThrow(() => CashboxJournalReplay.VerifyClose(durableBox.GetStatus(),
 durableBox.MarkOutcomeUnknown();
 MustThrow(() => CashboxJournalReplay.VerifyClose(durableBox.GetStatus(), durableRows, 27m));
 
+
+// Identical totals and row counts must not hide substituted durable operation IDs.
+var exact = CashboxJournalReplay.VerifyCloseExact(durableBox.GetStatus() with
+{
+    Phase = CashboxPhase.Open
+}, durableRows, durableRows, 27m);
+if (exact.ExpectedCash != 29m) throw new Exception("Exact replay failed.");
+MustThrow(() => CashboxJournalReplay.VerifyCloseExact(
+    durableBox.GetStatus() with { Phase = CashboxPhase.Open },
+    durableRows,
+    new[]
+    {
+        new CashboxEntry("substituted-sale", CashboxEntryKind.SaleCash, 9m),
+        durableRows[1]
+    }, 27m));
+MustThrow(() => CashboxJournalReplay.VerifyCloseExact(
+    durableBox.GetStatus() with { Phase = CashboxPhase.Open },
+    durableRows,
+    new[]
+    {
+        new CashboxEntry("durable-sale", CashboxEntryKind.CustomerSettlementCash, 9m),
+        durableRows[1]
+    }, 27m));
+
 Console.WriteLine("CashboxLifecycle isolated assertions passed.");
