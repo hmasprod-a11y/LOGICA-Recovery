@@ -222,4 +222,25 @@ try
 }
 catch (ArgumentNullException) { }
 
+// Verified close must refuse a substituted card row even when cash totals agree.
+var verifiedCloseBox = new CashboxLifecycle();
+verifiedCloseBox.Open("verified-close-session", 30m);
+verifiedCloseBox.RecordPersisted(new("verified-cash", CashboxEntryKind.SaleCash, 10m));
+verifiedCloseBox.RecordPersisted(new("verified-card", CashboxEntryKind.SaleCard, 7m));
+MustThrow(() => verifiedCloseBox.CloseVerified(new[]
+{
+    new CashboxEntry("verified-cash", CashboxEntryKind.SaleCash, 10m),
+    new CashboxEntry("verified-card", CashboxEntryKind.SaleCard, 8m)
+}, 39m));
+if (verifiedCloseBox.Phase != CashboxPhase.Open || verifiedCloseBox.ExpectedCash != 40m)
+    throw new Exception("Rejected verified close changed live cashbox state.");
+var verifiedClose = verifiedCloseBox.CloseVerified(new[]
+{
+    new CashboxEntry("verified-card", CashboxEntryKind.SaleCard, 7m),
+    new CashboxEntry("verified-cash", CashboxEntryKind.SaleCash, 10m)
+}, 39m);
+if (verifiedClose.Difference != -1m || verifiedCloseBox.Phase != CashboxPhase.Closed)
+    throw new Exception("Verified close did not return the durable reconciliation variance.");
+MustThrow(() => verifiedCloseBox.CloseVerified(Array.Empty<CashboxEntry>(), 39m));
+
 Console.WriteLine("CashboxLifecycle isolated assertions passed.");
