@@ -58,7 +58,8 @@ internal sealed class StockIssueDialog : Window
         var movementColumns = new[]
         {
             new DataGridTextColumn { Header = "Stock avant", Binding = new Binding(nameof(StockIssueValidation.Movement.StockBefore)) },
-            new DataGridTextColumn { Header = "Stock après", Binding = new Binding(nameof(StockIssueValidation.Movement.StockAfter)) }
+            new DataGridTextColumn { Header = "Stock après", Binding = new Binding(nameof(StockIssueValidation.Movement.StockAfter)) },
+            new DataGridTextColumn { Header = "Écart", Binding = new Binding(nameof(StockIssueValidation.Movement.StockChange)) }
         };
         void Reset()
         {

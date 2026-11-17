@@ -44,7 +44,7 @@ Execute(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "migration.sql")
 var legacy = service.ReadHistory("BS-OLD").Single();
 Require(legacy.ArticleId == "A" && legacy.Quantity == 0.50m && legacy.Article == "Verre" &&
     legacy.Actor == "" && legacy.Reason == "" && legacy.StockBefore is null &&
-    legacy.StockAfter is null && legacy.ValidatedUtc is null,
+    legacy.StockAfter is null && legacy.StockChange is null && legacy.ValidatedUtc is null,
     "Legacy movement was lost or unavailable details were fabricated.");
 Require(service.ReadHistory("bs-old").Length == 0, "History matched a different document identity.");
 
@@ -84,6 +84,7 @@ Require(movements[0].Actor == "Manager" && movements[0].Reason == "PERTE · Modi
     result.Movements[0].ArticleId == "A" && result.Movements[1].ArticleId == "B" &&
     movements[0].ArticleId == "A" && movements[1].ArticleId == "B" && movements[1].Code == "001" &&
     movements[1].StockBefore == 4.125m && movements[1].StockAfter == 3.625m &&
+    movements[0].StockChange == -2.25m && movements[1].StockChange == -0.50m &&
     movements[0].ValidatedUtc?.Kind == DateTimeKind.Utc && movements[0].ValidatedUtc == movements[1].ValidatedUtc,
     "Persistent movement evidence differs from the committed document.");
 Reject<InvalidOperationException>(() => service.Validate("BS-OK", reviewed, "Manager", "1234"));

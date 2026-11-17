@@ -9,7 +9,10 @@ internal sealed class StockIssueValidation(string connectionString)
 
     internal sealed record Document(string Type, string Notes, Line[] Lines, string SupplierId, string SupplierName, decimal? PurchaseTotal);
     internal sealed record Movement(string Reference, string Actor, string Reason, string ArticleId, string Code,
-        string Article, decimal Quantity, decimal? StockBefore, decimal? StockAfter, DateTime? ValidatedUtc);
+        string Article, decimal Quantity, decimal? StockBefore, decimal? StockAfter, DateTime? ValidatedUtc)
+    {
+        public decimal? StockChange => StockAfter - StockBefore;
+    }
     internal sealed record ValidationResult(Movement[] Movements, bool HistorySaved);
 
     internal sealed record ArticleChoice(string Id, string Code, string Name)
