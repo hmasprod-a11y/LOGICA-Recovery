@@ -28,7 +28,7 @@ class PosSmoke {
    Sql(connection,"DROP TABLE IF EXISTS TABLE_CLIENTS, TABLE_VENTES_JOURNAL, TABLE_CLIENTS_REGLE");
    Sql(connection,"CREATE TABLE TABLE_CLIENTS (ID_CLIENT VARCHAR(32) PRIMARY KEY, CLIENT VARCHAR(64), CREDIT_INITIAL DECIMAL(14,2)) ENGINE=InnoDB");
    Sql(connection,"CREATE TABLE TABLE_VENTES_JOURNAL (ID_CLIENT VARCHAR(32), OPERATION VARCHAR(24), TOTAL_NET DECIMAL(14,2), DATES DATETIME) ENGINE=InnoDB");
-   Sql(connection,"CREATE TABLE TABLE_CLIENTS_REGLE (ID INT PRIMARY KEY, DATES DATETIME, UTILISATEUR VARCHAR(32), ID_REGLE VARCHAR(64), ID_CLIENT VARCHAR(32), CODE_CLIENT VARCHAR(32), CLIENT VARCHAR(64), MONTANT DECIMAL(14,2), MODE_P VARCHAR(32), NOTES VARCHAR(64), ETAT VARCHAR(16)) ENGINE=InnoDB");
+   Sql(connection,"CREATE TABLE TABLE_CLIENTS_REGLE (ID INT PRIMARY KEY, DATES DATETIME, UTILISATEUR VARCHAR(32), ID_REGLE VARCHAR(64), ID_CLIENT VARCHAR(32), CODE_CLIENT VARCHAR(32), CLIENT VARCHAR(64), MONTANT DECIMAL(14,2), MODE_P VARCHAR(32), NOTES VARCHAR(64), ETAT VARCHAR(16), CLOTURE_CAISSIER VARCHAR(32), CLOTURE_GLOBALE VARCHAR(32)) ENGINE=InnoDB");
    Sql(connection,"INSERT INTO TABLE_CLIENTS VALUES ('CI''CLIENT','CI Customer',20),('OTHER','Other',70),('EMPTY','Empty',NULL)");
    Sql(connection,"INSERT INTO TABLE_VENTES_JOURNAL VALUES ('CI''CLIENT','CREDIT',100,'2026-01-01'),('CI''CLIENT','RETOUR CREDIT',-10,'2026-01-01'),('CI''CLIENT','VENTE',90,'2026-01-01'),('OTHER','CREDIT',950,'2026-01-01')");
    Sql(connection,"INSERT INTO TABLE_CLIENTS_REGLE (ID,ID_CLIENT,MONTANT) VALUES (1,'OTHER',600)");
@@ -116,8 +116,26 @@ class PosSmoke {
      receipt.Invoke(form,null);
      Eq((decimal)receiptBalance.GetValue(form),balances[stage],"receipt balance stage "+stage);
      AssertCustomerCreditStatement(assembly,balances[stage]);
+     connection.Open();
+     try {
+      // Match the account settlement filters used by CashDrawerClosing in WPF.
+      Eq(Scalar(connection,"SELECT COALESCE(SUM(MONTANT),0) FROM TABLE_CLIENTS_REGLE WHERE CLOTURE_CAISSIER IS NULL AND MODE_P='ESPECES' AND BINARY UTILISATEUR=BINARY 'CI register'"),
+         110m-balances[stage],"cashier closing credit receipts stage "+stage);
+     } finally {
+      connection.Close();
+     }
     }
  
+    connection.Open();
+    try {
+     Sql(connection,"UPDATE TABLE_CLIENTS_REGLE SET CLOTURE_CAISSIER='CI_CLOSE' WHERE ID_CLIENT='CI''CLIENT' AND MONTANT=30");
+     Sql(connection,"INSERT INTO TABLE_CLIENTS_REGLE (ID,ID_CLIENT,UTILISATEUR,MONTANT,MODE_P) VALUES (90,'OTHER','CI register',900,'CARTE'),(91,'OTHER','OTHER register',910,'ESPECES')");
+     Eq(Scalar(connection,"SELECT COALESCE(SUM(MONTANT),0) FROM TABLE_CLIENTS_REGLE WHERE CLOTURE_CAISSIER IS NULL AND MODE_P='ESPECES' AND BINARY UTILISATEUR=BINARY 'CI register'"),80m,
+        "cashier closing excludes closed cash receipts, card receipts and another cashier");
+    } finally {
+     connection.Close();
+    }
+
    }
 
    display.Invoke(form,new object[]{"EMPTY"});
