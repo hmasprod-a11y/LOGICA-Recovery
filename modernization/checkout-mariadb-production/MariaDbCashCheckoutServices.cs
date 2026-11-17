@@ -227,6 +227,10 @@ namespace Hanouty.Checkout.MariaDb
             // Reject malformed cashier basket input before touching MariaDB.
             // The commit gate independently revalidates current stock and prices.
             var snapshot = Array.AsReadOnly(lines.ToArray());
+            // Never open MariaDB for an empty cashier basket. A zero-line
+            // preview is not an authorized sale and must not look payable.
+            if (snapshot.Count == 0)
+                throw new ArgumentException("Basket must contain at least one article.", nameof(lines));
             if (snapshot.Any(line => line == null || string.IsNullOrWhiteSpace(line.ArticleId) ||
                 line.ArticleId.Length > 64 ||
                 !string.Equals(line.ArticleId, line.ArticleId.Trim(), StringComparison.Ordinal) ||
