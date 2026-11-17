@@ -80,7 +80,11 @@ namespace Hanouty.Checkout.MariaDb
                                     connection, transaction, saleId);
                                 // A ticket that cannot fit the whole-unit WPF return
                                 // contract must not be offered as returnable.
-                                if (lines.Any(line => line.Quantity != decimal.Truncate(line.Quantity) ||
+                                if (lines.Any(line => line.Quantity <= 0 ||
+                        string.IsNullOrWhiteSpace(line.ArticleId)) ||
+                        lines.Select(line => line.ArticleId).Distinct(StringComparer.Ordinal).Count() != lines.Count)
+                        throw new InvalidOperationException("Original sale has invalid or duplicate return lines.");
+                    if (lines.Any(line => line.Quantity != decimal.Truncate(line.Quantity) ||
                                     line.Quantity < int.MinValue || line.Quantity > int.MaxValue))
                                     throw new InvalidOperationException(
                                         "Original sale quantity cannot be represented by the checkout return contract.");
@@ -150,6 +154,10 @@ namespace Hanouty.Checkout.MariaDb
                         connection, transaction, originalTicketId);
                     // CheckoutBatchLine is the existing whole-unit contract. Never
                     // round or truncate a persisted fractional sale during refund.
+                    if (lines.Any(line => line.Quantity <= 0 ||
+                        string.IsNullOrWhiteSpace(line.ArticleId)) ||
+                        lines.Select(line => line.ArticleId).Distinct(StringComparer.Ordinal).Count() != lines.Count)
+                        throw new InvalidOperationException("Original sale has invalid or duplicate return lines.");
                     if (lines.Any(line => line.Quantity != decimal.Truncate(line.Quantity) ||
                         line.Quantity < int.MinValue || line.Quantity > int.MaxValue))
                         throw new InvalidOperationException(
