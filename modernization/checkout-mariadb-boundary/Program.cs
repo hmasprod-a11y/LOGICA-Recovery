@@ -603,7 +603,22 @@ namespace LOGICA.Infrastructure.Checkout
                     Sql("DELETE FROM TABLE_01");
                     Require(Scalar("SELECT COUNT(*) FROM TABLE_01") == 0, "Cash acceptance must begin with an empty basket.");
                     string operation = "trusted-" + culture;
-                    correct.Commit(TrustedRequest(operation));
+                    var original = TrustedRequest(operation);
+                    var lines = new[] { original.Lines[0] };
+                    var tenders = new[] { original.Payments[0] };
+                    var snapshotPort = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(
+                        () =>
+                        {
+                            // Change the caller's arrays after Commit enters the production port.
+                            lines[0] = new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Second", 1);
+                            tenders[0] = new Hanouty.ArchitectureBridge.CheckoutPayment(
+                                Hanouty.ArchitectureBridge.CheckoutPaymentKind.Card, 6.50m);
+                            return NewConnection();
+                        }, "01", () => "1234");
+                    snapshotPort.Commit(original with { Lines = lines, Payments = tenders });
+                    Require(lines[0].ArticleId == "CSharp-Second" &&
+                        tenders[0].Kind == Hanouty.ArchitectureBridge.CheckoutPaymentKind.Card,
+                        "Fixture must mutate the caller's basket and tender before posting.");
                     Require(Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreateOperationJournal(NewConnection).Lookup(operation) ==
                         Hanouty.ArchitectureBridge.CheckoutOperationOutcome.Persisted && journal.IsPersisted(operation) &&
                         Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='" + operation + "' AND Total_NET=10.50") == 1 &&
