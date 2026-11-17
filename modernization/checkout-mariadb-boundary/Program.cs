@@ -1064,6 +1064,17 @@ namespace LOGICA.Infrastructure.Checkout
             Require(candidates.Count == 1 && candidates[0].SaleId == "multi-original" &&
                 candidates[0].PaidMad == 13.50m,
                 "Host lookup must expose only the exact persisted full cash ticket and amount.");
+            // Control characters in a pasted receipt must never reach SQL lookup.
+            // Even parameterized SQL must not expose a misleading return candidate.
+            foreach (var invalidReceipt in new[] { "multi-original\\n", "multi\\toriginal", "multi-original\\0" })
+            {
+                bool connectionOpened = false;
+                var invalidCandidates = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                    .FindFullCashReturnCandidates(
+                        () => { connectionOpened = true; return NewConnection(); }, invalidReceipt);
+                Require(invalidCandidates.Count == 0 && !connectionOpened,
+                    "Control-character receipt identity must be rejected before MariaDB lookup.");
+            }
             // Legacy fractional journal quantities cannot be posted through the
             // whole-unit WPF return contract. Do not advertise such a ticket.
             Sql("UPDATE TABLE_VENTES_JOURNAL SET Qté=1.5 WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
