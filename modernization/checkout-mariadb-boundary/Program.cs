@@ -1098,10 +1098,10 @@ namespace LOGICA.Infrastructure.Checkout
             // Pasted control characters in any return identity must fail before
             // opening MariaDB or consuming the original sale.
             foreach (var invalid in new[] {
-                (Operation: "return\\n", Cashier: "O'Neil", Original: "multi-original"),
-                (Operation: "return\\0", Cashier: "O'Neil", Original: "multi-original"),
-                (Operation: "return-control", Cashier: "O'\\tNeil", Original: "multi-original"),
-                (Operation: "return-control", Cashier: "O'Neil", Original: "multi-\\toriginal")
+                (Operation: "return\n", Cashier: "O'Neil", Original: "multi-original"),
+                (Operation: "return\0", Cashier: "O'Neil", Original: "multi-original"),
+                (Operation: "return-control", Cashier: "O'\tNeil", Original: "multi-original"),
+                (Operation: "return-control", Cashier: "O'Neil", Original: "multi-\toriginal")
             })
             {
                 bool connectionOpened = false;
