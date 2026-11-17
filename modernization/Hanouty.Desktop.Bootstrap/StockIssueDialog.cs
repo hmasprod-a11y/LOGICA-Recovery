@@ -81,6 +81,8 @@ internal sealed class StockIssueDialog : Window
                 status.Text = string.IsNullOrWhiteSpace(reviewed.Notes)
                     ? reviewed.Type
                     : $"{reviewed.Type} · {reviewed.Notes}";
+                if (reviewed.Type == "AVOIR")
+                    status.Text += $"\nFournisseur : {reviewed.SupplierName} [{reviewed.SupplierId}]";
                 validate.IsEnabled = true;
             }
             catch (Exception ex) when (ex is InvalidOperationException or MySqlException)

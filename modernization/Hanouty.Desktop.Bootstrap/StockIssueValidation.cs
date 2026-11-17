@@ -7,7 +7,7 @@ internal sealed class StockIssueValidation(string connectionString)
 {
     internal sealed record Line(string ArticleId, string Code, string Article, decimal Quantity);
 
-    internal sealed record Document(string Type, string Notes, Line[] Lines);
+    internal sealed record Document(string Type, string Notes, Line[] Lines, string SupplierId, string SupplierName);
     internal sealed record Movement(string Reference, string Actor, string Reason, string ArticleId, string Code,
         string Article, decimal Quantity, decimal? StockBefore, decimal? StockAfter, DateTime? ValidatedUtc);
     internal sealed record ValidationResult(Movement[] Movements, bool HistorySaved);
@@ -131,8 +131,12 @@ internal sealed class StockIssueValidation(string connectionString)
         var document = ReadDocument(connection, transaction, id, true);
         var lines = document.Lines;
         if (!lines.SequenceEqual(reviewedLines) ||
-            (reviewed is not null && (document.Type != reviewed.Type || document.Notes != reviewed.Notes)))
+            (reviewed is not null && (document.Type != reviewed.Type || document.Notes != reviewed.Notes ||
+                document.SupplierId != reviewed.SupplierId || document.SupplierName != reviewed.SupplierName)))
             throw new InvalidOperationException("Le bon a changé. Ouvrez-le de nouveau.");
+        if (document.Type == "AVOIR" && (reviewed is null || string.IsNullOrWhiteSpace(document.SupplierId) ||
+            document.SupplierId == "0" || string.IsNullOrWhiteSpace(document.SupplierName)))
+            throw new InvalidOperationException("Vérifiez le fournisseur de l’avoir avant validation.");
 
         var saveHistory = HasMovementHistory(connection, transaction);
         if (saveHistory)
@@ -262,15 +266,17 @@ internal sealed class StockIssueValidation(string connectionString)
     {
         var lockRows = locked ? " FOR UPDATE" : "";
         using var command = new MySqlCommand(
-            "SELECT ETAT, TYPE, NOTES FROM TABLE_SORTIES_ENTETE WHERE BINARY ID_BS=BINARY @id" + lockRows, connection, transaction);
+            "SELECT ETAT, TYPE, NOTES, CAST(ID_FOURNISSEUR AS CHAR), FOURNISSEUR FROM TABLE_SORTIES_ENTETE WHERE BINARY ID_BS=BINARY @id" + lockRows, connection, transaction);
         command.Parameters.AddWithValue("@id", id);
-        string type, notes;
+        string type, notes, supplierId, supplierName;
         using (var header = command.ExecuteReader())
         {
             if (!header.Read() || header.GetString(0) != "ENREGISTRER")
                 throw new InvalidOperationException("Bon de sortie enregistré introuvable.");
             type = header.IsDBNull(1) ? "" : header.GetString(1);
             notes = header.IsDBNull(2) ? "" : header.GetString(2);
+            supplierId = header.IsDBNull(3) ? "" : header.GetString(3);
+            supplierName = header.IsDBNull(4) ? "" : header.GetString(4);
             if (header.Read())
                 throw new InvalidOperationException("Bon de sortie en double.");
         }
@@ -291,6 +297,6 @@ internal sealed class StockIssueValidation(string connectionString)
         }
         if (lines.Count == 0 || lines.Select(x => x.ArticleId).Distinct(StringComparer.Ordinal).Count() != lines.Count)
             throw new InvalidOperationException("Le bon doit contenir des articles distincts.");
-        return new Document(type, notes, lines.ToArray());
+        return new Document(type, notes, lines.ToArray(), supplierId, supplierName);
     }
 }
