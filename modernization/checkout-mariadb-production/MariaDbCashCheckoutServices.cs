@@ -218,7 +218,14 @@ namespace Hanouty.Checkout.MariaDb
         {
             if (connections == null) throw new ArgumentNullException(nameof(connections));
             if (lines == null) throw new ArgumentNullException(nameof(lines));
+            // Reject malformed cashier basket input before touching MariaDB.
+            // The commit gate independently revalidates current stock and prices.
             var snapshot = Array.AsReadOnly(lines.ToArray());
+            if (snapshot.Any(line => line == null || string.IsNullOrWhiteSpace(line.ArticleId) ||
+                line.ArticleId.Length > 64 ||
+                !string.Equals(line.ArticleId, line.ArticleId.Trim(), StringComparison.Ordinal) ||
+                line.Quantity <= 0))
+                throw new ArgumentException("Basket requires canonical article identities and positive quantities.", nameof(lines));
             using (var connection = LocalConnection(connections))
             {
                 connection.Open();
