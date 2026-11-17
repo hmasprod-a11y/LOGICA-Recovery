@@ -26,11 +26,11 @@ class PosSmoke {
   connection.Open();
   try {
    Sql(connection,"DROP TABLE IF EXISTS TABLE_CLIENTS, TABLE_VENTES_JOURNAL, TABLE_CLIENTS_REGLE");
-   Sql(connection,"CREATE TABLE TABLE_CLIENTS (ID_CLIENT VARCHAR(32) PRIMARY KEY, CREDIT_INITIAL DECIMAL(14,2)) ENGINE=InnoDB");
-   Sql(connection,"CREATE TABLE TABLE_VENTES_JOURNAL (ID_CLIENT VARCHAR(32), OPERATION VARCHAR(24), TOTAL_NET DECIMAL(14,2)) ENGINE=InnoDB");
+   Sql(connection,"CREATE TABLE TABLE_CLIENTS (ID_CLIENT VARCHAR(32) PRIMARY KEY, CLIENT VARCHAR(64), CREDIT_INITIAL DECIMAL(14,2)) ENGINE=InnoDB");
+   Sql(connection,"CREATE TABLE TABLE_VENTES_JOURNAL (ID_CLIENT VARCHAR(32), OPERATION VARCHAR(24), TOTAL_NET DECIMAL(14,2), DATES DATETIME) ENGINE=InnoDB");
    Sql(connection,"CREATE TABLE TABLE_CLIENTS_REGLE (ID INT PRIMARY KEY, DATES DATETIME, UTILISATEUR VARCHAR(32), ID_REGLE VARCHAR(64), ID_CLIENT VARCHAR(32), CODE_CLIENT VARCHAR(32), CLIENT VARCHAR(64), MONTANT DECIMAL(14,2), MODE_P VARCHAR(32), NOTES VARCHAR(64), ETAT VARCHAR(16)) ENGINE=InnoDB");
-   Sql(connection,"INSERT INTO TABLE_CLIENTS VALUES ('CI''CLIENT',20),('OTHER',70),('EMPTY',NULL)");
-   Sql(connection,"INSERT INTO TABLE_VENTES_JOURNAL VALUES ('CI''CLIENT','CREDIT',100),('CI''CLIENT','RETOUR CREDIT',-10),('CI''CLIENT','VENTE',90),('OTHER','CREDIT',950)");
+   Sql(connection,"INSERT INTO TABLE_CLIENTS VALUES ('CI''CLIENT','CI Customer',20),('OTHER','Other',70),('EMPTY','Empty',NULL)");
+   Sql(connection,"INSERT INTO TABLE_VENTES_JOURNAL VALUES ('CI''CLIENT','CREDIT',100,'2026-01-01'),('CI''CLIENT','RETOUR CREDIT',-10,'2026-01-01'),('CI''CLIENT','VENTE',90,'2026-01-01'),('OTHER','CREDIT',950,'2026-01-01')");
    Sql(connection,"INSERT INTO TABLE_CLIENTS_REGLE (ID,ID_CLIENT,MONTANT) VALUES (1,'OTHER',600)");
   } finally {
    connection.Close();
@@ -115,6 +115,7 @@ class PosSmoke {
      Eq(decimal.Parse(((Control)Get(form,"Label_REGLE_CLIENT")).Text),110m-balances[stage],"persisted payments stage "+stage);
      receipt.Invoke(form,null);
      Eq((decimal)receiptBalance.GetValue(form),balances[stage],"receipt balance stage "+stage);
+     AssertCustomerCreditStatement(assembly,balances[stage]);
     }
  
    }
@@ -130,6 +131,24 @@ class PosSmoke {
    grid.Rows.Clear();
    receipt.Invoke(form,null);
    Eq((decimal)receiptBalance.GetValue(form),0m,"receipt lookup without selected journal row");
+  }
+ }
+
+ static void AssertCustomerCreditStatement(Assembly assembly,decimal expected) {
+  var formType=assembly.GetType("LOGICA.Form_5_CLIENTS_ETAT_CREDITS",true);
+  using(var form=(Form)Activator.CreateInstance(formType)) {
+   ((DateTimePicker)Get(form,"DateTime1_FIND")).Value=new DateTime(2000,1,1);
+   ((DateTimePicker)Get(form,"DateTime2_FIND")).Value=DateTime.Today.AddDays(1);
+   var grid=(DataGridView)Get(form,"DataGridView1");
+   grid.AllowUserToAddRows=false;
+   formType.GetMethod("RefreshCreditStatement",Flags).Invoke(form,null);
+   foreach(DataGridViewRow row in grid.Rows) {
+    if(Convert.ToString(row.Cells[0].Value)!="CI'CLIENT")continue;
+    if(expected==0m)throw new Exception("Settled customer should be removed from the outstanding credit statement");
+    Eq(Convert.ToDecimal(row.Cells["RELIQUAT"].Value),expected,"customer credit statement balance");
+    return;
+   }
+   if(expected!=0m)throw new Exception("Customer with outstanding credit is missing from the statement");
   }
  }
 
