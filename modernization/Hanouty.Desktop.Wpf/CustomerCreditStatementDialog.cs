@@ -23,7 +23,8 @@ public sealed class CustomerCreditStatementDialog : Window
     private readonly Func<DateTime, DateTime, IReadOnlyList<CustomerCreditStatementRow>> readStatement;
 
     public CustomerCreditStatementDialog(
-        Func<DateTime, DateTime, IReadOnlyList<CustomerCreditStatementRow>> readStatement)
+        Func<DateTime, DateTime, IReadOnlyList<CustomerCreditStatementRow>> readStatement,
+        IReadOnlyList<string>? paymentModes = null, Func<CustomerSettlementRequest, bool>? submitSettlement = null)
     {
         this.readStatement = readStatement ?? throw new ArgumentNullException(nameof(readStatement));
         Title = "État des crédits clients";
@@ -38,6 +39,19 @@ public sealed class CustomerCreditStatementDialog : Window
         var refresh = new Button { Content = "Afficher", MinWidth = 90 };
         refresh.Click += (_, _) => RefreshStatement();
         filters.Children.Add(refresh);
+        var settle = new Button { Content = "Régler le client sélectionné", Margin = new Thickness(8, 0, 0, 0),
+            IsEnabled = false };
+        grid.SelectionChanged += (_, _) => settle.IsEnabled =
+            grid.SelectedItem is CustomerCreditStatementRow && submitSettlement is not null &&
+            paymentModes is { Count: > 0 };
+        settle.Click += (_, _) =>
+        {
+            if (grid.SelectedItem is not CustomerCreditStatementRow customer ||
+                submitSettlement is null || paymentModes is null) return;
+            var dialog = new CustomerSettlementDialog(customer, paymentModes, submitSettlement) { Owner = this };
+            if (dialog.ShowDialog() == true) RefreshStatement();
+        };
+        filters.Children.Add(settle);
         DockPanel.SetDock(filters, Dock.Top);
         layout.Children.Add(filters);
         DockPanel.SetDock(result, Dock.Bottom);
