@@ -2007,11 +2007,11 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             ALTER TABLE TABLE_VENTES_JOURNAL ADD CLOTURE_GLOBALE VARCHAR(32), ADD CLOTURE_CAISSIER VARCHAR(32);
             ALTER TABLE TABLE_VENTES_ENTETE ADD CLOTURE_GLOBALE VARCHAR(32);
             ALTER TABLE TABLE_VENTES_REGLEMENTS ADD CLOTURE_GLOBALE VARCHAR(32);
-            CREATE TABLE TABLE_DEPENSES (MONTANT DECIMAL(16,3), CLOTURE_GLOBALE VARCHAR(32)) ENGINE=InnoDB;
+            CREATE TABLE TABLE_DEPENSES (ID INT PRIMARY KEY, DATES DATE, HEURE TIME, DEPENSE VARCHAR(128),
+                MONTANT DECIMAL(16,3), CLOTURE_GLOBALE VARCHAR(32)) ENGINE=InnoDB;
             CREATE TABLE TABLE_CLIENTS_REGLE (MONTANT DECIMAL(16,3), MODE_P VARCHAR(32), CLOTURE_GLOBALE VARCHAR(32)) ENGINE=InnoDB;
             CREATE TABLE TABLE_FOURNISSEURS_REGLE (MONTANT DECIMAL(16,3), MODE_P VARCHAR(32), CLOTURE_GLOBALE VARCHAR(32)) ENGINE=InnoDB;
             CREATE TABLE TABLE_POUBELLE (CLOTURE_GLOBALE VARCHAR(32)) ENGINE=InnoDB;
-            INSERT INTO TABLE_DEPENSES VALUES (3,NULL);
             INSERT INTO TABLE_CLIENTS_REGLE VALUES (10,'ESPECES',NULL),(30,'CARTE',NULL);
             INSERT INTO TABLE_FOURNISSEURS_REGLE VALUES (4,'ESPECES',NULL);
             INSERT INTO TABLE_POUBELLE VALUES (NULL);
@@ -2041,7 +2041,6 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             ALTER TABLE TABLE_CLIENTS_REGLE ADD CLOTURE_CAISSIER VARCHAR(32), ADD UTILISATEUR VARCHAR(128);
             ALTER TABLE TABLE_FOURNISSEURS_REGLE ADD CLOTURE_CAISSIER VARCHAR(32), ADD UTILISATEUR VARCHAR(128);
             ALTER TABLE TABLE_POUBELLE ADD CLOTURE_CAISSIER VARCHAR(32), ADD CAISSIER VARCHAR(128);
-            UPDATE TABLE_DEPENSES SET UTILISATEUR='O''Neil';
             UPDATE TABLE_CLIENTS_REGLE SET UTILISATEUR='O''Neil' WHERE MODE_P='ESPECES';
             UPDATE TABLE_FOURNISSEURS_REGLE SET UTILISATEUR='O''Neil';
             UPDATE TABLE_POUBELLE SET CAISSIER='O''Neil';
@@ -2054,6 +2053,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         }
         catch (InvalidOperationException ex) when (ex.Message.StartsWith("Clôturez d’abord", StringComparison.Ordinal)) { }
         Sql(settings, "INSERT INTO TABLE_PASS VALUES ('Test manager','5678','MANAGER',NULL),('Test admin','6789','ADMIN',NULL)");
+        VerifyCashExpense(settings, pin, closing);
         Sql(settings, "UPDATE TABLE_PASS SET CLOTURE='ACCES ADMIN' WHERE ListUser='O''Neil'");
         Require(closing.RequiredApprovalRole("O'Neil", pin) == "ADMIN", "Admin approval was not requested.");
         try
@@ -2105,6 +2105,97 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             throw new InvalidOperationException("Closing replay was accepted.");
         }
         catch (InvalidOperationException ex) when (ex.Message == "Aucune vente ouverte à clôturer.") { }
+    }
+
+    private static void VerifyCashExpense(CatalogueSettings settings, string pin, CashDrawerClosing closing)
+    {
+        Sql(settings, "ALTER TABLE TABLE_PASS ADD DEPENSES VARCHAR(32)");
+        Sql(settings, "UPDATE TABLE_PASS SET DEPENSES='ACCES MANAGER' WHERE ListUser='O''Neil'");
+        try
+        {
+            closing.RecordExpense("O'Neil", pin, "6789", DateTime.Today, "Refus", 3m);
+            throw new InvalidOperationException("An admin PIN bypassed the manager expense grant.");
+        }
+        catch (UnauthorizedAccessException) { }
+
+        Sql(settings, """
+            CREATE TRIGGER refuse_expense BEFORE INSERT ON TABLE_DEPENSES FOR EACH ROW
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='expense test rollback'
+            """);
+        try
+        {
+            closing.RecordExpense("O'Neil", pin, "5678", DateTime.Today, "Rollback", 3m);
+            throw new InvalidOperationException("The injected expense failure was ignored.");
+        }
+        catch (MySqlException ex) when (ex.Message.Contains("expense test rollback", StringComparison.Ordinal)) { }
+        finally { Sql(settings, "DROP TRIGGER refuse_expense"); }
+        Require(Number(settings, "SELECT COUNT(*) FROM TABLE_DEPENSES") == 0, "A rejected expense was recorded.");
+
+        var host = CatalogueHost.CreateCashierWorkstation(settings, "01");
+        host.Window.Show();
+        try
+        {
+            Require(CashierEntry(host, "O'Neil", "01", "0", 0m, pin), "Expense cashier sign-in failed.");
+            var step = 0;
+            Exception? failure = null;
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(75) };
+            static void Click(System.Windows.Controls.Button button) =>
+                button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                var dialog = Application.Current.Windows.Cast<Window>()
+                    .LastOrDefault(window => window.IsVisible && window.Owner == host.Window);
+                try
+                {
+                    Require(dialog is not null, "Expense dialog did not open.");
+                    if (step < 2)
+                    {
+                        var pinBox = Descendants(dialog!).OfType<System.Windows.Controls.PasswordBox>().Single();
+                        pinBox.Password = step++ == 0 ? pin : "5678";
+                        timer.Start();
+                        Click(Descendants(dialog!).OfType<System.Windows.Controls.Button>().Single(button => button.IsDefault));
+                        return;
+                    }
+                    Require(dialog is CashExpenseDialog, "Expense form did not open.");
+                    var form = (System.Windows.Controls.StackPanel)dialog!.Content;
+                    var inputs = form.Children.OfType<System.Windows.Controls.TextBox>().ToArray();
+                    inputs[0].Text = "Transport";
+                    inputs[1].Text = "3,00";
+                    var save = form.Children.OfType<System.Windows.Controls.Button>().Single(button => button.IsDefault);
+                    Click(save);
+                    Click(save);
+                    Require(!save.IsEnabled, "The expense form still permits submitting the same draft.");
+                    step++;
+                    dialog.Close();
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                    dialog?.Close();
+                }
+            };
+            timer.Start();
+            try { Click((System.Windows.Controls.Button)host.Window.FindName("ExpensesButton")); }
+            finally { timer.Stop(); }
+            if (failure is not null) throw new InvalidOperationException("Expense UI acceptance failed.", failure);
+            Require(step == 3 && Number(settings, """
+                SELECT COUNT(*) FROM TABLE_DEPENSES
+                WHERE ID=1 AND UTILISATEUR='O''Neil' AND DEPENSE='Transport' AND MONTANT=3
+                    AND DATES IS NOT NULL AND CLOTURE_CAISSIER IS NULL AND CLOTURE_GLOBALE IS NULL
+                """) == 1 && Number(settings, "SELECT COUNT(*) FROM TABLE_DEPENSES") == 1,
+                "The expense was not recorded exactly once from WPF.");
+        }
+        finally { host.Window.Close(); }
+
+        static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
+        {
+            foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+            {
+                yield return child;
+                foreach (var nested in Descendants(child)) yield return nested;
+            }
+        }
     }
 
     private static void RunCashDrawerFromWindow(CatalogueSettings settings, string pin, bool opening)

@@ -73,6 +73,16 @@ public partial class MainWindow : Window
         }
     }
 
+    private Action? _openExpenses;
+
+    public void ConfigureExpenses(Action openExpenses)
+    {
+        _openExpenses = openExpenses;
+        ExpensesButton.Visibility = Visibility.Visible;
+    }
+
+    private void OpenExpenses_Click(object sender, RoutedEventArgs e) => _openExpenses?.Invoke();
+
     private Action? _openStockIssues;
 
     public void ConfigureStockIssues(Action openStockIssues) => _openStockIssues = openStockIssues;

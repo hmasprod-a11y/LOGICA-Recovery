@@ -370,6 +370,33 @@ public sealed partial record CatalogueHost
             }
             finally { reviewing = false; }
         });
+        window.ConfigureExpenses(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive ||
+                activeCashierId is not { } cashier || binding.Session.PendingCount != 0) return;
+            reviewing = true;
+            try
+            {
+                var pin = window.PromptCashierPin(cashier);
+                if (string.IsNullOrEmpty(pin)) return;
+                var role = cashClosing.RequiredApprovalRole(cashier, pin, expense: true);
+                var approval = role is null ? null : window.PromptCashierPin(role);
+                if (role is not null && string.IsNullOrEmpty(approval)) return;
+                cashClosing.CheckExpenseAccess(cashier, pin, approval);
+                new CashExpenseDialog(cashier,
+                    (date, description, amount) => cashClosing.RecordExpense(cashier, pin, approval, date, description, amount))
+                    { Owner = window }.ShowDialog();
+            }
+            catch (UnauthorizedAccessException)
+            {
+                System.Windows.MessageBox.Show(window, "Dépenses non autorisées pour cet utilisateur.", "Dépenses");
+            }
+            catch (Exception ex) when (ex is MySqlException or InvalidOperationException)
+            {
+                System.Windows.MessageBox.Show(window, "Impossible d’ouvrir les dépenses de caisse.", "Dépenses");
+            }
+            finally { reviewing = false; }
+        });
         window.ConfigureInventory(() =>
         {
             if (!CanChangeContext() || !vm.FinancialSessionActive ||
