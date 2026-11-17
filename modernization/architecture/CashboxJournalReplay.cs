@@ -29,6 +29,7 @@ public static class CashboxJournalReplay
         if (live.Phase != CashboxPhase.Open || string.IsNullOrWhiteSpace(live.SessionId))
             throw new InvalidOperationException("Cashbox is not open for close verification.");
         // Materialize once: database readers may be single-pass enumerables.
+        ArgumentNullException.ThrowIfNull(persistedEntries);
         var rows = new List<CashboxEntry>(persistedEntries);
         var replay = Preview(live.SessionId, live.OpeningCash, rows, countedCash);
         var replayCount = rows.Count;
@@ -60,6 +61,8 @@ public static class CashboxJournalReplay
             throw new InvalidOperationException("Journal operation identities differ.");
         foreach (var entry in persisted)
         {
+            if (entry is null || string.IsNullOrWhiteSpace(entry.OperationId))
+                throw new InvalidOperationException("Invalid durable operation identity.");
             if (!projected.Remove(entry.OperationId, out var expected) ||
                 expected.Kind != entry.Kind || expected.Amount != entry.Amount)
                 throw new InvalidOperationException("Durable journal operation differs from projection.");
