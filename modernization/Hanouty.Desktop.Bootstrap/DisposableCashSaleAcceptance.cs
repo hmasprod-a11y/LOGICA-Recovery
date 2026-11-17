@@ -2242,6 +2242,18 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         Require(rows.Single(row => row.CustomerId == "EMPTY_FIXTURE").Balance == 0m,
             "WPF credit reader did not handle an account without movements.");
 
+        var reversedPeriodRejected = false;
+        try { reader.Read(new DateTime(2026, 2, 1), new DateTime(2026, 1, 1)); }
+        catch (ArgumentException) { reversedPeriodRejected = true; }
+        Require(reversedPeriodRejected, "Customer credit reader accepted a reversed date range.");
+        var singleDay = reader.Read(new DateTime(2026, 1, 2), new DateTime(2026, 1, 2))
+            .Single(row => row.CustomerId == "CREDIT_FIXTURE");
+        Require(singleDay.Balance == 80m, "Credit statement lost the inclusive single-day boundary.");
+        var outside = reader.Read(new DateTime(2026, 2, 1), new DateTime(2026, 2, 28))
+            .Single(row => row.CustomerId == "CREDIT_FIXTURE");
+        Require(outside.Balance == 20m && outside.Payments == 0m && outside.CreditSales == 0m,
+            "Credit statement did not preserve opening credit outside the movement period.");
+
         var dialog = new CustomerCreditStatementDialog(reader.Read);
         dialog.Show();
         try
@@ -2301,6 +2313,24 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             finally { timer.Stop(); }
             if (failure is not null) throw failure;
             Require(opened, "Customer credit statement did not open from its cashier button.");
+            Require(workstation.Window.EndFinancialSession(), "Empty cashier session could not be ended.");
+            var deniedOpened = false;
+            var denialTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(40)
+            };
+            denialTimer.Tick += (_, _) =>
+            {
+                var deniedDialog = Application.Current.Windows.OfType<CustomerCreditStatementDialog>().SingleOrDefault();
+                if (deniedDialog is null) return;
+                deniedOpened = true;
+                deniedDialog.Close();
+            };
+            denialTimer.Start();
+            try { entry.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent)); }
+            finally { denialTimer.Stop(); }
+            Require(!deniedOpened, "Credit statement opened after cashier logout.");
+
         }
         finally { workstation.Window.Close(); }
 
