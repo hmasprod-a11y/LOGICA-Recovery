@@ -25,4 +25,13 @@ if (cashbox.Close(153m) != -2m) throw new Exception("Wrong reconciliation differ
 cashbox.Open("cashier-2/session-2", 0m);
 if (cashbox.ExpectedCash != 0m || cashbox.Entries.Count != 0)
     throw new Exception("New session reused prior cashbox.");
+// An overflowed variance must leave the cashbox open for investigation.
+var extreme = new CashboxLifecycle();
+extreme.Open("overflow-session", 0m);
+extreme.RecordPersisted(new("extreme-return", CashboxEntryKind.ReturnCash, decimal.MaxValue));
+try { extreme.Close(decimal.MaxValue); throw new Exception("Expected overflow rejection."); }
+catch (OverflowException) { }
+if (extreme.Phase != CashboxPhase.Open || extreme.SessionId != "overflow-session")
+    throw new Exception("Overflow closed or reset the cashbox.");
+
 Console.WriteLine("CashboxLifecycle isolated assertions passed.");
