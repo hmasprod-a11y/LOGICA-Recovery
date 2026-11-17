@@ -77,6 +77,12 @@ namespace Hanouty.Checkout.MariaDb
                             {
                                 var lines = CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLines(
                                     connection, transaction, saleId);
+                                // A ticket that cannot fit the whole-unit WPF return
+                                // contract must not be offered as returnable.
+                                if (lines.Any(line => line.Quantity != decimal.Truncate(line.Quantity) ||
+                                    line.Quantity < int.MinValue || line.Quantity > int.MaxValue))
+                                    throw new InvalidOperationException(
+                                        "Original sale quantity cannot be represented by the checkout return contract.");
                                 result.Add(new PersistedCashSaleCandidate(saleId,
                                     lines.Sum(line => line.Amount)));
                             }
