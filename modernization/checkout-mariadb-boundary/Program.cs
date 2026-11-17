@@ -1113,6 +1113,34 @@ namespace LOGICA.Infrastructure.Checkout
             {
                 Sql("UPDATE TABLE_VENTES_JOURNAL SET Qté=2 WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
             }
+            // A persisted article ID with trailing whitespace must not be silently
+            // normalized into a different stock identity during refund preparation.
+            Sql("UPDATE TABLE_VENTES_JOURNAL SET ID_ARTICLE='CSharp-Stock ' WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
+            try
+            {
+                bool malformedCandidateRejected = false;
+                bool malformedPreparationRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .FindFullCashReturnCandidates(NewConnection, "multi-original");
+                }
+                catch (InvalidOperationException) { malformedCandidateRejected = true; }
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .PrepareFullCashReturnRequest(NewConnection, "return-malformed-article", "O'Neil",
+                            "MAD", "multi-original");
+                }
+                catch (InvalidOperationException) { malformedPreparationRejected = true; }
+                Require(malformedCandidateRejected && malformedPreparationRejected &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0,
+                    "Noncanonical persisted article identity must not be offered or prepared for refund.");
+            }
+            finally
+            {
+                Sql("UPDATE TABLE_VENTES_JOURNAL SET ID_ARTICLE='CSharp-Stock' WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock '");
+            }
             // Legacy fractional journal quantities cannot be posted through the
             // whole-unit WPF return contract. Do not advertise such a ticket.
             Sql("UPDATE TABLE_VENTES_JOURNAL SET Qté=1.5 WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
