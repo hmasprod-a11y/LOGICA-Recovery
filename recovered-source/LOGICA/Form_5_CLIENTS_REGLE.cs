@@ -2974,20 +2974,12 @@ public class Form_5_CLIENTS_REGLE : Form
 		((Control)this).ResumeLayout(false);
 	}
 
+	private static bool CanDeleteSettlement =>
+		string.Equals(Module1._USERCATEGORIE, "ADMIN", StringComparison.Ordinal);
+
 	public void FUN_CAT_ACCES()
 	{
-		if (Operators.CompareString(Module1._USERCATEGORIE, "ADMIN", TextCompare: false) == 0)
-		{
-			DataGridView1.Columns["supp"].Visible = true;
-		}
-		else if (Operators.CompareString(Module1._USERCATEGORIE, "MANAGER", TextCompare: false) == 0)
-		{
-			DataGridView1.Columns["supp"].Visible = false;
-		}
-		else if (Operators.CompareString(Module1._USERCATEGORIE, "UTILISATEUR", TextCompare: false) == 0)
-		{
-			DataGridView1.Columns["supp"].Visible = false;
-		}
+		DataGridView1.Columns["supp"].Visible = CanDeleteSettlement;
 	}
 
 	private void Label_TOP_MouseDown(object sender, MouseEventArgs e)
@@ -3240,7 +3232,8 @@ public class Form_5_CLIENTS_REGLE : Form
 		//IL_0235: Expected Obj, but got Unknown
 		try
 		{
-			if (Operators.ConditionalCompareObjectEqual(e.ColumnIndex, Operators.SubtractObject(NewLateBinding.LateGet(sender, null, "ColumnCount", new object[0], null, null, null), 2), TextCompare: false) && (int)MessageBox.Show("Voulez-vous vraiment supprimer ??", "Suppression", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
+			if (e.RowIndex >= 0 && e.RowIndex < DataGridView1.Rows.Count &&
+				e.ColumnIndex == DataGridView1.Columns["supp"].Index && CanDeleteSettlement && (int)MessageBox.Show("Voulez-vous vraiment supprimer ??", "Suppression", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
 			{
 				string right = Conversions.ToString(Operators.ConcatenateObject("SUPPRESION | ", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells[2].Value));
 				File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
