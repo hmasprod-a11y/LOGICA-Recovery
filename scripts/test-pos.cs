@@ -69,27 +69,38 @@ class PosSmoke {
     mode.SelectedIndex=0;
     var save=formType.GetMethod("Button12_Click",Flags);
 
+    SetText(form,"Label_TOP","NOUVEAU");
+    SetText(form,"TextBox_MONTANT","");
+    TryCustomerSettlement(form,save,"MONTANT");
+    AssertRejectedCustomerSettlement(connection,form,settlementRows);
+
+    connection.Open();
+    try {
+     Sql(connection,"CREATE TRIGGER CI_REJECT_CLIENT_SETTLEMENT AFTER INSERT ON TABLE_CLIENTS_REGLE FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='CI_REJECT_CLIENT_SETTLEMENT'");
+    } finally {
+     connection.Close();
+    }
+    try {
+     SetText(form,"TextBox_MONTANT","30");
+     TryCustomerSettlement(form,save,"CI_REJECT_CLIENT_SETTLEMENT");
+     AssertRejectedCustomerSettlement(connection,form,settlementRows);
+    } finally {
+     connection.Open();
+     try {
+      Sql(connection,"DROP TRIGGER IF EXISTS CI_REJECT_CLIENT_SETTLEMENT");
+     } finally {
+      connection.Close();
+     }
+    }
+
     decimal[] payments={0m,30m,80m};
     decimal[] balances={110m,80m,0m};
     for(int stage=0;stage<payments.Length;stage++) {
      if(stage>0) {
       SetText(form,"Label_TOP","NOUVEAU");
       SetText(form,"TextBox_MONTANT",payments[stage].ToString(CultureInfo.CurrentCulture));
-      uint uiThread=GetCurrentThreadId();
-      using(var stop=new ManualResetEvent(false)) {
-       var watcher=new Thread(delegate() {
-        while(!stop.WaitOne(80))DismissInjectedFailure(uiThread);
-       });
-       watcher.IsBackground=true;
-       watcher.Start();
-       try {
-        save.Invoke(form,new object[]{form,EventArgs.Empty});
-        save.Invoke(form,new object[]{form,EventArgs.Empty});
-       } finally {
-        stop.Set();
-        if(!watcher.Join(2000))throw new Exception("Settlement dialog watcher did not stop");
-       }
-      }
+      TryCustomerSettlement(form,save,"Enregistré avec succès");
+      save.Invoke(form,new object[]{form,EventArgs.Empty});
       connection.Open();
       try {
        Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE WHERE ID_CLIENT='CI''CLIENT' AND MODE_P='ESPECES' AND ETAT='VALIDER'"),stage,"exact settlement count after retrying the saved draft");
@@ -120,6 +131,38 @@ class PosSmoke {
    receipt.Invoke(form,null);
    Eq((decimal)receiptBalance.GetValue(form),0m,"receipt lookup without selected journal row");
   }
+ }
+
+ static void TryCustomerSettlement(Form form,MethodInfo save,string expectedDialog) {
+  uint uiThread=GetCurrentThreadId();
+  LastDismissedDialogText=null;
+  using(var stop=new ManualResetEvent(false)) {
+   var watcher=new Thread(delegate() {
+    while(!stop.WaitOne(80))DismissInjectedFailure(uiThread);
+   });
+   watcher.IsBackground=true;
+   watcher.Start();
+   try {
+    save.Invoke(form,new object[]{form,EventArgs.Empty});
+   } finally {
+    stop.Set();
+    if(!watcher.Join(2000))throw new Exception("Settlement dialog watcher did not stop");
+   }
+  }
+  if(LastDismissedDialogText==null || !LastDismissedDialogText.Contains(expectedDialog))
+   throw new Exception("Expected settlement dialog containing '"+expectedDialog+"', observed: "+LastDismissedDialogText);
+ }
+
+ static void AssertRejectedCustomerSettlement(IDbConnection connection,Form form,DataTable settlementRows) {
+  connection.Open();
+  try {
+   Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE"),1m,"rejected payment leaves the settlement journal unchanged");
+  } finally {
+   connection.Close();
+  }
+  Eq(settlementRows.Rows.Count,1m,"rejected payment leaves no pending grid row");
+  if(((Control)Get(form,"Label_TOP")).Text!="NOUVEAU")
+   throw new Exception("Rejected payment must leave the settlement draft open");
  }
 
  static void Basket(Assembly assembly) {
