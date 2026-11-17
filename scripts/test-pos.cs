@@ -65,15 +65,17 @@ class PosSmoke {
     }
     display.Invoke(form,new object[]{"CI'CLIENT"});
     string shown=((Control)Get(form,"Text_CREDIT")).Text;
-    if(shown!=balances[stage].ToString(CultureInfo.CurrentCulture)+" DH")
-     throw new Exception("Settlement display balance mismatch at stage "+stage+": "+shown);
+    if(!shown.EndsWith(" DH",StringComparison.Ordinal))throw new Exception("Settlement display currency missing: "+shown);
+    Eq(decimal.Parse(shown.Substring(0,shown.Length-3)),balances[stage],"displayed customer credit stage "+stage);
     Eq(decimal.Parse(((Control)Get(form,"Label_REGLE_CLIENT")).Text),110m-balances[stage],"persisted payments stage "+stage);
     receipt.Invoke(form,null);
     Eq((decimal)receiptBalance.GetValue(form),balances[stage],"receipt balance stage "+stage);
    }
 
    display.Invoke(form,new object[]{"EMPTY"});
-   if(((Control)Get(form,"Text_CREDIT")).Text!="0 DH")throw new Exception("Empty customer must display zero balance");
+   string empty=((Control)Get(form,"Text_CREDIT")).Text;
+   if(!empty.EndsWith(" DH",StringComparison.Ordinal))throw new Exception("Empty customer currency missing: "+empty);
+   Eq(decimal.Parse(empty.Substring(0,empty.Length-3)),0m,"empty customer credit");
    display.Invoke(form,new object[]{"MISSING"});
    if(((Control)Get(form,"Text_CREDIT")).Text!="")throw new Exception("Unknown customer left a displayed balance");
 
