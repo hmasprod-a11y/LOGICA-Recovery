@@ -6,6 +6,19 @@ namespace Hanouty.Desktop.Wpf;
 
 public partial class MainWindow : Window
 {
+    private Func<DateTime, DateTime, IReadOnlyList<CustomerCreditStatementRow>>? _readCustomerCreditStatement;
+
+    public void ConfigureCustomerCreditStatement(
+        Func<DateTime, DateTime, IReadOnlyList<CustomerCreditStatementRow>> readStatement) =>
+        _readCustomerCreditStatement = readStatement;
+
+    private void OpenCustomerCreditStatement_Click(object sender, RoutedEventArgs e)
+    {
+        if (_readCustomerCreditStatement is null || DataContext is not CatalogueViewModel vm ||
+            !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain) return;
+        new CustomerCreditStatementDialog(_readCustomerCreditStatement) { Owner = this }.ShowDialog();
+    }
+
     private Func<decimal, bool, bool>? _closeCashDrawer;
     private Func<decimal, bool>? _setOpeningCash;
 
