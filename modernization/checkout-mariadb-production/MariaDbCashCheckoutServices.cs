@@ -106,12 +106,17 @@ namespace Hanouty.Checkout.MariaDb
                     RequireInnoDb(connection, transaction, "hanouty_cash_return_consumption");
                     using (var header = new MySqlCommand(
                         "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE " +
-                        "WHERE BINARY ID_TICKET=BINARY @ticket AND BINARY OPERATION=BINARY 'VENTE' FOR UPDATE",
+                        "WHERE BINARY ID_TICKET=BINARY @ticket AND BINARY OPERATION=BINARY 'VENTE' LIMIT 2 FOR UPDATE",
                         connection, transaction))
                     {
                         header.Parameters.AddWithValue("@ticket", originalTicketId);
-                        if (header.ExecuteScalar() is null)
-                            throw new InvalidOperationException("Persisted original cash sale was not found.");
+                        using (var reader = header.ExecuteReader())
+                        {
+                            if (!reader.Read() || reader.IsDBNull(0))
+                                throw new InvalidOperationException("Persisted original cash sale was not found.");
+                            if (reader.Read())
+                                throw new InvalidOperationException("Original cash ticket identity is ambiguous.");
+                        }
                     }
                     using (var claim = new MySqlCommand(
                         "SELECT COUNT(*) FROM hanouty_cash_return_consumption " +
