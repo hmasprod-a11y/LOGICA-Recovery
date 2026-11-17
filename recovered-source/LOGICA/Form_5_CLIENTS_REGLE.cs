@@ -3233,16 +3233,33 @@ public class Form_5_CLIENTS_REGLE : Form
 		try
 		{
 			if (e.RowIndex >= 0 && e.RowIndex < DataGridView1.Rows.Count &&
-				e.ColumnIndex == DataGridView1.Columns["supp"].Index && CanDeleteSettlement && (int)MessageBox.Show("Voulez-vous vraiment supprimer ??", "Suppression", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
+				e.ColumnIndex == DataGridView1.Columns["supp"].Index && CanDeleteSettlement &&
+				DataGridView1.Rows[e.RowIndex].DataBoundItem is DataRowView clickedSettlement && (int)MessageBox.Show("Voulez-vous vraiment supprimer ??", "Suppression", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
 			{
-				string right = Conversions.ToString(Operators.ConcatenateObject("SUPPRESION | ", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells[2].Value));
+				DataRow row = clickedSettlement.Row;
+				if (!CanDeleteSettlement || row.RowState != DataRowState.Unchanged || row.Table != DT)
+				{
+					return;
+				}
+				string right = Conversions.ToString(Operators.ConcatenateObject("SUPPRESION | ", row["ID_REGLE"]));
 				File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
-				int position = ((ContainerControl)this).BindingContext[(object)DT].Position;
-				DT.Rows[position].Delete();
-				MySqlCommandBuilder val = new MySqlCommandBuilder(DA);
-				((DbDataAdapter)(object)DA).Update(DT);
-				DT.AcceptChanges();
-				((ContainerControl)this).BindingContext[(object)DT].Position = position;
+				row.Delete();
+				try
+				{
+					using var builder = new MySqlCommandBuilder(DA);
+					if (((DbDataAdapter)(object)DA).Update(new[] { row }) != 1)
+					{
+						throw new InvalidOperationException("Le règlement client n’a pas été supprimé.");
+					}
+				}
+				catch
+				{
+					if (row.RowState == DataRowState.Deleted)
+					{
+						row.RejectChanges();
+					}
+					throw;
+				}
 			}
 			if (Operators.ConditionalCompareObjectEqual(e.ColumnIndex, Operators.SubtractObject(NewLateBinding.LateGet(sender, null, "ColumnCount", new object[0], null, null, null), 1), TextCompare: false))
 			{
