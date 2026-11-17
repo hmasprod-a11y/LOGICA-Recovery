@@ -1,5 +1,12 @@
 using Hanouty.Architecture.Cashbox;
 
+static void MustRejectInput(Action action)
+{
+    try { action(); }
+    catch (ArgumentException) { return; }
+    throw new Exception("Expected invalid financial input rejection.");
+}
+
 static void MustThrow(Action action)
 {
     try { action(); }
@@ -91,8 +98,8 @@ if (unknownPreview.Phase != CashboxPhase.ReconciliationRequired)
 // Invalid financial inputs must never change the journal or expected cash.
 var invalid = new CashboxLifecycle();
 invalid.Open("invalid-inputs", 12m);
-MustThrow(() => invalid.RecordPersisted(new("zero", CashboxEntryKind.SaleCash, 0m)));
-MustThrow(() => invalid.RecordPersisted(new("negative", CashboxEntryKind.SaleCash, -1m)));
+MustRejectInput(() => invalid.RecordPersisted(new("zero", CashboxEntryKind.SaleCash, 0m)));
+MustRejectInput(() => invalid.RecordPersisted(new("negative", CashboxEntryKind.SaleCash, -1m)));
 try { invalid.RecordPersisted(new("unknown-kind", (CashboxEntryKind)999, 1m)); throw new Exception("Expected invalid kind rejection."); }
 catch (ArgumentOutOfRangeException) { }
 if (invalid.ExpectedCash != 12m || invalid.Entries.Count != 0)
