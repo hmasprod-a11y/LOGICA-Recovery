@@ -238,6 +238,7 @@ namespace Hanouty.Checkout.MariaDb
             if (snapshot.Any(line => line == null || string.IsNullOrWhiteSpace(line.ArticleId) ||
                 line.ArticleId.Length > 64 ||
                 !string.Equals(line.ArticleId, line.ArticleId.Trim(), StringComparison.Ordinal) ||
+                line.ArticleId.Any(char.IsControl) ||
                 line.Quantity <= 0))
                 throw new ArgumentException("Basket requires canonical article identities and positive quantities.", nameof(lines));
             // A repeated live article identity is not a valid basket. Reject it
