@@ -896,6 +896,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyWaitingSale(settings, pin);
         VerifyCataloguePrice(settings);
         VerifyCatalogueImport(settings);
+        VerifyCustomerCreditStatement(settings);
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -2217,6 +2218,44 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             host.Window.Close();
             throw;
         }
+    }
+
+    private static void VerifyCustomerCreditStatement(CatalogueSettings settings)
+    {
+        Sql(settings, """
+            DROP TABLE IF EXISTS TABLE_CLIENTS;
+            CREATE TABLE TABLE_CLIENTS (ID_CLIENT VARCHAR(64), CLIENT VARCHAR(128), CREDIT_INITIAL DECIMAL(16,3)) ENGINE=InnoDB;
+            INSERT INTO TABLE_CLIENTS VALUES ('CREDIT_FIXTURE','Client crédit',20),('EMPTY_FIXTURE','Sans opérations',NULL);
+            INSERT INTO TABLE_VENTES_JOURNAL (ID_CLIENT,OPERATION,Total_NET,Dates)
+            VALUES ('CREDIT_FIXTURE','CREDIT',100,'2026-01-02'),('CREDIT_FIXTURE','RETOUR CREDIT',-10,'2026-01-02'),
+                   ('CREDIT_FIXTURE','CREDIT',900,'1999-01-01');
+            INSERT INTO TABLE_CLIENTS_REGLE (ID_CLIENT,MONTANT,DATES) VALUES ('CREDIT_FIXTURE',30,'2026-01-02');
+            """);
+        var reader = new CustomerCreditStatementReader(settings.ConnectionString);
+        var rows = reader.Read(new DateTime(2026, 1, 1), new DateTime(2026, 1, 31));
+        var customer = rows.Single(row => row.CustomerId == "CREDIT_FIXTURE");
+        Require(customer.OpeningCredit == 20m && customer.CreditSales == 100m &&
+            customer.CreditReturns == -10m && customer.Payments == 30m && customer.Balance == 80m,
+            "WPF credit reader did not preserve the LOGICA period and signed return calculation.");
+        Require(rows.Single(row => row.CustomerId == "EMPTY_FIXTURE").Balance == 0m,
+            "WPF credit reader did not handle an account without movements.");
+
+        var dialog = new CustomerCreditStatementDialog(reader.Read);
+        dialog.Show();
+        try
+        {
+            // Exercise the dialog's production Loaded handler with its default period.
+            var layout = (System.Windows.Controls.DockPanel)dialog.Content;
+            var grid = layout.Children.OfType<System.Windows.Controls.DataGrid>().Single();
+            Require(grid.Items.OfType<CustomerCreditStatementRow>().Any(row =>
+                row.CustomerId == "CREDIT_FIXTURE"), "WPF credit statement did not display MariaDB rows.");
+            Require(!grid.Items.OfType<CustomerCreditStatementRow>().Any(row =>
+                row.CustomerId == "EMPTY_FIXTURE"), "WPF credit statement displayed a settled account.");
+        }
+        finally { dialog.Close(); }
+        File.WriteAllText(Path.Combine(EvidenceDirectory, "customer-credit-statement.json"),
+            JsonSerializer.Serialize(new { RealMariaDbReader = true, PeriodBalance = 80m,
+                SignedReturn = true, EmptyAccount = true, WpfLoadedRows = true }));
     }
 
     public static int Run(string evidenceDirectory)
