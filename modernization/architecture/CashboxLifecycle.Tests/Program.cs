@@ -87,4 +87,28 @@ MustThrow(() => unknownPreview.PreviewClose(0m));
 if (unknownPreview.Phase != CashboxPhase.ReconciliationRequired)
     throw new Exception("Preview bypassed the journal lock.");
 
+
+// Invalid financial inputs must never change the journal or expected cash.
+var invalid = new CashboxLifecycle();
+invalid.Open("invalid-inputs", 12m);
+MustThrow(() => invalid.RecordPersisted(new("zero", CashboxEntryKind.SaleCash, 0m)));
+MustThrow(() => invalid.RecordPersisted(new("negative", CashboxEntryKind.SaleCash, -1m)));
+try { invalid.RecordPersisted(new("unknown-kind", (CashboxEntryKind)999, 1m)); throw new Exception("Expected invalid kind rejection."); }
+catch (ArgumentOutOfRangeException) { }
+if (invalid.ExpectedCash != 12m || invalid.Entries.Count != 0)
+    throw new Exception("Invalid input mutated the cashbox.");
+invalid.RecordPersisted(new("zero", CashboxEntryKind.SaleCash, 1m));
+if (invalid.ExpectedCash != 13m || invalid.Entries.Count != 1)
+    throw new Exception("Rejected operation identity was consumed.");
+
+// Closing preview overflow must leave the session intact.
+var previewOverflow = new CashboxLifecycle();
+previewOverflow.Open("preview-overflow", 0m);
+previewOverflow.RecordPersisted(new("refund-max", CashboxEntryKind.ReturnCash, decimal.MaxValue));
+try { previewOverflow.PreviewClose(decimal.MaxValue); throw new Exception("Expected preview overflow."); }
+catch (OverflowException) { }
+if (previewOverflow.Phase != CashboxPhase.Open || previewOverflow.Entries.Count != 1 ||
+    previewOverflow.ExpectedCash != -decimal.MaxValue)
+    throw new Exception("Overflowed preview mutated the journal.");
+
 Console.WriteLine("CashboxLifecycle isolated assertions passed.");
