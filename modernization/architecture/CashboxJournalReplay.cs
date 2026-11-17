@@ -28,10 +28,10 @@ public static class CashboxJournalReplay
         ArgumentNullException.ThrowIfNull(live);
         if (live.Phase != CashboxPhase.Open || string.IsNullOrWhiteSpace(live.SessionId))
             throw new InvalidOperationException("Cashbox is not open for close verification.");
-        var replay = Preview(live.SessionId, live.OpeningCash, persistedEntries, countedCash);
-        var replayCount = 0;
-        foreach (var _ in persistedEntries)
-            replayCount++;
+        // Materialize once: database readers may be single-pass enumerables.
+        var rows = new List<CashboxEntry>(persistedEntries);
+        var replay = Preview(live.SessionId, live.OpeningCash, rows, countedCash);
+        var replayCount = rows.Count;
         if (replay.ExpectedCash != live.ExpectedCash ||
             replayCount != live.PersistedOperationCount)
             throw new InvalidOperationException("Durable cashbox journal does not match live projection.");
