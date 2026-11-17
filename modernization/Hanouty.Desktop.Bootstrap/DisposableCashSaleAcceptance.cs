@@ -2165,6 +2165,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                     var save = form.Children.OfType<System.Windows.Controls.Button>().Single(button => button.IsDefault);
                     Click(save);
                     Click(save);
+                    if (((CashExpenseDialog)dialog).SaveFailure is { } saveFailure)
+                        throw new InvalidOperationException("Expense save failed: " + saveFailure.Message, saveFailure);
                     Require(!save.IsEnabled, "The expense form still permits submitting the same draft.");
                     step++;
                     dialog.Close();
@@ -2179,12 +2181,14 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             try { Click((System.Windows.Controls.Button)host.Window.FindName("ExpensesButton")); }
             finally { timer.Stop(); }
             if (failure is not null) throw new InvalidOperationException("Expense UI acceptance failed.", failure);
-            Require(step == 3 && Number(settings, """
+            var totalExpenses = Number(settings, "SELECT COUNT(*) FROM TABLE_DEPENSES");
+            var matchingExpenses = Number(settings, """
                 SELECT COUNT(*) FROM TABLE_DEPENSES
                 WHERE ID=1 AND UTILISATEUR='O''Neil' AND DEPENSE='Transport' AND MONTANT=3
                     AND DATES IS NOT NULL AND CLOTURE_CAISSIER IS NULL AND CLOTURE_GLOBALE IS NULL
-                """) == 1 && Number(settings, "SELECT COUNT(*) FROM TABLE_DEPENSES") == 1,
-                "The expense was not recorded exactly once from WPF.");
+                """);
+            Require(step == 3 && matchingExpenses == 1 && totalExpenses == 1,
+                $"Expense verification: completed steps={step}, matching rows={matchingExpenses}, total rows={totalExpenses}.");
         }
         finally { host.Window.Close(); }
 

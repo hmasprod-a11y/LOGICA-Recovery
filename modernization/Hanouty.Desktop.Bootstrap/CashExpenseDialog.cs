@@ -7,6 +7,8 @@ namespace Hanouty.Desktop.Bootstrap;
 
 internal sealed class CashExpenseDialog : Window
 {
+    internal Exception? SaveFailure { get; private set; }
+
     public CashExpenseDialog(string cashier, Func<DateTime, string, decimal, long> record)
     {
         Title = "Nouvelle dépense";
@@ -53,12 +55,14 @@ internal sealed class CashExpenseDialog : Window
                 status.Text = $"Dépense n° {number} enregistrée.";
                 date.IsEnabled = description.IsEnabled = amount.IsEnabled = false;
             }
-            catch (UnauthorizedAccessException)
+            catch (UnauthorizedAccessException ex)
             {
+                SaveFailure = ex;
                 status.Text = "Autorisation refusée. Fermez cet écran et vérifiez les droits.";
             }
             catch (Exception ex) when (ex is MySqlException or InvalidOperationException or OverflowException)
             {
+                SaveFailure = ex;
                 status.Text = "Enregistrement non confirmé. Vérifiez le registre avant toute nouvelle saisie.";
             }
         };
