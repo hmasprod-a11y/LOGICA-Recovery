@@ -93,7 +93,8 @@ namespace Hanouty.Checkout.MariaDb
             if (connections == null) throw new ArgumentNullException(nameof(connections));
             if (string.IsNullOrWhiteSpace(operationId) || operationId.Length > 64 ||
                 !string.Equals(operationId, operationId.Trim(), StringComparison.Ordinal) ||
-                string.IsNullOrWhiteSpace(cashierId) ||
+                string.IsNullOrWhiteSpace(cashierId) || cashierId.Length > 64 ||
+                !string.Equals(cashierId, cashierId.Trim(), StringComparison.Ordinal) ||
                 string.IsNullOrWhiteSpace(originalTicketId) || originalTicketId.Length > 64 ||
                 !string.Equals(originalTicketId, originalTicketId.Trim(), StringComparison.Ordinal) ||
                 string.Equals(operationId, originalTicketId, StringComparison.Ordinal) ||
