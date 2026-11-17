@@ -1035,6 +1035,26 @@ namespace LOGICA.Infrastructure.Checkout
             Require(candidates.Count == 1 && candidates[0].SaleId == "multi-original" &&
                 candidates[0].PaidMad == 13.50m,
                 "Host lookup must expose only the exact persisted full cash ticket and amount.");
+            // Legacy fractional journal quantities cannot be posted through the
+            // whole-unit WPF return contract. Do not advertise such a ticket.
+            Sql("UPDATE TABLE_VENTES_JOURNAL SET Qté=1.5 WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
+            try
+            {
+                bool fractionalCandidateRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .FindFullCashReturnCandidates(NewConnection, "multi-original");
+                }
+                catch (InvalidOperationException) { fractionalCandidateRejected = true; }
+                Require(fractionalCandidateRejected &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0,
+                    "Fractional legacy ticket must not be offered as a WPF full-cash-return candidate.");
+            }
+            finally
+            {
+                Sql("UPDATE TABLE_VENTES_JOURNAL SET Qté=2 WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
+            }
             var hostPrepared = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
                 .PrepareFullCashReturnRequest(NewConnection, "wpf-preview-return", "O'Neil",
                     "MAD", "multi-original");
