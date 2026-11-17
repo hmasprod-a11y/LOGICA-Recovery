@@ -111,4 +111,30 @@ if (previewOverflow.Phase != CashboxPhase.Open || previewOverflow.Entries.Count 
     previewOverflow.ExpectedCash != -decimal.MaxValue)
     throw new Exception("Overflowed preview mutated the journal.");
 
+
+// Read-only Host/WPF projection must track lifecycle and journal count accurately.
+var statusBox = new CashboxLifecycle();
+var initialStatus = statusBox.GetStatus();
+if (initialStatus.Phase != CashboxPhase.Closed || initialStatus.SessionId is not null ||
+    initialStatus.PersistedOperationCount != 0)
+    throw new Exception("Initial status is incorrect.");
+statusBox.Open("status-session", 80m);
+var openedStatus = statusBox.GetStatus();
+if (openedStatus.Phase != CashboxPhase.Open || openedStatus.SessionId != "status-session" ||
+    openedStatus.OpeningCash != 80m || openedStatus.ExpectedCash != 80m)
+    throw new Exception("Open status is incorrect.");
+statusBox.RecordPersisted(new("status-sale", CashboxEntryKind.SaleCash, 12m));
+if (statusBox.GetStatus().PersistedOperationCount != 1 ||
+    statusBox.GetStatus().ExpectedCash != 92m ||
+    openedStatus.ExpectedCash != 80m)
+    throw new Exception("Status projection was stale or mutable.");
+statusBox.MarkOutcomeUnknown();
+if (statusBox.GetStatus().Phase != CashboxPhase.ReconciliationRequired)
+    throw new Exception("Status did not expose journal reconciliation lock.");
+statusBox.ConfirmJournalReconciled(true);
+statusBox.Close(92m);
+if (statusBox.GetStatus().Phase != CashboxPhase.Closed ||
+    statusBox.GetStatus().SessionId is not null)
+    throw new Exception("Closed status leaked active session identity.");
+
 Console.WriteLine("CashboxLifecycle isolated assertions passed.");
