@@ -521,7 +521,10 @@ namespace LOGICA.Infrastructure.Checkout
                 new Hanouty.ArchitectureBridge.CheckoutBatchLine(" CSharp-Stock", 1),
                 new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 0),
                 new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", -1),
-                new Hanouty.ArchitectureBridge.CheckoutBatchLine(new string('x', 65), 1)
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine(new string('x', 65), 1),
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-\nStock", 1),
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-\tStock", 1),
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-\0Stock", 1)
             })
             {
                 bool opened = false;
