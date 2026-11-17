@@ -69,6 +69,11 @@
   <ItemGroup>
     </ItemGroup>
   <ItemGroup>
+    <!-- .NET 10 W2 adapter depends on Architecture contracts; never compile it in the legacy net48 bridge. -->
+    <Compile Remove="LOGICA/Infrastructure/Checkout/AuthorizedCheckoutMariaDbPort.cs" />
+    <Compile Remove="LOGICA/Infrastructure/Checkout/MariaDbCashCheckoutPreparation.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="System.Resources.Extensions" Version="10.0.13" />
   </ItemGroup>
   <ItemGroup>

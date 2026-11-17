@@ -18,6 +18,11 @@ foreach($case in $cases) {
   $results+= [pscustomobject]@{test=$case;status=$status;exitCode=$p.ExitCode}
   Write-Host "$case $status"
   Get-Content $log | Select-Object -First 30 | ForEach-Object{Write-Host $_}
+  # Keep the 60-second timeout intact. Print bounded diagnostic stderr on failure
+  # so checkout hangs can be diagnosed from Actions logs without ZIP access.
+  if($status -ne 'PASS' -and (Test-Path $err)) {
+    Get-Content $err -Tail 24 | ForEach-Object { Write-Host "POS_STDERR [$case] $_" }
+  }
 }
 # Launch the real Windows entry point as well as exercising forms through the harness.
 $app=Start-Process (Join-Path $dist 'LOGICA.exe') -WorkingDirectory $dist -PassThru

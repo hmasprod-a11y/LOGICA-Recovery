@@ -1,11 +1,15 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
+# Read-only regression: characterize direct EXE versus portable launcher DB endpoint.
+# Never connect to, initialize, or mutate a real store database here.
+& (Join-Path $root 'modernization/Test-CheckoutDbStartupContract.ps1')
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('logica-checkout-core-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temporary | Out-Null
 try {
     $sources = @(
         'recovered-source/LOGICA/Domain/ILegacyCheckoutSemantics.cs',
+        'recovered-source/LOGICA/Domain/ILegacyCheckoutPaymentReadSemantics.cs',
         'recovered-source/LOGICA/Domain/ILegacyCheckoutCompletionSemantics.cs',
         'recovered-source/LOGICA/Domain/ILegacyCheckoutTicketSequenceSemantics.cs',
         'recovered-source/LOGICA/Domain/ILegacyTicketPostingSemantics.cs',
@@ -21,6 +25,7 @@ try {
         'recovered-source/LOGICA/Application/Checkout/CheckoutBarcodeSelectionService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutArticleTileSelectionService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutVariantSnapshotService.cs',
+        'recovered-source/LOGICA/Application/Checkout/CheckoutSelectionFlowService.cs',
         'recovered-source/LOGICA/Infrastructure/Checkout/CheckoutArticleSearchQueryText.cs',
         'recovered-source/LOGICA/Application/Checkout/StockValidationModels.cs',
         'recovered-source/LOGICA/Application/Checkout/StockValidationService.cs',
@@ -29,6 +34,7 @@ try {
         'recovered-source/LOGICA/Application/Checkout/CheckoutStockPostingService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutTicketPostingService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutPaymentPostingService.cs',
+        'recovered-source/LOGICA/Application/Checkout/CheckoutPaymentReadService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutTransactionFinalizationService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutTransactionBoundaryService.cs',
         'recovered-source/LOGICA/Application/Checkout/CheckoutTicketSequenceService.cs',

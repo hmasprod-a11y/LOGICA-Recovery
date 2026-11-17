@@ -23,7 +23,13 @@ namespace LOGICA.Infrastructure.Checkout
 
         public void BeginAndBind()
         {
-            transaction = (command.Transaction = connection.BeginTransaction());
+            // MySqlCommand.Connection is assigned later by the ticket-sequence
+            // reader. Binding the transaction to a command without its
+            // connection first can lose that binding when Connection changes.
+            // Establish connection ownership before starting the transaction.
+            command.Connection = connection;
+            transaction = connection.BeginTransaction();
+            command.Transaction = transaction;
         }
 
         public void Commit() { transaction.Commit(); }

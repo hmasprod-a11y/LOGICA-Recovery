@@ -122,7 +122,11 @@ internal static class PortableCoreSmoke
             ReadStock = delegate { return new[] { new CheckoutStockLine() }; },
             ReadHeader = delegate { return new TicketHeaderRecord(); },
             ReadJournal = delegate { return new TicketJournalRecord(); },
-            ReadPayments = delegate { return new[] { new TicketPaymentWrite() }; },
+            ReadPayments = delegate { return new[] { new TicketPaymentWrite {
+                Kind = TicketPaymentKind.Cash,
+                AmountText = "1",
+                Context = new TicketPaymentContext { TicketNumber = "T-1" }
+            } }; },
             Print = delegate { store.Calls.Add("print"); },
             ReadCompletion = delegate { return new CheckoutCompletionRecord(); }
         });
