@@ -287,7 +287,7 @@ internal sealed class StockIssueValidation(string connectionString)
         }
 
         command.CommandText = """
-            SELECT ID_ARTICLE, Code, Article, Qté, ETAT FROM TABLE_SORTIES_DETAILS
+            SELECT ID_ARTICLE, Code, Article, Qté, ETAT, CAST(ID_FOURNISSEUR AS CHAR) FROM TABLE_SORTIES_DETAILS
             WHERE BINARY ID_BS=BINARY @id ORDER BY BINARY ID_ARTICLE
             """ + lockRows;
         var lines = new List<Line>();
@@ -298,6 +298,8 @@ internal sealed class StockIssueValidation(string connectionString)
             if (reader.GetString(4) != "ENREGISTRER" || quantity <= 0 ||
                 decimal.Round(quantity, 2, MidpointRounding.AwayFromZero) != quantity)
                 throw new InvalidOperationException("Ligne de sortie non valide.");
+            if (type == "AVOIR" && (reader.IsDBNull(5) ? "" : reader.GetString(5)) != supplierId)
+                throw new InvalidOperationException("Une ligne de l’avoir référence un autre fournisseur.");
             lines.Add(new Line(reader.GetString(0), reader.IsDBNull(1) ? "" : reader.GetString(1), reader.GetString(2), quantity));
         }
         if (lines.Count == 0 || lines.Select(x => x.ArticleId).Distinct(StringComparer.Ordinal).Count() != lines.Count)

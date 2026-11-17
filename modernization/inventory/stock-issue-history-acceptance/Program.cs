@@ -11,7 +11,7 @@ Execute("""
     CREATE TABLE TABLE_SORTIES_ENTETE (ID_BS VARCHAR(64) PRIMARY KEY, TYPE TEXT, NOTES TEXT, ETAT VARCHAR(32),
         ID_FOURNISSEUR VARCHAR(64), FOURNISSEUR TEXT, TOTAL_NET_ACHATS DECIMAL(16,3)) ENGINE=InnoDB;
     CREATE TABLE TABLE_SORTIES_DETAILS (ID_BS VARCHAR(64), ID_ARTICLE VARCHAR(64), Code TEXT, Article TEXT,
-        Qté DECIMAL(16,3), ETAT VARCHAR(32)) ENGINE=InnoDB;
+        Qté DECIMAL(16,3), ETAT VARCHAR(32), ID_FOURNISSEUR VARCHAR(64)) ENGINE=InnoDB;
     CREATE TABLE TABLE_MOUVEMENTS_STOCK (DATES VARCHAR(16), HEURE VARCHAR(16), LIBELLE VARCHAR(128),
         ID_ARTICLE VARCHAR(64), CODE_ARTICLE TEXT, ARTICLE TEXT, QUANTITE DECIMAL(16,3)) ENGINE=InnoDB;
     INSERT INTO TABLE_PASS VALUES ('Manager','1234','MANAGER');
@@ -19,7 +19,7 @@ Execute("""
     INSERT INTO TABLE_SORTIES_ENTETE (ID_BS, TYPE, NOTES, ETAT) VALUES
         ('BS-OK','PERTE','Verre cassé','ENREGISTRER'),('BS-FAIL','TRANSFERT','','ENREGISTRER'),
         ('BS-OLD','AUTRE','','ENREGISTRER');
-    INSERT INTO TABLE_SORTIES_DETAILS VALUES
+    INSERT INTO TABLE_SORTIES_DETAILS (ID_BS, ID_ARTICLE, Code, Article, Qté, ETAT) VALUES
         ('BS-OK','A','001','Verre',2.25,'ENREGISTRER'),('BS-OK','B','001','Plat',0.50,'ENREGISTRER'),
         ('BS-FAIL','A','001','Verre',1,'ENREGISTRER'),('BS-FAIL','B','002','Plat',1,'ENREGISTRER'),
         ('BS-OLD','A','001','Verre',0.50,'ENREGISTRER');
@@ -52,11 +52,14 @@ Execute("UPDATE TABLE_SORTIES_ENTETE SET TYPE='AVOIR' WHERE ID_BS='BS-FAIL'");
 var withoutSupplier = service.ReadForValidation("BS-FAIL");
 Reject<InvalidOperationException>(() => service.Validate("BS-FAIL", withoutSupplier, "Manager", "1234"));
 Execute("UPDATE TABLE_SORTIES_ENTETE SET ID_FOURNISSEUR='F1', FOURNISSEUR='Premier' WHERE ID_BS='BS-FAIL'");
+Execute("UPDATE TABLE_SORTIES_DETAILS SET ID_FOURNISSEUR='F1' WHERE ID_BS='BS-FAIL'");
 var reviewedSupplier = service.ReadForValidation("BS-FAIL");
 Require(reviewedSupplier.SupplierId == "F1" && reviewedSupplier.SupplierName == "Premier",
     "Supplier was not exposed in the reviewed credit.");
 Execute("UPDATE TABLE_SORTIES_ENTETE SET ID_FOURNISSEUR='F2', FOURNISSEUR='Second' WHERE ID_BS='BS-FAIL'");
 Reject<InvalidOperationException>(() => service.Validate("BS-FAIL", reviewedSupplier, "Manager", "1234"));
+Reject<InvalidOperationException>(() => service.ReadForValidation("BS-FAIL"));
+Execute("UPDATE TABLE_SORTIES_DETAILS SET ID_FOURNISSEUR='F2' WHERE ID_BS='BS-FAIL'");
 var withoutAmount = service.ReadForValidation("BS-FAIL");
 Reject<InvalidOperationException>(() => service.Validate("BS-FAIL", withoutAmount, "Manager", "1234"));
 Execute("UPDATE TABLE_SORTIES_ENTETE SET TOTAL_NET_ACHATS=-15 WHERE ID_BS='BS-FAIL'");
@@ -100,6 +103,12 @@ Require(service.ReadHistory("BS-FAIL").Length == 0 && service.Read("BS-FAIL").Le
     "History failure did not roll back stock, legacy journal and document.");
 Execute("DROP TRIGGER reject_second_history");
 var credit = service.ReadForValidation("BS-FAIL");
+Execute("UPDATE TABLE_SORTIES_DETAILS SET ID_FOURNISSEUR='F3' WHERE ID_BS='BS-FAIL' AND ID_ARTICLE='B'");
+Reject<InvalidOperationException>(() => service.Validate("BS-FAIL", credit, "Manager", "1234"));
+Require(service.ReadHistory("BS-FAIL").Length == 0 &&
+    Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='B'") == 3.625m,
+    "A supplier change on a credit line posted stock.");
+Execute("UPDATE TABLE_SORTIES_DETAILS SET ID_FOURNISSEUR='F2' WHERE ID_BS='BS-FAIL' AND ID_ARTICLE='B'");
 var outgoingBefore = Scalar("SELECT SUM(TOTAL_NET_ACHATS) FROM TABLE_SORTIES_ENTETE WHERE ID_FOURNISSEUR='F2'");
 var committedCredit = service.Validate("BS-FAIL", credit, "Manager", "1234");
 Require(committedCredit.HistorySaved && committedCredit.Movements.Length == 2 &&
