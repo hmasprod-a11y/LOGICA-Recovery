@@ -98,7 +98,8 @@ public sealed class CashboxLifecycle
             throw new InvalidOperationException("Cashbox cannot close while outcomes are unresolved.");
         if (countedCash < 0m)
             throw new ArgumentOutOfRangeException(nameof(countedCash));
-        var difference = countedCash - ExpectedCash;
+        // Overflow must not silently corrupt the closing variance or close the session.
+        var difference = checked(countedCash - ExpectedCash);
         Phase = CashboxPhase.Closed;
         _sessionId = null;
         return difference;
