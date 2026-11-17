@@ -82,18 +82,18 @@ internal sealed class StockIssueDialog : Window
                     ? reviewed.Type
                     : $"{reviewed.Type} · {reviewed.Notes}";
                 if (reviewed.Type == "AVOIR")
-                    status.Text += CreditSummary(reviewed);
+                    status.Text += CreditSummary(reviewed.SupplierId, reviewed.SupplierName, reviewed.PurchaseTotal);
                 validate.IsEnabled = true;
             }
             catch (Exception ex) when (ex is InvalidOperationException or MySqlException)
             { MessageBox.Show(this, ex.Message, Title); }
         };
-        static string CreditSummary(StockIssueValidation.Document document)
+        static string CreditSummary(string supplierId, string supplierName, decimal? purchaseTotal)
         {
-            var amount = document.PurchaseTotal is decimal total
+            var amount = purchaseTotal is decimal total
                 ? $"Total net d’achat enregistré : {total:0.00#}"
                 : "Total net d’achat non renseigné.";
-            return $"\nFournisseur : {document.SupplierName} [{document.SupplierId}]\n{amount}";
+            return $"\nFournisseur : {supplierName} [{supplierId}]\n{amount}";
         }
 
         void ShowMovements(StockIssueValidation.Movement[] movements)
@@ -112,13 +112,15 @@ internal sealed class StockIssueDialog : Window
             Reset();
             try
             {
-                var movements = service.ReadHistory(number.Text.Trim());
+                var (movements, credit) = service.ReadHistoryWithCredit(number.Text.Trim());
                 if (movements.Length == 0)
                 {
                     status.Text = "Aucun mouvement enregistré pour ce bon.";
                     return;
                 }
                 ShowMovements(movements);
+                if (credit is not null)
+                    status.Text += CreditSummary(credit.SupplierId, credit.SupplierName, credit.PurchaseTotal);
             }
             catch (Exception ex) when (ex is InvalidOperationException or MySqlException)
             { MessageBox.Show(this, ex.Message, Title); }
@@ -129,7 +131,7 @@ internal sealed class StockIssueDialog : Window
             var id = number.Text.Trim();
             var confirmation = $"Voulez-vous vraiment valider le bon n° {id} ?";
             if (document.Type == "AVOIR")
-                confirmation += CreditSummary(document);
+                confirmation += CreditSummary(document.SupplierId, document.SupplierName, document.PurchaseTotal);
             if (MessageBox.Show(this, confirmation, Title,
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             var pin = readPin();
@@ -140,7 +142,7 @@ internal sealed class StockIssueDialog : Window
                 Reset();
                 ShowMovements(result.Movements);
                 if (document.Type == "AVOIR")
-                    status.Text += CreditSummary(document);
+                    status.Text += CreditSummary(document.SupplierId, document.SupplierName, document.PurchaseTotal);
                 if (!result.HistorySaved)
                     status.Text += "\nL’historique détaillé n’est pas installé sur cette base.";
             }

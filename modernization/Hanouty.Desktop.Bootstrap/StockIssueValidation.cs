@@ -207,7 +207,11 @@ internal sealed class StockIssueValidation(string connectionString)
         }
     }
 
-    internal Movement[] ReadHistory(string id)
+    internal sealed record SupplierCredit(string SupplierId, string SupplierName, decimal? PurchaseTotal);
+
+    internal Movement[] ReadHistory(string id) => ReadHistoryWithCredit(id).Movements;
+
+    internal (Movement[] Movements, SupplierCredit? Credit) ReadHistoryWithCredit(string id)
     {
         using var connection = Open();
         using var transaction = connection.BeginTransaction(IsolationLevel.RepeatableRead);
@@ -242,8 +246,26 @@ internal sealed class StockIssueValidation(string connectionString)
                     reader.IsDBNull(0) ? "" : reader.GetString(0), reader.IsDBNull(1) ? "" : reader.GetString(1),
                     reader.IsDBNull(2) ? "" : reader.GetString(2), reader.GetDecimal(3), null, null, null));
         }
+        SupplierCredit? credit = null;
+        if (movements.Count > 0)
+        {
+            using var command = new MySqlCommand("""
+                SELECT TYPE, ETAT, CAST(ID_FOURNISSEUR AS CHAR), FOURNISSEUR, TOTAL_NET_ACHATS
+                FROM TABLE_SORTIES_ENTETE WHERE BINARY ID_BS = BINARY @id
+                """, connection, transaction);
+            command.Parameters.AddWithValue("@id", id);
+            using var reader = command.ExecuteReader();
+            if (reader.Read() && !reader.IsDBNull(0) && reader.GetString(0) == "AVOIR" &&
+                !reader.IsDBNull(1) && reader.GetString(1) == "VALIDER")
+            {
+                var stored = new SupplierCredit(reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    reader.IsDBNull(3) ? "" : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetDecimal(4));
+                if (!reader.Read())
+                    credit = stored;
+            }
+        }
         transaction.Commit();
-        return movements.ToArray();
+        return (movements.ToArray(), credit);
     }
 
     private static bool HasMovementHistory(MySqlConnection connection, MySqlTransaction? transaction)

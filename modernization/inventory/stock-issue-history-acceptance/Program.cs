@@ -110,7 +110,12 @@ Require(service.ReadHistory("BS-FAIL").Length == 0 &&
     "A supplier change on a credit line posted stock.");
 Execute("UPDATE TABLE_SORTIES_DETAILS SET ID_FOURNISSEUR='F2' WHERE ID_BS='BS-FAIL' AND ID_ARTICLE='B'");
 var outgoingBefore = Scalar("SELECT SUM(TOTAL_NET_ACHATS) FROM TABLE_SORTIES_ENTETE WHERE ID_FOURNISSEUR='F2'");
+Require(service.ReadHistoryWithCredit("BS-FAIL").Credit is null &&
+    service.ReadHistoryWithCredit("BS-OK").Credit is null, "Draft or ordinary issue appeared as a supplier credit.");
 var committedCredit = service.Validate("BS-FAIL", credit, "Manager", "1234");
+var (creditMovements, storedCredit) = new StockIssueValidation(connectionString).ReadHistoryWithCredit("BS-FAIL");
+Require(creditMovements.Length == 2 && storedCredit is { SupplierId: "F2", SupplierName: "Second", PurchaseTotal: -20m },
+    "Reopening a supplier credit did not return the stored document details.");
 Require(committedCredit.HistorySaved && committedCredit.Movements.Length == 2 &&
     service.ReadHistory("BS-FAIL").Length == 2 &&
     Scalar("SELECT COUNT(*) FROM TABLE_SORTIES_ENTETE WHERE ID_BS='BS-FAIL' AND ETAT='VALIDER' AND ID_FOURNISSEUR='F2'") == 1 &&
