@@ -17,6 +17,10 @@ public sealed record CashboxEntry(string OperationId, CashboxEntryKind Kind, dec
 
 public sealed record CashboxClosePreview(string SessionId, decimal ExpectedCash, decimal CountedCash, decimal Difference);
 
+// Host/WPF can render this read-only state without accessing mutable journal internals.
+public sealed record CashboxStatus(string? SessionId, CashboxPhase Phase, decimal OpeningCash,
+    decimal ExpectedCash, int PersistedOperationCount);
+
 public sealed class CashboxLifecycle
 {
     private readonly HashSet<string> _operations = new(StringComparer.Ordinal);
@@ -29,6 +33,9 @@ public sealed class CashboxLifecycle
     public string? SessionId => _sessionId;
     public IReadOnlyList<CashboxEntry> Entries => _entries.AsReadOnly();
     public decimal ExpectedCash { get; private set; }
+
+    public CashboxStatus GetStatus() => new(_sessionId, Phase, _openingCash,
+        ExpectedCash, _entries.Count);
 
     public void Open(string sessionId, decimal openingCash)
     {
