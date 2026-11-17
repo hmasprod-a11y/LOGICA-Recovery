@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Windows;
 using Hanouty.ArchitectureBridge;
 using Hanouty.Desktop.Wpf.Presentation;
+using Hanouty.Desktop.Wpf;
 using MySql.Data.MySqlClient;
 
 namespace Hanouty.Desktop.Bootstrap;
@@ -2223,6 +2224,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
     private static void VerifyCustomerCreditStatement(CatalogueSettings settings)
     {
         Sql(settings, """
+            ALTER TABLE TABLE_CLIENTS_REGLE ADD ID_CLIENT VARCHAR(64), ADD DATES DATETIME;
             DROP TABLE IF EXISTS TABLE_CLIENTS;
             CREATE TABLE TABLE_CLIENTS (ID_CLIENT VARCHAR(64), CLIENT VARCHAR(128), CREDIT_INITIAL DECIMAL(16,3)) ENGINE=InnoDB;
             INSERT INTO TABLE_CLIENTS VALUES ('CREDIT_FIXTURE','Client crédit',20),('EMPTY_FIXTURE','Sans opérations',NULL);
