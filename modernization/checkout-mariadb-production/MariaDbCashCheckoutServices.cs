@@ -105,10 +105,13 @@ namespace Hanouty.Checkout.MariaDb
             if (connections == null) throw new ArgumentNullException(nameof(connections));
             if (string.IsNullOrWhiteSpace(operationId) || operationId.Length > 64 ||
                 !string.Equals(operationId, operationId.Trim(), StringComparison.Ordinal) ||
+                operationId.Any(char.IsControl) ||
                 string.IsNullOrWhiteSpace(cashierId) || cashierId.Length > 64 ||
                 !string.Equals(cashierId, cashierId.Trim(), StringComparison.Ordinal) ||
+                cashierId.Any(char.IsControl) ||
                 string.IsNullOrWhiteSpace(originalTicketId) || originalTicketId.Length > 64 ||
                 !string.Equals(originalTicketId, originalTicketId.Trim(), StringComparison.Ordinal) ||
+                originalTicketId.Any(char.IsControl) ||
                 string.Equals(operationId, originalTicketId, StringComparison.Ordinal) ||
                 !string.Equals(currency, "MAD", StringComparison.Ordinal))
                 throw new ArgumentException("A stable operation, authenticated cashier, MAD currency, and original ticket are required.");
