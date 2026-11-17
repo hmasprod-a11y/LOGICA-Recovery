@@ -65,16 +65,21 @@ namespace Hanouty.Checkout.MariaDb
                     }
                     if (!string.IsNullOrWhiteSpace(saleId))
                     {
-                        var lines = CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLines(
-                            connection, transaction, saleId);
-                        var paid = lines.Sum(line => line.Amount);
+                        // A consumed ticket is not a candidate, even if legacy
+                        // journal/payment rows were subsequently damaged.
+                        // Check the durable claim before interpreting evidence.
                         using (var claim = new MySqlCommand(
                             "SELECT COUNT(*) FROM hanouty_cash_return_consumption " +
                             "WHERE BINARY original_ticket_id=BINARY @ticket", connection, transaction))
                         {
                             claim.Parameters.AddWithValue("@ticket", saleId);
                             if (Convert.ToInt64(claim.ExecuteScalar()) == 0)
-                                result.Add(new PersistedCashSaleCandidate(saleId, paid));
+                            {
+                                var lines = CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLines(
+                                    connection, transaction, saleId);
+                                result.Add(new PersistedCashSaleCandidate(saleId,
+                                    lines.Sum(line => line.Amount)));
+                            }
                         }
                     }
                     transaction.Commit();
