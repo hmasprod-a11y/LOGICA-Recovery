@@ -91,7 +91,9 @@ internal sealed class StockIssueDialog : Window
                 grid.Columns.Add(column);
             grid.ItemsSource = movements;
             var movement = movements[0];
-            status.Text = $"Bon {movement.Reference} validé par {movement.Actor} le {movement.ValidatedUtc.ToLocalTime():g}\nMotif : {movement.Reason}";
+            status.Text = movement.ValidatedUtc is DateTime validatedUtc
+                ? $"Bon {movement.Reference} validé par {movement.Actor} le {validatedUtc.ToLocalTime():g}\nMotif : {movement.Reason}"
+                : $"Bon {movement.Reference} · Journal LOGICA. Utilisateur, motif et stocks avant/après non enregistrés.";
         }
 
         history.Click += (_, _) =>
@@ -102,7 +104,7 @@ internal sealed class StockIssueDialog : Window
                 var movements = service.ReadHistory(number.Text.Trim());
                 if (movements.Length == 0)
                 {
-                    status.Text = "Aucun historique détaillé pour ce bon.";
+                    status.Text = "Aucun mouvement enregistré pour ce bon.";
                     return;
                 }
                 ShowMovements(movements);

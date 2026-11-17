@@ -28,7 +28,12 @@ var service = new StockIssueValidation(connectionString);
 var old = service.Validate("BS-OLD", service.ReadForValidation("BS-OLD"), "Manager", "1234");
 Require(!old.HistorySaved, "Legacy schema incorrectly reported detailed history.");
 Execute(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "migration.sql")));
-Require(service.ReadHistory("BS-OLD").Length == 0, "Legacy details were incorrectly fabricated.");
+var legacy = service.ReadHistory("BS-OLD").Single();
+Require(legacy.Quantity == 0.50m && legacy.Article == "Verre" &&
+    legacy.Actor == "" && legacy.Reason == "" && legacy.StockBefore is null &&
+    legacy.StockAfter is null && legacy.ValidatedUtc is null,
+    "Legacy movement was lost or unavailable details were fabricated.");
+Require(service.ReadHistory("bs-old").Length == 0, "History matched a different document identity.");
 
 var reviewed = service.ReadForValidation("BS-OK");
 Reject<UnauthorizedAccessException>(() => service.Validate("BS-OK", reviewed, "Manager", "wrong"));
@@ -43,7 +48,7 @@ Require(movements[0].Actor == "Manager" && movements[0].Reason == "PERTE · Modi
     movements[0].Reference == "BS-OK" && movements[0].Code == "001" && movements[0].Article == "Verre" &&
     movements[0].Quantity == 2.25m && movements[0].StockBefore == 12.25m && movements[0].StockAfter == 10m &&
     movements[1].StockBefore == 4.125m && movements[1].StockAfter == 3.625m &&
-    movements[0].ValidatedUtc.Kind == DateTimeKind.Utc && movements[0].ValidatedUtc == movements[1].ValidatedUtc,
+    movements[0].ValidatedUtc?.Kind == DateTimeKind.Utc && movements[0].ValidatedUtc == movements[1].ValidatedUtc,
     "Persistent movement evidence differs from the committed document.");
 Reject<InvalidOperationException>(() => service.Validate("BS-OK", reviewed, "Manager", "1234"));
 Require(service.ReadHistory("BS-OK").Length == 2, "Replay changed history.");

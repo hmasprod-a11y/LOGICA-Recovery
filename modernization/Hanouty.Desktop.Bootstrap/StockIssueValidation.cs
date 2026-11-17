@@ -9,7 +9,7 @@ internal sealed class StockIssueValidation(string connectionString)
 
     internal sealed record Document(string Type, string Notes, Line[] Lines);
     internal sealed record Movement(string Reference, string Actor, string Reason, string Code,
-        string Article, decimal Quantity, decimal StockBefore, decimal StockAfter, DateTime ValidatedUtc);
+        string Article, decimal Quantity, decimal? StockBefore, decimal? StockAfter, DateTime? ValidatedUtc);
     internal sealed record ValidationResult(Movement[] Movements, bool HistorySaved);
 
     internal sealed record ArticleChoice(string Id, string Code, string Name)
@@ -198,22 +198,39 @@ internal sealed class StockIssueValidation(string connectionString)
     internal Movement[] ReadHistory(string id)
     {
         using var connection = Open();
-        if (!HasMovementHistory(connection, null))
-            throw new InvalidOperationException("L’historique détaillé des sorties n’est pas installé.");
-
-        using var command = new MySqlCommand("""
-            SELECT ISSUE_ID, ACTOR, REASON, CODE, ARTICLE, QUANTITY, STOCK_BEFORE, STOCK_AFTER, VALIDATED_UTC
-            FROM hanouty_stock_issue_history
-            WHERE ISSUE_ID = @id AND BINARY ISSUE_ID = BINARY @id
-            ORDER BY ARTICLE_ID
-            """, connection);
-        command.Parameters.AddWithValue("@id", id);
-        using var reader = command.ExecuteReader();
+        using var transaction = connection.BeginTransaction(IsolationLevel.RepeatableRead);
         var movements = new List<Movement>();
-        while (reader.Read())
-            movements.Add(new Movement(reader.GetString(0), reader.GetString(1), reader.GetString(2),
-                reader.GetString(3), reader.GetString(4), reader.GetDecimal(5), reader.GetDecimal(6),
-                reader.GetDecimal(7), DateTime.SpecifyKind(reader.GetDateTime(8), DateTimeKind.Utc)));
+        if (HasMovementHistory(connection, transaction))
+        {
+            using var command = new MySqlCommand("""
+                SELECT ISSUE_ID, ACTOR, REASON, CODE, ARTICLE, QUANTITY, STOCK_BEFORE, STOCK_AFTER, VALIDATED_UTC
+                FROM hanouty_stock_issue_history
+                WHERE ISSUE_ID = @id AND BINARY ISSUE_ID = BINARY @id
+                ORDER BY ARTICLE_ID
+                """, connection, transaction);
+            command.Parameters.AddWithValue("@id", id);
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                movements.Add(new Movement(reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                    reader.GetString(3), reader.GetString(4), reader.GetDecimal(5), reader.GetDecimal(6),
+                    reader.GetDecimal(7), DateTime.SpecifyKind(reader.GetDateTime(8), DateTimeKind.Utc)));
+        }
+
+        if (movements.Count == 0)
+        {
+            using var command = new MySqlCommand("""
+                SELECT CODE_ARTICLE, ARTICLE, QUANTITE FROM TABLE_MOUVEMENTS_STOCK
+                WHERE LIBELLE = @label AND BINARY LIBELLE = BINARY @label
+                ORDER BY DATES, HEURE, ID_ARTICLE
+                """, connection, transaction);
+            command.Parameters.AddWithValue("@label", "Bon de Sortie | " + id);
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                movements.Add(new Movement(id, "", "",
+                    reader.IsDBNull(0) ? "" : reader.GetString(0), reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    reader.GetDecimal(2), null, null, null));
+        }
+        transaction.Commit();
         return movements.ToArray();
     }
 
