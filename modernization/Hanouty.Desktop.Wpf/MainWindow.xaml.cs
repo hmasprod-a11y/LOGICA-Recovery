@@ -646,6 +646,16 @@ public partial class MainWindow : Window
             cashierEntryPin ? cashier : null);
     }
 
+    public string PromptCashDrawerApproval(string role)
+    {
+        if (role is not ("MANAGER" or "ADMIN") || _cashierEntryOpen || _logoutOpen || _reviewOpen ||
+            _pinOpen || _originalSaleLookupBusy || DataContext is not CatalogueViewModel
+            { FinancialSessionActive: true, CheckoutBusy: false, CheckoutUncertain: false, PendingOperationId: null,
+                PaymentContext: not null })
+            return "";
+        return ReadPin("Autorisation de caisse", $"Saisissez le code d’autorisation {role}.");
+    }
+
     private string ReadReviewPin()
     {
         var vm = (CatalogueViewModel)DataContext;

@@ -287,7 +287,7 @@ public sealed partial record CatalogueHost
                 var pin = window.PromptCashierPin(cashier);
                 if (string.IsNullOrEmpty(pin)) return false;
                 var role = cashClosing.RequiredApprovalRole(cashier, pin);
-                var approvalPin = role is null ? null : window.PromptCashierPin(role);
+                var approvalPin = role is null ? null : window.PromptCashDrawerApproval(role);
                 if (role is not null && string.IsNullOrEmpty(approvalPin)) return false;
                 var preview = cashClosing.Read(cashier, pin, cashierOnly, approvalPin);
                 var summary = $"Fond de caisse : {preview.Opening:N2} MAD\n" +
@@ -380,7 +380,7 @@ public sealed partial record CatalogueHost
                 var pin = window.PromptCashierPin(cashier);
                 if (string.IsNullOrEmpty(pin)) return;
                 var role = cashClosing.RequiredApprovalRole(cashier, pin, expense: true);
-                var approval = role is null ? null : window.PromptCashierPin(role);
+                var approval = role is null ? null : window.PromptCashDrawerApproval(role);
                 if (role is not null && string.IsNullOrEmpty(approval)) return;
                 cashClosing.CheckExpenseAccess(cashier, pin, approval);
                 new CashExpenseDialog(cashier,
