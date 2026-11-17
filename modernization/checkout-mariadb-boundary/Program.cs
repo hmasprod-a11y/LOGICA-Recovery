@@ -514,6 +514,23 @@ namespace LOGICA.Infrastructure.Checkout
             rejected("review-wrong-identity", () =>
                 Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.VerifyCashierSession(
                     NewConnection, "other-cashier", () => "1234"));
+            // Session reauthorization must reject control characters before
+            // opening MariaDB or reading the transient cashier PIN.
+            foreach (var invalidCashier in new[] { "O\\nNeil", "O\\tNeil", "O\\0Neil" })
+            {
+                bool connectionOpened = false;
+                bool pinRead = false;
+                bool invalidRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.VerifyCashierSession(
+                        () => { connectionOpened = true; return NewConnection(); },
+                        invalidCashier, () => { pinRead = true; return "1234"; });
+                }
+                catch (ArgumentException) { invalidRejected = true; }
+                Require(invalidRejected && !connectionOpened && !pinRead,
+                    "Malformed cashier identity must fail before DB/PIN access.");
+            }
             // The real WPF basket preview must fail closed before even asking
             // for a connection when a scan supplies an invalid line identity/quantity.
             foreach (var invalidLine in new[]
