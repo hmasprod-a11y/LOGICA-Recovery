@@ -20,6 +20,7 @@ public sealed record CashboxClosePreview(string SessionId, decimal ExpectedCash,
 public sealed class CashboxLifecycle
 {
     private readonly HashSet<string> _operations = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _usedSessionIds = new(StringComparer.Ordinal);
     private readonly List<CashboxEntry> _entries = new();
     private decimal _openingCash;
     private string? _sessionId;
@@ -37,6 +38,9 @@ public sealed class CashboxLifecycle
             throw new ArgumentException("Session identity required.", nameof(sessionId));
         if (openingCash < 0m)
             throw new ArgumentOutOfRangeException(nameof(openingCash));
+        // Reopening a previously closed identity would mix independent cashbox journals.
+        if (!_usedSessionIds.Add(sessionId))
+            throw new InvalidOperationException("Cashbox session identity already used.");
         _sessionId = sessionId;
         _openingCash = openingCash;
         ExpectedCash = openingCash;
