@@ -189,4 +189,20 @@ MustThrow(() => CashboxJournalReplay.VerifyCloseExact(
         durableRows[1]
     }, 27m));
 
+
+// Same total and row count can conceal compensating durable amount changes.
+// Exact verification must reject them rather than accept a matching cash balance.
+var offsetRows = new[]
+{
+    new CashboxEntry("durable-sale", CashboxEntryKind.SaleCash, 10m),
+    new CashboxEntry("durable-card", CashboxEntryKind.SaleCard, 5m)
+};
+MustThrow(() => CashboxJournalReplay.VerifyCloseExact(
+    durableBox.GetStatus() with { Phase = CashboxPhase.Open },
+    durableRows, offsetRows, 27m));
+
+// A correct journal does not override an unresolved financial outcome lock.
+MustThrow(() => CashboxJournalReplay.VerifyCloseExact(
+    durableBox.GetStatus(), durableRows, durableRows, 27m));
+
 Console.WriteLine("CashboxLifecycle isolated assertions passed.");
