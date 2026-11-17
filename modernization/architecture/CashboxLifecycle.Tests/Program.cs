@@ -137,4 +137,25 @@ if (statusBox.GetStatus().Phase != CashboxPhase.Closed ||
     statusBox.GetStatus().SessionId is not null)
     throw new Exception("Closed status leaked active session identity.");
 
+
+// Durable replay must agree with the live projection before showing a close variance.
+var durableBox = new CashboxLifecycle();
+durableBox.Open("durable-session", 20m);
+durableBox.RecordPersisted(new("durable-sale", CashboxEntryKind.SaleCash, 9m));
+durableBox.RecordPersisted(new("durable-card", CashboxEntryKind.SaleCard, 6m));
+var durableRows = new[]
+{
+    new CashboxEntry("durable-sale", CashboxEntryKind.SaleCash, 9m),
+    new CashboxEntry("durable-card", CashboxEntryKind.SaleCard, 6m)
+};
+var verified = CashboxJournalReplay.VerifyClose(durableBox.GetStatus(), durableRows, 27m);
+if (verified.ExpectedCash != 29m || verified.Difference != -2m)
+    throw new Exception("Durable replay disagreed with cashbox close.");
+MustThrow(() => CashboxJournalReplay.VerifyClose(durableBox.GetStatus(),
+    new[] { durableRows[0] }, 27m));
+MustThrow(() => CashboxJournalReplay.VerifyClose(durableBox.GetStatus(),
+    new[] { durableRows[0], durableRows[0] }, 27m));
+durableBox.MarkOutcomeUnknown();
+MustThrow(() => CashboxJournalReplay.VerifyClose(durableBox.GetStatus(), durableRows, 27m));
+
 Console.WriteLine("CashboxLifecycle isolated assertions passed.");
