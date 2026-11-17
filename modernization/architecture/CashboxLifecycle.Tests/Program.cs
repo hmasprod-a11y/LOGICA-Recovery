@@ -22,7 +22,11 @@ MustThrow(() => cashbox.RecordPersisted(new("sale-2", CashboxEntryKind.SaleCash,
 MustThrow(() => cashbox.ConfirmJournalReconciled(false));
 cashbox.ConfirmJournalReconciled(true);
 if (cashbox.Close(153m) != -2m) throw new Exception("Wrong reconciliation difference.");
+MustThrow(() => cashbox.Open("cashier-1/session-1", 0m));
+if (cashbox.Phase != CashboxPhase.Closed || cashbox.SessionId is not null)
+    throw new Exception("Reused session changed the closed state.");
 cashbox.Open("cashier-2/session-2", 0m);
+MustThrow(() => cashbox.Open("cashier-1/session-1", 0m));
 if (cashbox.ExpectedCash != 0m || cashbox.Entries.Count != 0)
     throw new Exception("New session reused prior cashbox.");
 // An overflowed variance must leave the cashbox open for investigation.
