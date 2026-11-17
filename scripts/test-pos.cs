@@ -28,10 +28,10 @@ class PosSmoke {
    Sql(connection,"DROP TABLE IF EXISTS TABLE_CLIENTS, TABLE_VENTES_JOURNAL, TABLE_CLIENTS_REGLE");
    Sql(connection,"CREATE TABLE TABLE_CLIENTS (ID_CLIENT VARCHAR(32) PRIMARY KEY, CREDIT_INITIAL DECIMAL(14,2)) ENGINE=InnoDB");
    Sql(connection,"CREATE TABLE TABLE_VENTES_JOURNAL (ID_CLIENT VARCHAR(32), OPERATION VARCHAR(24), TOTAL_NET DECIMAL(14,2)) ENGINE=InnoDB");
-   Sql(connection,"CREATE TABLE TABLE_CLIENTS_REGLE (ID_CLIENT VARCHAR(32), MONTANT DECIMAL(14,2)) ENGINE=InnoDB");
+   Sql(connection,"CREATE TABLE TABLE_CLIENTS_REGLE (ID INT PRIMARY KEY, DATES DATETIME, UTILISATEUR VARCHAR(32), ID_REGLE VARCHAR(64), ID_CLIENT VARCHAR(32), CODE_CLIENT VARCHAR(32), CLIENT VARCHAR(64), MONTANT DECIMAL(14,2), MODE_P VARCHAR(32), NOTES VARCHAR(64), ETAT VARCHAR(16)) ENGINE=InnoDB");
    Sql(connection,"INSERT INTO TABLE_CLIENTS VALUES ('CI''CLIENT',20),('OTHER',70),('EMPTY',NULL)");
    Sql(connection,"INSERT INTO TABLE_VENTES_JOURNAL VALUES ('CI''CLIENT','CREDIT',100),('CI''CLIENT','RETOUR CREDIT',-10),('CI''CLIENT','VENTE',90),('OTHER','CREDIT',950)");
-   Sql(connection,"INSERT INTO TABLE_CLIENTS_REGLE VALUES ('OTHER',600)");
+   Sql(connection,"INSERT INTO TABLE_CLIENTS_REGLE (ID,ID_CLIENT,MONTANT) VALUES (1,'OTHER',600)");
   } finally {
    connection.Close();
   }
@@ -52,24 +52,60 @@ class PosSmoke {
    var receipt=formType.GetMethod("_credit",Flags);
    var receiptBalance=formType.GetField("_total_credit",Flags);
 
-   decimal[] payments={0m,30m,80m};
-   decimal[] balances={110m,80m,0m};
-   for(int stage=0;stage<payments.Length;stage++) {
-    if(stage>0) {
-     connection.Open();
-     try {
-      Sql(connection,"INSERT INTO TABLE_CLIENTS_REGLE VALUES ('CI''CLIENT',"+payments[stage].ToString(CultureInfo.InvariantCulture)+")");
-     } finally {
-      connection.Close();
+   var adapterType=connection.GetType().Assembly.GetType("MySql.Data.MySqlClient.MySqlDataAdapter",true);
+   using(var adapter=(System.Data.Common.DbDataAdapter)Activator.CreateInstance(adapterType,
+       new object[]{"SELECT * FROM TABLE_CLIENTS_REGLE",connection}))
+   using(var settlementRows=new DataTable()) {
+    adapter.Fill(settlementRows);
+    formType.GetField("DA",Flags).SetValue(form,adapter);
+    formType.GetField("DT",Flags).SetValue(form,settlementRows);
+    var client=(Control)Get(form,"Button_CLIENT");
+    client.GetType().GetProperty("_ID_Button",Flags).SetValue(client,"CI'CLIENT",null);
+    client.GetType().GetProperty("_CODE_Button",Flags).SetValue(client,"CI-CODE",null);
+    client.Text="CI Customer";
+    SetText(form,"Text_UTILISATEUR","CI register");
+    var mode=(ComboBox)Get(form,"Combo_MODE_P");
+    mode.Items.Add("ESPECES");
+    mode.SelectedIndex=0;
+    var save=formType.GetMethod("Button12_Click",Flags);
+
+    decimal[] payments={0m,30m,80m};
+    decimal[] balances={110m,80m,0m};
+    for(int stage=0;stage<payments.Length;stage++) {
+     if(stage>0) {
+      SetText(form,"Label_TOP","NOUVEAU");
+      SetText(form,"TextBox_MONTANT",payments[stage].ToString(CultureInfo.CurrentCulture));
+      uint uiThread=GetCurrentThreadId();
+      using(var stop=new ManualResetEvent(false)) {
+       var watcher=new Thread(delegate() {
+        while(!stop.WaitOne(80))DismissInjectedFailure(uiThread);
+       });
+       watcher.IsBackground=true;
+       watcher.Start();
+       try {
+        save.Invoke(form,new object[]{form,EventArgs.Empty});
+        save.Invoke(form,new object[]{form,EventArgs.Empty});
+       } finally {
+        stop.Set();
+        if(!watcher.Join(2000))throw new Exception("Settlement dialog watcher did not stop");
+       }
+      }
+      connection.Open();
+      try {
+       Eq(Scalar(connection,"SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE WHERE ID_CLIENT='CI''CLIENT' AND MODE_P='ESPECES' AND ETAT='VALIDER'"),stage,"exact settlement count after retrying the saved draft");
+      } finally {
+       connection.Close();
+      }
      }
+     display.Invoke(form,new object[]{"CI'CLIENT"});
+     string shown=((Control)Get(form,"Text_CREDIT")).Text;
+     if(!shown.EndsWith(" DH",StringComparison.Ordinal))throw new Exception("Settlement display currency missing: "+shown);
+     Eq(decimal.Parse(shown.Substring(0,shown.Length-3)),balances[stage],"displayed customer credit stage "+stage);
+     Eq(decimal.Parse(((Control)Get(form,"Label_REGLE_CLIENT")).Text),110m-balances[stage],"persisted payments stage "+stage);
+     receipt.Invoke(form,null);
+     Eq((decimal)receiptBalance.GetValue(form),balances[stage],"receipt balance stage "+stage);
     }
-    display.Invoke(form,new object[]{"CI'CLIENT"});
-    string shown=((Control)Get(form,"Text_CREDIT")).Text;
-    if(!shown.EndsWith(" DH",StringComparison.Ordinal))throw new Exception("Settlement display currency missing: "+shown);
-    Eq(decimal.Parse(shown.Substring(0,shown.Length-3)),balances[stage],"displayed customer credit stage "+stage);
-    Eq(decimal.Parse(((Control)Get(form,"Label_REGLE_CLIENT")).Text),110m-balances[stage],"persisted payments stage "+stage);
-    receipt.Invoke(form,null);
-    Eq((decimal)receiptBalance.GetValue(form),balances[stage],"receipt balance stage "+stage);
+ 
    }
 
    display.Invoke(form,new object[]{"EMPTY"});
