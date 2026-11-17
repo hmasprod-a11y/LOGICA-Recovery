@@ -98,7 +98,21 @@ Require(service.ReadHistory("BS-FAIL").Length == 0 && service.Read("BS-FAIL").Le
     Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='A'") == 10m &&
     Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='B'") == 3.625m,
     "History failure did not roll back stock, legacy journal and document.");
-Console.WriteLine("PASS stock issue history persistence, reopen, authorization, replay and rollback.");
+Execute("DROP TRIGGER reject_second_history");
+var credit = service.ReadForValidation("BS-FAIL");
+var outgoingBefore = Scalar("SELECT SUM(TOTAL_NET_ACHATS) FROM TABLE_SORTIES_ENTETE WHERE ID_FOURNISSEUR='F2'");
+var committedCredit = service.Validate("BS-FAIL", credit, "Manager", "1234");
+Require(committedCredit.HistorySaved && committedCredit.Movements.Length == 2 &&
+    service.ReadHistory("BS-FAIL").Length == 2 &&
+    Scalar("SELECT COUNT(*) FROM TABLE_SORTIES_ENTETE WHERE ID_BS='BS-FAIL' AND ETAT='VALIDER' AND ID_FOURNISSEUR='F2'") == 1 &&
+    Scalar("SELECT SUM(TOTAL_NET_ACHATS) FROM TABLE_SORTIES_ENTETE WHERE ID_FOURNISSEUR='F2'") == outgoingBefore,
+    "Validating an existing credit did not preserve its recorded amount and stock evidence.");
+Reject<InvalidOperationException>(() => service.Validate("BS-FAIL", credit, "Manager", "1234"));
+Require(Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE='Bon de Sortie | BS-FAIL'") == 2 &&
+    Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='A'") == 9m &&
+    Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='B'") == 2.625m,
+    "Replaying the credit posted stock twice.");
+Console.WriteLine("PASS stock issue history persistence, supplier credit, reopen, authorization, replay and rollback.");
 
 void Execute(string sql)
 {

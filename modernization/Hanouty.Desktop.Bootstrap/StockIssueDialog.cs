@@ -82,17 +82,20 @@ internal sealed class StockIssueDialog : Window
                     ? reviewed.Type
                     : $"{reviewed.Type} · {reviewed.Notes}";
                 if (reviewed.Type == "AVOIR")
-                {
-                    status.Text += $"\nFournisseur : {reviewed.SupplierName} [{reviewed.SupplierId}]";
-                    status.Text += reviewed.PurchaseTotal is decimal total
-                        ? $"\nTotal net d’achat enregistré : {total:N2}"
-                        : "\nTotal net d’achat non renseigné.";
-                }
+                    status.Text += CreditSummary(reviewed);
                 validate.IsEnabled = true;
             }
             catch (Exception ex) when (ex is InvalidOperationException or MySqlException)
             { MessageBox.Show(this, ex.Message, Title); }
         };
+        static string CreditSummary(StockIssueValidation.Document document)
+        {
+            var amount = document.PurchaseTotal is decimal total
+                ? $"Total net d’achat enregistré : {total:0.00#}"
+                : "Total net d’achat non renseigné.";
+            return $"\nFournisseur : {document.SupplierName} [{document.SupplierId}]\n{amount}";
+        }
+
         void ShowMovements(StockIssueValidation.Movement[] movements)
         {
             foreach (var column in movementColumns)
@@ -122,17 +125,22 @@ internal sealed class StockIssueDialog : Window
         };
         validate.Click += (_, _) =>
         {
-            if (reviewed is null) return;
+            if (reviewed is not { } document) return;
             var id = number.Text.Trim();
-            if (MessageBox.Show(this, $"Voulez-vous vraiment valider le bon n° {id} ?", Title,
+            var confirmation = $"Voulez-vous vraiment valider le bon n° {id} ?";
+            if (document.Type == "AVOIR")
+                confirmation += CreditSummary(document);
+            if (MessageBox.Show(this, confirmation, Title,
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
             var pin = readPin();
             if (pin.Length == 0) return;
             try
             {
-                var result = service.Validate(id, reviewed, actor, pin);
+                var result = service.Validate(id, document, actor, pin);
                 Reset();
                 ShowMovements(result.Movements);
+                if (document.Type == "AVOIR")
+                    status.Text += CreditSummary(document);
                 if (!result.HistorySaved)
                     status.Text += "\nL’historique détaillé n’est pas installé sur cette base.";
             }
