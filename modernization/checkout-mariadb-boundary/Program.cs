@@ -1016,6 +1016,25 @@ namespace LOGICA.Infrastructure.Checkout
             var hostPrepared = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
                 .PrepareFullCashReturnRequest(NewConnection, "wpf-preview-return", "O'Neil",
                     "MAD", "multi-original");
+            // The WPF return entry point must reject an operation that reuses its
+            // original sale identity, or a padded ticket, before any database write.
+            foreach (var invalid in new[] {
+                (Operation: "multi-original", Original: "multi-original"),
+                (Operation: "padded-return", Original: " multi-original ")
+            })
+            {
+                bool rejectedInvalidIdentity = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                        NewConnection, invalid.Operation, "O'Neil", "MAD", invalid.Original);
+                }
+                catch (ArgumentException) { rejectedInvalidIdentity = true; }
+                Require(rejectedInvalidIdentity &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0 &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='padded-return'") == 0,
+                    "Invalid WPF return identities must fail closed without consuming the original.");
+            }
             Require(hostPrepared.IsReturn && hostPrepared.Lines.Count == 2 &&
                 hostPrepared.Lines.Any(line => line.ArticleId == "CSharp-Stock" && line.Quantity == 2m) &&
                 hostPrepared.Lines.Any(line => line.ArticleId == "CSharp-Other" && line.Quantity == 1m) &&
