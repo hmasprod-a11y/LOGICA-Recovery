@@ -12,7 +12,7 @@ internal sealed class StockIssueDialog : Window
         Title = "Bons de sortie";
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Width = 850;
-        Height = 410;
+        Height = 460;
         var panel = new DockPanel { Margin = new Thickness(16) };
         var input = new StackPanel();
         DockPanel.SetDock(input, Dock.Top);
@@ -21,6 +21,8 @@ internal sealed class StockIssueDialog : Window
         input.Children.Add(new Label { Content = "N° du bon de sortie", Target = number });
         input.Children.Add(number);
         input.Children.Add(open);
+        var history = new Button { Content = "Historique du bon", MinHeight = 36 };
+        input.Children.Add(history);
         var create = new Button { Content = "Nouveau bon", MinHeight = 36 };
         input.Children.Add(create);
         create.Click += (_, _) =>
@@ -83,6 +85,31 @@ internal sealed class StockIssueDialog : Window
             catch (Exception ex) when (ex is InvalidOperationException or MySqlException)
             { MessageBox.Show(this, ex.Message, Title); }
         };
+        void ShowMovements(StockIssueValidation.Movement[] movements)
+        {
+            foreach (var column in movementColumns)
+                grid.Columns.Add(column);
+            grid.ItemsSource = movements;
+            var movement = movements[0];
+            status.Text = $"Bon {movement.Reference} validé par {movement.Actor} le {movement.ValidatedUtc.ToLocalTime():g}\nMotif : {movement.Reason}";
+        }
+
+        history.Click += (_, _) =>
+        {
+            Reset();
+            try
+            {
+                var movements = service.ReadHistory(number.Text.Trim());
+                if (movements.Length == 0)
+                {
+                    status.Text = "Aucun historique détaillé pour ce bon.";
+                    return;
+                }
+                ShowMovements(movements);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or MySqlException)
+            { MessageBox.Show(this, ex.Message, Title); }
+        };
         validate.Click += (_, _) =>
         {
             if (reviewed is null) return;
@@ -93,13 +120,11 @@ internal sealed class StockIssueDialog : Window
             if (pin.Length == 0) return;
             try
             {
-                var movements = service.Validate(id, reviewed, actor, pin);
+                var result = service.Validate(id, reviewed, actor, pin);
                 Reset();
-                foreach (var column in movementColumns)
-                    grid.Columns.Add(column);
-                grid.ItemsSource = movements;
-                var movement = movements[0];
-                status.Text = $"Bon {movement.Reference} validé par {movement.Actor}\nMotif : {movement.Reason}";
+                ShowMovements(result.Movements);
+                if (!result.HistorySaved)
+                    status.Text += "\nL’historique détaillé n’est pas installé sur cette base.";
             }
             catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or MySqlException)
             {

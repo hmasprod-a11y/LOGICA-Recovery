@@ -9,7 +9,8 @@ internal sealed class StockIssueValidation(string connectionString)
 
     internal sealed record Document(string Type, string Notes, Line[] Lines);
     internal sealed record Movement(string Reference, string Actor, string Reason, string Code,
-        string Article, decimal Quantity, decimal StockBefore, decimal StockAfter);
+        string Article, decimal Quantity, decimal StockBefore, decimal StockAfter, DateTime ValidatedUtc);
+    internal sealed record ValidationResult(Movement[] Movements, bool HistorySaved);
 
     internal sealed record ArticleChoice(string Id, string Code, string Name)
     {
@@ -110,10 +111,10 @@ internal sealed class StockIssueValidation(string connectionString)
     internal void Validate(string id, IReadOnlyList<Line> reviewed, string actor, string pin) =>
         Validate(id, reviewed, null, actor, pin);
 
-    internal Movement[] Validate(string id, Document reviewed, string actor, string pin) =>
+    internal ValidationResult Validate(string id, Document reviewed, string actor, string pin) =>
         Validate(id, reviewed.Lines, reviewed, actor, pin);
 
-    private Movement[] Validate(string id, IReadOnlyList<Line> reviewedLines, Document? reviewed,
+    private ValidationResult Validate(string id, IReadOnlyList<Line> reviewedLines, Document? reviewed,
         string actor, string pin)
     {
         if (string.IsNullOrWhiteSpace(pin)) throw new UnauthorizedAccessException();
@@ -128,8 +129,13 @@ internal sealed class StockIssueValidation(string connectionString)
             (reviewed is not null && (document.Type != reviewed.Type || document.Notes != reviewed.Notes)))
             throw new InvalidOperationException("Le bon a changé. Ouvrez-le de nouveau.");
 
+        var saveHistory = HasMovementHistory(connection, transaction);
+        if (saveHistory)
+            InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "hanouty_stock_issue_history");
+
         // LOGICA records a positive issue quantity in the journal and subtracts it from stock.
-        var now = DateTime.Now;
+        var validatedUtc = DateTime.UtcNow;
+        var now = validatedUtc.ToLocalTime();
         var movements = new List<Movement>(lines.Length);
         var reason = string.IsNullOrWhiteSpace(document.Notes)
             ? document.Type
@@ -147,14 +153,23 @@ internal sealed class StockIssueValidation(string connectionString)
                 ("@time", now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)),
                 ("@label", "Bon de Sortie | " + id), ("@article", line.ArticleId), ("@code", line.Code),
                 ("@name", line.Article), ("@quantity", line.Quantity));
-            movements.Add(new Movement(id, actor, reason, line.Code, line.Article, line.Quantity, stockBefore, stockAfter));
+            if (saveHistory)
+                Execute("""
+                    INSERT INTO hanouty_stock_issue_history
+                    (ISSUE_ID, ARTICLE_ID, ACTOR, REASON, CODE, ARTICLE, QUANTITY, STOCK_BEFORE, STOCK_AFTER, VALIDATED_UTC)
+                    VALUES (@id, @article, @actor, @reason, @code, @name, @quantity, @before, @after, @utc)
+                    """, 1, ("@id", id), ("@article", line.ArticleId), ("@actor", actor),
+                    ("@reason", reason), ("@code", line.Code), ("@name", line.Article),
+                    ("@quantity", line.Quantity), ("@before", stockBefore), ("@after", stockAfter), ("@utc", validatedUtc));
+            movements.Add(new Movement(id, actor, reason, line.Code, line.Article,
+                line.Quantity, stockBefore, stockAfter, validatedUtc));
         }
         Execute("UPDATE TABLE_SORTIES_DETAILS SET ETAT='VALIDER' WHERE BINARY ID_BS=BINARY @id AND ETAT='ENREGISTRER'",
             lines.Length, ("@id", id));
         Execute("UPDATE TABLE_SORTIES_ENTETE SET ETAT='VALIDER' WHERE BINARY ID_BS=BINARY @id AND ETAT='ENREGISTRER'",
             1, ("@id", id));
         transaction.Commit();
-        return movements.ToArray();
+        return new ValidationResult(movements.ToArray(), saveHistory);
 
         decimal ReadStock(string articleId)
         {
@@ -178,6 +193,37 @@ internal sealed class StockIssueValidation(string connectionString)
             if (command.ExecuteNonQuery() != count)
                 throw new InvalidOperationException("Le bon ou un article n’a pas pu être validé.");
         }
+    }
+
+    internal Movement[] ReadHistory(string id)
+    {
+        using var connection = Open();
+        if (!HasMovementHistory(connection, null))
+            throw new InvalidOperationException("L’historique détaillé des sorties n’est pas installé.");
+
+        using var command = new MySqlCommand("""
+            SELECT ISSUE_ID, ACTOR, REASON, CODE, ARTICLE, QUANTITY, STOCK_BEFORE, STOCK_AFTER, VALIDATED_UTC
+            FROM hanouty_stock_issue_history
+            WHERE ISSUE_ID = @id AND BINARY ISSUE_ID = BINARY @id
+            ORDER BY ARTICLE_ID
+            """, connection);
+        command.Parameters.AddWithValue("@id", id);
+        using var reader = command.ExecuteReader();
+        var movements = new List<Movement>();
+        while (reader.Read())
+            movements.Add(new Movement(reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                reader.GetString(3), reader.GetString(4), reader.GetDecimal(5), reader.GetDecimal(6),
+                reader.GetDecimal(7), DateTime.SpecifyKind(reader.GetDateTime(8), DateTimeKind.Utc)));
+        return movements.ToArray();
+    }
+
+    private static bool HasMovementHistory(MySqlConnection connection, MySqlTransaction? transaction)
+    {
+        using var command = new MySqlCommand("""
+            SELECT COUNT(*) FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'hanouty_stock_issue_history'
+            """, connection, transaction);
+        return Convert.ToInt32(command.ExecuteScalar()) == 1;
     }
 
     private MySqlConnection Open()
