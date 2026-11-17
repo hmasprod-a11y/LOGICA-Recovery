@@ -589,7 +589,6 @@ namespace LOGICA.Infrastructure.Checkout
                 Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
                     NewConnection, TrustedRequest("preview-only").Lines);
             Require(preview() == 10.50m &&
-                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
                 Scalar("SELECT COUNT(*) FROM TABLE_01") == 0 &&
                 Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == headers &&
                 Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == payments &&
