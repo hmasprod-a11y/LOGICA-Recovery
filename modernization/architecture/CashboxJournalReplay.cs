@@ -37,4 +37,34 @@ public static class CashboxJournalReplay
             throw new InvalidOperationException("Durable cashbox journal does not match live projection.");
         return replay;
     }
+    // Strong verification for Host adapters that can supply both projections.
+    // Matching totals and counts alone cannot detect substituted journal operations.
+    public static CashboxClosePreview VerifyCloseExact(CashboxStatus live,
+        IEnumerable<CashboxEntry> projectedEntries,
+        IEnumerable<CashboxEntry> persistedEntries, decimal countedCash)
+    {
+        ArgumentNullException.ThrowIfNull(projectedEntries);
+        ArgumentNullException.ThrowIfNull(persistedEntries);
+        var projected = new Dictionary<string, CashboxEntry>(StringComparer.Ordinal);
+        foreach (var entry in projectedEntries)
+        {
+            ArgumentNullException.ThrowIfNull(entry);
+            if (string.IsNullOrWhiteSpace(entry.OperationId) ||
+                !projected.TryAdd(entry.OperationId, entry))
+                throw new InvalidOperationException("Invalid or duplicate projected operation identity.");
+        }
+
+        var persisted = new List<CashboxEntry>(persistedEntries);
+        var preview = VerifyClose(live, persisted, countedCash);
+        if (projected.Count != persisted.Count)
+            throw new InvalidOperationException("Journal operation identities differ.");
+        foreach (var entry in persisted)
+        {
+            if (!projected.Remove(entry.OperationId, out var expected) ||
+                expected.Kind != entry.Kind || expected.Amount != entry.Amount)
+                throw new InvalidOperationException("Durable journal operation differs from projection.");
+        }
+        return preview;
+    }
+
 }
