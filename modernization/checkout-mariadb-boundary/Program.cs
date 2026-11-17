@@ -1093,6 +1093,26 @@ namespace LOGICA.Infrastructure.Checkout
                 Require(invalidCandidates.Count == 0 && !connectionOpened,
                     "Control-character receipt identity must be rejected before MariaDB lookup.");
             }
+            // A damaged persisted zero-quantity line must never be offered
+            // for a full return, nor consume the original ticket.
+            Sql("UPDATE TABLE_VENTES_JOURNAL SET Qté=0 WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
+            try
+            {
+                bool invalidQuantityRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .FindFullCashReturnCandidates(NewConnection, "multi-original");
+                }
+                catch (InvalidOperationException) { invalidQuantityRejected = true; }
+                Require(invalidQuantityRejected &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0,
+                    "Zero-quantity persisted sale must not be offered for a full return.");
+            }
+            finally
+            {
+                Sql("UPDATE TABLE_VENTES_JOURNAL SET Qté=2 WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
+            }
             // Legacy fractional journal quantities cannot be posted through the
             // whole-unit WPF return contract. Do not advertise such a ticket.
             Sql("UPDATE TABLE_VENTES_JOURNAL SET Qté=1.5 WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
