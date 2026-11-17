@@ -1095,6 +1095,27 @@ namespace LOGICA.Infrastructure.Checkout
             {
                 Sql("UPDATE TABLE_VENTES_JOURNAL SET Qté=2 WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
             }
+            // Pasted control characters in any return identity must fail before
+            // opening MariaDB or consuming the original sale.
+            foreach (var invalid in new[] {
+                (Operation: "return\\n", Cashier: "O'Neil", Original: "multi-original"),
+                (Operation: "return\\0", Cashier: "O'Neil", Original: "multi-original"),
+                (Operation: "return-control", Cashier: "O'\\tNeil", Original: "multi-original"),
+                (Operation: "return-control", Cashier: "O'Neil", Original: "multi-\\toriginal")
+            })
+            {
+                bool connectionOpened = false;
+                bool denied = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                        () => { connectionOpened = true; return NewConnection(); },
+                        invalid.Operation, invalid.Cashier, "MAD", invalid.Original);
+                }
+                catch (ArgumentException) { denied = true; }
+                Require(denied && !connectionOpened,
+                    "Control-character return identity must fail before database access.");
+            }
             var hostPrepared = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
                 .PrepareFullCashReturnRequest(NewConnection, "wpf-preview-return", "O'Neil",
                     "MAD", "multi-original");
