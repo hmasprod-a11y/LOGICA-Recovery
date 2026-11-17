@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using LOGICA.ApplicationLayer.Checkout;
 using MySql.Data.MySqlClient;
 using Hanouty.ArchitectureBridge;
@@ -32,9 +33,14 @@ namespace LOGICA.Infrastructure.Checkout
         public void Commit(AuthorizedCheckoutRequest request)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
+            // Bind validation and posting to the same basket and tender snapshot.
+            // Connection setup and the operation claim can block before preparation.
+            request = request with
+            {
+                Lines = request.Lines?.ToArray(),
+                Payments = request.Payments?.ToArray()
+            };
             request.Validate();
-            // Do not pretend to support return, credit or non-cash tenders
-            // before their financial policy and trusted preparation are wired.
             if (request.Payments.Count != 1 ||
                 request.Payments[0].Kind != CheckoutPaymentKind.Cash)
                 throw new NotSupportedException("Only authorized single-cash sale or verified full-ticket cash return is enabled.");
