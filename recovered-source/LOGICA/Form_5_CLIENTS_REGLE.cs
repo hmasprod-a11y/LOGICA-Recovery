@@ -261,6 +261,7 @@ public class Form_5_CLIENTS_REGLE : Form
 	private Point newpoint;
 
 	private decimal _total_credit;
+	private bool _postingSettlement;
 
 	private object _sql;
 
@@ -3440,6 +3441,11 @@ public class Form_5_CLIENTS_REGLE : Form
 		//IL_03c1: Unknown result type (might be due to invalid IL or missing references)
 		//IL_03c7: Expected Obj, but got Unknown
 		//IL_03f3: Unknown result type (might be due to invalid IL or missing references)
+		if (_postingSettlement || Label_TOP.Text != "NOUVEAU")
+		{
+			return;
+		}
+		_postingSettlement = true;
 		checked
 		{
 			try
@@ -3450,26 +3456,46 @@ public class Form_5_CLIENTS_REGLE : Form
 					MessageBox.Show(warning, "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Operators.CompareString(Label_TOP.Text, "NOUVEAU", TextCompare: false) == 0)
+				int settlementId;
+				using (var sequence = new MySqlCommand("SELECT MAX(ID) FROM TABLE_CLIENTS_REGLE", Module1.cn_SQL))
 				{
-					MySqlCommand val = new MySqlCommand();
-					val.CommandText = "SELECT MAX(ID) From TABLE_CLIENTS_REGLE ";
-					val.Connection = Module1.cn_SQL;
-					val.CommandType = CommandType.Text;
-					if (Module1.cn_SQL.State != ConnectionState.Open)
+					try
 					{
-						Module1.cn_SQL.Open();
+						if (Module1.cn_SQL.State != ConnectionState.Open)
+						{
+							Module1.cn_SQL.Open();
+						}
+						settlementId = LOGICA.Domain.ClientSettlementSequence.NextId(
+							() => sequence.ExecuteScalar(), LOGICA.Infrastructure.Compatibility.VisualBasicSettlementSemantics.Instance);
 					}
-					int num = LOGICA.Domain.ClientSettlementSequence.NextId(() => val.ExecuteScalar(), LOGICA.Infrastructure.Compatibility.VisualBasicSettlementSemantics.Instance);
-					Module1.cn_SQL.Close();
-					DT.Rows.Add();
-					int index = DT.Rows.Count - 1;
-					LOGICA.ApplicationLayer.Clients.ClientSettlementRowWriter.Populate(new SettlementRowContext(this, DT.Rows[index], num));
-					MySqlCommandBuilder val2 = new MySqlCommandBuilder(DA);
-					((DbDataAdapter)(object)DA).Update(DT);
-					DT.AcceptChanges();
-					MessageBox.Show("Enregistré avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
+					finally
+					{
+						Module1.cn_SQL.Close();
+					}
 				}
+				DataRow row = DT.NewRow();
+				LOGICA.ApplicationLayer.Clients.ClientSettlementRowWriter.Populate(new SettlementRowContext(this, row, settlementId));
+				DT.Rows.Add(row);
+				try
+				{
+					using (var builder = new MySqlCommandBuilder(DA))
+					{
+						if (((DbDataAdapter)(object)DA).Update(new[] { row }) != 1)
+						{
+							throw new InvalidOperationException("Le règlement client n’a pas été enregistré.");
+						}
+					}
+				}
+				catch
+				{
+					if (row.RowState == DataRowState.Added)
+					{
+						DT.Rows.Remove(row);
+					}
+					throw;
+				}
+				Label_TOP.Text = "-";
+				MessageBox.Show("Enregistré avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
 				((Control)Panel_INFO).Hide();
 			}
 			catch (Exception ex)
@@ -3498,6 +3524,10 @@ public class Form_5_CLIENTS_REGLE : Form
 					ProjectData.ClearProjectError();
 				}
 				ProjectData.ClearProjectError();
+			}
+			finally
+			{
+				_postingSettlement = false;
 			}
 		}
 	}
