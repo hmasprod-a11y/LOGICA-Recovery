@@ -145,10 +145,50 @@ class PosSmoke {
    display.Invoke(form,new object[]{"MISSING"});
    if(((Control)Get(form,"Text_CREDIT")).Text!="")throw new Exception("Unknown customer left a displayed balance");
 
+   AssertCustomerSettlementDeletionAccess(module,form,grid);
+
    formType.GetField("_total_credit",Flags).SetValue(form,80m);
    grid.Rows.Clear();
    receipt.Invoke(form,null);
    Eq((decimal)receiptBalance.GetValue(form),0m,"receipt lookup without selected journal row");
+  }
+ }
+
+ static void AssertCustomerSettlementDeletionAccess(Type module,Form form,DataGridView grid) {
+  var category=module.GetField("_USERCATEGORIE",Flags);
+  var previous=category.GetValue(null);
+  var permission=form.GetType().GetMethod("FUN_CAT_ACCES",Flags);
+  var click=form.GetType().GetMethod("DataGridView1_CellClick",Flags);
+  var deletion=grid.Columns["supp"];
+  try {
+   category.SetValue(null,"ADMIN");
+   permission.Invoke(form,null);
+   if(!deletion.Visible)throw new Exception("Admin settlement deletion must be visible");
+   foreach(string denied in new[]{"MANAGER","UTILISATEUR",""}) {
+    category.SetValue(null,denied);
+    permission.Invoke(form,null);
+    if(deletion.Visible)throw new Exception("Unauthorized settlement deletion is visible");
+    // Simulate stale visibility after a role change and dispatch the real handler.
+    deletion.Visible=true;
+    uint uiThread=GetCurrentThreadId();
+    LastDismissedDialogText=null;
+    using(var stop=new ManualResetEvent(false)) {
+     var watcher=new Thread(delegate() {
+      while(!stop.WaitOne(80))DismissInjectedFailure(uiThread);
+     });
+     watcher.IsBackground=true;
+     watcher.Start();
+     try {
+      click.Invoke(form,new object[]{grid,new DataGridViewCellEventArgs(deletion.Index,0)});
+     } finally {
+      stop.Set();
+      if(!watcher.Join(2000))throw new Exception("Settlement deletion watcher did not stop");
+     }
+    }
+    if(LastDismissedDialogText!=null)throw new Exception("Unauthorized settlement deletion reached a dialog");
+   }
+  } finally {
+   category.SetValue(null,previous);
   }
  }
 
