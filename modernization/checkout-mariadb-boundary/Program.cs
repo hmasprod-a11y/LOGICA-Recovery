@@ -1096,7 +1096,7 @@ namespace LOGICA.Infrastructure.Checkout
             // Malformed operation and cashier IDs must be rejected by return
             // preparation before any database connection is requested. This
             // guards pasted control characters and ambiguous padded identities.
-            foreach (var invalidIdentity in new[] { " return-prep", "return-prep ", "return\\nprep", new string('x', 65) })
+            foreach (var invalidIdentity in new[] { " return-prep", "return-prep ", "return\nprep", new string('x', 65) })
             {
                 bool connectionOpened = false;
                 bool rejectedBeforeConnection = false;
@@ -1111,7 +1111,7 @@ namespace LOGICA.Infrastructure.Checkout
                 Require(rejectedBeforeConnection && !connectionOpened,
                     "Invalid refund operation identity must fail before opening MariaDB.");
             }
-            foreach (var invalidCashier in new[] { " O'Neil", "O'Neil ", "O\\tNeil", new string('x', 65) })
+            foreach (var invalidCashier in new[] { " O'Neil", "O'Neil ", "O\tNeil", new string('x', 65) })
             {
                 bool connectionOpened = false;
                 bool rejectedBeforeConnection = false;
