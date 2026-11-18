@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Windows;
 using Hanouty.ArchitectureBridge;
 using Hanouty.Desktop.Wpf.Presentation;
+using Hanouty.Desktop.Wpf;
 using MySql.Data.MySqlClient;
 
 namespace Hanouty.Desktop.Bootstrap;
@@ -896,6 +897,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyWaitingSale(settings, pin);
         VerifyCataloguePrice(settings);
         VerifyCatalogueImport(settings);
+        VerifyCustomerCreditStatement(settings, pin);
+        VerifyCustomerSettlementRetry();
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -2389,6 +2392,172 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             host.Window.Close();
             throw;
         }
+    }
+
+    private static void VerifyCustomerCreditStatement(CatalogueSettings settings, string pin)
+    {
+        Sql(settings, """
+            ALTER TABLE TABLE_CLIENTS_REGLE ADD ID_CLIENT VARCHAR(64), ADD DATES DATETIME;
+            DROP TABLE IF EXISTS TABLE_CLIENTS;
+            CREATE TABLE TABLE_CLIENTS (ID_CLIENT VARCHAR(64), CLIENT VARCHAR(128), CREDIT_INITIAL DECIMAL(16,3)) ENGINE=InnoDB;
+            INSERT INTO TABLE_CLIENTS VALUES ('CREDIT_FIXTURE','Client crédit',20),('EMPTY_FIXTURE','Sans opérations',NULL);
+            INSERT INTO TABLE_VENTES_JOURNAL (ID_CLIENT,OPERATION,Total_NET,Dates)
+            VALUES ('CREDIT_FIXTURE','CREDIT',100,'2026-01-02'),('CREDIT_FIXTURE','RETOUR CREDIT',-10,'2026-01-02'),
+                   ('CREDIT_FIXTURE','CREDIT',900,'1999-01-01');
+            INSERT INTO TABLE_CLIENTS_REGLE (ID_CLIENT,MONTANT,DATES) VALUES ('CREDIT_FIXTURE',30,'2026-01-02');
+            """);
+        var reader = new CustomerCreditStatementReader(settings.ConnectionString);
+        var rows = reader.Read(new DateTime(2026, 1, 1), new DateTime(2026, 1, 31));
+        var customer = rows.Single(row => row.CustomerId == "CREDIT_FIXTURE");
+        Require(customer.OpeningCredit == 20m && customer.CreditSales == 100m &&
+            customer.CreditReturns == -10m && customer.Payments == 30m && customer.Balance == 80m,
+            "WPF credit reader did not preserve the LOGICA period and signed return calculation.");
+        Require(rows.Single(row => row.CustomerId == "EMPTY_FIXTURE").Balance == 0m,
+            "WPF credit reader did not handle an account without movements.");
+
+        var reversedPeriodRejected = false;
+        try { reader.Read(new DateTime(2026, 2, 1), new DateTime(2026, 1, 1)); }
+        catch (ArgumentException) { reversedPeriodRejected = true; }
+        Require(reversedPeriodRejected, "Customer credit reader accepted a reversed date range.");
+        var singleDay = reader.Read(new DateTime(2026, 1, 2), new DateTime(2026, 1, 2))
+            .Single(row => row.CustomerId == "CREDIT_FIXTURE");
+        Require(singleDay.Balance == 80m, "Credit statement lost the inclusive single-day boundary.");
+        var outside = reader.Read(new DateTime(2026, 2, 1), new DateTime(2026, 2, 28))
+            .Single(row => row.CustomerId == "CREDIT_FIXTURE");
+        Require(outside.Balance == 20m && outside.Payments == 0m && outside.CreditSales == 0m,
+            "Credit statement did not preserve opening credit outside the movement period.");
+
+        var dialog = new CustomerCreditStatementDialog(reader.Read);
+        dialog.Show();
+        try
+        {
+            // Exercise the dialog's production Loaded handler with its default period.
+            var layout = (System.Windows.Controls.DockPanel)dialog.Content;
+            var grid = layout.Children.OfType<System.Windows.Controls.DataGrid>().Single();
+            Require(grid.Items.OfType<CustomerCreditStatementRow>().Any(row =>
+                row.CustomerId == "CREDIT_FIXTURE"), "WPF credit statement did not display MariaDB rows.");
+            Require(!grid.Items.OfType<CustomerCreditStatementRow>().Any(row =>
+                row.CustomerId == "EMPTY_FIXTURE"), "WPF credit statement displayed a settled account.");
+        }
+        finally { dialog.Close(); }
+        var workstation = Host(settings, pin);
+        try
+        {
+            Require(CashierEntry(workstation, "O'Neil", "01", "0", 0m, pin),
+                "Customer credit entry requires a real active cashier session.");
+            static IEnumerable<DependencyObject> Children(DependencyObject parent)
+            {
+                foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+                {
+                    yield return child;
+                    foreach (var descendant in Children(child)) yield return descendant;
+                }
+            }
+            var entry = Children(workstation.Window).OfType<System.Windows.Controls.Button>()
+                .Single(button => Equals(button.Content, "État des crédits clients"));
+            Exception? failure = null;
+            var opened = false;
+            var timer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(40)
+            };
+            timer.Tick += (_, _) =>
+            {
+                var openedDialog = Application.Current.Windows.OfType<CustomerCreditStatementDialog>().SingleOrDefault();
+                if (openedDialog is null) return;
+                timer.Stop();
+                try
+                {
+                    var grid = ((System.Windows.Controls.DockPanel)openedDialog.Content).Children
+                        .OfType<System.Windows.Controls.DataGrid>().Single();
+                    Require(grid.Items.OfType<CustomerCreditStatementRow>().Any(row =>
+                        row.CustomerId == "CREDIT_FIXTURE" && row.Balance == 80m),
+                        "Cashier credit statement entry did not use the registered MariaDB reader.");
+                    opened = true;
+                }
+                catch (Exception ex) { failure = ex; }
+                finally { openedDialog.Close(); }
+            };
+            timer.Start();
+            try
+            {
+                entry.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            }
+            finally { timer.Stop(); }
+            if (failure is not null) throw failure;
+            Require(opened, "Customer credit statement did not open from its cashier button.");
+            Require(workstation.Window.EndFinancialSession(), "Empty cashier session could not be ended.");
+            var deniedOpened = false;
+            var denialTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(40)
+            };
+            denialTimer.Tick += (_, _) =>
+            {
+                var deniedDialog = Application.Current.Windows.OfType<CustomerCreditStatementDialog>().SingleOrDefault();
+                if (deniedDialog is null) return;
+                deniedOpened = true;
+                deniedDialog.Close();
+            };
+            denialTimer.Start();
+            try { entry.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent)); }
+            finally { denialTimer.Stop(); }
+            Require(!deniedOpened, "Credit statement opened after cashier logout.");
+
+        }
+        finally { workstation.Window.Close(); }
+
+        File.WriteAllText(Path.Combine(EvidenceDirectory, "customer-credit-statement.json"),
+            JsonSerializer.Serialize(new { RealMariaDbReader = true, PeriodBalance = 80m,
+                SignedReturn = true, EmptyAccount = true, WpfLoadedRows = true, CashierButtonEntry = true }));
+    }
+
+    private static void VerifyCustomerSettlementRetry()
+    {
+        var customer = new CustomerCreditStatementRow("RETRY_CLIENT", "Client", 0m, 80m, 0m, 0m, 80m);
+        var requests = new List<CustomerSettlementRequest>();
+        var dialog = new CustomerSettlementDialog(customer, new[] { "ESPECES", "CARTE" }, request =>
+        {
+            requests.Add(request);
+            return false;
+        });
+        dialog.Show();
+        try
+        {
+            var panel = (System.Windows.Controls.StackPanel)dialog.Content;
+            var inputs = panel.Children.OfType<System.Windows.Controls.TextBox>().ToArray();
+            var mode = panel.Children.OfType<System.Windows.Controls.ComboBox>().Single();
+            var save = panel.Children.OfType<System.Windows.Controls.Button>().Single();
+            var amount = inputs[0];
+            var notes = inputs[1];
+            amount.Text = "30";
+            notes.Text = "Premier versement";
+            mode.SelectedItem = "ESPECES";
+            save.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Require(requests.Count == 1 && requests[0].Amount == 30m,
+                "Settlement dialog did not submit the reviewed amount.");
+            Require(amount.IsReadOnly && notes.IsReadOnly && !mode.IsEnabled,
+                "Uncertain settlement left its financial payload editable.");
+            // Programmatic edits model stale bindings while the first outcome is unknown.
+            amount.Text = "80";
+            notes.Text = "Changed payload";
+            mode.SelectedItem = "CARTE";
+            save.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Require(requests.Count == 2 && requests[0] == requests[1] &&
+                requests[1].PaymentMode == "ESPECES" && requests[1].Notes == "Premier versement" &&
+                !string.IsNullOrWhiteSpace(requests[1].OperationId),
+                "Settlement retry changed its operation identity or financial payload.");
+            amount.Text = "";
+            mode.SelectedItem = null;
+            save.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Require(requests.Count == 3 && requests[2] == requests[0],
+                "Cleared input bindings prevented reconciliation of the original settlement.");
+
+        }
+        finally { dialog.Close(); }
+        File.WriteAllText(Path.Combine(EvidenceDirectory, "customer-settlement-ui-retry.json"),
+            JsonSerializer.Serialize(new { UiCallbackOnly = true, SameOperation = true,
+                ImmutableAmount = true, ImmutableMode = true, ImmutableNotes = true }));
     }
 
     public static int Run(string evidenceDirectory)

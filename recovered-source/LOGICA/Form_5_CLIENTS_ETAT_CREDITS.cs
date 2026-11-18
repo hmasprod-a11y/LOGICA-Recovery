@@ -1030,95 +1030,7 @@ public class Form_5_CLIENTS_ETAT_CREDITS : Form
 				thread.SetApartmentState(ApartmentState.STA);
 				thread.IsBackground = true;
 				thread.Start();
-				DataTable dataTable = new DataTable();
-				MySqlDataAdapter val = new MySqlDataAdapter();
-				dataTable.Clear();
-				val = new MySqlDataAdapter("select ID_CLIENT,CLIENT,CREDIT_INITIAL     from TABLE_CLIENTS     order  by CLIENT   ASC   ", Module1.cn_SQL);
-				((DbDataAdapter)(object)val).Fill(dataTable);
-				DataGridView1.Rows.Clear();
-				int num = dataTable.Rows.Count - 1;
-				int num2 = 0;
-				while (true)
-				{
-					int num3 = num2;
-					int num4 = num;
-					if (num3 > num4)
-					{
-						break;
-					}
-					DataGridView1.Rows.Add(new object[6]
-					{
-						dataTable.Rows[num2]["ID_CLIENT"].ToString(),
-						dataTable.Rows[num2]["CLIENT"].ToString(),
-						Conversions.ToDecimal(dataTable.Rows[num2]["CREDIT_INITIAL"].ToString()),
-						"",
-						"",
-						""
-					});
-					num2++;
-				}
-				int num5 = DataGridView1.Rows.Count - 1;
-				int num6 = 0;
-				while (true)
-				{
-					int num7 = num6;
-					int num4 = num5;
-					if (num7 > num4)
-					{
-						break;
-					}
-					dataTable.Clear();
-					val = new MySqlDataAdapter("SELECT    SUM(TOTAL_NET)      as N          FROM   TABLE_VENTES_JOURNAL     WHERE   Dates   between   ' " + Strings.Format(DateTime1_FIND.Value, "yyyy-MM-dd") + " '     And      ' " + Strings.Format(DateTime2_FIND.Value, "yyyy-MM-dd") + " '         AND          ID_CLIENT  =  '" + DataGridView1.Rows[num6].Cells[0].Value.ToString() + "'            AND     OPERATION  =  'CREDIT'          ", Module1.cn_SQL);
-					((DbDataAdapter)(object)val).Fill(dataTable);
-					decimal num8 = 0m;
-					num8 = ((dataTable.Rows[0]["N"] != DBNull.Value) ? Conversions.ToDecimal(Strings.FormatNumber(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"]))) : Conversions.ToDecimal(Strings.FormatNumber(0)));
-					DataGridView1.Rows[num6].Cells["TOTAL_CREDIT"].Value = num8;
-					dataTable.Clear();
-					val = new MySqlDataAdapter("SELECT    SUM(TOTAL_NET)      as N          FROM   TABLE_VENTES_JOURNAL     WHERE   Dates   between   ' " + Strings.Format(DateTime1_FIND.Value, "yyyy-MM-dd") + " '     And      ' " + Strings.Format(DateTime2_FIND.Value, "yyyy-MM-dd") + " '         AND          ID_CLIENT  =  '" + DataGridView1.Rows[num6].Cells[0].Value.ToString() + "'            AND     OPERATION  =  'RETOUR CREDIT'          ", Module1.cn_SQL);
-					((DbDataAdapter)(object)val).Fill(dataTable);
-					decimal num9 = 0m;
-					num9 = ((dataTable.Rows[0]["N"] != DBNull.Value) ? Conversions.ToDecimal(Strings.FormatNumber(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"]))) : Conversions.ToDecimal(Strings.FormatNumber(0)));
-					DataGridView1.Rows[num6].Cells["TOTAL_RETOUR"].Value = num9;
-					dataTable.Clear();
-					val = new MySqlDataAdapter("select    SUM(MONTANT)      as N           from   TABLE_CLIENTS_REGLE       WHERE   Dates   between   ' " + Strings.Format(DateTime1_FIND.Value, "yyyy-MM-dd") + " '     And      ' " + Strings.Format(DateTime2_FIND.Value, "yyyy-MM-dd") + " '         AND           ID_CLIENT  =  '" + DataGridView1.Rows[num6].Cells[0].Value.ToString() + "'                  ", Module1.cn_SQL);
-					((DbDataAdapter)(object)val).Fill(dataTable);
-					decimal num10 = 0m;
-					num10 = ((dataTable.Rows[0]["N"] != DBNull.Value) ? Conversions.ToDecimal(Strings.FormatNumber(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"]))) : Conversions.ToDecimal(Strings.FormatNumber(0)));
-					DataGridView1.Rows[num6].Cells["TOTAL_REGLE"].Value = num10;
-					DataGridView1.Rows[num6].Cells["RELIQUAT"].Value = Conversions.ToDecimal(Operators.SubtractObject(Operators.AddObject(decimal.Add(num8, num9), DataGridView1.Rows[num6].Cells["CREDIT_INITIAL"].Value), num10));
-					num6++;
-				}
-				decimal num11 = 0m;
-				int num12 = DataGridView1.Rows.Count - 1;
-				int num13 = 0;
-				while (true)
-				{
-					int num14 = num13;
-					int num4 = num12;
-					if (num14 > num4)
-					{
-						break;
-					}
-					num11 = Conversions.ToDecimal(Operators.AddObject(num11, DataGridView1.Rows[num13].Cells["RELIQUAT"].Value));
-					num13++;
-				}
-				Text_TOTAL_RELIQUAT.Text = Strings.FormatNumber(Module1.FLOUSS(num11));
-				int num15 = DataGridView1.Rows.Count - 1;
-				while (true)
-				{
-					int num16 = num15;
-					int num4 = 0;
-					if (num16 < num4)
-					{
-						break;
-					}
-					if (Operators.ConditionalCompareObjectEqual(DataGridView1.Rows[num15].Cells["RELIQUAT"].Value, 0, TextCompare: false))
-					{
-						DataGridView1.Rows.RemoveAt(num15);
-					}
-					num15 += -1;
-				}
-				DataGridView1.Sort(DataGridView1.Columns["RELIQUAT"], ListSortDirection.Descending);
+				RefreshCreditStatement();
 				Module1._QUITTER_PATIENTER = true;
 			}
 			catch (Exception ex)
@@ -1132,6 +1044,85 @@ public class Form_5_CLIENTS_ETAT_CREDITS : Form
 				ProjectData.ClearProjectError();
 			}
 		}
+	}
+
+	private void RefreshCreditStatement()
+	{
+		using var command = new MySqlCommand(@"
+			SELECT c.ID_CLIENT, c.CLIENT, c.CREDIT_INITIAL,
+			       v.TOTAL_CREDIT, v.TOTAL_RETOUR, r.TOTAL_REGLE
+			FROM TABLE_CLIENTS c
+			LEFT JOIN (
+				SELECT ID_CLIENT,
+				       SUM(CASE WHEN OPERATION = 'CREDIT' THEN TOTAL_NET END) AS TOTAL_CREDIT,
+				       SUM(CASE WHEN OPERATION = 'RETOUR CREDIT' THEN TOTAL_NET END) AS TOTAL_RETOUR
+				FROM TABLE_VENTES_JOURNAL
+				WHERE DATES BETWEEN @fromDate AND @toDate AND OPERATION IN ('CREDIT', 'RETOUR CREDIT')
+				GROUP BY ID_CLIENT
+			) v ON v.ID_CLIENT = c.ID_CLIENT
+			LEFT JOIN (
+				SELECT ID_CLIENT, SUM(MONTANT) AS TOTAL_REGLE
+				FROM TABLE_CLIENTS_REGLE
+				WHERE DATES BETWEEN @fromDate AND @toDate
+				GROUP BY ID_CLIENT
+			) r ON r.ID_CLIENT = c.ID_CLIENT
+			ORDER BY c.CLIENT ASC", Module1.cn_SQL);
+		command.Parameters.AddWithValue("@fromDate", DateTime1_FIND.Value.Date);
+		command.Parameters.AddWithValue("@toDate", DateTime2_FIND.Value.Date);
+		using var adapter = new MySqlDataAdapter(command);
+		using var statement = new DataTable();
+		adapter.Fill(statement);
+		DataGridView1.Rows.Clear();
+		foreach (DataRow row in statement.Rows)
+		{
+			decimal opening = row.IsNull("CREDIT_INITIAL") ? 0m : Conversions.ToDecimal(row["CREDIT_INITIAL"]);
+			decimal credit = ReadStatementAmount(row, "TOTAL_CREDIT");
+			decimal returns = ReadStatementAmount(row, "TOTAL_RETOUR");
+			decimal payments = ReadStatementAmount(row, "TOTAL_REGLE");
+			decimal balance = LOGICA.Domain.ClientCreditBalance.Calculate(credit, returns, opening, payments);
+			int index = DataGridView1.Rows.Add(row["ID_CLIENT"].ToString(), row["CLIENT"].ToString(), opening);
+			DataGridViewRow gridRow = DataGridView1.Rows[index];
+			gridRow.Cells["TOTAL_CREDIT"].Value = credit;
+			gridRow.Cells["TOTAL_RETOUR"].Value = returns;
+			gridRow.Cells["TOTAL_REGLE"].Value = payments;
+			gridRow.Cells["RELIQUAT"].Value = balance;
+		}
+		decimal num11 = 0m;
+		int num12 = DataGridView1.Rows.Count - 1;
+		int num13 = 0;
+		while (true)
+		{
+			int num14 = num13;
+			int num4 = num12;
+			if (num14 > num4)
+			{
+				break;
+			}
+			num11 = Conversions.ToDecimal(Operators.AddObject(num11, DataGridView1.Rows[num13].Cells["RELIQUAT"].Value));
+			num13++;
+		}
+		Text_TOTAL_RELIQUAT.Text = Strings.FormatNumber(Module1.FLOUSS(num11));
+		int num15 = DataGridView1.Rows.Count - 1;
+		while (true)
+		{
+			int num16 = num15;
+			int num4 = 0;
+			if (num16 < num4)
+			{
+				break;
+			}
+			if (Operators.ConditionalCompareObjectEqual(DataGridView1.Rows[num15].Cells["RELIQUAT"].Value, 0, TextCompare: false))
+			{
+				DataGridView1.Rows.RemoveAt(num15);
+			}
+			num15 += -1;
+		}
+		DataGridView1.Sort(DataGridView1.Columns["RELIQUAT"], ListSortDirection.Descending);
+	}
+
+	private static decimal ReadStatementAmount(DataRow row, string column)
+	{
+		return Conversions.ToDecimal(Strings.FormatNumber(row.IsNull(column) ? 0 : row[column]));
 	}
 
 	private void me_KeyDown(object sender, KeyEventArgs e)
