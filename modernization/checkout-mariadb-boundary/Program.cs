@@ -1489,6 +1489,37 @@ namespace LOGICA.Infrastructure.Checkout
                 Sql("DELETE FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='ambiguous-original'");
                 Sql("ALTER TABLE TABLE_VENTES_ENTETE ADD PRIMARY KEY (ID_TICKET)");
             }
+            // Nonpositive persisted totals are corrupted legacy sales, not refundable money.
+            // The disposable fixture is restored even when an assertion fails.
+            foreach (decimal invalidTotal in new[] { 0m, -13.50m })
+            {
+                decimal priorClaims = Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'");
+                Sql("UPDATE TABLE_VENTES_ENTETE SET Total_NET=" +
+                    invalidTotal.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                    " WHERE ID_TICKET='multi-original'");
+                try
+                {
+                    var invalidCandidates = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .FindFullCashReturnCandidates(NewConnection, "multi-original");
+                    Require(!invalidCandidates.Any(candidate => candidate.SaleId == "multi-original"),
+                        "Nonpositive original sale total must not appear in refundable candidates.");
+                    bool invalidRejected = false;
+                    try
+                    {
+                        Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                            NewConnection, "invalid-total-refund", "O'Neil", "MAD", "multi-original");
+                    }
+                    catch (InvalidOperationException) { invalidRejected = true; }
+                    Require(invalidRejected &&
+                        Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == priorClaims &&
+                        Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='invalid-total-refund'") == 0,
+                        "Nonpositive original sale total must reject return without financial side effects.");
+                }
+                finally
+                {
+                    Sql("UPDATE TABLE_VENTES_ENTETE SET Total_NET=13.50 WHERE ID_TICKET='multi-original'");
+                }
+            }
             Console.WriteLine("PASS full multi-line refund: exact line set, atomic signed stock/payment/journal/claim, duplicate, rollback/retry, concurrency and ambiguous original rejection.");
         }
 
