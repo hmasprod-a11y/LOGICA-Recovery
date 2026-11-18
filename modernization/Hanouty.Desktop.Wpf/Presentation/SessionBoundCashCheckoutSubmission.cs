@@ -31,7 +31,7 @@ public sealed class SessionBoundCashCheckoutSubmission :
     {
         if (string.IsNullOrWhiteSpace(stableOperationId) ||
             context?.IsWellFormed != true ||
-            !string.Equals(context.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase))
+            context.TenderCode is not ("Cash" or "Card"))
             return CheckoutSubmissionResult.Invalidated;
 
         // Re-read the host's authenticated context on every attempt; never trust
@@ -46,7 +46,8 @@ public sealed class SessionBoundCashCheckoutSubmission :
             return CheckoutSubmissionResult.Invalidated;
         }
         if (trusted?.IsWellFormed != true ||
-            !string.Equals(trusted.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase) ||
+            trusted.TenderCode is not ("Cash" or "Card") ||
+            !string.Equals(context.TenderCode, trusted.TenderCode, StringComparison.Ordinal) ||
             !string.Equals(context.CashierId, trusted.CashierId, StringComparison.Ordinal) ||
             !string.Equals(context.RegisterId, trusted.RegisterId, StringComparison.Ordinal) ||
             !string.Equals(context.CurrencyCode, trusted.CurrencyCode, StringComparison.Ordinal) ||

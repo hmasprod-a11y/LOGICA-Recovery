@@ -31,6 +31,16 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
         };
     }
 
+    internal IReadOnlyList<string> FormatFrenchThreeColumnPayment(Func<decimal, string> formatAmount)
+    {
+        if (Payments.Count == 1 && Payments[0].Mode == "CARTE" &&
+            Payments[0].Amount == Total && Total > 0m)
+            return new[] {
+                LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Payment("CARTE", formatAmount(Total)),
+                LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Payment("RENDU", formatAmount(0m)) };
+        return FormatFrenchThreeColumnCashPayment(formatAmount);
+    }
+
     internal IEnumerable<string> FormatFrenchThreeColumnIdentity(bool showTicketNumber)
     {
         yield return LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Cashier(Cashier, Seller);

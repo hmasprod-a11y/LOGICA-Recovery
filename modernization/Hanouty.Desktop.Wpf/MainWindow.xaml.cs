@@ -44,6 +44,23 @@ public partial class MainWindow : Window
             _openSupplierSettlements?.Invoke();
     }
 
+    private Func<bool>? _payByCard;
+    private bool _cardPaymentOpen;
+    public void ConfigureCardPayment(Func<bool> pay) => _payByCard = pay;
+    public void SetCardPaymentFeedback(string message) => CardPaymentStatus.Text = message;
+    public bool PayByCard()
+    {
+        if (_cardPaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
+            _trustedTotalReadBusy || _originalSaleLookupBusy || _payByCard is null ||
+            DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
+            vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null) return false;
+        _cardPaymentOpen = true;
+        CardPaymentStatus.Text = "";
+        try { return _payByCard(); }
+        finally { _cardPaymentOpen = false; }
+    }
+    private void PayByCard_Click(object sender, RoutedEventArgs e) => PayByCard();
+
     private Func<decimal, bool, bool>? _closeCashDrawer;
     private Func<decimal, bool>? _setOpeningCash;
 
@@ -494,7 +511,7 @@ public partial class MainWindow : Window
 
     public bool EndFinancialSession()
     {
-        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
+        if (_cardPaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _endFinancialSession is null) return false;
         _logoutOpen = true;
@@ -535,7 +552,7 @@ public partial class MainWindow : Window
 
     private bool ShowCashierEntry(bool forPayment)
     {
-        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
+        if (_cardPaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _setFinancialContext is null || _readTrustedCashTotal is null) return false;
         // Lock BEFORE calling Host-provided delegates: those may pump the WPF
@@ -679,8 +696,8 @@ public partial class MainWindow : Window
                   vm.PaymentContext is null ||
                   !string.Equals(vm.PaymentContext.CashierId, cashier, StringComparison.Ordinal)))
             return "";
-        return ReadPin(cashierEntryPin ? "Authorize cashier session" : "Authorize cash checkout",
-            $"Cashier: {cashier}\nConfirm this cashier session for the displayed cash payment.",
+        return ReadPin(cashierEntryPin ? "Authorize cashier session" : "Authorize checkout",
+            $"Cashier: {cashier}\nConfirm this cashier session for the displayed payment.",
             cashierEntryPin ? cashier : null);
     }
 
