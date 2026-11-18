@@ -578,6 +578,22 @@ namespace LOGICA.Infrastructure.Checkout
             catch (ArgumentException) { emptyRejected = true; }
             Require(emptyRejected && !emptyOpened,
                 "Empty basket preview must reject before opening MariaDB.");
+            // Case-variant duplicates may resolve to one stock row under the legacy
+            // MariaDB collation; preview must reject them before any SQL access.
+            bool caseVariantOpened = false;
+            bool caseVariantRejected = false;
+            try
+            {
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleBasket(
+                    () => { caseVariantOpened = true; return NewConnection(); },
+                    new[] {
+                        new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 1),
+                        new Hanouty.ArchitectureBridge.CheckoutBatchLine("csharp-stock", 2)
+                    });
+            }
+            catch (ArgumentException) { caseVariantRejected = true; }
+            Require(caseVariantRejected && !caseVariantOpened,
+                "Case-variant duplicate article identities must reject before MariaDB.");
             // Duplicate article identities must fail before acquiring a DB connection,
             // including case-exact duplicates in an otherwise valid basket.
             bool duplicateOpened = false;
