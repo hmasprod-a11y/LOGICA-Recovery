@@ -1093,6 +1093,41 @@ namespace LOGICA.Infrastructure.Checkout
                 Require(invalidCandidates.Count == 0 && !connectionOpened,
                     "Control-character receipt identity must be rejected before MariaDB lookup.");
             }
+            // Malformed operation and cashier IDs must be rejected by return
+            // preparation before any database connection is requested. This
+            // guards pasted control characters and ambiguous padded identities.
+            foreach (var invalidIdentity in new[] { " return-prep", "return-prep ", "return\\nprep", new string('x', 65) })
+            {
+                bool connectionOpened = false;
+                bool rejectedBeforeConnection = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .PrepareFullCashReturnRequest(
+                            () => { connectionOpened = true; return NewConnection(); },
+                            invalidIdentity, "O'Neil", "MAD", "multi-original");
+                }
+                catch (ArgumentException) { rejectedBeforeConnection = true; }
+                Require(rejectedBeforeConnection && !connectionOpened,
+                    "Invalid refund operation identity must fail before opening MariaDB.");
+            }
+            foreach (var invalidCashier in new[] { " O'Neil", "O'Neil ", "O\\tNeil", new string('x', 65) })
+            {
+                bool connectionOpened = false;
+                bool rejectedBeforeConnection = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .PrepareFullCashReturnRequest(
+                            () => { connectionOpened = true; return NewConnection(); },
+                            "return-invalid-cashier", invalidCashier, "MAD", "multi-original");
+                }
+                catch (ArgumentException) { rejectedBeforeConnection = true; }
+                Require(rejectedBeforeConnection && !connectionOpened,
+                    "Invalid refund cashier identity must fail before opening MariaDB.");
+            }
+            Require(Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0,
+                "Rejected refund preparation must not consume original sale.");
             // A header with no journal lines is not a refundable sale. Preserve
             // the disposable fixture and prove both lookup and preparation fail
             // without claiming the original ticket.
