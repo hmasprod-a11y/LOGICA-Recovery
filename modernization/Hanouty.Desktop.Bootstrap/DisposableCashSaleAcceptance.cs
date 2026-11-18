@@ -899,6 +899,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyCatalogueImport(settings);
         VerifyCustomerCreditStatement(settings, pin);
         VerifyCustomerSettlementRetry();
+        VerifyCustomerSettlementPosting(settings, pin);
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -2524,7 +2525,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         dialog.Show();
         try
         {
-            var panel = (System.Windows.Controls.StackPanel)dialog.Content;
+            var panel = (System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)dialog.Content).Content;
             var inputs = panel.Children.OfType<System.Windows.Controls.TextBox>().ToArray();
             var mode = panel.Children.OfType<System.Windows.Controls.ComboBox>().Single();
             var save = panel.Children.OfType<System.Windows.Controls.Button>().Single();
@@ -2558,6 +2559,165 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         File.WriteAllText(Path.Combine(EvidenceDirectory, "customer-settlement-ui-retry.json"),
             JsonSerializer.Serialize(new { UiCallbackOnly = true, SameOperation = true,
                 ImmutableAmount = true, ImmutableMode = true, ImmutableNotes = true }));
+    }
+
+
+    private static void VerifyCustomerSettlementPosting(CatalogueSettings settings, string pin)
+    {
+        Sql(settings, """
+            ALTER TABLE TABLE_CLIENTS ADD CODE_CLIENT VARCHAR(64);
+            UPDATE TABLE_CLIENTS SET CODE_CLIENT='CREDIT-CODE' WHERE ID_CLIENT='CREDIT_FIXTURE';
+            ALTER TABLE TABLE_CLIENTS_REGLE ADD ID BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                ADD ID_REGLE VARCHAR(64), ADD CODE_CLIENT VARCHAR(64), ADD CLIENT VARCHAR(128),
+                ADD NOTES TEXT, ADD ETAT VARCHAR(32);
+            CREATE TABLE TABLE_MODE_P (MODE_P VARCHAR(128)) ENGINE=InnoDB;
+            INSERT INTO TABLE_MODE_P VALUES ('ESPECES'),('CARTE');
+            UPDATE TABLE_PASS SET CLOTURE='VISIBLE' WHERE ListUser='O''Neil';
+            """ + """
+            CREATE TABLE IF NOT EXISTS hanouty_client_settlement_operations (
+             OPERATION_ID VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+             ACTOR VARCHAR(128) NOT NULL,
+             CLIENT_ID VARCHAR(255) NOT NULL,
+             AMOUNT DECIMAL(18,2) NOT NULL,
+             PAYMENT_MODE VARCHAR(128) NOT NULL,
+             NOTES TEXT NOT NULL,
+             SETTLEMENT_ID BIGINT NOT NULL UNIQUE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            
+            """);
+        var writer = new CustomerSettlementWriter(settings.ConnectionString);
+        var reader = new CustomerCreditStatementReader(settings.ConnectionString);
+        var closing = new CashDrawerClosing(settings.ConnectionString);
+        decimal Balance() => reader.Read(new DateTime(2000, 1, 1), DateTime.Today)
+            .Single(row => row.CustomerId == "CREDIT_FIXTURE").Balance;
+        string State() => string.Join("|", new[] {
+            Number(settings, "SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE"),
+            Number(settings, "SELECT COALESCE(SUM(MONTANT),0) FROM TABLE_CLIENTS_REGLE"),
+            Number(settings, "SELECT COUNT(*) FROM hanouty_client_settlement_operations")
+        });
+        Require(writer.PaymentModes().SequenceEqual(new[] { "CARTE", "ESPECES" }),
+            "Customer settlement did not use LOGICA payment modes.");
+        void Rejected(CustomerSettlementRequest request, string enteredPin)
+        {
+            var before = State();
+            var rejected = false;
+            try { writer.Record(request, "O'Neil", enteredPin); }
+            catch (Exception) { rejected = true; }
+            Require(rejected && State() == before, "Rejected settlement changed financial rows.");
+        }
+        var draft = new CustomerSettlementRequest("SETTLEMENT-REJECTED", "CREDIT_FIXTURE", 30m, "ESPECES", "Premier");
+        Rejected(draft, "wrong PIN");
+        Rejected(draft with { Amount = 0m }, pin);
+        Rejected(draft with { Amount = 1.001m }, pin);
+        Rejected(draft with { CustomerId = "MISSING" }, pin);
+        Rejected(draft with { PaymentMode = "MISSING" }, pin);
+
+        Sql(settings, """
+            CREATE TRIGGER fail_customer_settlement_journal BEFORE INSERT
+            ON hanouty_client_settlement_operations FOR EACH ROW
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Synthetic settlement journal failure';
+            """);
+        try { Rejected(draft, pin); }
+        finally { Sql(settings, "DROP TRIGGER fail_customer_settlement_journal"); }
+        Require(Balance() == 80m, "Failed settlement changed the customer credit.");
+
+        static IEnumerable<DependencyObject> Children(DependencyObject parent)
+        {
+            foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+            {
+                yield return child;
+                foreach (var descendant in Children(child)) yield return descendant;
+            }
+        }
+        string PayThroughHost(string digits)
+        {
+            var host = Host(settings, pin);
+            Exception? failure = null;
+            var paid = false;
+            var refreshed = false;
+            try
+            {
+                Require(CashierEntry(host, "O'Neil", "01", "0", 0m, pin), "Settlement cashier session failed.");
+                host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+                    new Action(() =>
+                    {
+                        var statement = Application.Current.Windows.OfType<CustomerCreditStatementDialog>().SingleOrDefault();
+                        try
+                        {
+                            Require(statement is not null, "Production credit statement did not open.");
+                            var grid = Children(statement!).OfType<System.Windows.Controls.DataGrid>().Single();
+                            grid.SelectedItem = grid.Items.OfType<CustomerCreditStatementRow>()
+                                .Single(row => row.CustomerId == "CREDIT_FIXTURE");
+                            host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+                                new Action(() =>
+                                {
+                                    var settlement = Application.Current.Windows.OfType<CustomerSettlementDialog>().SingleOrDefault();
+                                    try
+                                    {
+                                        Require(settlement is not null, "Production settlement dialog did not open.");
+                                        var buttons = Children(settlement!).OfType<System.Windows.Controls.Button>().ToArray();
+                                        foreach (var digit in digits)
+                                            buttons.Single(b => Equals(b.Content, digit.ToString()))
+                                                .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                                        Children(settlement!).OfType<System.Windows.Controls.ComboBox>().Single().SelectedItem = "ESPECES";
+                                        var save = buttons.Single(b => Equals(b.Content, "Enregistrer"));
+                                        // This opens the real Host PIN dialog and submits the production writer.
+                                        ReviewThroughDialog(host, pin, true, () =>
+                                            save.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent)));
+                                        paid = settlement!.DialogResult == true;
+                                    }
+                                    catch (Exception ex) { failure = ex; settlement?.Close(); }
+                                }));
+                            Children(statement!).OfType<System.Windows.Controls.Button>()
+                                .Single(b => Equals(b.Content, "Régler le client sélectionné"))
+                                .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                            var balance = Balance();
+                            refreshed = balance == 0m
+                                ? !grid.Items.OfType<CustomerCreditStatementRow>().Any(r => r.CustomerId == "CREDIT_FIXTURE")
+                                : grid.Items.OfType<CustomerCreditStatementRow>().Any(r =>
+                                    r.CustomerId == "CREDIT_FIXTURE" && r.Balance == balance);
+                        }
+                        catch (Exception ex) { failure = ex; }
+                        finally { statement?.Close(); }
+                    }));
+                Children(host.Window).OfType<System.Windows.Controls.Button>()
+                    .Single(b => Equals(b.Content, "État des crédits clients"))
+                    .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                if (failure is not null) throw new InvalidOperationException("Real WPF settlement failed.", failure);
+                Require(paid && refreshed, "Settlement did not commit and refresh the production credit statement.");
+            }
+            finally { host.Window.Close(); }
+            return Convert.ToString(Value(settings,
+                "SELECT OPERATION_ID FROM hanouty_client_settlement_operations ORDER BY SETTLEMENT_ID DESC LIMIT 1"))!;
+        }
+        var before = closing.Read("O'Neil", pin);
+        var firstId = PayThroughHost("30");
+        Require(Balance() == 50m, "Partial settlement did not reduce credit from 80 to 50.");
+        var afterPartial = closing.Read("O'Neil", pin);
+        Require(afterPartial.ClientCash == before.ClientCash + 30m && afterPartial.Expected == before.Expected + 30m,
+            "Partial customer settlement did not reconcile with cash closing.");
+        var replay = new CustomerSettlementRequest(firstId, "CREDIT_FIXTURE", 30m, "ESPECES", "");
+        var state = State();
+        Require(new CustomerSettlementWriter(settings.ConnectionString).Record(replay, "O'Neil", pin) &&
+            State() == state && Balance() == 50m, "Restart/retry duplicated the customer settlement.");
+        Rejected(replay with { Amount = 31m }, pin);
+        Rejected(replay with { Notes = "Different payload" }, pin);
+        PayThroughHost("50");
+        Require(Balance() == 0m, "Full settlement did not clear customer credit.");
+        var afterFull = closing.Read("O'Neil", pin);
+        Require(afterFull.ClientCash == before.ClientCash + 80m && afterFull.Expected == before.Expected + 80m,
+            "Full settlement did not reconcile with cash closing.");
+        var rows = Number(settings, "SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE");
+        closing.Close("O'Neil", pin, afterFull);
+        Require(Number(settings, "SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE") == rows &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE WHERE ID_CLIENT='CREDIT_FIXTURE' AND ID_REGLE IS NOT NULL AND CLOTURE_GLOBALE IS NULL") == 0,
+            "Cash closing did not preserve and close both settlement records.");
+        Require(writer.Record(replay, "O'Neil", pin) && Number(settings, "SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE") == rows,
+            "A retry after cash closing duplicated or reopened a customer settlement.");
+        File.WriteAllText(Path.Combine(EvidenceDirectory, "customer-settlement-posting.json"),
+            JsonSerializer.Serialize(new { ProductionHostAndPin = true, TouchKeypad = true, Initial = 80m,
+                PartialBalance = 50m, FinalBalance = 0m, CashIncrease = 80m, ExactOnce = true,
+                Rollback = true, WrongPinDenied = true, ClosedRowsPreserved = true }));
     }
 
     public static int Run(string evidenceDirectory)

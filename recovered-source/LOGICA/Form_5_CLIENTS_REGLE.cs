@@ -3539,6 +3539,11 @@ public class Form_5_CLIENTS_REGLE : Form
 				}
 				ProjectData.ClearProjectError();
 			}
+			finally
+			{
+				// Allow a retry after validation failure or a rolled-back database insert.
+				_postingSettlement = false;
+			}
 		}
 	}
 
