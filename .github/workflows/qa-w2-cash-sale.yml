@@ -120,6 +120,9 @@ jobs:
           if ($length -le 0) { throw 'MariaDB archive length unavailable.' }
           $partSize = [long][Math]::Ceiling($length / 32)
           0..31 | ForEach-Object -Parallel {
+            # curl retries transient server responses; inspect its final exit code.
+            $ErrorActionPreference = 'Continue'
+            $PSNativeCommandUseErrorActionPreference = $false
             $part = $_
             $first = $part * $using:partSize
             $last = [Math]::Min($using:length - 1, $first + $using:partSize - 1)
