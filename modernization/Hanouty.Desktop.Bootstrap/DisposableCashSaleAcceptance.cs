@@ -2700,6 +2700,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             return Convert.ToString(Value(settings,
                 "SELECT OPERATION_ID FROM hanouty_client_settlement_operations ORDER BY SETTLEMENT_ID DESC LIMIT 1"))!;
         }
+        // Use LOGICA's global-closing configuration for this isolated reconciliation scenario.
+        Sql(settings, "UPDATE TABLE_PARAMETRES SET VALEUR='False' WHERE OBJET='CLOTURE_CAISSIER_OBLIGER'");
         var before = closing.Read("O'Neil", pin);
         var firstId = PayThroughHost("30");
         Require(Balance() == 50m, "Partial settlement did not reduce credit from 80 to 50.");
