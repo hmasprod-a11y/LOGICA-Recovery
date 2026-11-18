@@ -2661,6 +2661,15 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                                             buttons.Single(b => Equals(b.Content, digit.ToString()))
                                                 .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                                         Children(settlement!).OfType<System.Windows.Controls.ComboBox>().Single().SelectedItem = "ESPECES";
+                                        settlement!.UpdateLayout();
+                                        var image = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                                            (int)Math.Ceiling(settlement.ActualWidth), (int)Math.Ceiling(settlement.ActualHeight),
+                                            96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                                        image.Render(settlement);
+                                        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                                        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
+                                        using (var stream = File.Create(Path.Combine(EvidenceDirectory, "customer-settlement-" + digits + ".png")))
+                                            encoder.Save(stream);
                                         var save = buttons.Single(b => Equals(b.Content, "Enregistrer"));
                                         // This opens the real Host PIN dialog and submits the production writer.
                                         ReviewThroughDialog(host, pin, true, () =>

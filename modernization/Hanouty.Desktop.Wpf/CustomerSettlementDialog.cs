@@ -61,11 +61,34 @@ public sealed class CustomerSettlementDialog : Window
             numeric.Children.Add(button);
         }
         panel.Children.Add(numeric);
-        var cash = new System.Windows.Controls.Primitives.UniformGrid { Columns = 3 };
-        foreach (var denomination in new[] { 200m, 100m, 50m, 20m, 10m, 5m, 2m, 1m, 0.5m })
+        var cash = new Grid();
+        for (var column = 0; column < 4; column++)
+            cash.ColumnDefinitions.Add(new ColumnDefinition());
+        for (var row = 0; row < 3; row++)
+            cash.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        foreach (var (denomination, row, column) in new[]
         {
-            var button = new Button { Content = denomination.ToString("0.##", CultureInfo.CurrentCulture) + " DH",
-                MinHeight = 40, Margin = new Thickness(2) };
+            (200m, 0, 0), (100m, 0, 1), (10m, 0, 2), (5m, 0, 3),
+            (50m, 1, 0), (20m, 1, 1), (2m, 1, 2), (1m, 1, 3), (0.5m, 2, 2)
+        })
+        {
+            var label = denomination.ToString("0.##", CultureInfo.CurrentCulture) + " DH";
+            var button = new Button { Content = label, MinHeight = 40, Margin = new Thickness(2) };
+            System.Windows.Automation.AutomationProperties.SetName(button, label);
+            Grid.SetRow(button, row);
+            Grid.SetColumn(button, column);
+            if (denomination == 0.5m) Grid.SetColumnSpan(button, 2);
+            else
+            {
+                var extension = denomination >= 20m ? "jpg" : "png";
+                var uri = new Uri($"/Hanouty.Desktop.Wpf;component/Assets/Cash/{denomination.ToString("0", CultureInfo.InvariantCulture)}.{extension}", UriKind.Relative);
+                var tile = new StackPanel();
+                tile.Children.Add(new Image {
+                    Source = new System.Windows.Media.Imaging.BitmapImage(uri),
+                    Height = 30, Stretch = System.Windows.Media.Stretch.Uniform });
+                tile.Children.Add(new TextBlock { Text = label, HorizontalAlignment = HorizontalAlignment.Center });
+                button.Content = tile;
+            }
             button.Click += (_, _) =>
             {
                 if (submittedRequest is not null || posting) return;
