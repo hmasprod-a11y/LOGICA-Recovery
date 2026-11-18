@@ -8,7 +8,7 @@ namespace Hanouty.Desktop.Bootstrap;
 
 internal static class LogicaCashReceiptPrinter
 {
-    private const string Separator = "-------------------------------------------";
+
 
     internal static void Print(MySqlConnection connection, string directory, string operation, string cashier, string register)
     {
@@ -45,39 +45,15 @@ internal static class LogicaCashReceiptPrinter
             quantity => quantity.ToString("0.###", CultureInfo.CurrentCulture), Amount).ToArray();
         var payment = Flag("AFFICHER_MODE_P") ? ticket.FormatFrenchThreeColumnCashPayment(Amount) : Array.Empty<string>();
         var identity = ticket.FormatFrenchThreeColumnIdentity(Flag("AFFICHER_N_TICKET"));
-        var tail = string.Join("\r\n", payment.Concat(identity)) + "\r\n" + footer + "\r\n" +
+        var tail = LogicaReceiptSummary.Format(ticket) + string.Join("\r\n", payment.Concat(identity)) + "\r\n" + footer + "\r\n" +
             DateTime.Now.ToString("            dd/MM/yyy HH:mm:ss", CultureInfo.CurrentCulture) +
             "(" + Microsoft.VisualBasic.Conversion.Val(register).ToString(CultureInfo.CurrentCulture) + ")";
 
-        using var logoStream = typeof(LogicaCashReceiptPrinter).Assembly.GetManifestResourceStream("LogicaReceiptLogo.jpg")
-            ?? throw new InvalidOperationException("Logo LOGICA introuvable.");
-        using var logo = Image.FromStream(logoStream);
-        // Picture_LOGO.Location/Size and Panel_LOGO.Size in LOGICA.Form_3_VENTE.resx.
-        var logoBounds = new Rectangle(3, 2, 258, 52);
-        const int headerHeight = 58;
-
         using var document = new PrintDocument { DocumentName = ticket.Number, PrintController = new StandardPrintController() };
         if (settings.Printer.Length != 0) document.PrinterSettings.PrinterName = settings.Printer;
-        document.PrintPage += (_, page) =>
-        {
-            var graphics = page.Graphics ?? throw new InvalidOperationException("Surface d’impression indisponible.");
-            using var regular = new Font("Inconsolata Condensed", 11);
-            using var bold = new Font("Inconsolata Condensed", 11, FontStyle.Bold);
-            using var total = new Font("Inconsolata ExtraBold", 16, FontStyle.Bold);
-            using var format = new StringFormat(StringFormatFlags.NoClip);
-            graphics.DrawImage(logo, logoBounds);
-            graphics.DrawString(Separator, regular, Brushes.Black, 0, headerHeight, format);
-            var y = headerHeight + 10;
-            foreach (var line in lines)
-            {
-                graphics.DrawString(line, bold, Brushes.Black, 0, y, format);
-                y += 16;
-            }
-            graphics.DrawString(Separator, regular, Brushes.Black, 0, y, format);
-            graphics.DrawString("TOTAL NET: " + (Amount(ticket.Total) + " DH").PadLeft(12), total, Brushes.Black, 0, y + 10, format);
-            graphics.DrawString(Separator, regular, Brushes.Black, 0, y + 30, format);
-            graphics.DrawString(tail, bold, Brushes.Black, 0, y + 40, format);
-        };
+        document.PrintPage += (_, page) => LogicaReceiptRenderer.Draw(
+            page.Graphics ?? throw new InvalidOperationException("Surface d'impression indisponible."),
+            lines, Amount(ticket.Total), tail);
         document.Print();
     }
 }

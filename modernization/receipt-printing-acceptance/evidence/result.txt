@@ -1,0 +1,1 @@
+PASS 17 assertions. Production renderer PNG generated. Synthetic persisted-ticket-shaped data; no database write, spooler or physical printer tested.
