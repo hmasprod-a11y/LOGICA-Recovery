@@ -1463,7 +1463,10 @@ namespace LOGICA.Infrastructure.Checkout
                 Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == beforeConcurrentA &&
                 Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == beforeConcurrentB &&
                 Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-concurrent-original'") == 1 &&
-                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE OPERATION='RETOUR REMBOURSEMENT' AND ID_TICKET IN ('multi-concurrent-refund-a','multi-concurrent-refund-b')") == 1,
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE OPERATION='RETOUR REMBOURSEMENT' AND ID_TICKET IN ('multi-concurrent-refund-a','multi-concurrent-refund-b')") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET IN ('multi-concurrent-refund-a','multi-concurrent-refund-b')") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET IN ('multi-concurrent-refund-a','multi-concurrent-refund-b')") == 2 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET IN ('multi-concurrent-refund-a','multi-concurrent-refund-b') AND Total_NET < 0") == 1,
                 "Two concurrent refund operations must have one winner and one complete loser.");
             // The real shop schema may lack the fixture's unique ticket key. Emulate
             // that legacy corruption only on disposable MariaDB and verify the
