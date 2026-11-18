@@ -516,8 +516,8 @@ public sealed partial record CatalogueHost
             }
             catch (Exception)
             {
-                MessageBox.Show(window, "Impossible d’ouvrir les règlements fournisseurs.",
-                    "Règlement fournisseur", MessageBoxButton.OK, MessageBoxImage.Warning);
+                System.Windows.MessageBox.Show(window, "Impossible d’ouvrir les règlements fournisseurs.",
+                    "Règlement fournisseur", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
             }
         });
         var customerCredits = new CustomerCreditStatementReader(settings.ConnectionString);
