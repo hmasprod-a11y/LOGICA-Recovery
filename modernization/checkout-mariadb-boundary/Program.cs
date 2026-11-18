@@ -1499,6 +1499,26 @@ namespace LOGICA.Infrastructure.Checkout
                     " WHERE ID_TICKET='multi-original'");
                 try
                 {
+                    // This ticket already has a consumed return claim. Candidate/preparation
+                    // rejection alone would pass even if the invalid-total guard regressed.
+                    // Exercise the underlying persisted-sale evidence independently.
+                    using (var evidenceDb = NewConnection())
+                    {
+                        evidenceDb.Open();
+                        using (var evidenceTx = evidenceDb.BeginTransaction())
+                        {
+                            bool invalidEvidenceRejected = false;
+                            try
+                            {
+                                CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                    evidenceDb, evidenceTx, "multi-original");
+                            }
+                            catch (InvalidOperationException) { invalidEvidenceRejected = true; }
+                            Require(invalidEvidenceRejected,
+                                "Nonpositive original total must fail evidence validation independently of a consumed return claim.");
+                            evidenceTx.Rollback();
+                        }
+                    }
                     var invalidCandidates = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
                         .FindFullCashReturnCandidates(NewConnection, "multi-original");
                     Require(!invalidCandidates.Any(candidate => candidate.SaleId == "multi-original"),
@@ -1517,7 +1537,9 @@ namespace LOGICA.Infrastructure.Checkout
                 }
                 finally
                 {
-                    Sql("UPDATE TABLE_VENTES_ENTETE SET Total_NET=13.50 WHERE ID_TICKET='multi-original'");
+                    Sql("UPDATE TABLE_VENTES_ENTETE SET Total_NET=" +
+                        originalSaleTotal.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                        " WHERE ID_TICKET='multi-original'");
                 }
             }
             Console.WriteLine("PASS full multi-line refund: exact line set, atomic signed stock/payment/journal/claim, duplicate, rollback/retry, concurrency and ambiguous original rejection.");
