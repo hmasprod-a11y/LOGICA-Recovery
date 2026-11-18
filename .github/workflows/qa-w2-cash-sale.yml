@@ -113,7 +113,7 @@ jobs:
           New-Item -ItemType Directory -Force $dbRoot | Out-Null
           $url = 'https://archive.mariadb.org/mariadb-10.11.14/winx64-packages'
           $archiveUrl = "$url/mariadb-10.11.14-winx64.zip"
-          $headers = & curl.exe --fail --location --head --connect-timeout 30 --max-time 60 --silent --show-error $archiveUrl
+          $headers = & curl.exe --fail --location --head --retry 3 --retry-delay 3 --connect-timeout 30 --max-time 60 --silent --show-error $archiveUrl 2> "$dbRoot/headers-error.txt"
           if ($LASTEXITCODE -ne 0) { throw 'Could not inspect MariaDB archive.' }
           $lengthHeader = @($headers | Where-Object { $_ -match '^Content-Length:\s*\d+' })[-1]
           $length = [long]($lengthHeader -replace '^Content-Length:\s*', '').Trim()
@@ -127,7 +127,7 @@ jobs:
             $first = $part * $using:partSize
             $last = [Math]::Min($using:length - 1, $first + $using:partSize - 1)
             $output = Join-Path $using:dbRoot ("archive-{0:D2}.part" -f $part)
-            & curl.exe --fail --location --range "$first-$last" --retry 1 --connect-timeout 30 --max-time 180 --silent --show-error $using:archiveUrl --output $output
+            & curl.exe --fail --location --range "$first-$last" --retry 1 --connect-timeout 30 --max-time 180 --silent --show-error $using:archiveUrl --output $output 2> "$output.error"
             if ($LASTEXITCODE -ne 0 -or (Get-Item -LiteralPath $output).Length -ne ($last - $first + 1)) {
               throw "MariaDB archive part $part failed verification."
             }
