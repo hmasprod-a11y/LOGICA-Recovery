@@ -243,4 +243,27 @@ if (verifiedClose.Difference != -1m || verifiedCloseBox.Phase != CashboxPhase.Cl
     throw new Exception("Verified close did not return the durable reconciliation variance.");
 MustThrow(() => verifiedCloseBox.CloseVerified(Array.Empty<CashboxEntry>(), 39m));
 
+// UI preview must use exact durable rows and never close the session.
+var uiBox = new CashboxLifecycle();
+uiBox.Open("ui-preview-session", 20m);
+uiBox.RecordPersisted(new("ui-cash", CashboxEntryKind.SaleCash, 5m));
+uiBox.RecordPersisted(new("ui-card", CashboxEntryKind.SaleCard, 9m));
+var uiRows = new[]
+{
+    new CashboxEntry("ui-cash", CashboxEntryKind.SaleCash, 5m),
+    new CashboxEntry("ui-card", CashboxEntryKind.SaleCard, 9m)
+};
+var uiPreview = uiBox.PreviewCloseVerified(uiRows, 24m);
+if (uiPreview.ExpectedCash != 25m || uiPreview.Difference != -1m ||
+    uiBox.Phase != CashboxPhase.Open || uiBox.Entries.Count != 2)
+    throw new Exception("Verified UI preview mutated the session or variance.");
+MustThrow(() => uiBox.PreviewCloseVerified(new[]
+{
+    uiRows[0], new CashboxEntry("ui-card", CashboxEntryKind.SaleCard, 10m)
+}, 24m));
+if (uiBox.Phase != CashboxPhase.Open || uiBox.ExpectedCash != 25m)
+    throw new Exception("Rejected UI preview changed the cashbox.");
+uiBox.MarkOutcomeUnknown();
+MustThrow(() => uiBox.PreviewCloseVerified(uiRows, 24m));
+
 Console.WriteLine("CashboxLifecycle isolated assertions passed.");
