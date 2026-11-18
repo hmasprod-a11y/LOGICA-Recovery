@@ -135,7 +135,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
             new Action(() => {
                 var dialog = Application.Current.Windows.Cast<Window>()
-                    .SingleOrDefault(w => w.Owner == host.Window);
+                    .SingleOrDefault(w => w.Owner == host.Window &&
+                        Descendants(w).OfType<System.Windows.Controls.PasswordBox>().Any());
                 try
                 {
                     Require(dialog is not null && dialog.IsVisible, "Cashier PIN review dialog did not render.");
@@ -2398,6 +2399,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
     private static void VerifyCustomerCreditStatement(CatalogueSettings settings, string pin)
     {
         Sql(settings, """
+            CREATE TABLE TABLE_MODE_P (MODE_P VARCHAR(128)) ENGINE=InnoDB;
+            INSERT INTO TABLE_MODE_P VALUES ('ESPECES'),('CARTE');
             ALTER TABLE TABLE_CLIENTS_REGLE ADD ID_CLIENT VARCHAR(64), ADD DATES DATETIME;
             DROP TABLE IF EXISTS TABLE_CLIENTS;
             CREATE TABLE TABLE_CLIENTS (ID_CLIENT VARCHAR(64), CLIENT VARCHAR(128), CREDIT_INITIAL DECIMAL(16,3)) ENGINE=InnoDB;
@@ -2570,8 +2573,6 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             ALTER TABLE TABLE_CLIENTS_REGLE ADD ID BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
                 ADD ID_REGLE VARCHAR(64), ADD CODE_CLIENT VARCHAR(64), ADD CLIENT VARCHAR(128),
                 ADD NOTES TEXT, ADD ETAT VARCHAR(32);
-            CREATE TABLE TABLE_MODE_P (MODE_P VARCHAR(128)) ENGINE=InnoDB;
-            INSERT INTO TABLE_MODE_P VALUES ('ESPECES'),('CARTE');
             UPDATE TABLE_PASS SET CLOTURE='VISIBLE' WHERE ListUser='O''Neil';
             """ + """
             CREATE TABLE IF NOT EXISTS hanouty_client_settlement_operations (
