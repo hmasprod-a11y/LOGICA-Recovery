@@ -1407,6 +1407,30 @@ namespace LOGICA.Infrastructure.Checkout
             Require(Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
                 .FindFullCashReturnCandidates(NewConnection, "multi-original").Count == 0,
                 "A consumed original ticket must disappear from WPF return lookup.");
+            // Legacy claim columns may use a binary collation. A case-variant
+            // consumed identity must still block candidate lookup and preparation.
+            Sql("UPDATE hanouty_cash_return_consumption SET original_ticket_id='MULTI-ORIGINAL' WHERE return_operation_id='multi-refund'");
+            try
+            {
+                Require(Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                    .FindFullCashReturnCandidates(NewConnection, "multi-original").Count == 0,
+                    "Case-variant consumed original must not reappear in return candidates.");
+                bool caseVariantReplayRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                        NewConnection, "wpf-case-variant-replay", "O'Neil", "MAD", "multi-original");
+                }
+                catch (InvalidOperationException) { caseVariantReplayRejected = true; }
+                Require(caseVariantReplayRejected &&
+                    !journal.IsPersisted("wpf-case-variant-replay") &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='wpf-case-variant-replay'") == 0,
+                    "Case-variant consumed claim allowed a duplicate financial return.");
+            }
+            finally
+            {
+                Sql("UPDATE hanouty_cash_return_consumption SET original_ticket_id='multi-original' WHERE return_operation_id='multi-refund'");
+            }
             // A consumed ticket remains hidden even if its old payment evidence
             // is damaged after refund. The UI must check the claim first.
             Sql("UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=MONTANT+1 WHERE ID_TICKET='multi-original'");
