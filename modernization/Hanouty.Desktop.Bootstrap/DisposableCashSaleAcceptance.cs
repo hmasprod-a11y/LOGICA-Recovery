@@ -2914,26 +2914,26 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         var request = new AuthorizedCheckoutRequest("CARD-CONFIG-DENIED", "O'Neil", "MAD", false,
             new[] { new CheckoutBatchLine("W2-Article", 1) },
             new[] { new CheckoutPayment(CheckoutPaymentKind.Card, cardTotal) }, cardTotal);
-        void Rejected(AuthorizedCheckoutRequest rejectedRequest)
+        void Rejected(AuthorizedCheckoutRequest rejectedRequest, string expectedReason)
         {
             var before = Snapshot(settings);
             var rejected = false;
             try { port.Commit(rejectedRequest); }
-            catch (Exception) { rejected = true; }
+            catch (Exception ex) when (ex.Message.Contains(expectedReason, StringComparison.Ordinal)) { rejected = true; }
             Require(rejected && Snapshot(settings) == before, "Rejected card posting changed financial or stock state.");
         }
-        Rejected(request);
+        Rejected(request, "Les modes de paiement sont désactivés.");
         Sql(settings, "UPDATE TABLE_PARAMETRES SET VALEUR='True' WHERE OBJET='FENETRE_MODE_P'; DELETE FROM TABLE_MODE_P WHERE MODE_P='CARTE';");
-        Rejected(request with { OperationId = "CARD-MODE-MISSING" });
+        Rejected(request with { OperationId = "CARD-MODE-MISSING" }, "Le mode CARTE est absent");
         Sql(settings, "INSERT INTO TABLE_MODE_P VALUES ('CARTE')");
-        Rejected(request with { OperationId = "CARD-OVERPAY", Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Card, cardTotal + 0.01m) } });
-        Rejected(request with { OperationId = "CARD-UNDERPAY", Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Card, cardTotal - 0.01m) } });
-        Rejected(request with { OperationId = "CARD-REFUND-DENIED", IsReturn = true, OriginalTicketId = "original-card" });
+        Rejected(request with { OperationId = "CARD-OVERPAY", Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Card, cardTotal + 0.01m) } }, "Card amount must equal");
+        Rejected(request with { OperationId = "CARD-UNDERPAY", Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Card, cardTotal - 0.01m) } }, "Card amount must equal");
+        Rejected(request with { OperationId = "CARD-REFUND-DENIED", IsReturn = true, OriginalTicketId = "original-card" }, "cash refunds only");
         Sql(settings, """
             CREATE TRIGGER fail_card_payment BEFORE INSERT ON TABLE_VENTES_REGLEMENTS
             FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Synthetic card payment failure';
             """);
-        try { Rejected(request with { OperationId = "CARD-ROLLBACK" }); }
+        try { Rejected(request with { OperationId = "CARD-ROLLBACK" }, "Synthetic card payment failure"); }
         finally { Sql(settings, "DROP TRIGGER fail_card_payment"); }
 
         static IEnumerable<DependencyObject> Children(DependencyObject parent)

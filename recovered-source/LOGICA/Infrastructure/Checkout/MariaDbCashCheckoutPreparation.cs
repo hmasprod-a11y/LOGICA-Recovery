@@ -180,7 +180,9 @@ namespace LOGICA.Infrastructure.Checkout
                     ArticleCode = row["Code"], ArticleName = row["Article"], BasketQuantity = (decimal)quantity });
             }
             decimal tendered = request.Payments[0].Amount;
-            if (total <= 0m || request.ExpectedTotal != total || tendered < total || (card && tendered != total) ||
+            if (card && tendered != total)
+                throw new InvalidOperationException("Card amount must equal the authoritative total.");
+            if (total <= 0m || request.ExpectedTotal != total || tendered < total ||
                 decimal.Round(tendered, 2, MidpointRounding.AwayFromZero) != tendered)
                 throw new InvalidOperationException("Cash tender must cover the authoritative total in whole cents.");
             // V1 FormDialog_calc: FLOUSS(total - paid), persisted as a negative

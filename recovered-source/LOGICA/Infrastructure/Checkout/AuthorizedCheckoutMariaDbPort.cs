@@ -33,11 +33,12 @@ namespace LOGICA.Infrastructure.Checkout
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
             request.Validate();
-            // Do not pretend to support return, credit or non-cash tenders
-            // before their financial policy and trusted preparation are wired.
+            // Sales support the configured exact-card policy in trusted preparation.
+            // Refunds remain strictly cash until their original-card policy is wired.
             if (request.Payments.Count != 1 ||
-                request.Payments[0].Kind != CheckoutPaymentKind.Cash)
-                throw new NotSupportedException("Only authorized single-cash sale or verified full-ticket cash return is enabled.");
+                request.Payments[0].Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card) ||
+                (request.IsReturn && request.Payments[0].Kind != CheckoutPaymentKind.Cash))
+                throw new NotSupportedException("Single cash/exact-card sales and cash refunds only.");
 
             using (MySqlConnection connection = createConnection())
             {
