@@ -1133,6 +1133,38 @@ namespace LOGICA.Infrastructure.Checkout
                 Require(rejectedBeforeConnection && !connectionOpened,
                     "Invalid refund cashier identity must fail before opening MariaDB.");
             }
+            // The original ticket identity is an independent trust boundary:
+            // neither a pasted malformed ID nor a self-referencing operation
+            // may open MariaDB, even if the cashier and operation are valid.
+            foreach (var invalidOriginal in new[] { " multi-original", "multi-original ", "multi\\noriginal", "multi\\toriginal", "multi\\0original", new string('x', 65) })
+            {
+                bool connectionOpened = false;
+                bool rejectedBeforeConnection = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .PrepareFullCashReturnRequest(
+                            () => { connectionOpened = true; return NewConnection(); },
+                            "return-invalid-original", "O'Neil", "MAD", invalidOriginal);
+                }
+                catch (ArgumentException) { rejectedBeforeConnection = true; }
+                Require(rejectedBeforeConnection && !connectionOpened,
+                    "Malformed original ticket identity must fail before opening MariaDB.");
+            }
+            {
+                bool connectionOpened = false;
+                bool rejectedBeforeConnection = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .PrepareFullCashReturnRequest(
+                            () => { connectionOpened = true; return NewConnection(); },
+                            "multi-original", "O'Neil", "MAD", "multi-original");
+                }
+                catch (ArgumentException) { rejectedBeforeConnection = true; }
+                Require(rejectedBeforeConnection && !connectionOpened,
+                    "A return operation cannot reuse its original sale identity.");
+            }
             Require(Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0,
                 "Rejected refund preparation must not consume original sale.");
             // A header with no journal lines is not a refundable sale. Preserve
