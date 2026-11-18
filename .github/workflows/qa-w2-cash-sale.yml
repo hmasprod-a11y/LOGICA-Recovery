@@ -247,6 +247,11 @@ jobs:
           $bundle = Join-Path $env:RUNNER_TEMP 'HANOUTY-WPF-TEST-BUNDLE'
           $profile = Join-Path $env:RUNNER_TEMP ("hanouty-launcher-" + [Guid]::NewGuid().ToString('N'))
           New-Item -ItemType Directory -Path $profile | Out-Null
+          # Reuse only the verified installer bytes; database and application profile remain fresh.
+          $runtimeCache = Join-Path $profile 'HANOUTY-Test/mariadb-10.11.14'
+          New-Item -ItemType Directory -Path $runtimeCache -Force | Out-Null
+          Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'hanouty-w2-cash-mariadb/server.zip') `
+            -Destination (Join-Path $runtimeCache 'mariadb-10.11.14-winx64.zip')
           $previousLocalAppData = $env:LOCALAPPDATA
           $occupied = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 3307)
           try {
