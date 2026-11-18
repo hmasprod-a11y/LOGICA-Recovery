@@ -1341,7 +1341,7 @@ namespace LOGICA.Infrastructure.Checkout
             }
             finally
             {
-                Sql("UPDATE TABLE_VENTES_JOURNAL SET ID_ARTICLE='CSharp-Other' WHERE ID_TICKET='multi-original' AND ID_ARTICLE='csharp-stock'");
+                Sql("UPDATE TABLE_VENTES_JOURNAL SET ID_ARTICLE='CSharp-Other' WHERE ID_TICKET='multi-original' AND BINARY ID_ARTICLE='csharp-stock'");
             }
             // Legacy fractional journal quantities cannot be posted through the
             // whole-unit WPF return contract. Do not advertise such a ticket.
