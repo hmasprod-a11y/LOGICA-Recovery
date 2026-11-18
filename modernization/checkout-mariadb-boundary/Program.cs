@@ -1138,6 +1138,23 @@ namespace LOGICA.Infrastructure.Checkout
             // The original ticket identity is an independent trust boundary:
             // neither a pasted malformed ID nor a self-referencing operation
             // may open MariaDB, even if the cashier and operation are valid.
+            // Legacy ticket indexes may use a case-insensitive collation. A refund
+            // operation must not reuse the original sale key with different casing.
+            foreach (var collidingOperation in new[] { "MULTI-ORIGINAL", "Multi-Original" })
+            {
+                bool connectionOpened = false;
+                bool rejectedBeforeConnection = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .PrepareFullCashReturnRequest(
+                            () => { connectionOpened = true; return NewConnection(); },
+                            collidingOperation, "O'Neil", "MAD", "multi-original");
+                }
+                catch (ArgumentException) { rejectedBeforeConnection = true; }
+                Require(rejectedBeforeConnection && !connectionOpened,
+                    "Case-only refund ticket collision must fail before MariaDB and any financial posting.");
+            }
             foreach (var invalidOriginal in new[] { " multi-original", "multi-original ", "multi\noriginal", "multi\toriginal", "multi\0original", new string('x', 65) })
             {
                 bool connectionOpened = false;
