@@ -1,7 +1,7 @@
 name: Stock issue history acceptance on disposable MariaDB
 on:
   push:
-    branches: [dev/inventory-stock-issue-movement-20261117]
+    branches: [dev/inventory-stock-issue-movement-20261117, integration/hanouty-qa-desktop-inventory-20261102]
     paths:
       - 'modernization/Hanouty.Desktop.Bootstrap/StockIssue*.cs'
       - 'modernization/inventory/stock-issue-history-acceptance/**'
