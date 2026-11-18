@@ -70,16 +70,19 @@ internal sealed class CashDrawerClosing(string connectionString)
         return command.ExecuteScalar();
     }
 
-    private static void Authorize(MySqlCommand command, string cashier, string pin, string? approvalPin = null)
+    private static void Authorize(MySqlCommand command, string cashier, string pin, string? approvalPin = null,
+        bool expense = false)
     {
         if (string.IsNullOrWhiteSpace(cashier) || string.IsNullOrWhiteSpace(pin))
             throw new UnauthorizedAccessException("Authentification requise.");
-        foreach (var table in Tables.Concat(["TABLE_PARAMETRES", "TABLE_PASS"]))
+        var requiredTables = expense ? new[] { "TABLE_DEPENSES", "TABLE_PASS" } :
+            Tables.Concat(["TABLE_PARAMETRES", "TABLE_PASS"]);
+        foreach (var table in requiredTables)
         {
             command.Parameters.Clear();
             command.Parameters.AddWithValue("@table", table);
             if (!Equals(Scalar(command, "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@table"), "InnoDB"))
-                throw new InvalidOperationException("Schéma transactionnel de clôture incomplet.");
+                throw new InvalidOperationException("Schéma transactionnel de caisse incomplet.");
         }
         command.Parameters.Clear();
         command.Parameters.AddWithValue("@cashier", cashier);
@@ -87,18 +90,12 @@ internal sealed class CashDrawerClosing(string connectionString)
         if (Convert.ToInt64(Scalar(command, "SELECT COUNT(*) FROM TABLE_PASS WHERE BINARY ListUser=BINARY @cashier")) != 1)
             throw new UnauthorizedAccessException("Compte caissier invalide.");
 
-        var permission = Convert.ToString(Scalar(command,
-            "SELECT CLOTURE FROM TABLE_PASS WHERE BINARY ListUser=BINARY @cashier AND BINARY ListPass=BINARY @pin"));
-        var role = permission switch
-        {
-            "ACCES MANAGER" => "MANAGER",
-            "ACCES ADMIN" => "ADMIN",
-            _ => null
-        };
+        var permission = Permission(command, expense);
+        var role = ApprovalRole(permission);
         if (permission != "VISIBLE")
         {
             if (role is null || string.IsNullOrWhiteSpace(approvalPin))
-                throw new UnauthorizedAccessException("Clôture non autorisée pour cet utilisateur.");
+                throw new UnauthorizedAccessException("Opération de caisse non autorisée pour cet utilisateur.");
             command.Parameters.AddWithValue("@role", role);
             command.Parameters.AddWithValue("@approval", approvalPin);
             if (Convert.ToInt64(Scalar(command,
@@ -108,20 +105,66 @@ internal sealed class CashDrawerClosing(string connectionString)
         command.Parameters.Clear();
     }
 
-    public string? RequiredApprovalRole(string cashier, string pin)
+    private static string? ApprovalRole(string? permission) => permission switch
+    {
+        "ACCES MANAGER" => "MANAGER",
+        "ACCES ADMIN" => "ADMIN",
+        _ => null
+    };
+
+    private static string? Permission(MySqlCommand command, bool expense)
+    {
+        var column = expense ? "DEPENSES" : "CLOTURE";
+        return Convert.ToString(Scalar(command,
+            $"SELECT {column} FROM TABLE_PASS WHERE BINARY ListUser=BINARY @cashier AND BINARY ListPass=BINARY @pin"));
+    }
+
+    public string? RequiredApprovalRole(string cashier, string pin, bool expense = false)
     {
         using var connection = Open();
-        using var command = new MySqlCommand(
-            "SELECT CLOTURE FROM TABLE_PASS WHERE BINARY ListUser=BINARY @cashier AND BINARY ListPass=BINARY @pin",
-            connection);
+        using var command = new MySqlCommand("", connection);
         command.Parameters.AddWithValue("@cashier", cashier);
         command.Parameters.AddWithValue("@pin", pin);
-        return Convert.ToString(command.ExecuteScalar()) switch
-        {
-            "ACCES MANAGER" => "MANAGER",
-            "ACCES ADMIN" => "ADMIN",
-            _ => null
-        };
+        var permission = Permission(command, expense);
+        var role = ApprovalRole(permission);
+        if (expense && permission != "VISIBLE" && role is null)
+            throw new UnauthorizedAccessException("Dépenses non autorisées pour cet utilisateur.");
+        return role;
+    }
+
+    public void CheckExpenseAccess(string cashier, string pin, string? approvalPin)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
+        using var command = new MySqlCommand("", connection, transaction);
+        Authorize(command, cashier, pin, approvalPin, expense: true);
+    }
+
+    public long RecordExpense(string cashier, string pin, string? approvalPin,
+        DateTime date, string description, decimal amount)
+    {
+        if (string.IsNullOrWhiteSpace(description) || amount <= 0 || decimal.Round(amount, 2) != amount)
+            throw new ArgumentException("Saisissez le libellé et un montant positif à deux décimales.");
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
+        using var command = new MySqlCommand("", connection, transaction);
+        Authorize(command, cashier, pin, approvalPin, expense: true);
+        var last = Scalar(command, "SELECT ID FROM TABLE_DEPENSES ORDER BY ID DESC LIMIT 1 FOR UPDATE");
+        var id = checked(Convert.ToInt64(last, CultureInfo.InvariantCulture) + 1);
+        command.CommandText = """
+            INSERT INTO TABLE_DEPENSES (ID, DATES, HEURE, UTILISATEUR, DEPENSE, MONTANT, CLOTURE_CAISSIER, CLOTURE_GLOBALE)
+            VALUES (@id, @date, @time, @cashier, @description, @amount, NULL, NULL)
+            """;
+        command.Parameters.AddWithValue("@id", id);
+        command.Parameters.AddWithValue("@date", date.Date);
+        command.Parameters.AddWithValue("@time", DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("@cashier", cashier);
+        command.Parameters.AddWithValue("@description", description.Trim());
+        command.Parameters.AddWithValue("@amount", amount);
+        if (command.ExecuteNonQuery() != 1)
+            throw new InvalidOperationException("La dépense n’a pas été enregistrée.");
+        transaction.Commit();
+        return id;
     }
 
     private MySqlConnection Open()

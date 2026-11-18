@@ -73,6 +73,16 @@ public partial class MainWindow : Window
         }
     }
 
+    private Action? _openExpenses;
+
+    public void ConfigureExpenses(Action openExpenses)
+    {
+        _openExpenses = openExpenses;
+        ExpensesButton.Visibility = Visibility.Visible;
+    }
+
+    private void OpenExpenses_Click(object sender, RoutedEventArgs e) => _openExpenses?.Invoke();
+
     private Action? _openStockIssues;
 
     public void ConfigureStockIssues(Action openStockIssues) => _openStockIssues = openStockIssues;
@@ -634,6 +644,16 @@ public partial class MainWindow : Window
         return ReadPin(cashierEntryPin ? "Authorize cashier session" : "Authorize cash checkout",
             $"Cashier: {cashier}\nConfirm this cashier session for the displayed cash payment.",
             cashierEntryPin ? cashier : null);
+    }
+
+    public string PromptCashDrawerApproval(string role)
+    {
+        if (role is not ("MANAGER" or "ADMIN") || _cashierEntryOpen || _logoutOpen || _reviewOpen ||
+            _pinOpen || _originalSaleLookupBusy || DataContext is not CatalogueViewModel
+            { FinancialSessionActive: true, CheckoutBusy: false, CheckoutUncertain: false, PendingOperationId: null,
+                PaymentContext: not null })
+            return "";
+        return ReadPin("Autorisation de caisse", $"Saisissez le code d’autorisation {role}.");
     }
 
     private string ReadReviewPin()

@@ -287,7 +287,7 @@ public sealed partial record CatalogueHost
                 var pin = window.PromptCashierPin(cashier);
                 if (string.IsNullOrEmpty(pin)) return false;
                 var role = cashClosing.RequiredApprovalRole(cashier, pin);
-                var approvalPin = role is null ? null : window.PromptCashierPin(role);
+                var approvalPin = role is null ? null : window.PromptCashDrawerApproval(role);
                 if (role is not null && string.IsNullOrEmpty(approvalPin)) return false;
                 var preview = cashClosing.Read(cashier, pin, cashierOnly, approvalPin);
                 var summary = $"Fond de caisse : {preview.Opening:N2} MAD\n" +
@@ -367,6 +367,33 @@ public sealed partial record CatalogueHost
             {
                 System.Windows.MessageBox.Show(window, "Le fond de caisse n’a pas pu être enregistré.", "Fond de caisse");
                 return false;
+            }
+            finally { reviewing = false; }
+        });
+        window.ConfigureExpenses(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive ||
+                activeCashierId is not { } cashier || binding.Session.PendingCount != 0) return;
+            reviewing = true;
+            try
+            {
+                var pin = window.PromptCashierPin(cashier);
+                if (string.IsNullOrEmpty(pin)) return;
+                var role = cashClosing.RequiredApprovalRole(cashier, pin, expense: true);
+                var approval = role is null ? null : window.PromptCashDrawerApproval(role);
+                if (role is not null && string.IsNullOrEmpty(approval)) return;
+                cashClosing.CheckExpenseAccess(cashier, pin, approval);
+                new CashExpenseDialog(cashier,
+                    (date, description, amount) => cashClosing.RecordExpense(cashier, pin, approval, date, description, amount))
+                    { Owner = window }.ShowDialog();
+            }
+            catch (UnauthorizedAccessException)
+            {
+                System.Windows.MessageBox.Show(window, "Dépenses non autorisées pour cet utilisateur.", "Dépenses");
+            }
+            catch (Exception ex) when (ex is MySqlException or InvalidOperationException)
+            {
+                System.Windows.MessageBox.Show(window, "Impossible d’ouvrir les dépenses de caisse.", "Dépenses");
             }
             finally { reviewing = false; }
         });
