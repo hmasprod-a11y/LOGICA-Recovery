@@ -2030,6 +2030,11 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         catch (UnauthorizedAccessException) { }
         var beforeSale = closing.Read("O'Neil", pin);
         var ticket = SellWithUnavailablePrinter(settings, pin);
+        var afterSale = closing.Read("O'Neil", pin);
+        Require(afterSale.CashSales - beforeSale.CashSales == 5.25m &&
+            afterSale.Expected - beforeSale.Expected == 5.25m &&
+            afterSale.Expenses == beforeSale.Expenses,
+            "The committed sale changed the drawer beyond its cash payment.");
         try
         {
             closing.Read("O'Neil", "wrong");
