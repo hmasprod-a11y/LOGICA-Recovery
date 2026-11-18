@@ -48,7 +48,7 @@ public sealed partial record CatalogueHost
             frozen.ExpectedTotal <= 0m ||
             frozen.ExpectedTotal > frozen.Payments[0].Amount ||
             decimal.Round(frozen.Payments[0].Amount, 2) != frozen.Payments[0].Amount)
-            throw new ArgumentException("Explicit MAD cash context required.", nameof(value));
+            throw new ArgumentException("Explicit MAD cash or exact-card context required.", nameof(value));
         return frozen;
     }
 
