@@ -1623,6 +1623,12 @@ namespace LOGICA.Infrastructure.Checkout
             {
                 Sql("INSERT INTO TABLE_VENTES_ENTETE SELECT 'ambiguous-original',TICKET,DATES,CAISSIER,ID_CLIENT,CODE_CLIENT,CLIENT,POSTE,Total_NET,OPERATION FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-original'");
                 Sql("INSERT INTO TABLE_VENTES_ENTETE SELECT 'ambiguous-original',TICKET,DATES,CAISSIER,ID_CLIENT,CODE_CLIENT,CLIENT,POSTE,Total_NET,OPERATION FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-original'");
+                // The cashier's candidate search must fail closed too: an ambiguous
+                // persisted original must never be offered as a refundable sale.
+                var ambiguousCandidates = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                    .FindFullCashReturnCandidates(NewConnection, "ambiguous-original");
+                Require(!ambiguousCandidates.Any(candidate => candidate.SaleId == "ambiguous-original"),
+                    "Duplicate original headers must not be offered by WPF return lookup.");
                 bool ambiguousRejected = false;
                 try
                 {
@@ -1635,8 +1641,10 @@ namespace LOGICA.Infrastructure.Checkout
                 }
                 Require(ambiguousRejected &&
                     Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='ambiguous-original'") == 0 &&
-                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='ambiguous-return-attempt'") == 0,
-                    "Duplicate original ticket headers must fail closed before return preparation or posting.");
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='ambiguous-return-attempt'") == 0 &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='ambiguous-return-attempt'") == 0 &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='ambiguous-return-attempt'") == 0,
+                    "Duplicate original headers must leave no return header, journal, payment or claim.");
             }
             finally
             {
