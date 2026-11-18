@@ -1091,6 +1091,32 @@ namespace LOGICA.Infrastructure.Checkout
             Require(candidates.Count == 1 && candidates[0].SaleId == "multi-original" &&
                 candidates[0].PaidMad == 13.50m,
                 "Host lookup must expose only the exact persisted full cash ticket and amount.");
+            // Case-folded aliases of a real ticket are not exact persisted identities.
+            // Neither candidate discovery nor refund preparation may treat them as
+            // a different refundable sale, even on case-insensitive legacy schemas.
+            foreach (var alias in new[] { "MULTI-ORIGINAL", "Multi-Original" })
+            {
+                bool aliasCandidateRejected = false;
+                try
+                {
+                    var aliasCandidates = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .FindFullCashReturnCandidates(NewConnection, alias);
+                    aliasCandidateRejected = aliasCandidates.Count == 0;
+                }
+                catch (InvalidOperationException) { aliasCandidateRejected = true; }
+                Require(aliasCandidateRejected,
+                    "Case-folded original ticket alias must not be offered as a refundable candidate.");
+                bool aliasPreparationRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                        NewConnection, "case-alias-refund", "O'Neil", "MAD", alias);
+                }
+                catch (InvalidOperationException) { aliasPreparationRejected = true; }
+                Require(aliasPreparationRejected &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='case-alias-refund'") == 0,
+                    "Case-folded ticket alias must not create a refund header.");
+            }
             // Control characters in a pasted receipt must never reach SQL lookup.
             // Even parameterized SQL must not expose a misleading return candidate.
             foreach (var invalidReceipt in new[] { "multi-original\n", "multi\toriginal", "multi-original\0" })
