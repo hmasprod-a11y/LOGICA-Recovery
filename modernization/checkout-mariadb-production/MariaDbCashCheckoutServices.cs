@@ -125,6 +125,7 @@ namespace Hanouty.Checkout.MariaDb
                     RequireInnoDb(connection, transaction, "TABLE_VENTES_JOURNAL");
                     RequireInnoDb(connection, transaction, "TABLE_VENTES_REGLEMENTS");
                     RequireInnoDb(connection, transaction, "hanouty_cash_return_consumption");
+                    string persistedOriginalTicketId = null;
                     using (var header = new MySqlCommand(
                         "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE " +
                         "WHERE UPPER(ID_TICKET)=UPPER(@ticket) AND BINARY OPERATION=BINARY 'VENTE' LIMIT 2 FOR UPDATE",
@@ -135,12 +136,15 @@ namespace Hanouty.Checkout.MariaDb
                         {
                             if (!reader.Read() || reader.IsDBNull(0))
                                 throw new InvalidOperationException("Persisted original cash sale was not found.");
+                            persistedOriginalTicketId = Convert.ToString(reader.GetValue(0));
                             if (reader.Read())
                                 throw new InvalidOperationException("Original cash ticket identity is ambiguous.");
                             // The lookup detects case-variant collisions, but posting requires
                             // the exact persisted identifier, never a case-folded alias.
                         }
                     }
+                    if (!string.Equals(persistedOriginalTicketId, originalTicketId, StringComparison.Ordinal))
+                        throw new InvalidOperationException("Original ticket case does not match persisted identity.");
                     using (var claim = new MySqlCommand(
                         "SELECT COUNT(*) FROM hanouty_cash_return_consumption " +
                         "WHERE UPPER(original_ticket_id)=UPPER(@ticket)", connection, transaction))
