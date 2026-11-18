@@ -44,7 +44,7 @@ try
                 var dialog = owner.OwnedWindows.OfType<Hanouty.Desktop.Wpf.TouchNumericEntryDialog>().SingleOrDefault();
                 try
                 {
-                    Check(dialog is not null, "Quantity focus must open the real touch keypad.");
+                    Check(dialog is not null, "Touching a quantity must open the real touch keypad.");
                     openedNumeric = true;
                     var panel = (System.Windows.Controls.StackPanel)dialog!.Content;
                     var buttons = panel.Children.OfType<System.Windows.Controls.Primitives.UniformGrid>()
@@ -65,9 +65,9 @@ try
             }));
         try
         {
-            field.RaiseEvent(new System.Windows.Input.KeyboardFocusChangedEventArgs(
-                System.Windows.Input.Keyboard.PrimaryDevice, 0, null, field)
-                { RoutedEvent = System.Windows.Input.Keyboard.GotKeyboardFocusEvent });
+            field.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(
+                System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
+                { RoutedEvent = System.Windows.UIElement.PreviewMouseLeftButtonDownEvent });
             if (numericFailure is not null) throw numericFailure;
             Check(openedNumeric, "Attached quantity control did not open its keypad.");
             Check(field.Text == (cancelNumericEntry ? "7" : 1.25m.ToString("0.##")),

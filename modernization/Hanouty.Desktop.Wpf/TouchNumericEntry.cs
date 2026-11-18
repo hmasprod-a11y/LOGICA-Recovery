@@ -104,7 +104,6 @@ public static class TouchNumericEntry
             }
             finally { opening = false; }
         }
-        field.GotKeyboardFocus += (_, _) => Open();
         field.PreviewMouseLeftButtonDown += (_, e) => { e.Handled = true; Open(); };
         field.PreviewKeyDown += (_, e) =>
         {
