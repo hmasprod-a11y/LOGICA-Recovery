@@ -36,7 +36,8 @@ namespace Hanouty.Checkout.MariaDb
         {
             if (connections == null) throw new ArgumentNullException(nameof(connections));
             if (string.IsNullOrWhiteSpace(receiptId) || receiptId.Length > 64 ||
-                !string.Equals(receiptId, receiptId.Trim(), StringComparison.Ordinal))
+                !string.Equals(receiptId, receiptId.Trim(), StringComparison.Ordinal) ||
+                receiptId.Any(char.IsControl))
                 return Array.Empty<PersistedCashSaleCandidate>();
             using (var connection = LocalConnection(connections))
             {
@@ -51,7 +52,7 @@ namespace Hanouty.Checkout.MariaDb
                     string saleId = null;
                     using (var command = new MySqlCommand(
                         "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE " +
-                        "WHERE BINARY ID_TICKET=BINARY @ticket AND BINARY OPERATION=BINARY 'VENTE' LIMIT 2",
+                        "WHERE UPPER(ID_TICKET)=UPPER(@ticket) AND BINARY OPERATION=BINARY 'VENTE' LIMIT 2",
                         connection, transaction))
                     {
                         command.Parameters.AddWithValue("@ticket", receiptId);
@@ -60,21 +61,33 @@ namespace Hanouty.Checkout.MariaDb
                             if (reader.Read() && !reader.IsDBNull(0))
                                 saleId = Convert.ToString(reader.GetValue(0));
                             if (reader.Read())
-                                throw new InvalidOperationException("Original ticket identity is ambiguous.");
+                                return Array.Empty<PersistedCashSaleCandidate>();
                         }
                     }
                     if (!string.IsNullOrWhiteSpace(saleId))
                     {
-                        var lines = CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLines(
-                            connection, transaction, saleId);
-                        var paid = lines.Sum(line => line.Amount);
+                        if (!string.Equals(saleId, receiptId, StringComparison.Ordinal))
+                            throw new InvalidOperationException("Original ticket case does not match persisted identity.");
+                        // A consumed ticket is not a candidate, even if legacy
+                        // journal/payment rows were subsequently damaged.
+                        // Check the durable claim before interpreting evidence.
                         using (var claim = new MySqlCommand(
                             "SELECT COUNT(*) FROM hanouty_cash_return_consumption " +
-                            "WHERE BINARY original_ticket_id=BINARY @ticket", connection, transaction))
+                            "WHERE UPPER(original_ticket_id)=UPPER(@ticket)", connection, transaction))
                         {
                             claim.Parameters.AddWithValue("@ticket", saleId);
                             if (Convert.ToInt64(claim.ExecuteScalar()) == 0)
-                                result.Add(new PersistedCashSaleCandidate(saleId, paid));
+                            {
+                                var lines = CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLines(
+                                    connection, transaction, saleId);
+                                // A ticket that cannot fit the whole-unit WPF return
+                                // contract must not be offered as returnable.
+                                ValidateOriginalReturnLines(lines.Select(line => (line.ArticleId, line.Quantity)).ToArray());
+                                var refundableAmount = lines.Sum(line => line.Amount);
+                                if (refundableAmount <= 0)
+                                    throw new InvalidOperationException("Original cash sale has no positive refundable amount.");
+                                result.Add(new PersistedCashSaleCandidate(saleId, refundableAmount));
+                            }
                         }
                     }
                     transaction.Commit();
@@ -91,8 +104,16 @@ namespace Hanouty.Checkout.MariaDb
             string currency, string originalTicketId)
         {
             if (connections == null) throw new ArgumentNullException(nameof(connections));
-            if (string.IsNullOrWhiteSpace(operationId) || string.IsNullOrWhiteSpace(cashierId) ||
+            if (string.IsNullOrWhiteSpace(operationId) || operationId.Length > 64 ||
+                !string.Equals(operationId, operationId.Trim(), StringComparison.Ordinal) ||
+                operationId.Any(char.IsControl) ||
+                string.IsNullOrWhiteSpace(cashierId) || cashierId.Length > 64 ||
+                !string.Equals(cashierId, cashierId.Trim(), StringComparison.Ordinal) ||
+                cashierId.Any(char.IsControl) ||
                 string.IsNullOrWhiteSpace(originalTicketId) || originalTicketId.Length > 64 ||
+                !string.Equals(originalTicketId, originalTicketId.Trim(), StringComparison.Ordinal) ||
+                originalTicketId.Any(char.IsControl) ||
+                string.Equals(operationId, originalTicketId, StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(currency, "MAD", StringComparison.Ordinal))
                 throw new ArgumentException("A stable operation, authenticated cashier, MAD currency, and original ticket are required.");
             using (var connection = LocalConnection(connections))
@@ -104,18 +125,29 @@ namespace Hanouty.Checkout.MariaDb
                     RequireInnoDb(connection, transaction, "TABLE_VENTES_JOURNAL");
                     RequireInnoDb(connection, transaction, "TABLE_VENTES_REGLEMENTS");
                     RequireInnoDb(connection, transaction, "hanouty_cash_return_consumption");
+                    string persistedOriginalTicketId = null;
                     using (var header = new MySqlCommand(
                         "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE " +
-                        "WHERE BINARY ID_TICKET=BINARY @ticket AND BINARY OPERATION=BINARY 'VENTE' FOR UPDATE",
+                        "WHERE UPPER(ID_TICKET)=UPPER(@ticket) AND BINARY OPERATION=BINARY 'VENTE' LIMIT 2 FOR UPDATE",
                         connection, transaction))
                     {
                         header.Parameters.AddWithValue("@ticket", originalTicketId);
-                        if (header.ExecuteScalar() is null)
-                            throw new InvalidOperationException("Persisted original cash sale was not found.");
+                        using (var reader = header.ExecuteReader())
+                        {
+                            if (!reader.Read() || reader.IsDBNull(0))
+                                throw new InvalidOperationException("Persisted original cash sale was not found.");
+                            persistedOriginalTicketId = Convert.ToString(reader.GetValue(0));
+                            if (reader.Read())
+                                throw new InvalidOperationException("Original cash ticket identity is ambiguous.");
+                            // The lookup detects case-variant collisions, but posting requires
+                            // the exact persisted identifier, never a case-folded alias.
+                        }
                     }
+                    if (!string.Equals(persistedOriginalTicketId, originalTicketId, StringComparison.Ordinal))
+                        throw new InvalidOperationException("Original ticket case does not match persisted identity.");
                     using (var claim = new MySqlCommand(
                         "SELECT COUNT(*) FROM hanouty_cash_return_consumption " +
-                        "WHERE BINARY original_ticket_id=BINARY @ticket", connection, transaction))
+                        "WHERE UPPER(original_ticket_id)=UPPER(@ticket)", connection, transaction))
                     {
                         claim.Parameters.AddWithValue("@ticket", originalTicketId);
                         if (Convert.ToInt64(claim.ExecuteScalar()) != 0)
@@ -125,11 +157,10 @@ namespace Hanouty.Checkout.MariaDb
                         connection, transaction, originalTicketId);
                     // CheckoutBatchLine is the existing whole-unit contract. Never
                     // round or truncate a persisted fractional sale during refund.
-                    if (lines.Any(line => line.Quantity != decimal.Truncate(line.Quantity) ||
-                        line.Quantity < int.MinValue || line.Quantity > int.MaxValue))
-                        throw new InvalidOperationException(
-                            "Original sale quantity cannot be represented by the checkout return contract.");
+                    ValidateOriginalReturnLines(lines.Select(line => (line.ArticleId, line.Quantity)).ToArray());
                     var amount = lines.Sum(line => line.Amount);
+                    if (amount <= 0)
+                        throw new InvalidOperationException("Original cash sale has no positive refundable amount.");
                     var request = new AuthorizedCheckoutRequest(
                         operationId, cashierId, currency, true,
                         Array.AsReadOnly(lines.Select(line =>
@@ -141,6 +172,28 @@ namespace Hanouty.Checkout.MariaDb
                     return request;
                 }
             }
+        }
+
+        // Candidate discovery and return preparation must reject the same
+        // corrupt legacy lines; posting independently revalidates transactionally.
+        private static void ValidateOriginalReturnLines(
+            IReadOnlyList<(string ArticleId, decimal Quantity)> lines)
+        {
+            // A header without persisted sale lines is never a refundable sale.
+            // Reject before constructing a zero-amount request or UI candidate.
+            if (lines.Count == 0)
+                throw new InvalidOperationException("Original sale has no returnable lines.");
+            if (lines.Any(line => line.Quantity <= 0 ||
+                string.IsNullOrWhiteSpace(line.ArticleId) ||
+                line.ArticleId.Length > 64 ||
+                !string.Equals(line.ArticleId, line.ArticleId.Trim(), StringComparison.Ordinal) ||
+                line.ArticleId.Any(char.IsControl)) ||
+                lines.Select(line => line.ArticleId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != lines.Count)
+                throw new InvalidOperationException("Original sale has invalid or duplicate return lines.");
+            if (lines.Any(line => line.Quantity != decimal.Truncate(line.Quantity) ||
+                line.Quantity < int.MinValue || line.Quantity > int.MaxValue))
+                throw new InvalidOperationException(
+                    "Original sale quantity cannot be represented by the checkout return contract.");
         }
 
         private static void RequireInnoDb(MySqlConnection connection,
@@ -165,6 +218,12 @@ namespace Hanouty.Checkout.MariaDb
         {
             if (connections == null) throw new ArgumentNullException(nameof(connections));
             if (transientPinProvider == null) throw new ArgumentNullException(nameof(transientPinProvider));
+            // Fail closed before opening a connection or invoking the transient PIN.
+            // A cashier session must never silently resolve a padded or oversized ID.
+            if (string.IsNullOrWhiteSpace(cashierId) || cashierId.Length > 64 ||
+                !string.Equals(cashierId, cashierId.Trim(), StringComparison.Ordinal) ||
+                cashierId.Any(char.IsControl))
+                throw new ArgumentException("A canonical authenticated cashier identity is required.", nameof(cashierId));
             using (var connection = LocalConnection(connections))
             {
                 connection.Open();
@@ -198,7 +257,26 @@ namespace Hanouty.Checkout.MariaDb
         {
             if (connections == null) throw new ArgumentNullException(nameof(connections));
             if (lines == null) throw new ArgumentNullException(nameof(lines));
+            // Reject malformed cashier basket input before touching MariaDB.
+            // The commit gate independently revalidates current stock and prices.
             var snapshot = Array.AsReadOnly(lines.ToArray());
+            // Empty preview is required to open a cashier session before the
+            // first scan. It is not a posting authorization; commit still rejects an empty sale.
+            if (snapshot.Count == 0)
+                return Array.Empty<CashSaleBasketLine>();
+            if (snapshot.Any(line => line == null || string.IsNullOrWhiteSpace(line.ArticleId) ||
+                line.ArticleId.Length > 64 ||
+                !string.Equals(line.ArticleId, line.ArticleId.Trim(), StringComparison.Ordinal) ||
+                line.ArticleId.Any(char.IsControl) ||
+                line.Quantity <= 0))
+                throw new ArgumentException("Basket requires canonical article identities and positive quantities.", nameof(lines));
+            // A repeated live article identity is not a valid basket. Reject it
+            // before opening MariaDB; the posting gate also validates it.
+            // Legacy article identifiers can be case-insensitive in MariaDB. Never allow
+            // two basket lines that resolve to one persisted stock identity.
+            var articleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (snapshot.Any(line => !articleIds.Add(line.ArticleId)))
+                throw new ArgumentException("Basket contains duplicate article identities.", nameof(lines));
             using (var connection = LocalConnection(connections))
             {
                 connection.Open();
