@@ -81,8 +81,10 @@ namespace Hanouty.Checkout.MariaDb
                                 // A ticket that cannot fit the whole-unit WPF return
                                 // contract must not be offered as returnable.
                                 ValidateOriginalReturnLines(lines.Select(line => (line.ArticleId, line.Quantity)).ToArray());
-                                result.Add(new PersistedCashSaleCandidate(saleId,
-                                    lines.Sum(line => line.Amount)));
+                                var refundableAmount = lines.Sum(line => line.Amount);
+                                if (refundableAmount <= 0)
+                                    throw new InvalidOperationException("Original cash sale has no positive refundable amount.");
+                                result.Add(new PersistedCashSaleCandidate(saleId, refundableAmount));
                             }
                         }
                     }
@@ -149,6 +151,8 @@ namespace Hanouty.Checkout.MariaDb
                     // round or truncate a persisted fractional sale during refund.
                     ValidateOriginalReturnLines(lines.Select(line => (line.ArticleId, line.Quantity)).ToArray());
                     var amount = lines.Sum(line => line.Amount);
+                    if (amount <= 0)
+                        throw new InvalidOperationException("Original cash sale has no positive refundable amount.");
                     var request = new AuthorizedCheckoutRequest(
                         operationId, cashierId, currency, true,
                         Array.AsReadOnly(lines.Select(line =>
