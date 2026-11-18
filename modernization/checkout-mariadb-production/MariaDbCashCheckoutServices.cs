@@ -188,7 +188,7 @@ namespace Hanouty.Checkout.MariaDb
                 line.ArticleId.Length > 64 ||
                 !string.Equals(line.ArticleId, line.ArticleId.Trim(), StringComparison.Ordinal) ||
                 line.ArticleId.Any(char.IsControl)) ||
-                lines.Select(line => line.ArticleId).Distinct(StringComparer.Ordinal).Count() != lines.Count)
+                lines.Select(line => line.ArticleId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != lines.Count)
                 throw new InvalidOperationException("Original sale has invalid or duplicate return lines.");
             if (lines.Any(line => line.Quantity != decimal.Truncate(line.Quantity) ||
                 line.Quantity < int.MinValue || line.Quantity > int.MaxValue))
