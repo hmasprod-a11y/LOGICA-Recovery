@@ -36,6 +36,72 @@ function Stop-HanoutyTestDatabase {
     }
 }
 
+function Assert-HanoutyExtraction {
+    param([string]$Directory, $Acceptance)
+
+    $launcher = Join-Path $Directory 'Hanouty.Desktop.Bootstrap.exe'
+    $manifestPath = Join-Path $Directory 'HANOUTY-MANIFEST.json'
+    if (-not (Test-Path -LiteralPath $launcher -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        throw 'The extracted financial package is missing its executable or manifest.'
+    }
+    if ((Get-FileHash -LiteralPath $launcher -Algorithm SHA256).Hash -ine $Acceptance.ExtractedExeSha256) {
+        throw 'The extracted executable does not match the accepted package.'
+    }
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    if ($manifest.mode -ne 'financial' -or $manifest.financialAcceptance -ne $true -or
+        $manifest.acceptanceSha -cne $Acceptance.SourceSha) {
+        throw 'The extracted package does not match the financial acceptance record.'
+    }
+    foreach ($file in $manifest.files) {
+        $path = Join-Path $Directory ([string]$file.file)
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine [string]$file.sha256) {
+            throw "Package integrity check failed for $($file.file)."
+        }
+    }
+}
+
+function Test-HanoutyBackupRestore {
+    $dump = Join-Path $sessionRoot 'logica-ci-backup.sql'
+    $connection = @('--host=127.0.0.1', "--port=$port", '--user=root', "--password=$dbPassword")
+    $client = Join-Path $dbBin 'mariadb.exe'
+    & (Join-Path $dbBin 'mariadb-dump.exe') @connection --single-transaction --default-character-set=utf8mb4 "--result-file=$dump" logica_ci
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $dump -PathType Leaf) -or
+        (Get-Item -LiteralPath $dump).Length -eq 0) {
+        throw 'Could not back up the disposable Hanouty database.'
+    }
+
+    # The launcher owns this temporary server. Restore into a fresh schema on it.
+    & $client @connection '--execute=CREATE DATABASE hanouty_restore_ci CHARACTER SET utf8mb4'
+    if ($LASTEXITCODE -ne 0) { throw 'Could not create the fresh restore schema.' }
+    $restore = Start-Process -FilePath $client -ArgumentList ($connection + @('--default-character-set=utf8mb4', 'hanouty_restore_ci')) `
+        -RedirectStandardInput $dump -WindowStyle Hidden -Wait -PassThru
+    if ($restore.ExitCode -ne 0) { throw "Could not restore the isolated backup (exit $($restore.ExitCode))." }
+
+    $probeSql = @'
+SELECT COUNT(*), COALESCE(SUM(TOTAL_NET),0), COUNT(CLOTURE_GLOBALE) FROM TABLE_VENTES_ENTETE;
+SELECT MODE_P, COUNT(*), COALESCE(SUM(MONTANT),0), COUNT(CLOTURE_GLOBALE)
+FROM TABLE_VENTES_REGLEMENTS GROUP BY MODE_P ORDER BY MODE_P;
+SELECT COUNT(*), COALESCE(SUM(STOCK),0) FROM TABLE_ARTICLES;
+SELECT ID_ARTICLE, HEX(ARTICLE), STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article';
+SELECT OBJET, VALEUR FROM TABLE_PARAMETRES WHERE OBJET='FONDS_CAISSE';
+SELECT COUNT(*) FROM hanouty_checkout_operations;
+'@
+    $original = & $client @connection --batch --skip-column-names logica_ci "--execute=$probeSql"
+    if ($LASTEXITCODE -ne 0 -or -not $original) { throw 'Could not read the original backup verification totals.' }
+    $restored = & $client @connection --batch --skip-column-names hanouty_restore_ci "--execute=$probeSql"
+    if ($LASTEXITCODE -ne 0 -or ($restored -join "`n") -cne ($original -join "`n")) {
+        throw 'Restored sales, payments, stock, drawer or checkout journal differ from the source.'
+    }
+    [ordered]@{
+        RestoreVerified = $true
+        BackupSha256 = (Get-FileHash -LiteralPath $dump -Algorithm SHA256).Hash
+        Compared = @('sales and closing counts', 'payments by mode', 'stock and article text', 'opening amount', 'checkout journal')
+    } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'backup-restore.json') -Encoding UTF8
+    Write-Host 'PASS: disposable backup restored into a fresh schema with matching financial and stock checks.' -ForegroundColor Green
+}
+
 try {
     if (-not [Environment]::Is64BitOperatingSystem) { throw 'This test bundle requires 64-bit Windows.' }
     if (-not (Test-Path -LiteralPath $appZip -PathType Leaf)) { throw 'The accepted WPF package ZIP is missing beside this launcher.' }
@@ -50,25 +116,24 @@ try {
 
     if (Test-Path -LiteralPath $appDir) {
         $ownedMarker = Join-Path $appDir '.hanouty-test-package'
-        if (-not (Test-Path -LiteralPath $ownedMarker -PathType Leaf) -or
-            -not (Test-Path -LiteralPath $exe -PathType Leaf)) {
-            throw "The existing extraction folder is incomplete or not owned by this test bundle: $appDir"
+        if (-not (Test-Path -LiteralPath $ownedMarker -PathType Leaf)) {
+            throw "The existing extraction folder is not owned by this test bundle: $appDir"
         }
+        Assert-HanoutyExtraction -Directory $appDir -Acceptance $acceptedPackage
     } else {
-        New-Item -ItemType Directory -Path $appDir -Force | Out-Null
-        Expand-Archive -LiteralPath $appZip -DestinationPath $appDir -Force
-        Set-Content -LiteralPath (Join-Path $appDir '.hanouty-test-package') -Value 'This folder is extracted by the bundled test launcher.' -Encoding UTF8
-    }
-    if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Hanouty cashier executable was not found in the package.' }
-    $manifestPath = Join-Path $appDir 'HANOUTY-MANIFEST.json'
-    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { throw 'The package manifest is missing.' }
-    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-    if ($manifest.mode -ne 'financial') { throw 'This bundle does not contain the financial WPF package.' }
-    foreach ($file in $manifest.files) {
-        $path = Join-Path $appDir ([string]$file.file)
-        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
-            (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() -cne [string]$file.sha256) {
-            throw "Package integrity check failed for $($file.file)."
+        # Publish the application directory only after extraction and integrity checks succeed.
+        $staging = Join-Path $bundle ('.hanouty-extract-' + [Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $staging | Out-Null
+        try {
+            Expand-Archive -LiteralPath $appZip -DestinationPath $staging
+            Assert-HanoutyExtraction -Directory $staging -Acceptance $acceptedPackage
+            Set-Content -LiteralPath (Join-Path $staging '.hanouty-test-package') -Value 'This folder is extracted by the bundled test launcher.' -Encoding UTF8
+            [IO.Directory]::Move($staging, $appDir)
+        } finally {
+            if ((Split-Path -Parent ([IO.Path]::GetFullPath($staging))) -eq [IO.Path]::GetFullPath($bundle) -and
+                (Test-Path -LiteralPath $staging -PathType Container)) {
+                Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 
@@ -173,7 +238,9 @@ GRANT ALL PRIVILEGES ON logica_ci.* TO 'w2_test'@'127.0.0.1';
     $env:HANOUTY_W2_TEST_PIN = $null
     $env:HANOUTY_W2_DISPOSABLE_PORT = $null
     Write-Host 'PASS: cash sale, full-ticket return, rollback and reconciliation verified on disposable data.' -ForegroundColor Green
-    if (-not $VerifyOnly) {
+    if ($VerifyOnly) {
+        Test-HanoutyBackupRestore
+    } else {
         Write-Host "Opening the test cashier. Login: O'Neil | PIN: 1234. All records in this session are disposable." -ForegroundColor Cyan
         $cashier = Start-Process -FilePath $exe -WorkingDirectory $appDir -Wait -PassThru
         if ($cashier.ExitCode -ne 0) { throw "Cashier exited with code $($cashier.ExitCode). Evidence: $evidence" }

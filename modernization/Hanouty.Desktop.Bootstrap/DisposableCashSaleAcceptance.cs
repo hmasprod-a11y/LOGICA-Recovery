@@ -905,6 +905,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             WrongPinRejected = true, WrongTotalRejected = true, StalePriceRejected = true,
             AfterPaymentRollback = true, UnknownJournalLocked = true, LostAcknowledgementPersisted = true, Reconciliation = true,
             FullCashReturnThroughWpfUi = true, FullCashReturnSqlReadback = true, FullCashReturnRollback = true, FullCashReturnIdempotency = true,
+            CashDrawerSaleSurvivesPrinterFailure = true,
             W2Accepted = true, Remaining = "Partial returns, mixed tenders, discounts/credit, device parity, and commercial rollout acceptance"
         }));
     }
@@ -2027,7 +2028,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             throw new InvalidOperationException("Opening amount accepted a wrong PIN.");
         }
         catch (UnauthorizedAccessException) { }
-        closing.SetOpening("O'Neil", pin, 100m);
+        var beforeSale = closing.Read("O'Neil", pin);
+        var ticket = SellWithUnavailablePrinter(settings, pin);
         try
         {
             closing.Read("O'Neil", "wrong");
@@ -2083,9 +2085,11 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         var secondCashier = closing.Read("Second cashier", "4321", perCashier: true);
         closing.Close("Second cashier", "4321", secondCashier);
         var preview = closing.Read("O'Neil", pin);
-        Require(preview.Number == 1 && preview.Opening == 100m &&
+        Require(preview.Number == 1 && preview.Opening == 120.50m &&
             preview.ClientCash == 10m && preview.SupplierCash == 4m && preview.Expenses == 3m &&
-            preview.Expected == 103m + preview.CashSales, "Cash closing did not reconcile the drawer.");
+            preview.CashSales - beforeSale.CashSales == 5.25m &&
+            preview.Expected - beforeSale.Expected == 5.25m &&
+            preview.Expected == 123.50m + preview.CashSales, "Cash closing did not reconcile the sale after printer failure.");
         Sql(settings, "CREATE TRIGGER test_closing_failure BEFORE UPDATE ON TABLE_POUBELLE FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='test-closing-rollback'");
         try
         {
@@ -2099,6 +2103,10 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE CLOTURE_GLOBALE IS NULL") == 0 &&
             Number(settings, "SELECT COUNT(*) FROM TABLE_POUBELLE WHERE CLOTURE_GLOBALE='1'") == 1,
             "Closing did not mark the open documents with the same number.");
+        Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id AND CLOTURE_GLOBALE='1'", ticket) == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET=@id AND CLOTURE_GLOBALE='1'", ticket) == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND CLOTURE_GLOBALE='1'", ticket) == 2,
+            "The sale, tender and change did not close under the same number.");
         try
         {
             closing.Close("O'Neil", pin, preview);
@@ -2199,6 +2207,69 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 yield return child;
                 foreach (var nested in Descendants(child)) yield return nested;
             }
+        }
+    }
+
+    private static string SellWithUnavailablePrinter(CatalogueSettings settings, string pin)
+    {
+        var printerFile = Path.Combine(AppContext.BaseDirectory, "PRINTER_CL.sni");
+        var printerName = "Hanouty-QA-Missing-" + Guid.NewGuid().ToString("N");
+        using (var stream = new FileStream(printerFile, FileMode.CreateNew, FileAccess.Write))
+        using (var writer = new StreamWriter(stream))
+            writer.Write(printerName);
+
+        try
+        {
+            Sql(settings, """
+                INSERT INTO TABLE_PARAMETRES VALUES ('BRANCHEMENT','USB'), ('MODELE_TICKET','FR_3C'),
+                    ('AFFICHER_MODE_P','True'), ('AFFICHER_N_TICKET','True'),
+                    ('AFFICHER_CODE_BARRE','False'), ('PIED_TICKET','Test QA');
+                """);
+            var sequence = Number(settings, "SELECT CL FROM TABLE_NUM");
+            var sales = Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE");
+            var stock = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+            var host = CatalogueHost.CreateCashierWorkstation(settings, "01");
+            try
+            {
+                Require(CashierEntry(host, "O'Neil", "01", "0", 0m, pin),
+                    "Printer failure test could not authenticate the cashier.");
+                host.ViewModel.ScannerText = "CODE'1";
+                host.ViewModel.ScanCommand.Execute(null);
+                Require(host.ViewModel.BasketLines.Single().Quantity == 1 &&
+                    CashierEntry(host, "O'Neil", "01", "10", 5.25m, fromPaymentPanel: true),
+                    "Printer failure test could not stage the cash sale.");
+                ReviewThroughDialog(host, pin, true, () => host.ViewModel.CommitCommand.Execute(null));
+
+                var feedback = host.ViewModel.CommitFeedback;
+                Require(feedback.StartsWith("Vente enregistrée. Impression impossible :", StringComparison.Ordinal) &&
+                    feedback.Contains(printerName, StringComparison.Ordinal) &&
+                    !host.ViewModel.CheckoutUncertain && host.ViewModel.BasketLines.Count == 0,
+                    $"Expected the sale to complete despite the unavailable printer. Cashier feedback: '{feedback}'.");
+
+                var ticket = Convert.ToString(Value(settings,
+                    "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE WHERE TICKET='" +
+                    sequence.ToString("000000", CultureInfo.InvariantCulture) + "'"))!;
+                Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id AND TOTAL_NET=5.25", ticket) == 1 &&
+                    Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET=@id", ticket) == 1 &&
+                    Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id", ticket) == 2 &&
+                    Number(settings, "SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MODE_P='ESPECES'", ticket) == 5.25m &&
+                    Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == sales + 1 &&
+                    Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == stock - 1,
+                    "Printer failure changed the committed ticket, stock, or cash.");
+                var committed = Snapshot(settings);
+                host.ViewModel.CommitCommand.Execute(null);
+                Require(Snapshot(settings) == committed, "Retry after printer failure repeated a financial write.");
+                return ticket;
+            }
+            finally { host.Window.Close(); }
+        }
+        finally
+        {
+            File.Delete(printerFile);
+            Sql(settings, """
+                DELETE FROM TABLE_PARAMETRES WHERE OBJET IN ('BRANCHEMENT','MODELE_TICKET',
+                    'AFFICHER_MODE_P','AFFICHER_N_TICKET','AFFICHER_CODE_BARRE','PIED_TICKET');
+                """);
         }
     }
 
