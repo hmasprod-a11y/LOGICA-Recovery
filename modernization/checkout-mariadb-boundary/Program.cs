@@ -127,6 +127,8 @@ namespace LOGICA.Infrastructure.Checkout
                 loser.Close();
             }
             Require(journal.IsPersisted(contested), "Concurrent winning operation not durable.");
+            Require(Scalar("SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id = '" + contested + "'") == 1m,
+                "Concurrent committed claim must leave exactly one durable operation row.");
 
             // If the first cashier rolls back, a waiting cashier must be
             // allowed to claim the ID exactly once. This proves rollback
