@@ -167,6 +167,10 @@ namespace Hanouty.Checkout.MariaDb
         private static void ValidateOriginalReturnLines(
             IReadOnlyList<(string ArticleId, decimal Quantity)> lines)
         {
+            // A header without persisted sale lines is never a refundable sale.
+            // Reject before constructing a zero-amount request or UI candidate.
+            if (lines.Count == 0)
+                throw new InvalidOperationException("Original sale has no returnable lines.");
             if (lines.Any(line => line.Quantity <= 0 ||
                 string.IsNullOrWhiteSpace(line.ArticleId) ||
                 line.ArticleId.Length > 64 ||
