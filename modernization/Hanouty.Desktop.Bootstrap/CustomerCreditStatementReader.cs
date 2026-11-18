@@ -17,13 +17,13 @@ internal sealed class CustomerCreditStatementReader(string connectionString)
                SUM(CASE WHEN OPERATION = 'CREDIT' THEN TOTAL_NET END) AS TOTAL_CREDIT,
                SUM(CASE WHEN OPERATION = 'RETOUR CREDIT' THEN TOTAL_NET END) AS TOTAL_RETOUR
         FROM TABLE_VENTES_JOURNAL
-        WHERE DATES BETWEEN @fromDate AND @toDate AND OPERATION IN ('CREDIT', 'RETOUR CREDIT')
+        WHERE DATES >= @fromDate AND DATES < @toDate AND OPERATION IN ('CREDIT', 'RETOUR CREDIT')
         GROUP BY ID_CLIENT
         ) v ON v.ID_CLIENT = c.ID_CLIENT
         LEFT JOIN (
         SELECT ID_CLIENT, SUM(MONTANT) AS TOTAL_REGLE
         FROM TABLE_CLIENTS_REGLE
-        WHERE DATES BETWEEN @fromDate AND @toDate
+        WHERE DATES >= @fromDate AND DATES < @toDate
         GROUP BY ID_CLIENT
         ) r ON r.ID_CLIENT = c.ID_CLIENT
         ORDER BY c.CLIENT ASC
@@ -41,7 +41,7 @@ internal sealed class CustomerCreditStatementReader(string connectionString)
         using var connection = new MySqlConnection(connectionString);
         using var command = new MySqlCommand(StatementSql, connection);
         command.Parameters.AddWithValue("@fromDate", from.Date);
-        command.Parameters.AddWithValue("@toDate", to.Date);
+        command.Parameters.AddWithValue("@toDate", to.Date.AddDays(1));
         connection.Open();
         using var reader = command.ExecuteReader();
         var rows = new List<CustomerCreditStatementRow>();

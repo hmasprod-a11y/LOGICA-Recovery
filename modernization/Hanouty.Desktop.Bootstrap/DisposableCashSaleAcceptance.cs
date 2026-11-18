@@ -2704,7 +2704,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         Sql(settings, "UPDATE TABLE_PARAMETRES SET VALEUR='False' WHERE OBJET='CLOTURE_CAISSIER_OBLIGER'");
         var before = closing.Read("O'Neil", pin);
         var firstId = PayThroughHost("30");
-        Require(Balance() == 50m, "Partial settlement did not reduce credit from 80 to 50.");
+        Require(Balance() == 50m, "Partial settlement did not reduce credit from 80 to 50; observed " + Balance());
         var afterPartial = closing.Read("O'Neil", pin);
         Require(afterPartial.ClientCash == before.ClientCash + 30m && afterPartial.Expected == before.Expected + 30m,
             "Partial customer settlement did not reconcile with cash closing.");
