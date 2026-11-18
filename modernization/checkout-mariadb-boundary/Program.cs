@@ -1625,10 +1625,18 @@ namespace LOGICA.Infrastructure.Checkout
                 Sql("INSERT INTO TABLE_VENTES_ENTETE SELECT 'ambiguous-original',TICKET,DATES,CAISSIER,ID_CLIENT,CODE_CLIENT,CLIENT,POSTE,Total_NET,OPERATION FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-original'");
                 // The cashier's candidate search must fail closed too: an ambiguous
                 // persisted original must never be offered as a refundable sale.
-                var ambiguousCandidates = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
-                    .FindFullCashReturnCandidates(NewConnection, "ambiguous-original");
-                Require(!ambiguousCandidates.Any(candidate => candidate.SaleId == "ambiguous-original"),
-                    "Duplicate original headers must not be offered by WPF return lookup.");
+                bool ambiguousLookupRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .FindFullCashReturnCandidates(NewConnection, "ambiguous-original");
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("ambiguous"))
+                {
+                    ambiguousLookupRejected = true;
+                }
+                Require(ambiguousLookupRejected,
+                    "Duplicate original headers must be rejected by WPF return lookup.");
                 bool ambiguousRejected = false;
                 try
                 {
