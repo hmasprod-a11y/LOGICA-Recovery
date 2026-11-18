@@ -71,7 +71,7 @@ namespace Hanouty.Checkout.MariaDb
                         // Check the durable claim before interpreting evidence.
                         using (var claim = new MySqlCommand(
                             "SELECT COUNT(*) FROM hanouty_cash_return_consumption " +
-                            "WHERE BINARY original_ticket_id=BINARY @ticket", connection, transaction))
+                            "WHERE UPPER(original_ticket_id)=UPPER(@ticket)", connection, transaction))
                         {
                             claim.Parameters.AddWithValue("@ticket", saleId);
                             if (Convert.ToInt64(claim.ExecuteScalar()) == 0)
@@ -139,7 +139,7 @@ namespace Hanouty.Checkout.MariaDb
                     }
                     using (var claim = new MySqlCommand(
                         "SELECT COUNT(*) FROM hanouty_cash_return_consumption " +
-                        "WHERE BINARY original_ticket_id=BINARY @ticket", connection, transaction))
+                        "WHERE UPPER(original_ticket_id)=UPPER(@ticket)", connection, transaction))
                     {
                         claim.Parameters.AddWithValue("@ticket", originalTicketId);
                         if (Convert.ToInt64(claim.ExecuteScalar()) != 0)
