@@ -86,6 +86,10 @@ namespace LOGICA.Infrastructure.Checkout
                 boundary.Close();
             }
             Require(journal.IsPersisted(key), "Reconciliation must survive duplicate replay.");
+            Require(Scalar("SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id = '" + key + "'") == 1m,
+                "Lost-ack replay must preserve exactly one durable operation claim.");
+            Require(Scalar("SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id = '" + rolledBack + "'") == 1m,
+                "Rollback retry must persist exactly one operation claim.");
 
             // A competing transaction must not create a second durable claim.
             // This is an actual two-connection InnoDB contention test, not a mock.
