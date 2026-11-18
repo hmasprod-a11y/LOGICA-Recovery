@@ -121,6 +121,15 @@ public sealed class CashboxLifecycle
     // The caller must fetch the journal in a consistent database snapshot and
     // independently establish that no unresolved outcomes remain. No mutation
     // happens when exact replay, totals or the current phase disagree.
+    // Read-only UI preview backed by the exact durable journal, not merely
+    // by the in-memory cash balance. Host must supply a consistent snapshot.
+    public CashboxClosePreview PreviewCloseVerified(
+        IEnumerable<CashboxEntry> persistedEntries, decimal countedCash)
+    {
+        return CashboxJournalReplay.VerifyCloseExact(
+            GetStatus(), Entries, persistedEntries, countedCash);
+    }
+
     public CashboxClosePreview CloseVerified(
         IEnumerable<CashboxEntry> persistedEntries, decimal countedCash)
     {
