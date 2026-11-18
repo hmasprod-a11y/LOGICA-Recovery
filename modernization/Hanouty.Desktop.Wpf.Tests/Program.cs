@@ -23,6 +23,70 @@ static void Check(bool value, string reason)
 {
     if (!value) throw new Exception(reason);
 }
+
+var originalEntryCulture = System.Globalization.CultureInfo.CurrentCulture;
+try
+{
+    foreach (var cultureName in new[] { "fr-FR", "en-US" })
+    foreach (var cancelNumericEntry in new[] { false, true })
+    {
+        System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo(cultureName);
+        var field = new System.Windows.Controls.TextBox { Text = "7" };
+        var owner = new System.Windows.Window { Content = field, Width = 220, Height = 120 };
+        owner.Show();
+        Hanouty.Desktop.Wpf.TouchNumericEntry.Attach(field, "Quantité");
+        Check(field.IsReadOnly, "Quantity entry must not require physical-keyboard typing.");
+        Exception? numericFailure = null;
+        var openedNumeric = false;
+        var numericTimeout = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        numericTimeout.Tick += (_, _) =>
+        {
+            numericTimeout.Stop();
+            numericFailure = new TimeoutException("Touch numeric dialog did not settle within five seconds.");
+            foreach (var modal in owner.OwnedWindows.OfType<Hanouty.Desktop.Wpf.TouchNumericEntryDialog>().ToArray())
+                modal.Close();
+        };
+        numericTimeout.Start();
+        owner.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+            new Action(() =>
+            {
+                var dialog = owner.OwnedWindows.OfType<Hanouty.Desktop.Wpf.TouchNumericEntryDialog>().SingleOrDefault();
+                try
+                {
+                    Check(dialog is not null, "Touching a quantity must open the real touch keypad.");
+                    openedNumeric = true;
+                    var panel = (System.Windows.Controls.StackPanel)dialog!.Content;
+                    var buttons = panel.Children.OfType<System.Windows.Controls.Primitives.UniformGrid>()
+                        .SelectMany(grid => grid.Children.OfType<System.Windows.Controls.Button>()).ToArray();
+                    void Touch(string label) => buttons.Single(b => Equals(b.Content, label))
+                        .RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                    Touch("Effacer");
+                    Touch("Appliquer");
+                    Check(dialog.IsVisible && dialog.Value is null, "Empty positive quantity must stay unconfirmed.");
+                    Touch("1");
+                    Touch(System.Globalization.CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator);
+                    Touch("2"); Touch("3"); Touch("4"); // Third decimal is ignored, never silently rounded.
+                    Touch("⌫"); Touch("5");
+                    if (cancelNumericEntry) dialog.Close();
+                    else Touch("Appliquer");
+                }
+                catch (Exception ex) { numericFailure = ex; dialog?.Close(); }
+            }));
+        try
+        {
+            field.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(
+                System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
+                { RoutedEvent = System.Windows.UIElement.PreviewMouseLeftButtonDownEvent });
+            if (numericFailure is not null) throw numericFailure;
+            Check(openedNumeric, "Attached quantity control did not open its keypad.");
+            Check(field.Text == (cancelNumericEntry ? "7" : 1.25m.ToString("0.##")),
+                "Touch quantity must preserve culture, two decimals, deletion and cancellation.");
+        }
+        finally { numericTimeout.Stop(); owner.Close(); }
+    }
+}
+finally { System.Globalization.CultureInfo.CurrentCulture = originalEntryCulture; }
+
 Check(CashDrawerCount.Calculate(new[] { 1, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3 }) == 201.20m,
     "cash drawer recount must preserve LOGICA banknote and fractional coin totals");
 Hanouty.Desktop.Wpf.MainWindow.TestOnlyAllowUnauthorizedPaymentContext = false;

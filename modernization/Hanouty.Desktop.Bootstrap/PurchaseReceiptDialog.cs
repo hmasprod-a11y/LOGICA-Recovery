@@ -44,6 +44,7 @@ internal sealed class PurchaseReceiptDialog : Window
         var order = OrderField("Commande");
         var article = OrderField("Identifiant article");
         var quantity = OrderField("Quantité reçue");
+        Hanouty.Desktop.Wpf.TouchNumericEntry.Attach(quantity, "Quantité commandée ou reçue");
         var create = new Button { Content = "Créer le bon", MinHeight = 32, Margin = new Thickness(0, 14, 0, 0) };
         orderInputs.Children.Add(create);
         var orderCreation = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
