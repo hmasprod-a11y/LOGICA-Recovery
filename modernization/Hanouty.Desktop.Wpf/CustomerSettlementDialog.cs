@@ -46,22 +46,25 @@ public sealed class CustomerSettlementDialog : Window
         save.Click += (_, _) =>
         {
             if (posting || committed) return;
-            if (!decimal.TryParse(amount.Text, NumberStyles.Number, CultureInfo.CurrentCulture, out var value) || value <= 0)
+            if (submittedRequest is null)
             {
-                feedback.Text = "Veuillez remplir le champ -MONTANT- ";
-                return;
-            }
-            if (mode.SelectedItem is not string paymentMode || string.IsNullOrWhiteSpace(paymentMode))
-            {
-                feedback.Text = "Veuillez remplir le champ -MODE_P- ";
-                return;
+                if (!decimal.TryParse(amount.Text, NumberStyles.Number, CultureInfo.CurrentCulture, out var value) || value <= 0)
+                {
+                    feedback.Text = "Veuillez remplir le champ -MONTANT- ";
+                    return;
+                }
+                if (mode.SelectedItem is not string paymentMode || string.IsNullOrWhiteSpace(paymentMode))
+                {
+                    feedback.Text = "Veuillez remplir le champ -MODE_P- ";
+                    return;
+                }
+                submittedRequest = new CustomerSettlementRequest(operationId, customer.CustomerId,
+                    value, paymentMode, notes.Text);
             }
             posting = true;
             save.IsEnabled = false;
             try
             {
-                submittedRequest ??= new CustomerSettlementRequest(operationId, customer.CustomerId,
-                    value, paymentMode, notes.Text);
                 amount.IsReadOnly = true;
                 mode.IsEnabled = false;
                 notes.IsReadOnly = true;
