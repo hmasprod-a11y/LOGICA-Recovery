@@ -1093,6 +1093,43 @@ namespace LOGICA.Infrastructure.Checkout
                 Require(invalidCandidates.Count == 0 && !connectionOpened,
                     "Control-character receipt identity must be rejected before MariaDB lookup.");
             }
+            // A header with no journal lines is not a refundable sale. Preserve
+            // the disposable fixture and prove both lookup and preparation fail
+            // without claiming the original ticket.
+            Sql("CREATE TABLE hanouty_empty_return_lines_backup LIKE TABLE_VENTES_JOURNAL");
+            try
+            {
+                Sql("INSERT INTO hanouty_empty_return_lines_backup SELECT * FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-original'");
+                Require(Scalar("SELECT COUNT(*) FROM hanouty_empty_return_lines_backup") == 2,
+                    "Expected two disposable original lines before empty-journal regression.");
+                Sql("DELETE FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-original'");
+                bool emptyLookupRejected = false;
+                bool emptyPreparationRejected = false;
+                try
+                {
+                    var emptyCandidates = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .FindFullCashReturnCandidates(NewConnection, "multi-original");
+                    emptyLookupRejected = emptyCandidates.Count == 0;
+                }
+                catch (InvalidOperationException) { emptyLookupRejected = true; }
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .PrepareFullCashReturnRequest(NewConnection, "return-empty-lines", "O'Neil",
+                            "MAD", "multi-original");
+                }
+                catch (InvalidOperationException) { emptyPreparationRejected = true; }
+                Require(emptyLookupRejected && emptyPreparationRejected &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0 &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='return-empty-lines'") == 0,
+                    "Header without original journal lines must not be refundable or consumed.");
+            }
+            finally
+            {
+                Sql("DELETE FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-original'");
+                Sql("INSERT INTO TABLE_VENTES_JOURNAL SELECT * FROM hanouty_empty_return_lines_backup");
+                Sql("DROP TABLE hanouty_empty_return_lines_backup");
+            }
             // A damaged persisted zero-quantity line must never be offered
             // for a full return, nor consume the original ticket.
             Sql("UPDATE TABLE_VENTES_JOURNAL SET Qté=0 WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
