@@ -8,6 +8,15 @@ public partial class MainWindow : Window
 {
     private Func<DateTime, DateTime, IReadOnlyList<CustomerCreditStatementRow>>? _readCustomerCreditStatement;
 
+    private Func<IReadOnlyList<string>>? _customerPaymentModes;
+    private Func<CustomerSettlementRequest, bool>? _submitCustomerSettlement;
+
+    public void ConfigureCustomerSettlements(Func<IReadOnlyList<string>> paymentModes, Func<CustomerSettlementRequest, bool> submit)
+    {
+        _customerPaymentModes = paymentModes;
+        _submitCustomerSettlement = submit;
+    }
+
     public void ConfigureCustomerCreditStatement(
         Func<DateTime, DateTime, IReadOnlyList<CustomerCreditStatementRow>> readStatement) =>
         _readCustomerCreditStatement = readStatement;
@@ -16,7 +25,14 @@ public partial class MainWindow : Window
     {
         if (_readCustomerCreditStatement is null || DataContext is not CatalogueViewModel vm ||
             !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain) return;
-        new CustomerCreditStatementDialog(_readCustomerCreditStatement) { Owner = this }.ShowDialog();
+        IReadOnlyList<string>? modes = null;
+        try { modes = _customerPaymentModes?.Invoke(); }
+        catch (Exception)
+        {
+            MessageBox.Show(this, "Les modes de paiement sont indisponibles. Le relevé reste consultable, sans règlement.",
+                "Règlement client", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        new CustomerCreditStatementDialog(_readCustomerCreditStatement, modes, _submitCustomerSettlement) { Owner = this }.ShowDialog();
     }
 
     private Func<decimal, bool, bool>? _closeCashDrawer;
