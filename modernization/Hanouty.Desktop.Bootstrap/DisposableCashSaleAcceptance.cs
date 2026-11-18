@@ -2375,6 +2375,12 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 requests[1].PaymentMode == "ESPECES" && requests[1].Notes == "Premier versement" &&
                 !string.IsNullOrWhiteSpace(requests[1].OperationId),
                 "Settlement retry changed its operation identity or financial payload.");
+            amount.Text = "";
+            mode.SelectedItem = null;
+            save.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Require(requests.Count == 3 && requests[2] == requests[0],
+                "Cleared input bindings prevented reconciliation of the original settlement.");
+
         }
         finally { dialog.Close(); }
         File.WriteAllText(Path.Combine(EvidenceDirectory, "customer-settlement-ui-retry.json"),
