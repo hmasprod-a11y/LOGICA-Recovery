@@ -2093,7 +2093,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         Require(preview.Number == 1 && preview.Opening == 120.50m &&
             preview.ClientCash == 10m && preview.SupplierCash == 4m && preview.Expenses == 3m &&
             preview.CashSales - beforeSale.CashSales == 5.25m &&
-            preview.Expected - beforeSale.Expected == 5.25m &&
+            preview.Expected - afterSale.Expected == -3m &&
+            preview.Expected - beforeSale.Expected == 2.25m &&
             preview.Expected == 123.50m + preview.CashSales, "Cash closing did not reconcile the sale after printer failure.");
         Sql(settings, "CREATE TRIGGER test_closing_failure BEFORE UPDATE ON TABLE_POUBELLE FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='test-closing-rollback'");
         try
