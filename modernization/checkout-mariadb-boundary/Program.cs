@@ -1136,7 +1136,7 @@ namespace LOGICA.Infrastructure.Checkout
             // The original ticket identity is an independent trust boundary:
             // neither a pasted malformed ID nor a self-referencing operation
             // may open MariaDB, even if the cashier and operation are valid.
-            foreach (var invalidOriginal in new[] { " multi-original", "multi-original ", "multi\\noriginal", "multi\\toriginal", "multi\\0original", new string('x', 65) })
+            foreach (var invalidOriginal in new[] { " multi-original", "multi-original ", "multi\noriginal", "multi\toriginal", "multi\0original", new string('x', 65) })
             {
                 bool connectionOpened = false;
                 bool rejectedBeforeConnection = false;
