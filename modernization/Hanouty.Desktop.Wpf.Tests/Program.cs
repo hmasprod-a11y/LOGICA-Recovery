@@ -38,6 +38,15 @@ try
         Check(field.IsReadOnly, "Quantity entry must not require physical-keyboard typing.");
         Exception? numericFailure = null;
         var openedNumeric = false;
+        var numericTimeout = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        numericTimeout.Tick += (_, _) =>
+        {
+            numericTimeout.Stop();
+            numericFailure = new TimeoutException("Touch numeric dialog did not settle within five seconds.");
+            foreach (var modal in owner.OwnedWindows.OfType<Hanouty.Desktop.Wpf.TouchNumericEntryDialog>().ToArray())
+                modal.Close();
+        };
+        numericTimeout.Start();
         owner.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
             new Action(() =>
             {
@@ -73,7 +82,7 @@ try
             Check(field.Text == (cancelNumericEntry ? "7" : 1.25m.ToString("0.##")),
                 "Touch quantity must preserve culture, two decimals, deletion and cancellation.");
         }
-        finally { owner.Close(); }
+        finally { numericTimeout.Stop(); owner.Close(); }
     }
 }
 finally { System.Globalization.CultureInfo.CurrentCulture = originalEntryCulture; }
