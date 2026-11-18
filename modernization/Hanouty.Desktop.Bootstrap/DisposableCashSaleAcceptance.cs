@@ -898,6 +898,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyCataloguePrice(settings);
         VerifyCatalogueImport(settings);
         VerifyCustomerCreditStatement(settings, pin);
+        VerifyCustomerSettlementRetry();
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -2337,6 +2338,48 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         File.WriteAllText(Path.Combine(EvidenceDirectory, "customer-credit-statement.json"),
             JsonSerializer.Serialize(new { RealMariaDbReader = true, PeriodBalance = 80m,
                 SignedReturn = true, EmptyAccount = true, WpfLoadedRows = true, CashierButtonEntry = true }));
+    }
+
+    private static void VerifyCustomerSettlementRetry()
+    {
+        var customer = new CustomerCreditStatementRow("RETRY_CLIENT", "Client", 0m, 80m, 0m, 0m, 80m);
+        var requests = new List<CustomerSettlementRequest>();
+        var dialog = new CustomerSettlementDialog(customer, new[] { "ESPECES", "CARTE" }, request =>
+        {
+            requests.Add(request);
+            return false;
+        });
+        dialog.Show();
+        try
+        {
+            var panel = (System.Windows.Controls.StackPanel)dialog.Content;
+            var inputs = panel.Children.OfType<System.Windows.Controls.TextBox>().ToArray();
+            var mode = panel.Children.OfType<System.Windows.Controls.ComboBox>().Single();
+            var save = panel.Children.OfType<System.Windows.Controls.Button>().Single();
+            var amount = inputs[0];
+            var notes = inputs[1];
+            amount.Text = "30";
+            notes.Text = "Premier versement";
+            mode.SelectedItem = "ESPECES";
+            save.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Require(requests.Count == 1 && requests[0].Amount == 30m,
+                "Settlement dialog did not submit the reviewed amount.");
+            Require(amount.IsReadOnly && notes.IsReadOnly && !mode.IsEnabled,
+                "Uncertain settlement left its financial payload editable.");
+            // Programmatic edits model stale bindings while the first outcome is unknown.
+            amount.Text = "80";
+            notes.Text = "Changed payload";
+            mode.SelectedItem = "CARTE";
+            save.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Require(requests.Count == 2 && requests[0] == requests[1] &&
+                requests[1].PaymentMode == "ESPECES" && requests[1].Notes == "Premier versement" &&
+                !string.IsNullOrWhiteSpace(requests[1].OperationId),
+                "Settlement retry changed its operation identity or financial payload.");
+        }
+        finally { dialog.Close(); }
+        File.WriteAllText(Path.Combine(EvidenceDirectory, "customer-settlement-ui-retry.json"),
+            JsonSerializer.Serialize(new { UiCallbackOnly = true, SameOperation = true,
+                ImmutableAmount = true, ImmutableMode = true, ImmutableNotes = true }));
     }
 
     public static int Run(string evidenceDirectory)
