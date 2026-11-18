@@ -168,6 +168,8 @@ namespace LOGICA.Infrastructure.Checkout
             }
             Require(journal.IsPersisted(rolledBackContested),
                 "Successor claim after rollback must be durable.");
+            Require(Scalar("SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id = '" + rolledBackContested + "'") == 1m,
+                "Concurrent rollback and successor commit must persist exactly one operation row.");
             using (MySqlConnection connection = NewConnection())
             {
                 var duplicate = new MySqlCheckoutAtomicPostingBoundary(connection);
