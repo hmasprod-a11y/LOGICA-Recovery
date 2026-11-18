@@ -474,6 +474,9 @@ namespace LOGICA.Infrastructure.Checkout
                 catch (UnauthorizedAccessException) { denied = true; }
                 catch (InvalidOperationException) { denied = true; }
                 catch (NotSupportedException) { denied = true; }
+                // Input guards reject malformed baskets before MariaDB with ArgumentException.
+                // The shared rejection assertion must still verify zero financial side effects.
+                catch (ArgumentException) { denied = true; }
                 Require(denied && !journal.IsPersisted(operation) &&
                     Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == headers &&
                     Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == payments &&
