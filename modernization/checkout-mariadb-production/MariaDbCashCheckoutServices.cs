@@ -272,7 +272,7 @@ namespace Hanouty.Checkout.MariaDb
                 throw new ArgumentException("Basket requires canonical article identities and positive quantities.", nameof(lines));
             // A repeated live article identity is not a valid basket. Reject it
             // before opening MariaDB; the posting gate also validates it.
-            var articleIds = new HashSet<string>(StringComparer.Ordinal);
+            // Legacy article identifiers can be case-insensitive in MariaDB. Never allow\n            // two basket lines that resolve to one persisted stock identity.\n            var articleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (snapshot.Any(line => !articleIds.Add(line.ArticleId)))
                 throw new ArgumentException("Basket contains duplicate article identities.", nameof(lines));
             using (var connection = LocalConnection(connections))
