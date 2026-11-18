@@ -17,6 +17,7 @@ public sealed class CustomerSettlementDialog : Window
     private readonly string operationId = Guid.NewGuid().ToString("N");
     private bool posting;
     private bool committed;
+    private CustomerSettlementRequest? submittedRequest;
 
     public CustomerSettlementDialog(CustomerCreditStatementRow customer, IReadOnlyList<string> paymentModes,
         Func<CustomerSettlementRequest, bool> submit)
@@ -59,8 +60,12 @@ public sealed class CustomerSettlementDialog : Window
             save.IsEnabled = false;
             try
             {
-                committed = submit(new CustomerSettlementRequest(operationId, customer.CustomerId,
-                    value, paymentMode, notes.Text));
+                submittedRequest ??= new CustomerSettlementRequest(operationId, customer.CustomerId,
+                    value, paymentMode, notes.Text);
+                amount.IsReadOnly = true;
+                mode.IsEnabled = false;
+                notes.IsReadOnly = true;
+                committed = submit(submittedRequest);
                 if (committed) { DialogResult = true; }
                 else { feedback.Text = "Le règlement reste à confirmer. Réessayez avec la même opération."; }
             }
