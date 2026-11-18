@@ -486,6 +486,21 @@ public sealed partial record CatalogueHost
             dialog.ShowDialog();
         });
         var customerCredits = new CustomerCreditStatementReader(settings.ConnectionString);
+        var customerSettlements = new CustomerSettlementWriter(settings.ConnectionString);
+        window.ConfigureCustomerSettlements(customerSettlements.PaymentModes, request =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } actor ||
+                binding.Session.PendingCount != 0) return false;
+            reviewing = true;
+            try
+            {
+                var pin = window.PromptCashierPin(actor);
+                if (string.IsNullOrWhiteSpace(pin) || !vm.FinancialSessionActive || activeCashierId != actor ||
+                    vm.CheckoutBusy || vm.CheckoutUncertain || binding.Session.PendingCount != 0) return false;
+                return customerSettlements.Record(request, actor, pin);
+            }
+            finally { reviewing = false; }
+        });
         window.ConfigureCustomerCreditStatement((from, to) =>
         {
             if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is null ||
