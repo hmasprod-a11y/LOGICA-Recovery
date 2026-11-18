@@ -62,3 +62,18 @@ La [recette WPF et MariaDB](https://github.com/hmasprod-a11y/LOGICA-Recovery/act
 4. **Recette intégrée** — une version Windows issue de QA, un jeu de données fictives, un parcours complet. Pour chaque preuve, inscrire SHA, jeu de données, résultat attendu et observé, lien du test et propriétaire du prochain écart. Vérifier impression et restauration sur matériel représentatif avant livraison.
 
 Ce registre est un point de départ vérifié dans le code, avec les limites indiquées dans chaque ligne. Compléter les variantes encore à tracer au fur et à mesure de leur mise en œuvre. Référencer les résultats nouveaux ici pour éviter la dispersion entre rapports et branches.
+
+
+## Règlements clients et fournisseurs — 19 novembre 2026
+
+Les parcours ont été raccordés par le superviseur et intégrés, sans écriture sur une base magasin.
+- Client : PR #123, source `ecf72367d643fc06d8f8006ab6e16f32f3c6e01f`, [Windows/WPF/MariaDB et lancement/restauration](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/44396971031) réussis. Le bouton réel, la sélection, le pavé et le PIN enregistrent 30 puis 50 ; reliquat 80 → 50 → 0 ; caisse +80. Refus PIN/identité/mode/précision, rollback et reprise sans doublon avant/après clôture couverts. La période inclut désormais tout le dernier jour, même pour les règlements horodatés.
+- Fournisseur : PR #126, source `3ae8c77f56ec927c301bd16eb148a9b1a548139c`, [même recette intégrée et restauration](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/44416513717) réussies. Calcul existant LOGICA : crédit initial + réceptions enregistrées + sorties signées − règlements. Parcours WPF/PIN 30 puis50 ; solde80 →50 →0 ; caisse−80. Refus/rollback/reprise/clôture couverts. Une vente persistée synthétique ouvre la portée de clôture de ce scénario.
+- Migrations explicites : `20261118-client-settlement-operations.sql` et `20261118-supplier-settlement-operations.sql`. Elles ne sont pas appliquées automatiquement au magasin.
+- Limites : ces preuves portent sur les versements positifs à la date courante, pas sur toute la gestion historique/modification/suppression LOGICA. La reprise commerciale d'une issue inconnue après fermeture de la fenêtre et le matériel restent à valider. La création AVOIR fournisseur reste ouverte.
+
+## Checkout et tickets — intégration du 19 novembre 2026
+
+PR #125 intègre les protections de #119 sur la base courante, après correction personnelle de deux blocages : conserver une prévisualisation vide pour ouvrir la session avant le premier scan, et masquer les entêtes originaux ambigus tout en refusant leur remboursement. [Checkout/MariaDB](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/44415110236) et [WPF/vente/retour/règlements/paquet/restauration](https://github.com/hmasprod-a11y/LOGICA-Recovery/actions/runs/44415110446) réussis sur `0c7588d7edea95d5054dcb1995086f989de2931e`. #119 est fermé comme remplacé, son code n'est pas perdu. Carte, mixte, remises autorisées et retours partiels restent ouverts.
+
+PR #124 restaure le nombre d'unités (quantités fractionnaires comprises) et les économies calculées du brut et du net persistés sur FR_3C. Le dessin de production est partagé avec la prévisualisation. Le superviseur ajoute la recette de rendu à W2 afin qu'elle soit exécutée en CI et archivée. Les preuves utilisent des données synthétiques ; aucun essai d'imprimante physique n'est revendiqué. QR, autres modèles, liaisons série et papier long restent ouverts.

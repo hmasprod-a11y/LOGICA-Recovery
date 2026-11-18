@@ -7,6 +7,7 @@ on:
       - 'modernization/Hanouty.Desktop.Bootstrap/**'
       - 'modernization/Hanouty.Desktop.Wpf/**'
       - 'modernization/Hanouty.Desktop.Wpf.Tests/**'
+      - 'modernization/receipt-printing-acceptance/**'
       - 'modernization/checkout-mariadb-boundary/**'
       - 'modernization/checkout-mariadb-production/**'
       - 'modernization/architecture/**'
@@ -24,6 +25,7 @@ on:
       - 'modernization/Hanouty.Desktop.Bootstrap/**'
       - 'modernization/Hanouty.Desktop.Wpf/**'
       - 'modernization/Hanouty.Desktop.Wpf.Tests/**'
+      - 'modernization/receipt-printing-acceptance/**'
       - 'modernization/checkout-mariadb-boundary/**'
       - 'modernization/checkout-mariadb-production/**'
       - 'modernization/architecture/**'
@@ -103,6 +105,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'ARCHITECTURE_OWNER: current SHA WPF/Checkout adapter suite failed' }
           dotnet run --project modernization/stock-authorization-acceptance/StockAuthorizationAcceptance.csproj -c Release -- --no-database
           if ($LASTEXITCODE -ne 0) { throw 'INVENTORY_OWNER: current SHA manual-write denial gate failed' }
+          dotnet run --project modernization/receipt-printing-acceptance/ReceiptPrintingAcceptance.csproj -c Release -- ./evidence/receipt-summary
+          if ($LASTEXITCODE -ne 0) { throw 'DESKTOP_OWNER: LOGICA receipt summary/rendering acceptance failed' }
           $manifest = "checkout=$sha" + [Environment]::NewLine + "architecture=$sha" + [Environment]::NewLine + "wpf=$sha" + [Environment]::NewLine + "host=$sha"
           $manifest | Set-Content evidence/composed-source-manifest.txt
       - name: Start checksum-verified disposable MariaDB without installing a service
