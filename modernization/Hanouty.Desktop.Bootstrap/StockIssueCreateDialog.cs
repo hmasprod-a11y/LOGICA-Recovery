@@ -36,6 +36,7 @@ internal sealed class StockIssueCreateDialog : Window
             article.SelectedItem = selected is not null && matches.Contains(selected) ? selected : null;
         };
         var quantity = new TextBox { Text = "1" };
+        Hanouty.Desktop.Wpf.TouchNumericEntry.Attach(quantity, "Quantité du bon de sortie");
         var notes = new TextBox();
         AddField("Date", date);
         AddField("Type", type);
