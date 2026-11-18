@@ -42,7 +42,7 @@ public sealed partial record CatalogueHost
         if (string.IsNullOrWhiteSpace(frozen.CashierId) ||
             frozen.Currency != "MAD" || frozen.IsReturn ||
             frozen.Payments.Count != 1 ||
-            frozen.Payments[0].Amount <= 0m ||
+            frozen.Payments[0] is not { Amount: > 0m } ||
             frozen.Payments[0].Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card) ||
             (frozen.Payments[0].Kind == CheckoutPaymentKind.Card && frozen.ExpectedTotal != frozen.Payments[0].Amount) ||
             frozen.ExpectedTotal <= 0m ||

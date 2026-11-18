@@ -29,6 +29,7 @@ namespace Hanouty.Checkout.MariaDb
 
         public static bool IsCardPaymentAvailable(Func<MySqlConnection> connections)
         {
+            if (connections is null) throw new ArgumentNullException(nameof(connections));
             using var connection = LocalConnection(connections);
             connection.Open();
             using var transaction = connection.BeginTransaction();
