@@ -52,7 +52,7 @@ namespace Hanouty.Checkout.MariaDb
                     string saleId = null;
                     using (var command = new MySqlCommand(
                         "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE " +
-                        "WHERE BINARY ID_TICKET=BINARY @ticket AND BINARY OPERATION=BINARY 'VENTE' LIMIT 2",
+                        "WHERE UPPER(ID_TICKET)=UPPER(@ticket) AND BINARY OPERATION=BINARY 'VENTE' LIMIT 2",
                         connection, transaction))
                     {
                         command.Parameters.AddWithValue("@ticket", receiptId);
@@ -66,6 +66,8 @@ namespace Hanouty.Checkout.MariaDb
                     }
                     if (!string.IsNullOrWhiteSpace(saleId))
                     {
+                        if (!string.Equals(saleId, receiptId, StringComparison.Ordinal))
+                            throw new InvalidOperationException("Original ticket case does not match persisted identity.");
                         // A consumed ticket is not a candidate, even if legacy
                         // journal/payment rows were subsequently damaged.
                         // Check the durable claim before interpreting evidence.
@@ -125,7 +127,7 @@ namespace Hanouty.Checkout.MariaDb
                     RequireInnoDb(connection, transaction, "hanouty_cash_return_consumption");
                     using (var header = new MySqlCommand(
                         "SELECT ID_TICKET FROM TABLE_VENTES_ENTETE " +
-                        "WHERE BINARY ID_TICKET=BINARY @ticket AND BINARY OPERATION=BINARY 'VENTE' LIMIT 2 FOR UPDATE",
+                        "WHERE UPPER(ID_TICKET)=UPPER(@ticket) AND BINARY OPERATION=BINARY 'VENTE' LIMIT 2 FOR UPDATE",
                         connection, transaction))
                     {
                         header.Parameters.AddWithValue("@ticket", originalTicketId);
@@ -135,6 +137,8 @@ namespace Hanouty.Checkout.MariaDb
                                 throw new InvalidOperationException("Persisted original cash sale was not found.");
                             if (reader.Read())
                                 throw new InvalidOperationException("Original cash ticket identity is ambiguous.");
+                            // The lookup detects case-variant collisions, but posting requires
+                            // the exact persisted identifier, never a case-folded alias.
                         }
                     }
                     using (var claim = new MySqlCommand(
