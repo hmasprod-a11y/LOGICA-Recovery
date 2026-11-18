@@ -35,6 +35,15 @@ public partial class MainWindow : Window
         new CustomerCreditStatementDialog(_readCustomerCreditStatement, modes, _submitCustomerSettlement) { Owner = this }.ShowDialog();
     }
 
+    private Action? _openSupplierSettlements;
+    public void ConfigureSupplierSettlements(Action open) => _openSupplierSettlements = open;
+    private void OpenSupplierSettlements_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is CatalogueViewModel vm && vm.FinancialSessionActive &&
+            !vm.CheckoutBusy && !vm.CheckoutUncertain)
+            _openSupplierSettlements?.Invoke();
+    }
+
     private Func<decimal, bool, bool>? _closeCashDrawer;
     private Func<decimal, bool>? _setOpeningCash;
 

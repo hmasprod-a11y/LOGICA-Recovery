@@ -901,6 +901,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyCustomerCreditStatement(settings, pin);
         VerifyCustomerSettlementRetry();
         VerifyCustomerSettlementPosting(settings, pin);
+        VerifySupplierSettlementPosting(settings, pin);
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -2729,6 +2730,176 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         File.WriteAllText(Path.Combine(EvidenceDirectory, "customer-settlement-posting.json"),
             JsonSerializer.Serialize(new { ProductionHostAndPin = true, TouchKeypad = true, Initial = 80m,
                 PartialBalance = 50m, FinalBalance = 0m, CashIncrease = 80m, ExactOnce = true,
+                Rollback = true, WrongPinDenied = true, ClosedRowsPreserved = true }));
+    }
+
+    private static void VerifySupplierSettlementPosting(CatalogueSettings settings, string pin)
+    {
+        Sql(settings, """
+            INSERT INTO TABLE_FOURNISSEURS (ID_FOURNISSEUR,FOURNISSEUR,CODE_FOURNISSEUR,CREDIT_INITIAL)
+                VALUES ('SUPPLIER_FIXTURE','Fournisseur règlement','SUP-REGLE',80);
+            ALTER TABLE TABLE_FOURNISSEURS_REGLE ADD ID BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                ADD DATES DATETIME, ADD ID_REGLE VARCHAR(64), ADD CODE_FOURNISSEUR VARCHAR(64),
+                ADD FOURNISSEUR VARCHAR(128), ADD NOTES TEXT, ADD ETAT VARCHAR(32);
+            UPDATE TABLE_PASS SET CLOTURE='VISIBLE' WHERE ListUser='O''Neil';
+            -- A persisted sale fixture opens a new cash-closing scope after the customer scenario.
+            INSERT INTO TABLE_VENTES_ENTETE (ID_TICKET,DATES,CAISSIER,Total_NET,OPERATION)
+                VALUES ('SUPPLIER-CLOSE-FIXTURE','2026-01-02','O''Neil',10,'VENTE');
+            INSERT INTO TABLE_VENTES_JOURNAL (ID_TICKET,DATES,Caissier,Total_NET,OPERATION)
+                VALUES ('SUPPLIER-CLOSE-FIXTURE','2026-01-02','O''Neil',10,'VENTE');
+            INSERT INTO TABLE_VENTES_REGLEMENTS (ID_TICKET,DATES,CAISSIER,MONTANT,MODE_P,OPERATION)
+                VALUES ('SUPPLIER-CLOSE-FIXTURE','2026-01-02','O''Neil',10,'ESPECES','VENTE');
+            CREATE TABLE IF NOT EXISTS hanouty_supplier_settlement_operations (
+             OPERATION_ID VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+             ACTOR VARCHAR(128) NOT NULL,
+             SUPPLIER_ID VARCHAR(255) NOT NULL,
+             AMOUNT DECIMAL(18,2) NOT NULL,
+             PAYMENT_MODE VARCHAR(128) NOT NULL,
+             NOTES TEXT NOT NULL,
+             SETTLEMENT_ID BIGINT NOT NULL UNIQUE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            
+            """);
+        var writer = new SupplierSettlementWriter(settings.ConnectionString);
+        var closing = new CashDrawerClosing(settings.ConnectionString);
+        decimal Balance() => writer.ReadAccounts()
+            .Single(row => row.SupplierId == "SUPPLIER_FIXTURE").Balance;
+        string State() => string.Join("|", new[] {
+            Number(settings, "SELECT COUNT(*) FROM TABLE_FOURNISSEURS_REGLE"),
+            Number(settings, "SELECT COALESCE(SUM(MONTANT),0) FROM TABLE_FOURNISSEURS_REGLE"),
+            Number(settings, "SELECT COUNT(*) FROM hanouty_supplier_settlement_operations")
+        });
+        Require(writer.PaymentModes().SequenceEqual(new[] { "CARTE", "ESPECES" }),
+            "Customer settlement did not use LOGICA payment modes.");
+        void Rejected(SupplierSettlementRequest request, string enteredPin)
+        {
+            var before = State();
+            var rejected = false;
+            try { writer.Record(request, "O'Neil", enteredPin); }
+            catch (Exception) { rejected = true; }
+            Require(rejected && State() == before, "Rejected settlement changed financial rows.");
+        }
+        var draft = new SupplierSettlementRequest("SUPPLIER-SETTLEMENT-REJECTED", "SUPPLIER_FIXTURE", 30m, "ESPECES", "Premier");
+        Rejected(draft, "wrong PIN");
+        Rejected(draft with { Amount = 0m }, pin);
+        Rejected(draft with { Amount = 1.001m }, pin);
+        Rejected(draft with { SupplierId = "MISSING" }, pin);
+        Rejected(draft with { PaymentMode = "MISSING" }, pin);
+
+        Sql(settings, """
+            CREATE TRIGGER fail_supplier_settlement_journal BEFORE INSERT
+            ON hanouty_supplier_settlement_operations FOR EACH ROW
+            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Synthetic settlement journal failure';
+            """);
+        try { Rejected(draft, pin); }
+        finally { Sql(settings, "DROP TRIGGER fail_supplier_settlement_journal"); }
+        Require(Balance() == 80m, "Failed settlement changed the customer credit.");
+
+        static IEnumerable<DependencyObject> Children(DependencyObject parent)
+        {
+            foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+            {
+                yield return child;
+                foreach (var descendant in Children(child)) yield return descendant;
+            }
+        }
+        string PayThroughHost(string digits)
+        {
+            var host = Host(settings, pin);
+            Exception? failure = null;
+            var paid = false;
+            var refreshed = false;
+            try
+            {
+                Require(CashierEntry(host, "O'Neil", "01", "0", 0m, pin), "Settlement cashier session failed.");
+                host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+                    new Action(() =>
+                    {
+                        var statement = Application.Current.Windows.OfType<SupplierAccountsDialog>().SingleOrDefault();
+                        try
+                        {
+                            Require(statement is not null, "Production credit statement did not open.");
+                            var grid = Children(statement!).OfType<System.Windows.Controls.DataGrid>().Single();
+                            grid.SelectedItem = grid.Items.OfType<SupplierSettlementRow>()
+                                .Single(row => row.SupplierId == "SUPPLIER_FIXTURE");
+                            host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+                                new Action(() =>
+                                {
+                                    var settlement = Application.Current.Windows.OfType<SupplierSettlementDialog>().SingleOrDefault();
+                                    try
+                                    {
+                                        Require(settlement is not null, "Production settlement dialog did not open.");
+                                        var buttons = Children(settlement!).OfType<System.Windows.Controls.Button>().ToArray();
+                                        foreach (var digit in digits)
+                                            buttons.Single(b => Equals(b.Content, digit.ToString()))
+                                                .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                                        Children(settlement!).OfType<System.Windows.Controls.ComboBox>().Single().SelectedItem = "ESPECES";
+                                        settlement!.UpdateLayout();
+                                        var image = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                                            (int)Math.Ceiling(settlement.ActualWidth), (int)Math.Ceiling(settlement.ActualHeight),
+                                            96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                                        image.Render(settlement);
+                                        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                                        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
+                                        using (var stream = File.Create(Path.Combine(EvidenceDirectory, "supplier-settlement-" + digits + ".png")))
+                                            encoder.Save(stream);
+                                        var save = buttons.Single(b => Equals(b.Content, "Enregistrer"));
+                                        // This opens the real Host PIN dialog and submits the production writer.
+                                        ReviewThroughDialog(host, pin, true, () =>
+                                            save.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent)));
+                                        paid = settlement!.DialogResult == true;
+                                    }
+                                    catch (Exception ex) { failure = ex; settlement?.Close(); }
+                                }));
+                            Children(statement!).OfType<System.Windows.Controls.Button>()
+                                .Single(b => Equals(b.Content, "Régler le fournisseur sélectionné"))
+                                .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                            var balance = Balance();
+                            refreshed = grid.Items.OfType<SupplierSettlementRow>().Any(r =>
+                                r.SupplierId == "SUPPLIER_FIXTURE" && r.Balance == balance);
+                        }
+                        catch (Exception ex) { failure = ex; }
+                        finally { statement?.Close(); }
+                    }));
+                Children(host.Window).OfType<System.Windows.Controls.Button>()
+                    .Single(b => Equals(b.Content, "Comptes et règlements fournisseurs"))
+                    .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                if (failure is not null) throw new InvalidOperationException("Real WPF settlement failed.", failure);
+                Require(paid && refreshed, "Settlement did not commit and refresh the production credit statement.");
+            }
+            finally { host.Window.Close(); }
+            return Convert.ToString(Value(settings,
+                "SELECT OPERATION_ID FROM hanouty_supplier_settlement_operations ORDER BY SETTLEMENT_ID DESC LIMIT 1"))!;
+        }
+        // Use LOGICA's global-closing configuration for this isolated reconciliation scenario.
+        Sql(settings, "UPDATE TABLE_PARAMETRES SET VALEUR='False' WHERE OBJET='CLOTURE_CAISSIER_OBLIGER'");
+        var before = closing.Read("O'Neil", pin);
+        var firstId = PayThroughHost("30");
+        Require(Balance() == 50m, "Partial settlement did not reduce credit from 80 to 50; observed " + Balance());
+        var afterPartial = closing.Read("O'Neil", pin);
+        Require(afterPartial.SupplierCash == before.SupplierCash + 30m && afterPartial.Expected == before.Expected - 30m,
+            "Partial customer settlement did not reconcile with cash closing.");
+        var replay = new SupplierSettlementRequest(firstId, "SUPPLIER_FIXTURE", 30m, "ESPECES", "");
+        var state = State();
+        Require(new SupplierSettlementWriter(settings.ConnectionString).Record(replay, "O'Neil", pin) &&
+            State() == state && Balance() == 50m, "Restart/retry duplicated the customer settlement.");
+        Rejected(replay with { Amount = 31m }, pin);
+        Rejected(replay with { Notes = "Different payload" }, pin);
+        PayThroughHost("50");
+        Require(Balance() == 0m, "Full settlement did not clear customer credit.");
+        var afterFull = closing.Read("O'Neil", pin);
+        Require(afterFull.SupplierCash == before.SupplierCash + 80m && afterFull.Expected == before.Expected - 80m,
+            "Full settlement did not reconcile with cash closing.");
+        var rows = Number(settings, "SELECT COUNT(*) FROM TABLE_FOURNISSEURS_REGLE");
+        closing.Close("O'Neil", pin, afterFull);
+        Require(Number(settings, "SELECT COUNT(*) FROM TABLE_FOURNISSEURS_REGLE") == rows &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_FOURNISSEURS_REGLE WHERE ID_FOURNISSEUR='SUPPLIER_FIXTURE' AND ID_REGLE IS NOT NULL AND CLOTURE_GLOBALE IS NULL") == 0,
+            "Cash closing did not preserve and close both settlement records.");
+        Require(writer.Record(replay, "O'Neil", pin) && Number(settings, "SELECT COUNT(*) FROM TABLE_FOURNISSEURS_REGLE") == rows,
+            "A retry after cash closing duplicated or reopened a customer settlement.");
+        File.WriteAllText(Path.Combine(EvidenceDirectory, "supplier-settlement-posting.json"),
+            JsonSerializer.Serialize(new { ProductionHostAndPin = true, TouchKeypad = true, Initial = 80m,
+                PartialBalance = 50m, FinalBalance = 0m, CashDecrease = 80m, ExactOnce = true,
                 Rollback = true, WrongPinDenied = true, ClosedRowsPreserved = true }));
     }
 

@@ -23,6 +23,8 @@
                              MinHeight="36" Padding="12,4" Margin="0,0,8,0"/>
                 <Button Content="État des crédits clients" Click="OpenCustomerCreditStatement_Click"
                         HorizontalAlignment="Left" Margin="0,4" Padding="12,6" />
+                <Button Content="Comptes et règlements fournisseurs" Click="OpenSupplierSettlements_Click"
+                        HorizontalAlignment="Left" Margin="0,4" Padding="12,6" />
                 <Button Content="Inventaire physique" Click="OpenInventory_Click" HorizontalAlignment="Left"
                         MinHeight="36" Padding="12,4" Margin="0,0,8,0" AutomationProperties.Name="Open physical inventory workflow"/>
                 <Button x:Name="ExpensesButton" Content="Dépenses" Click="OpenExpenses_Click" Visibility="Collapsed"
