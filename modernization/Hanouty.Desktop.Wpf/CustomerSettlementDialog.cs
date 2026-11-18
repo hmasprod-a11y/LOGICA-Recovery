@@ -25,6 +25,8 @@ public sealed class CustomerSettlementDialog : Window
         ArgumentNullException.ThrowIfNull(customer);
         ArgumentNullException.ThrowIfNull(paymentModes);
         ArgumentNullException.ThrowIfNull(submit);
+        if (string.IsNullOrWhiteSpace(customer.CustomerId) || string.IsNullOrWhiteSpace(customer.Customer))
+            throw new ArgumentException("Le client sélectionné est incomplet.", nameof(customer));
         Title = "Règlement client";
         Width = 380;
         SizeToContent = SizeToContent.Height;
