@@ -485,6 +485,41 @@ public sealed partial record CatalogueHost
             dialog.Owner = window;
             dialog.ShowDialog();
         });
+        window.ConfigureSupplierSettlements(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } actor ||
+                binding.Session.PendingCount != 0) return;
+            var service = new SupplierSettlementWriter(settings.ConnectionString);
+            try
+            {
+                var dialog = new SupplierAccountsDialog(() =>
+                {
+                    if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                        binding.Session.PendingCount != 0)
+                        throw new InvalidOperationException("Session fournisseur indisponible.");
+                    return service.ReadAccounts();
+                }, service.PaymentModes(), request =>
+                {
+                    if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                        binding.Session.PendingCount != 0) return false;
+                    reviewing = true;
+                    try
+                    {
+                        var pin = window.PromptCashierPin(actor);
+                        if (string.IsNullOrWhiteSpace(pin) || !vm.FinancialSessionActive || activeCashierId != actor ||
+                            vm.CheckoutBusy || vm.CheckoutUncertain || binding.Session.PendingCount != 0) return false;
+                        return service.Record(request, actor, pin);
+                    }
+                    finally { reviewing = false; }
+                }) { Owner = window };
+                dialog.ShowDialog();
+            }
+            catch (Exception)
+            {
+                MessageBox.Show(window, "Impossible d’ouvrir les règlements fournisseurs.",
+                    "Règlement fournisseur", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        });
         var customerCredits = new CustomerCreditStatementReader(settings.ConnectionString);
         var customerSettlements = new CustomerSettlementWriter(settings.ConnectionString);
         window.ConfigureCustomerSettlements(customerSettlements.PaymentModes, request =>
