@@ -3071,8 +3071,9 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         try
         {
             var total = Number(settings, "SELECT PRIX_V_1 FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
-            const decimal cardPart = 2m, cashReceived = 5m;
-            Require(total > cardPart && total < cardPart + cashReceived, "Mixed fixture needs positive fractional cash change.");
+            const decimal cashReceived = 1m;
+            Require(total > .5m, "Mixed fixture requires a positive card portion; observed total " + total);
+            var cardPart = total - .5m;
             var change = cashReceived + cardPart - total;
             var port = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(
                 () => new MySqlConnection(settings.ConnectionString), "01", () => pin);
@@ -3155,8 +3156,9 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                                 {
                                     Require(numeric is not null, "Mixed card amount did not open the numeric keypad.");
                                     var keys = Children(numeric!).OfType<System.Windows.Controls.Button>().ToArray();
-                                    keys.Single(button => Equals(button.Content, "2"))
-                                        .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                                    foreach (var digit in cardPart.ToString("0.##", CultureInfo.CurrentCulture))
+                                        keys.Single(button => Equals(button.Content, digit.ToString()))
+                                            .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                                     keys.Single(button => Equals(button.Content, "Appliquer"))
                                         .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                                 }
@@ -3167,7 +3169,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                                 { RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent });
                             if (failure is not null) throw failure;
                             Children(dialog!).OfType<System.Windows.Controls.Button>()
-                                .Single(button => System.Windows.Automation.AutomationProperties.GetName(button) == "5 DH")
+                                .Single(button => System.Windows.Automation.AutomationProperties.GetName(button) == "1 DH")
                                 .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                             Require(Children(dialog!).OfType<System.Windows.Controls.TextBlock>().Any(block =>
                                 block.Text == "RENDU : " + change.ToString("N2") + " DH"),
