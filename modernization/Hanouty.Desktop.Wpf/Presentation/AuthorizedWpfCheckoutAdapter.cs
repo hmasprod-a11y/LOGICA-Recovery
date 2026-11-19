@@ -56,7 +56,7 @@ public sealed class AuthorizedWpfCheckoutAdapter : IContextualCheckoutSubmission
 
     public CheckoutSubmissionResult Submit(string stableOperationId, CashierPaymentContext context)
     {
-        if (string.IsNullOrWhiteSpace(stableOperationId) || context?.IsWellFormed != true ||
+        if (string.IsNullOrWhiteSpace(stableOperationId) || context?.IsWellFormed != true || context.CardAmount != 0m ||
             !string.Equals(context.TenderCode, nameof(CheckoutPaymentKind.Cash), StringComparison.OrdinalIgnoreCase))
             return CheckoutSubmissionResult.Invalidated;
 

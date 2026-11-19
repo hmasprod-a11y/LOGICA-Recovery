@@ -39,17 +39,32 @@ public sealed partial record CatalogueHost
         var frozen = value with {
             Payments = Array.AsReadOnly(value.Payments?.ToArray() ?? Array.Empty<CheckoutPayment>())
         };
-        if (string.IsNullOrWhiteSpace(frozen.CashierId) ||
-            frozen.Currency != "MAD" || frozen.IsReturn ||
-            frozen.Payments.Count != 1 ||
-            frozen.Payments[0] is not { Amount: > 0m } ||
-            frozen.Payments[0].Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card) ||
-            (frozen.Payments[0].Kind == CheckoutPaymentKind.Card && frozen.ExpectedTotal != frozen.Payments[0].Amount) ||
-            frozen.ExpectedTotal <= 0m ||
-            frozen.ExpectedTotal > frozen.Payments[0].Amount ||
-            decimal.Round(frozen.Payments[0].Amount, 2) != frozen.Payments[0].Amount)
-            throw new ArgumentException("Explicit MAD cash or exact-card context required.", nameof(value));
+        if (string.IsNullOrWhiteSpace(frozen.CashierId) || frozen.Currency != "MAD" || frozen.IsReturn ||
+            frozen.ExpectedTotal <= 0m || frozen.Payments.Count is < 1 or > 2 ||
+            frozen.Payments.Any(payment => payment is null || payment.Amount <= 0m ||
+                decimal.Round(payment.Amount, 2) != payment.Amount ||
+                payment.Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card)) ||
+            frozen.Payments.Select(payment => payment.Kind).Distinct().Count() != frozen.Payments.Count)
+            throw new ArgumentException("Explicit cash/card context required.", nameof(value));
+        decimal paid;
+        try { paid = frozen.Payments.Sum(payment => payment.Amount); }
+        catch (OverflowException ex) { throw new ArgumentException("Payment allocation exceeds the supported range.", nameof(value), ex); }
+        var card = frozen.Payments.Where(payment => payment.Kind == CheckoutPaymentKind.Card).Sum(payment => payment.Amount);
+        if (paid < frozen.ExpectedTotal ||
+            (frozen.Payments.Count == 1 && card > 0m && card != frozen.ExpectedTotal) ||
+            (frozen.Payments.Count == 2 && card >= frozen.ExpectedTotal))
+            throw new ArgumentException("Payment allocation does not cover the authoritative total.", nameof(value));
         return frozen;
+    }
+
+    private static CashierPaymentContext ToWpfContext(AuthorizedCheckoutPaymentContext value, string register)
+    {
+        if (value.Payments.Count == 1)
+            return new CashierPaymentContext(value.CashierId, register, value.Currency,
+                value.Payments[0].Kind.ToString(), value.Payments[0].Amount);
+        return new CashierPaymentContext(value.CashierId, register, value.Currency, "Mixed",
+            value.Payments.Single(payment => payment.Kind == CheckoutPaymentKind.Cash).Amount,
+            value.Payments.Single(payment => payment.Kind == CheckoutPaymentKind.Card).Amount);
     }
 
     // The WPF reviewed-reset command invokes this only on explicit cashier
@@ -131,8 +146,7 @@ public sealed partial record CatalogueHost
             new ExplicitVariantChoice(), posting, journal, () => !contextConsumed && captured is not null
                 ? captured : throw new InvalidOperationException("Fresh payment context required."),
             returnHost);
-        CashierPaymentContext? context = captured is null ? null : new CashierPaymentContext(captured.CashierId,
-            twoDigitWorkstation, captured.Currency, captured.Payments[0].Kind.ToString(), captured.Payments[0].Amount);
+        CashierPaymentContext? context = captured is null ? null : ToWpfContext(captured, twoDigitWorkstation);
         // Reuse WPF's single-session adapter rather than maintain a second
         // contextual implementation in the Host. SQL still authenticates on commit.
         var services = AuthorizedWpfServiceRegistration.CreateSessionBound(
@@ -166,8 +180,7 @@ public sealed partial record CatalogueHost
             captured = frozen;
             activeCashierId = frozen.CashierId;
             contextConsumed = false;
-            context = new CashierPaymentContext(frozen.CashierId,
-                twoDigitWorkstation, frozen.Currency, frozen.Payments[0].Kind.ToString(), frozen.Payments[0].Amount);
+            context = ToWpfContext(frozen, twoDigitWorkstation);
             vm.FinancialSessionActive = true;
             vm.PaymentContext = context;
             return true;
@@ -294,6 +307,32 @@ public sealed partial record CatalogueHost
                 ReadTrustedTotal() != total) return false;
             if (!result.TrySetFinancialContext(new AuthorizedCheckoutPaymentContext(actor, "MAD", false,
                 new[] { new CheckoutPayment(CheckoutPaymentKind.Card, total.Value) }, total.Value))) return false;
+            vm.CommitCheckout();
+            return !vm.CheckoutUncertain && binding.Session.PendingCount == 0;
+        });
+        window.ConfigureMixedPayment(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } actor ||
+                binding.Session.PendingCount == 0) return false;
+            if (!MariaDbCashCheckoutServices.IsCardPaymentAvailable(connections))
+            {
+                window.SetCardPaymentFeedback("Le mode CARTE n’est pas disponible dans la configuration des paiements.");
+                return false;
+            }
+            var total = ReadTrustedTotal();
+            if (total is null or <= 0m) return false;
+            var basket = binding.Session.PendingLines.ToArray();
+            reviewing = true;
+            var dialog = new MixedPaymentDialog(total.Value) { Owner = window };
+            bool confirmed;
+            try { confirmed = dialog.ShowDialog() == true; }
+            finally { reviewing = false; }
+            if (!confirmed || dialog.Draft is not { } draft || !CanChangeContext() || activeCashierId != actor ||
+                !vm.FinancialSessionActive || !binding.Session.PendingLines.SequenceEqual(basket) ||
+                ReadTrustedTotal() != total) return false;
+            if (!result.TrySetFinancialContext(new AuthorizedCheckoutPaymentContext(actor, "MAD", false,
+                new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, draft.Cash),
+                    new CheckoutPayment(CheckoutPaymentKind.Card, draft.Card) }, total.Value))) return false;
             vm.CommitCheckout();
             return !vm.CheckoutUncertain && binding.Session.PendingCount == 0;
         });

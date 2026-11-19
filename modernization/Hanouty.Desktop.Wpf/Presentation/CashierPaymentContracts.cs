@@ -6,7 +6,7 @@ namespace Hanouty.Desktop.Wpf.Presentation;
 // authoritative for authorization, pricing, currency and durable posting.
 public sealed record CashierPaymentContext(
     string CashierId, string RegisterId, string CurrencyCode,
-    string TenderCode, decimal TenderedAmount)
+    string TenderCode, decimal TenderedAmount, decimal CardAmount = 0m)
 {
     private static bool IsCleanIdentifier(string? value, int maximumLength) =>
         !string.IsNullOrWhiteSpace(value) &&
@@ -26,7 +26,7 @@ public sealed record CashierPaymentContext(
         IsCleanIdentifier(RegisterId, 64) &&
         IsCleanIdentifier(CurrencyCode, 8) &&
         IsCleanIdentifier(TenderCode, 32) &&
-        TenderedAmount >= 0m &&
+        TenderedAmount >= 0m && CardAmount >= 0m && decimal.Round(CardAmount, 2) == CardAmount &&
         decimal.Round(TenderedAmount, 2) == TenderedAmount;
 }
 

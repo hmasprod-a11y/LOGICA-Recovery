@@ -45,21 +45,26 @@ public partial class MainWindow : Window
     }
 
     private Func<bool>? _payByCard;
-    private bool _cardPaymentOpen;
+    private Func<bool>? _payMixed;
+    private bool _alternatePaymentOpen;
     public void ConfigureCardPayment(Func<bool> pay) => _payByCard = pay;
+    public void ConfigureMixedPayment(Func<bool> pay) => _payMixed = pay;
     public void SetCardPaymentFeedback(string message) => CardPaymentStatus.Text = message;
-    public bool PayByCard()
+    public bool PayByCard() => PayAlternate(_payByCard);
+    public bool PayMixed() => PayAlternate(_payMixed);
+    private bool PayAlternate(Func<bool>? pay)
     {
-        if (_cardPaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
-            _trustedTotalReadBusy || _originalSaleLookupBusy || _payByCard is null ||
+        if (_alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
+            _trustedTotalReadBusy || _originalSaleLookupBusy || pay is null ||
             DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null) return false;
-        _cardPaymentOpen = true;
+        _alternatePaymentOpen = true;
         CardPaymentStatus.Text = "";
-        try { return _payByCard(); }
-        finally { _cardPaymentOpen = false; }
+        try { return pay(); }
+        finally { _alternatePaymentOpen = false; }
     }
     private void PayByCard_Click(object sender, RoutedEventArgs e) => PayByCard();
+    private void PayMixed_Click(object sender, RoutedEventArgs e) => PayMixed();
 
     private Func<decimal, bool, bool>? _closeCashDrawer;
     private Func<decimal, bool>? _setOpeningCash;
@@ -511,7 +516,7 @@ public partial class MainWindow : Window
 
     public bool EndFinancialSession()
     {
-        if (_cardPaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
+        if (_alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _endFinancialSession is null) return false;
         _logoutOpen = true;
@@ -552,7 +557,7 @@ public partial class MainWindow : Window
 
     private bool ShowCashierEntry(bool forPayment)
     {
-        if (_cardPaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
+        if (_alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _setFinancialContext is null || _readTrustedCashTotal is null) return false;
         // Lock BEFORE calling Host-provided delegates: those may pump the WPF

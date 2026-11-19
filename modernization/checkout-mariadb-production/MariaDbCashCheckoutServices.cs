@@ -30,10 +30,14 @@ namespace Hanouty.Checkout.MariaDb
         public static bool IsCardPaymentAvailable(Func<MySqlConnection> connections)
         {
             if (connections is null) throw new ArgumentNullException(nameof(connections));
-            using var connection = LocalConnection(connections);
-            connection.Open();
-            using var transaction = connection.BeginTransaction();
-            try { MariaDbCashCheckoutPreparation.RequireCardMode(connection, transaction); return true; }
+            try
+            {
+                using var connection = LocalConnection(connections);
+                connection.Open();
+                using var transaction = connection.BeginTransaction();
+                MariaDbCashCheckoutPreparation.RequireCardMode(connection, transaction);
+                return true;
+            }
             catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException or MySqlException)
             { return false; }
         }

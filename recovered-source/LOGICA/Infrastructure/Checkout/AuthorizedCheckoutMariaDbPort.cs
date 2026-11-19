@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using LOGICA.ApplicationLayer.Checkout;
 using MySql.Data.MySqlClient;
 using Hanouty.ArchitectureBridge;
@@ -33,12 +34,12 @@ namespace LOGICA.Infrastructure.Checkout
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
             request.Validate();
-            // Sales support the configured exact-card policy in trusted preparation.
-            // Refunds remain strictly cash until their original-card policy is wired.
-            if (request.Payments.Count != 1 ||
-                request.Payments[0].Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card) ||
-                (request.IsReturn && request.Payments[0].Kind != CheckoutPaymentKind.Cash))
-                throw new NotSupportedException("Single cash/exact-card sales and cash refunds only.");
+            // Only configured Cash/Card sale allocation is wired. Refunds remain single cash.
+            if (request.Payments.Count is < 1 or > 2 ||
+                request.Payments.Any(payment => payment.Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card)) ||
+                request.Payments.Select(payment => payment.Kind).Distinct().Count() != request.Payments.Count ||
+                (request.IsReturn && (request.Payments.Count != 1 || request.Payments[0].Kind != CheckoutPaymentKind.Cash)))
+                throw new NotSupportedException("Cash/card sales and cash refunds only.");
 
             using (MySqlConnection connection = createConnection())
             {
