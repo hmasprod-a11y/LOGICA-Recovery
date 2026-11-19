@@ -34,12 +34,13 @@ namespace LOGICA.Infrastructure.Checkout
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
             request.Validate();
-            // Only configured Cash/Card sale allocation is wired. Refunds remain single cash.
+            // Paid Cash/Card or configured named CREDIT use the same transaction.
+            // Refunds retain the independently accepted single-cash policy.
             if (request.Payments.Count is < 1 or > 2 ||
-                request.Payments.Any(payment => payment.Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card)) ||
+                request.Payments.Any(payment => payment.Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card or CheckoutPaymentKind.Credit)) ||
                 request.Payments.Select(payment => payment.Kind).Distinct().Count() != request.Payments.Count ||
                 (request.IsReturn && (request.Payments.Count != 1 || request.Payments[0].Kind != CheckoutPaymentKind.Cash)))
-                throw new NotSupportedException("Cash/card sales and cash refunds only.");
+                throw new NotSupportedException("Cash/card or configured named credit sales, and cash refunds only.");
 
             using (MySqlConnection connection = createConnection())
             {

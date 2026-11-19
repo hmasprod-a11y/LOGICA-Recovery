@@ -605,6 +605,24 @@ Assert(InvalidW2(W2(payments: new[] { new CheckoutPayment(CheckoutPaymentKind.Ca
     "W2 rejects negative payment amount");
 Assert(InvalidW2(W2() with { IsReturn = true, Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Credit, 25m) } }),
     "W2 rejects return credit without explicit checkout policy");
+var creditIdentity = new CheckoutCustomerIdentity("client-1", "C'01", "Client d'été");
+var creditEnvelope = W2(payments: new[] { new CheckoutPayment(CheckoutPaymentKind.Credit, 25m) }) with { Customer = creditIdentity };
+creditEnvelope.Validate();
+Assert(InvalidW2(creditEnvelope with { Customer = null }) &&
+    InvalidW2(creditEnvelope with { Customer = creditIdentity with { Id = "0" } }) &&
+    InvalidW2(creditEnvelope with { Customer = creditIdentity with { Id = " client-1" } }) &&
+    InvalidW2(creditEnvelope with { Customer = creditIdentity with { Name = "" } }) &&
+    InvalidW2(creditEnvelope with { Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Credit, 20m), new CheckoutPayment(CheckoutPaymentKind.Cash, 5m) } }) &&
+    InvalidW2(W2() with { Customer = creditIdentity }),
+    "Credit requires a reviewed canonical customer and cannot mix debt with paid-sale context.");
+var creditJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
+var creditPort = new RecordingFinancialPort { OnCommit = () => creditJournal.Outcome = CheckoutOperationOutcome.Persisted };
+var creditBatch = new AuthorizedCheckoutBatchAdapter(new AuthorizedCheckoutCommitGate(creditPort, creditJournal),
+    () => new AuthorizedCheckoutPaymentContext("cashier-01", "MAD", false,
+        new[] { new CheckoutPayment(CheckoutPaymentKind.Credit, 25m) }, 25m, creditIdentity));
+creditBatch.AddBatch(new[] { new CheckoutBatchLine("article-1", 1) }, "credit-adapter");
+Assert(creditPort.LastRequest?.Customer == creditIdentity && creditPort.LastRequest.Payments.Single().Kind == CheckoutPaymentKind.Credit,
+    "The existing adapter freezes and carries the reviewed customer through the same financial gate.");
 
 
 

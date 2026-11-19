@@ -50,7 +50,7 @@ public sealed partial record CatalogueHost
         setFinancialContext?.Invoke(next) ?? false;
     public bool TryEndFinancialSession() => endFinancialSession?.Invoke() ?? false;
 
-    private static AuthorizedCheckoutPaymentContext FreezeCashContext(
+    private static AuthorizedCheckoutPaymentContext FreezePaymentContext(
         AuthorizedCheckoutPaymentContext value)
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -59,6 +59,17 @@ public sealed partial record CatalogueHost
         var frozen = value with {
             Payments = Array.AsReadOnly(value.Payments?.ToArray() ?? Array.Empty<CheckoutPayment>())
         };
+        var credit = frozen.Payments.Count == 1 && frozen.Payments[0]?.Kind == CheckoutPaymentKind.Credit;
+        if (credit)
+        {
+            if (string.IsNullOrWhiteSpace(frozen.CashierId) || frozen.Currency != "MAD" || frozen.IsReturn ||
+                frozen.Customer is null || frozen.ExpectedTotal <= 0m || frozen.Payments[0].Amount != frozen.ExpectedTotal ||
+                decimal.Round(frozen.ExpectedTotal, 2) != frozen.ExpectedTotal)
+                throw new ArgumentException("Le crédit doit correspondre au net du ticket.");
+            frozen.Customer.Validate();
+            return frozen;
+        }
+        if (frozen.Customer is not null) throw new ArgumentException("Client inattendu pour ce mode de vente.");
         if (string.IsNullOrWhiteSpace(frozen.CashierId) || frozen.Currency != "MAD" || frozen.IsReturn ||
             frozen.ExpectedTotal <= 0m || frozen.Payments.Count is < 1 or > 2 ||
             frozen.Payments.Any(payment => payment is null || payment.Amount <= 0m ||
@@ -142,7 +153,7 @@ public sealed partial record CatalogueHost
         Action<Exception>? postingFailureDiagnostic = null)
     {
         return CreateFinancialCore(settings, twoDigitWorkstation, transientPinProvider,
-            FreezeCashContext(paymentContext), afterCommitAcknowledgementFault, postingFailureDiagnostic);
+            FreezePaymentContext(paymentContext), afterCommitAcknowledgementFault, postingFailureDiagnostic);
     }
 
     private static CatalogueHost CreateFinancialCore(CatalogueSettings settings,
@@ -160,7 +171,7 @@ public sealed partial record CatalogueHost
         ApprovedManualDiscount? manualDiscount = null;
         Func<MySqlConnection> connections = () => new MySqlConnection(settings.ConnectionString);
         var posting = MariaDbCashCheckoutServices.CreatePostingPort(
-            connections, twoDigitWorkstation, transientPinProvider, () => waitingSaleId, () => manualDiscount);
+            connections, twoDigitWorkstation, transientPinProvider, () => waitingSaleId, () => manualDiscount, AppContext.BaseDirectory);
         posting = new AcknowledgementFaultPort(posting, () => {
             // Consume at the real financial boundary, not merely in UI state.
             // Retain the immutable context for lost-ack journal review only.
@@ -262,7 +273,7 @@ public sealed partial record CatalogueHost
         {
             if (!CanChangeContext()) return false;
             AuthorizedCheckoutPaymentContext frozen;
-            try { frozen = FreezeCashContext(next); }
+            try { frozen = FreezePaymentContext(next); }
             catch (ArgumentException) { return false; }
             // A staged basket belongs to its current cashier; changing amount
             // is allowed before submission, changing identity is not.
@@ -440,6 +451,35 @@ public sealed partial record CatalogueHost
             vm.CommitCheckout();
             return !vm.CheckoutUncertain && binding.Session.PendingCount == 0;
         });
+        window.ConfigureCreditSales(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } actor ||
+                binding.Session.PendingCount == 0) return false;
+            if (!MariaDbCashCheckoutServices.IsCreditSaleEnabled(AppContext.BaseDirectory))
+            {
+                window.SetCardPaymentFeedback("La gestion du crédit est désactivée dans la configuration LOGICA.");
+                window.RefreshCreditSaleAvailability();
+                return false;
+            }
+            var total = ReadTrustedTotal();
+            if (total is null or <= 0m) return false;
+            var basket = binding.Session.PendingLines.ToArray();
+            reviewing = true;
+            var dialog = new CreditSaleDialog(total.Value, search =>
+                MariaDbCashCheckoutServices.FindCreditCustomers(connections, search)
+                    .Select(customer => new CreditCustomerChoice(customer.Id, customer.Code, customer.Name, customer.Telephone)).ToArray()) { Owner = window };
+            bool confirmed;
+            try { confirmed = dialog.ShowDialog() == true; }
+            finally { reviewing = false; }
+            if (!confirmed || dialog.Customer is not { } selected || !CanChangeContext() || activeCashierId != actor ||
+                !vm.FinancialSessionActive || !binding.Session.PendingLines.SequenceEqual(basket) ||
+                ReadTrustedTotal() != total || !MariaDbCashCheckoutServices.IsCreditSaleEnabled(AppContext.BaseDirectory)) return false;
+            if (!result.TrySetFinancialContext(new AuthorizedCheckoutPaymentContext(actor, "MAD", false,
+                new[] { new CheckoutPayment(CheckoutPaymentKind.Credit, total.Value) }, total.Value,
+                new CheckoutCustomerIdentity(selected.Id, selected.Code, selected.Name)))) return false;
+            vm.CommitCheckout();
+            return !vm.CheckoutUncertain && binding.Session.PendingCount == 0;
+        }, () => MariaDbCashCheckoutServices.IsCreditSaleEnabled(AppContext.BaseDirectory));
         var cashClosing = new CashDrawerClosing(settings.ConnectionString);
         window.ConfigureCashDrawerClosing((counted, cashierOnly) =>
         {
@@ -779,7 +819,9 @@ public sealed partial record CatalogueHost
             var ticket = LogicaPostedTicket.Read(connection, operation, payment.CashierId, payment.RegisterId)
                 ?? throw new InvalidOperationException("Le ticket enregistré est introuvable.");
             var change = -ticket.Payments.Where(row => row.Mode == "ESPECES" && row.Amount < 0m).Sum(row => row.Amount);
-            window.SetLastSaleSummary($"Dernier ticket {ticket.Number} · À rendre {change:F2} MAD");
+            window.SetLastSaleSummary(ticket.Operation == "CREDIT"
+                ? $"Crédit {ticket.Number} · {ticket.CustomerName} · {ticket.Total:F2} MAD"
+                : $"Dernier ticket {ticket.Number} · À rendre {change:F2} MAD");
             if (!System.IO.File.Exists(System.IO.Path.Combine(directory, "PRINTER_CL.sni"))) return;
             LogicaCashReceiptPrinter.Print(connection, directory, operation, payment.CashierId, payment.RegisterId);
         };

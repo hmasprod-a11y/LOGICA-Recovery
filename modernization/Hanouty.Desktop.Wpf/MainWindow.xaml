@@ -172,6 +172,8 @@
                         <GroupBox.Header>
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="Panier" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <Button x:Name="CreditSaleButton" Content="Crédit" Click="CreditSale_Click" Visibility="Collapsed"
+                                        MinHeight="36" Margin="8,0,0,0" Padding="10,3" AutomationProperties.Name="Valider une vente à crédit"/>
                                 <Button x:Name="ManualDiscountButton" Content="Remise" Click="ManualDiscount_Click"
                                         Visibility="Collapsed" MinHeight="36" Margin="8,0,0,0" Padding="10,3"
                                         AutomationProperties.Name="Review manual discount"/>

@@ -12,6 +12,7 @@
     <ProjectReference Include="$(ArchitectureProject)" />
     <Compile Include="MariaDbCashCheckoutServices.cs" />
     <Compile Include="MariaDbManualDiscounts.cs" />
+    <Compile Include="MariaDbCreditSales.cs" />
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="../../recovered-source/LOGICA/Infrastructure/Compatibility/VisualBasicCheckoutSemantics.cs" Link="Production/Infrastructure/Compatibility/VisualBasicCheckoutSemantics.cs" />
     <Compile Include="../../recovered-source/LOGICA/Application/Checkout/CheckoutPaymentReadService.cs" Link="Production/Application/Checkout/CheckoutPaymentReadService.cs" />

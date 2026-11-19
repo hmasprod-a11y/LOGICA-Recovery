@@ -3,6 +3,15 @@ namespace Hanouty.Desktop.Bootstrap;
 internal static class LogicaReceiptRenderer
 {
     private const string Separator = "-------------------------------------------";
+    internal static Font FitTotalFont(Graphics graphics, string text)
+    {
+        using var original = new Font("Inconsolata ExtraBold", 16, FontStyle.Bold);
+        var available = graphics.VisibleClipBounds.Width - 2f;
+        if (available <= 0f) throw new InvalidOperationException("Largeur d’impression du ticket indisponible.");
+        var measured = graphics.MeasureString(text, original).Width;
+        var scale = Math.Min(1f, available / Math.Max(measured, 1f));
+        return new Font(original.Name, original.Size * scale, original.Style, original.Unit);
+    }
     internal static void Draw(Graphics graphics, string[] lines, string totalAmount, string tail)
     {
         using var logoStream = typeof(LogicaReceiptRenderer).Assembly.GetManifestResourceStream("LogicaReceiptLogo.jpg")
@@ -14,7 +23,8 @@ internal static class LogicaReceiptRenderer
 
         using var regular = new Font("Inconsolata Condensed", 11);
         using var bold = new Font("Inconsolata Condensed", 11, FontStyle.Bold);
-        using var total = new Font("Inconsolata ExtraBold", 16, FontStyle.Bold);
+        var totalText = "TOTAL NET: " + (totalAmount + " DH").PadLeft(12);
+        using var total = FitTotalFont(graphics, totalText);
         using var format = new StringFormat(StringFormatFlags.NoClip);
         graphics.DrawImage(logo, logoBounds);
         graphics.DrawString(Separator, regular, Brushes.Black, 0, headerHeight, format);
@@ -25,9 +35,12 @@ internal static class LogicaReceiptRenderer
             y += 16;
         }
         graphics.DrawString(Separator, regular, Brushes.Black, 0, y, format);
-        graphics.DrawString("TOTAL NET: " + (totalAmount + " DH").PadLeft(12), total, Brushes.Black, 0, y + 10, format);
-        graphics.DrawString(Separator, regular, Brushes.Black, 0, y + 30, format);
-        graphics.DrawString(tail, bold, Brushes.Black, 0, y + 40, format);
+        graphics.DrawString(totalText, total, Brushes.Black, 0, y + 10, format);
+        // Preserve the original order/spacing when its font is available. A
+        // Windows fallback font must not clip DH or strike through the total.
+        var separatorY = Math.Max(y + 30f, y + 10f + total.GetHeight(graphics) + 2f);
+        graphics.DrawString(Separator, regular, Brushes.Black, 0, separatorY, format);
+        graphics.DrawString(tail, bold, Brushes.Black, 0, separatorY + 10f, format);
 
     }
 }

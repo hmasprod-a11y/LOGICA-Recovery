@@ -14,14 +14,14 @@ internal static class LogicaCashReceiptPrinter
     {
         var settings = LogicaReceiptSettings.Read(connection, directory)
             ?? throw new InvalidOperationException("Configuration du ticket LOGICA incomplète.");
-        var route = ReceiptPrintRouting.Select(settings.Printer, true, "VENTE",
-            settings.Connection, settings.Template, out _);
         if (settings.Printer == "0") return;
+        var ticket = LogicaPostedTicket.Read(connection, operation, cashier, register)
+            ?? throw new InvalidOperationException("Ticket enregistré introuvable.");
+        var route = ReceiptPrintRouting.Select(settings.Printer, true, ticket.Operation,
+            settings.Connection, settings.Template, out var copies);
         if (route != ReceiptPrintRoute.FrenchThreeColumn)
             throw new InvalidOperationException("Ce modèle ou branchement LOGICA reste à raccorder.");
 
-        var ticket = LogicaPostedTicket.Read(connection, operation, cashier, register)
-            ?? throw new InvalidOperationException("Ticket enregistré introuvable.");
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT OBJET, VALEUR FROM TABLE_PARAMETRES WHERE OBJET IN
@@ -51,6 +51,7 @@ internal static class LogicaCashReceiptPrinter
 
         using var document = new PrintDocument { DocumentName = ticket.Number, PrintController = new StandardPrintController() };
         if (settings.Printer.Length != 0) document.PrinterSettings.PrinterName = settings.Printer;
+        document.PrinterSettings.Copies = checked((short)copies);
         document.PrintPage += (_, page) => LogicaReceiptRenderer.Draw(
             page.Graphics ?? throw new InvalidOperationException("Surface d'impression indisponible."),
             lines, Amount(ticket.Total), tail);

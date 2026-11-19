@@ -210,7 +210,11 @@ jobs:
           foreach ($field in @('ExactOriginalRoles','GlobalAndSelectedPercentAndDh','OriginalZeroReset','BothCultures','NonPositiveTicketRejected','PreviewPriceRaceRejected','FreshWaitingAuthorization','RevocationBeforePosting','AtomicWaitingConsumption','OriginalReceiptNetAndChange','DurableReplay','DifferentOperationDenied','OriginalManualNetRefund','CashierTouchReviewAndPayment','BasketAndFixedPaymentVisible','RevokedManagerRejected','DatabaseScopeBound','SelectedGrossRounding','DiscountedCardWpf','DiscountedMixedSql')) {
             if ($manual.$field -ne $true) { throw "Missing executed manual discount proof: $field" }
           }
-          Write-Host "PASS W2 accepted on source SHA $env:GITHUB_SHA: WPF cash sale, authorized discounts, full-ticket return, SQL readback, rollback, unknown reconciliation, exact-once"
+          $credit = Get-Content evidence/w2/w2-credit-sales.json -Raw | ConvertFrom-Json
+          foreach ($field in @('OriginalConfiguration','AnonymousAndDuplicateCustomerDenied','ReviewedIdentityRechecked','FreshCashierPin','QueryAndSelectionInvalidation','ExplicitCreditConfirmation','AtomicDebtStockNoPayment','CashUnchangedAtCredit','ReceiptCustomerAndTwoCopies','DurableDuplicate','NextCashSaleAnonymous','NewDebtPartialAndFullSettlement','LostAcknowledgementReview','Rollback','ClosingAndStockReconciled','ManualDiscountCredit')) {
+            if ($credit.$field -ne $true) { throw "Missing executed credit sale proof: $field" }
+          }
+          Write-Host "PASS W2 accepted on source SHA $env:GITHUB_SHA: WPF paid/credit sales, authorized discounts, full-ticket return, customer settlements, rollback, reconciliation and exact-once"
       - name: Upload full W2 source and SQL evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -294,7 +298,7 @@ jobs:
           $reports = @(Get-ChildItem -LiteralPath (Join-Path $profile 'HANOUTY-Test/evidence') -Recurse -File -Filter 'backup-restore.json')
           if ($reports.Count -ne 1) { throw 'Expected one backup and restore report from the fresh profile.' }
           $report = Get-Content -LiteralPath $reports[0].FullName -Raw | ConvertFrom-Json
-          if ($report.RestoreVerified -ne $true -or $report.BackupSha256 -notmatch '^[0-9a-fA-F]{64}$') {
+          if ($report.RestoreVerified -ne $true -or $report.CreditDemoEnabled -ne $true -or $report.BackupSha256 -notmatch '^[0-9a-fA-F]{64}$') {
             throw 'The launcher did not prove a successful database restore.'
           }
           $proof = New-Item -ItemType Directory -Path 'evidence/windows-launcher' -Force

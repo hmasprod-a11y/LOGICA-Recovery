@@ -9,7 +9,7 @@ namespace Hanouty.ArchitectureBridge;
 // selection/staging alone never invokes this adapter.
 public sealed record AuthorizedCheckoutPaymentContext(
     string CashierId, string Currency, bool IsReturn,
-    IReadOnlyList<CheckoutPayment> Payments, decimal ExpectedTotal);
+    IReadOnlyList<CheckoutPayment> Payments, decimal ExpectedTotal, CheckoutCustomerIdentity? Customer = null);
 
 public sealed class AuthorizedCheckoutBatchAdapter : IAtomicCheckoutBatchPort
 {
@@ -31,7 +31,7 @@ public sealed class AuthorizedCheckoutBatchAdapter : IAtomicCheckoutBatchPort
             payment.Currency, payment.IsReturn,
             Array.AsReadOnly(lines.ToArray()),
             Array.AsReadOnly(payment.Payments?.ToArray() ?? Array.Empty<CheckoutPayment>()),
-            payment.ExpectedTotal);
+            payment.ExpectedTotal, Customer: payment.Customer);
         request.Validate();
         var result = _gate.Commit(request);
         if (result == FinancialCommitOutcome.Unknown)
