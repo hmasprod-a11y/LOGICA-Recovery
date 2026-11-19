@@ -947,14 +947,29 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 foreach (var digit in amount.ToString("0.##", CultureInfo.CurrentCulture))
                     buttons.Single(button => Equals(button.Content, digit.ToString()))
                         .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-                buttons.Single(button => Equals(button.Content, confirm ? "Appliquer" : "Annuler"))
-                    .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                if (confirm)
+                    buttons.Single(button => Equals(button.Content, "Appliquer"))
+                        .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                else numeric!.Close(); // Closing the keypad is cancellation, with no value returned.
             }
             catch (Exception ex) { failure = ex; numeric?.Close(); }
         }));
-        field.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(
+        var watchdog = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        watchdog.Tick += (_, _) =>
+        {
+            failure ??= new InvalidOperationException("Catalogue touch keypad did not finish.");
+            watchdog.Stop();
+            foreach (var dialog in Application.Current.Windows.OfType<TouchNumericEntryDialog>().Where(window => window.Owner == owner).ToArray())
+                dialog.Close();
+        };
+        watchdog.Start();
+        try
+        {
+            field.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(
             System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
             { RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent });
+        }
+        finally { watchdog.Stop(); }
         if (failure is not null) throw new InvalidOperationException("Catalogue touch amount failed.", failure);
     }
 
@@ -1273,13 +1288,20 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Sql(settings, "UPDATE TABLE_ARTICLES SET Article='100%_ literal' WHERE ID_ARTICLE='ART000002'");
             Require(editor.Search("%_", exact: false).Articles.Single().Id == variantId,
                 "Catalogue partial search interpreted literal wildcard characters.");
-            Sql(settings, "UPDATE TABLE_ARTICLES SET ID_ARTICLE='art000001' WHERE ID_ARTICLE='ART000002'");
+        }
+        finally { Sql(settings, "UPDATE TABLE_ARTICLES SET Article='Article corrigé — bleu' WHERE ID_ARTICLE='ART000002'"); }
+        // The malformed-legacy fixture must not depend on the database collation.
+        Sql(settings, "ALTER TABLE TABLE_ARTICLES DROP PRIMARY KEY");
+        try
+        {
+            Sql(settings, "UPDATE TABLE_ARTICLES SET ID_ARTICLE='art000001' WHERE BINARY ID_ARTICLE=BINARY 'ART000002'");
             Require(editor.Search("CARD'1", exact: true).Articles.Count == 0,
                 "Ambiguous case-colliding catalogue identities were offered for editing.");
         }
         finally
         {
-            Sql(settings, "UPDATE TABLE_ARTICLES SET ID_ARTICLE='ART000002',Article='Article corrigé — bleu' WHERE BINARY ID_ARTICLE=BINARY 'ART000002' OR BINARY ID_ARTICLE=BINARY 'art000001'");
+            Sql(settings, "UPDATE TABLE_ARTICLES SET ID_ARTICLE='ART000002' WHERE BINARY ID_ARTICLE=BINARY 'art000001'");
+            Sql(settings, "ALTER TABLE TABLE_ARTICLES ADD PRIMARY KEY (ID_ARTICLE)");
         }
         var variantHost = CatalogueHost.CreateCashierWorkstation(settings, "01");
         try
