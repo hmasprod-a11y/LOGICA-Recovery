@@ -3274,14 +3274,28 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 foreach (var nested in Children(child)) yield return nested;
             }
         }
+        void Capture(string filename)
+        {
+            host.Window.UpdateLayout();
+            var image = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                (int)Math.Ceiling(host.Window.ActualWidth), (int)Math.Ceiling(host.Window.ActualHeight),
+                96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            image.Render(host.Window);
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
+            using var stream = File.Create(Path.Combine(EvidenceDirectory, filename));
+            encoder.Save(stream);
+        }
         string CashSale(decimal received = 5.25m)
         {
+            ((System.Windows.Controls.RadioButton)host.Window.FindName("SalesSection")).IsChecked = true;
             host.ViewModel.ScannerText = "RETURN-CODE";
             host.ViewModel.ScanCommand.Execute(null);
             Require(host.Session.PendingCount == 1, "Return-cycle scanner did not prepare one sale.");
             Require(host.Window.RefreshTrustedBasketTotal() &&
                 ((System.Windows.Controls.TextBlock)host.Window.FindName("TrustedBasketTotal")).Text.EndsWith("5.25", StringComparison.Ordinal),
                 "Next customer lost the authoritative visible total before tender entry.");
+            Capture("daily-next-customer-total.png");
             host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
             {
                 var dialog = Application.Current.Windows.OfType<CashierEntryDialog>().SingleOrDefault();
@@ -3321,14 +3335,22 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             var receipt = Convert.ToString(Value(settings,
                 "SELECT TICKET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id", original), CultureInfo.InvariantCulture)!;
             Require(receipt != original && !string.IsNullOrWhiteSpace(receipt), "Fixture lacks the printed receipt number.");
-            Require(host.Window.SearchOriginalSales(receipt), "Consumed sale context blocked printed receipt lookup.");
+            ((System.Windows.Controls.RadioButton)host.Window.FindName("ReturnsSection")).IsChecked = true;
+            ((System.Windows.Controls.TextBox)host.Window.FindName("OriginalSaleSearch")).Text = receipt;
+            Children(host.Window).OfType<System.Windows.Controls.Button>().Single(button => Equals(button.Content, "Rechercher le ticket"))
+                .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             var results = (System.Windows.Controls.ListBox)host.Window.FindName("OriginalSaleResults");
             var candidate = results.Items.Cast<OriginalSaleCandidate>().Single(row => row.SaleId == original);
             results.SelectedItem = candidate;
+            Children(host.Window).OfType<System.Windows.Controls.Button>().Single(button => Equals(button.Content, "Vérifier le ticket sélectionné"))
+                .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Require(host.Window.SelectOriginalSale(candidate), "Printed receipt did not preserve canonical original identity.");
+            Capture("daily-original-receipt-return.png");
             var before = Number(settings, "SELECT COUNT(*) FROM hanouty_checkout_operations");
             dropAcknowledgement = true;
-            ReviewThroughDialog(host, pin, true, () => host.Window.ConfirmReturnDraft());
+            ReviewThroughDialog(host, pin, true, () => Children(host.Window).OfType<System.Windows.Controls.Button>()
+                .Single(button => Equals(button.Content, "Rembourser le ticket en espèces"))
+                .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent)));
             Require(host.ViewModel.CheckoutUncertain && !host.ViewModel.CanCommit &&
                 host.ViewModel.PendingOperationId is not null &&
                 Number(settings, "SELECT COUNT(*) FROM hanouty_checkout_operations") == before + 1 &&
