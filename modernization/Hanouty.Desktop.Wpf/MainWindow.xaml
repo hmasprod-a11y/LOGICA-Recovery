@@ -190,7 +190,9 @@
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="Article" Binding="{Binding ArticleName}" Width="*"/>
                                     <DataGridTextColumn Header="Qté" Binding="{Binding Quantity}" Width="70"/>
-                                    <DataGridTextColumn Header="Prix MAD" Binding="{Binding UnitPriceMad, StringFormat={}{0:F2}}" Width="95"/>
+                                    <DataGridTextColumn Header="Prix MAD" Binding="{Binding UnitPriceMad, StringFormat={}{0:F2}}" Width="85"/>
+                                    <DataGridTextColumn Header="Remise %" Binding="{Binding DiscountPercent, StringFormat={}{0:0.##}}" Width="75"/>
+                                    <DataGridTextColumn Header="Net MAD" Binding="{Binding NetAmountMad, StringFormat={}{0:F2}}" Width="85"/>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </DockPanel>

@@ -16,7 +16,8 @@ public sealed partial record CatalogueHost
     {
         public IReadOnlyList<BasketDisplayLine> ReadCurrentBasket() =>
             MariaDbCashCheckoutServices.ReadCashSaleBasket(connections, session.PendingLines)
-                .Select(line => new BasketDisplayLine(line.ArticleId, line.ArticleName, line.Quantity, line.UnitPrice))
+                .Select(line => new BasketDisplayLine(line.ArticleId, line.ArticleName, line.Quantity, line.UnitPrice,
+                    line.DiscountPercent, line.Amount))
                 .ToArray();
     }
 

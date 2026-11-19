@@ -8,7 +8,8 @@ public sealed record ProductSummary(string Id, string Name, string Barcode, stri
 
 // Read-only projection of the EXISTING Host basket, never a WPF-owned basket.
 // The production composition root must implement this using its active cashier session.
-public sealed record BasketDisplayLine(string ArticleId, string ArticleName, decimal Quantity, decimal UnitPriceMad);
+public sealed record BasketDisplayLine(string ArticleId, string ArticleName, decimal Quantity, decimal UnitPriceMad,
+    decimal DiscountPercent = 0m, decimal? NetAmountMad = null);
 public interface ICurrentBasketReader
 {
     IReadOnlyList<BasketDisplayLine> ReadCurrentBasket();
@@ -71,7 +72,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             if (!FinancialSessionActive || CheckoutUncertain || _selectionInFlight ||
                 _pendingOperationId is not null || !ReferenceEquals(PaymentContext, context) ||
                 lines is null || lines.Any(x => string.IsNullOrWhiteSpace(x.ArticleId) ||
-                    x.Quantity <= 0m || x.UnitPriceMad < 0m))
+                    x.Quantity <= 0m || x.UnitPriceMad < 0m || x.DiscountPercent < 0m || x.DiscountPercent > 100m || x.NetAmountMad is < 0m))
                 throw new InvalidOperationException("Stale or invalid Host basket snapshot");
             // Snapshot before publication: a Host-owned mutable list must not
             // change underneath WPF's observable collection.

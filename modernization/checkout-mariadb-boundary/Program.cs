@@ -640,8 +640,8 @@ namespace LOGICA.Infrastructure.Checkout
             Sql("UPDATE TABLE_ARTICLES SET PRIX_V_1=5.25 WHERE ID_ARTICLE='CSharp-Stock'");
             rejected("trusted-underpaid", () => correct.Commit(TrustedRequest("trusted-underpaid", amount:10m)));
             Sql("UPDATE TABLE_ARTICLES SET PROMOTION=10 WHERE ID_ARTICLE='CSharp-Stock'");
-            rejected("preview-unaccepted-policy", () => preview());
-            rejected("trusted-unaccepted-policy", () => correct.Commit(TrustedRequest("trusted-unaccepted-policy")));
+            Require(preview() == 9.45m, "Catalogue promotion must be priced by the existing LOGICA domain rule.");
+            rejected("trusted-stale-promotion-total", () => correct.Commit(TrustedRequest("trusted-stale-promotion-total")));
             Sql("UPDATE TABLE_ARTICLES SET PROMOTION=0 WHERE ID_ARTICLE='CSharp-Stock'");
 
             var remote = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(
@@ -809,9 +809,8 @@ namespace LOGICA.Infrastructure.Checkout
                             }
                             catch (InvalidOperationException) { missingLineRejected = true; }
                             Require(missingLineRejected, "Missing original line must fail before posting.");
-                            // Refunds with a discount are outside the first
-                            // full-quantity exact-cash slice. Prove this using
-                            // persisted journal rows, not caller-supplied prices.
+                            // A changed discount without its matching persisted net is corrupt.
+                            // The refundable amount still comes from paid original evidence.
                             using (var discountTamper = evidenceDb.CreateCommand())
                             {
                                 discountTamper.Transaction = evidenceTx;
@@ -829,7 +828,7 @@ namespace LOGICA.Infrastructure.Checkout
                             }
                             catch (InvalidOperationException) { discountedOriginalRejected = true; }
                             Require(discountedOriginalRejected,
-                                "Discounted original must not enter exact-cash refund slice.");
+                                "A changed original discount without a matching net must be rejected.");
                             using (var discountRestore = evidenceDb.CreateCommand())
                             {
                                 discountRestore.Transaction = evidenceTx;

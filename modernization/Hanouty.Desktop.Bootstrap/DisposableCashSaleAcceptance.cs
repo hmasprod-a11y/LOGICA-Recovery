@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.Json;
 using System.Windows;
 using Hanouty.ArchitectureBridge;
+using Hanouty.Checkout.MariaDb;
 using Hanouty.Desktop.Wpf.Presentation;
 using Hanouty.Desktop.Wpf;
 using MySql.Data.MySqlClient;
@@ -906,6 +907,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyMixedPayment(settings, pin);
         VerifyDailyCashierCycle(settings, pin);
         VerifyInteractiveReturnCycle(settings, pin);
+        VerifyLogicaCataloguePricing(settings, pin);
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -3381,6 +3383,271 @@ INSERT INTO TABLE_NUM VALUES (0,1);
     }
 
 
+
+
+    private static void VerifyLogicaCataloguePricing(CatalogueSettings settings, string pin)
+    {
+        Sql(settings, """
+            ALTER TABLE TABLE_ARTICLES ADD COLUMN IF NOT EXISTS PRIX_QTE_MIN DECIMAL(16,3);
+            INSERT INTO TABLE_ARTICLES
+                (ID_ARTICLE,STOCK,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V_1,TAUX_TVA,GROUPE,PROMOTION,PRIX_QTE,PRIX_QTE_MIN)
+            VALUES ('AUTO-PRICE',20,'AUTO-CODE','Tarif quantité et promotion','Food',1,1,10,20,'G',10,8,3),
+                   ('AUTO-FREE',2,'AUTO-FREE-CODE','Ligne offerte','Food',1,1,10,20,'G',100,0,0),
+                   ('AUTO-ROUND',2,'AUTO-ROUND-CODE','Arrondi promotion','Food',1,1,9.95,20,'G',10,0,0);
+            """);
+        MySqlConnection Connect() => new(settings.ConnectionString);
+        var lines = new[] { new CheckoutBatchLine("AUTO-PRICE", 3) };
+        var beforeLedger = Snapshot(settings);
+        var originalCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            foreach (var culture in new[] { "fr-FR", "en-US" })
+            {
+                CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(culture);
+                foreach (var quantity in new[] { 1, 2, 3, 4 })
+                {
+                    var quote = MariaDbCashCheckoutServices.ReadCashSaleBasket(Connect,
+                        new[] { new CheckoutBatchLine("AUTO-PRICE", quantity) }).Single();
+                    var unit = quantity >= 3 ? 8m : 10m;
+                    Require(quote.UnitPrice == unit && quote.DiscountPercent == 10m &&
+                        quote.Amount == unit * quantity * 0.9m,
+                        "LOGICA automatic quantity/promotion quote differs under " + culture);
+                }
+                Require(MariaDbCashCheckoutServices.ReadCashSaleTotal(Connect,
+                    new[] { new CheckoutBatchLine("AUTO-ROUND", 3) }) == 26.86m,
+                    "Promotion did not preserve the existing domain decimal rounding.");
+            }
+        }
+        finally { CultureInfo.CurrentCulture = originalCulture; }
+        foreach (var invalid in new[] { "PROMOTION=101", "PROMOTION=-1", "PRIX_QTE_MIN=NULL", "PRIX_QTE_MIN=-1" })
+        {
+            Sql(settings, "UPDATE TABLE_ARTICLES SET " + invalid + " WHERE ID_ARTICLE='AUTO-PRICE'");
+            var rejected = false;
+            try { MariaDbCashCheckoutServices.ReadCashSaleTotal(Connect, lines); }
+            catch (InvalidOperationException) { rejected = true; }
+            finally { Sql(settings, "UPDATE TABLE_ARTICLES SET PROMOTION=10,PRIX_QTE_MIN=3 WHERE ID_ARTICLE='AUTO-PRICE'"); }
+            Require(rejected && Snapshot(settings) == beforeLedger,
+                "Invalid catalogue promotion/threshold was accepted or changed the ledger.");
+        }
+        var closing = new CashDrawerClosing(settings.ConnectionString);
+        var cashBefore = closing.Read("O'Neil", pin);
+        var host = CatalogueHost.CreateCashierWorkstation(settings, "01");
+        Exception? failure = null;
+        System.Windows.Controls.PasswordBox? cardPin = null;
+        IEnumerable<T> Controls<T>(DependencyObject parent) where T : DependencyObject => CatalogueControls<T>(parent);
+        void Click(System.Windows.Controls.Button button) =>
+            button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        void RunUi(Action action)
+        {
+            var watchdog = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
+            watchdog.Tick += (_, _) =>
+            {
+                failure ??= new InvalidOperationException("Automatic-pricing modal did not finish.");
+                watchdog.Stop();
+                foreach (var child in Application.Current.Windows.Cast<Window>()
+                    .Where(window => window.Owner == host.Window && window.IsVisible).ToArray()) child.Close();
+            };
+            watchdog.Start();
+            try { action(); }
+            finally { watchdog.Stop(); }
+            if (failure is not null) throw new InvalidOperationException("Automatic-pricing UI failed.", failure);
+        }
+        void ScanThree()
+        {
+            host.ViewModel.ScannerText = "AUTO-CODE";
+            host.ViewModel.ScanCommand.Execute(null);
+            var first = host.ViewModel.BasketLines.Single();
+            Require(first.UnitPriceMad == 10m && first.DiscountPercent == 10m && first.NetAmountMad == 9m,
+                "Scanner did not show the standard price with its catalogue promotion.");
+            Require(host.Window.ChangeBasketQuantity(first, 2) &&
+                host.ViewModel.BasketLines.Single().UnitPriceMad == 10m &&
+                host.ViewModel.BasketLines.Single().NetAmountMad == 18m,
+                "Basket below quantity threshold changed to the tier price.");
+            Require(host.Window.ChangeBasketQuantity(host.ViewModel.BasketLines.Single(), 3) &&
+                host.ViewModel.BasketLines.Single().UnitPriceMad == 8m &&
+                host.ViewModel.BasketLines.Single().DiscountPercent == 10m &&
+                host.ViewModel.BasketLines.Single().NetAmountMad == 21.60m &&
+                host.Window.RefreshTrustedBasketTotal(),
+                "Basket threshold, promotion and authoritative total do not agree.");
+        }
+        string PayCash()
+        {
+            host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+            {
+                var dialog = Application.Current.Windows.OfType<CashierEntryDialog>().SingleOrDefault();
+                try
+                {
+                    Require(dialog is not null, "Automatic-price cash tender review did not open.");
+                    var buttons = Controls<System.Windows.Controls.Button>(dialog!).ToArray();
+                    void Touch(string text) => Click(buttons.Single(button => Equals(button.Content, text)));
+                    Touch("Pavé numérique");
+                    foreach (var digit in "21.60") Touch(digit.ToString());
+                    Touch("Appliquer le montant");
+                    Click(buttons.Single(button => button.IsDefault));
+                }
+                catch (Exception ex) { failure = ex; dialog?.Close(); }
+            }));
+            RunUi(() => Click(Controls<System.Windows.Controls.Button>(host.Window).Single(button =>
+                System.Windows.Automation.AutomationProperties.GetName(button) == "Enter sale cash tender")));
+            string? operation = null;
+            host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+                new Action(() => operation = host.ViewModel.PendingOperationId));
+            RunUi(() => ReviewThroughDialog(host, pin, true, () => host.ViewModel.CommitCommand.Execute(null)));
+            Require(operation is not null && host.ViewModel.PaymentContext is null && !host.ViewModel.CheckoutUncertain &&
+                host.Session.PendingCount == 0, "Automatic-price cash sale failed: " + host.ViewModel.CommitFeedback);
+            return operation!;
+        }
+        try
+        {
+            Require(CashierEntry(host, "O'Neil", "01", "0", 0m, pin), "Automatic-pricing cashier login failed.");
+            ScanThree();
+            host.Window.UpdateLayout();
+            var image = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                (int)Math.Ceiling(host.Window.ActualWidth), (int)Math.Ceiling(host.Window.ActualHeight),
+                96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            image.Render(host.Window);
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
+            using (var stream = File.Create(Path.Combine(EvidenceDirectory, "logica-quantity-promotion-basket.png"))) encoder.Save(stream);
+            var waiting = LogicaWaitingSale.Save(Connect, host.Session.PendingLines, "O'Neil", "01");
+            Require(Number(settings, "SELECT COUNT(*) FROM TABLE_ATTENTE WHERE V=@id AND PRIX_V=8 AND Remise=10 AND TOTAL_NET=21.60", waiting) == 1,
+                "Waiting basket lost its LOGICA selected price, promotion or net.");
+            var staged = Snapshot(settings);
+            var waitingPort = MariaDbCashCheckoutServices.CreatePostingPort(Connect, "01", () => pin, () => waiting);
+            Sql(settings, "UPDATE TABLE_ARTICLES SET PROMOTION=20 WHERE ID_ARTICLE='AUTO-PRICE'");
+            try
+            {
+                var refused = false;
+                try { LogicaWaitingSale.Read(Connect, waiting); }
+                catch (InvalidOperationException) { refused = true; }
+                Require(refused, "Changed promotion silently replaced the parked basket conditions.");
+                refused = false;
+                try
+                {
+                    waitingPort.Commit(new AuthorizedCheckoutRequest("auto-stale-promotion", "O'Neil", "MAD", false,
+                        lines, new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 21.60m) }, 21.60m));
+                }
+                catch (InvalidOperationException) { refused = true; }
+                Require(refused && Snapshot(settings) == staged &&
+                    Number(settings, "SELECT COUNT(*) FROM TABLE_ATTENTE WHERE V=@id", waiting) == 1 &&
+                    Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='AUTO-PRICE'") == 20m,
+                    "Stale parked promotion consumed a waiting basket or changed finance/stock.");
+            }
+            finally { Sql(settings, "UPDATE TABLE_ARTICLES SET PROMOTION=10 WHERE ID_ARTICLE='AUTO-PRICE'"); }
+            host.Session.Clear();
+            host.ViewModel.RefreshBasketLines();
+            host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+            {
+                var dialog = Application.Current.Windows.Cast<Window>()
+                    .SingleOrDefault(window => window.Owner == host.Window && window.Title == "Attentes");
+                try
+                {
+                    Require(dialog is not null, "Automatic-price waiting list did not open.");
+                    var list = Controls<System.Windows.Controls.ListBox>(dialog!).Single();
+                    list.SelectedItem = list.Items.Cast<LogicaWaitingSale.Waiting>().Single(row => row.Id == waiting);
+                    Click(Controls<System.Windows.Controls.Button>(dialog!).Single(button => Equals(button.Content, "Reprendre")));
+                }
+                catch (Exception ex) { failure = ex; dialog?.Close(); }
+            }));
+            RunUi(() => Click(Controls<System.Windows.Controls.Button>(host.Window).Single(button => Equals(button.Content, "Attentes"))));
+            Require(host.ViewModel.BasketLines.Single().NetAmountMad == 21.60m, "Restored waiting basket changed its net.");
+            var original = PayCash();
+            Require(Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='AUTO-PRICE'") == 17m &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_ATTENTE WHERE V=@id", waiting) == 0 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET=@id AND Qté=3 AND PRIX_V=8 AND Remise=10 AND Total_NET=21.60", original) == 1,
+                "Quantity/promotion did not persist atomically with its consumed waiting basket.");
+            var port = MariaDbCashCheckoutServices.CreatePostingPort(Connect, "01", () => pin);
+            var posted = Snapshot(settings);
+            port.Commit(new AuthorizedCheckoutRequest(original, "O'Neil", "MAD", false, lines,
+                new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 21.60m) }, 21.60m));
+            Require(Snapshot(settings) == posted &&
+                Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='AUTO-PRICE'") == 17m,
+                "Repeated promoted sale changed stock or financial rows.");
+            LogicaPostedTicket ticket;
+            using (var db = Open(settings))
+                ticket = LogicaPostedTicket.Read(db, original, "O'Neil", "01") ??
+                    throw new InvalidOperationException("Promoted sale receipt could not be read.");
+            Require(ticket.Total == 21.60m && ticket.Lines.Single() ==
+                new LogicaTicketLine("Tarif quantité et promotion", 3m, 8m, 10m, 21.60m),
+                "Persisted print data lost quantity price or promotion.");
+            Sql(settings, "UPDATE TABLE_ARTICLES SET PRIX_V_1=99,PRIX_QTE=88,PROMOTION=50 WHERE ID_ARTICLE='AUTO-PRICE'");
+            Require(host.Window.SearchOriginalSales(ticket.Number), "Discounted original was unavailable to the return portal.");
+            var results = (System.Windows.Controls.ListBox)host.Window.FindName("OriginalSaleResults");
+            var selected = results.Items.Cast<OriginalSaleCandidate>().Single(row => row.SaleId == original);
+            results.SelectedItem = selected;
+            Require(host.Window.SelectOriginalSale(selected), "Discounted original could not be selected.");
+            RunUi(() => ReviewThroughDialog(host, pin, true, () => host.Window.ConfirmReturnDraft()));
+            Require(!host.ViewModel.CheckoutUncertain && host.ViewModel.PaymentContext is null &&
+                Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='AUTO-PRICE'") == 20m &&
+                Number(settings, "SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id=@id", original) == 1 &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_ARTICLE='AUTO-PRICE' AND Qté=-3 AND PRIX_V=8 AND Remise=10 AND Total_NET=-21.60") == 1,
+                "Refund recalculated today's catalogue instead of returning original discounted net.");
+            Sql(settings, "UPDATE TABLE_ARTICLES SET PRIX_V_1=10,PRIX_QTE=8,PROMOTION=10 WHERE ID_ARTICLE='AUTO-PRICE'");
+            ScanThree();
+            host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+            {
+                var dialog = Application.Current.Windows.OfType<CardPaymentDialog>().SingleOrDefault();
+                try
+                {
+                    Require(dialog is not null, "Promoted card review did not open.");
+                    host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+                    {
+                        var prompt = Application.Current.Windows.Cast<Window>().SingleOrDefault(window =>
+                            window.Owner == host.Window && Controls<System.Windows.Controls.PasswordBox>(window).Any());
+                        try
+                        {
+                            Require(prompt is not null, "Promoted card payment did not request a fresh PIN.");
+                            cardPin = Controls<System.Windows.Controls.PasswordBox>(prompt!).Single();
+                            cardPin.Password = pin;
+                            Click(Controls<System.Windows.Controls.Button>(prompt!).Single(button => button.IsDefault));
+                        }
+                        catch (Exception ex) { failure = ex; prompt?.Close(); }
+                    }));
+                    Click(Controls<System.Windows.Controls.Button>(dialog!)
+                        .Single(button => Equals(button.Content, "Confirmer le paiement CARTE")));
+                }
+                catch (Exception ex) { failure = ex; dialog?.Close(); }
+            }));
+            var cardCommitted = false;
+            RunUi(() => cardCommitted = host.Window.PayByCard());
+            Require(cardCommitted && cardPin is not null && cardPin.Password.Length == 0 &&
+                !host.ViewModel.CheckoutUncertain && host.Session.PendingCount == 0 &&
+                Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='AUTO-PRICE'") == 17m,
+                "Card payment did not use the promoted quantity total.");
+            var mixedId = "auto-mixed-" + Guid.NewGuid().ToString("N");
+            port.Commit(new AuthorizedCheckoutRequest(mixedId, "O'Neil", "MAD", false,
+                new[] { new CheckoutBatchLine("AUTO-PRICE", 4) },
+                new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 20m), new CheckoutPayment(CheckoutPaymentKind.Card, 10m) }, 28.80m));
+            Require(Number(settings, "SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id", mixedId) == 28.80m &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MODE_P='ESPECES' AND MONTANT=-1.20", mixedId) == 1,
+                "Promoted mixed payment or signed cash change differs from its net.");
+            var freeSale = "auto-free-" + Guid.NewGuid().ToString("N");
+            port.Commit(new AuthorizedCheckoutRequest(freeSale, "O'Neil", "MAD", false,
+                new[] { new CheckoutBatchLine("AUTO-PRICE", 1), new CheckoutBatchLine("AUTO-FREE", 1) },
+                new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 9m) }, 9m));
+            var freeRefund = MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(Connect,
+                "free-refund-" + Guid.NewGuid().ToString("N"), "O'Neil", "MAD", freeSale);
+            port.Commit(freeRefund);
+            var after = closing.Read("O'Neil", pin);
+            Require(Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='AUTO-PRICE'") == 13m &&
+                Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='AUTO-FREE'") == 2m &&
+                after.CashSales - cashBefore.CashSales == 18.80m &&
+                after.NetSales - cashBefore.NetSales == 50.40m &&
+                after.Expected - cashBefore.Expected == 18.80m,
+                "Catalogue pricing sale/refund/card/mixed/free-line stock and cash do not reconcile.");
+            File.WriteAllText(Path.Combine(EvidenceDirectory, "w2-logica-pricing.json"), JsonSerializer.Serialize(new {
+                CataloguePromotion = true, QuantityThreshold = true, CultureFrEn = true, DomainRounding = true,
+                InvalidPolicyRejected = true, WaitingSnapshot = true, StaleWaitingRejected = true,
+                CashWpf = true, CardWpf = true, MixedSql = true, OriginalNetRefund = true,
+                ZeroNetLineRefund = true, ReceiptData = true, Duplicate = true, StockCashReconciled = true
+            }));
+        }
+        finally
+        {
+            Sql(settings, "UPDATE TABLE_ARTICLES SET PRIX_V_1=10,PRIX_QTE=8,PROMOTION=10 WHERE ID_ARTICLE='AUTO-PRICE'");
+            host.Window.Close();
+        }
+    }
 
     private static void VerifyInteractiveReturnCycle(CatalogueSettings settings, string pin)
     {
