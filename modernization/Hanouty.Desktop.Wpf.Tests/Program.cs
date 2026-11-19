@@ -346,6 +346,33 @@ Check(nestedWindow.RefreshTrustedBasketTotal() && nestedDenied && nestedReads ==
 nestedVm.FinancialSessionActive = false;
 nestedWindow.Close();
 
+// Identity is independent of the consumed tender, but its callback is guarded too.
+var identityTotalWindow = new Hanouty.Desktop.Wpf.MainWindow(new EmptyCatalogueReader(),
+    new RecordingSelection(), new RecordingSubmission(), null, requireFreshPaymentContext: true);
+var identityTotalVm = (CatalogueViewModel)identityTotalWindow.DataContext;
+identityTotalVm.FinancialSessionActive = true;
+CashierPaymentContext? activeTotalIdentity = new("cashier", "register", "MAD", "Cash", 0m);
+int identityTotalReads = 0;
+bool identityNestedBlocked = true;
+identityTotalWindow.ConfigureCashierEntry((_, _, _) => false, () => {
+    identityTotalReads++;
+    return 12.50m;
+}, () => true, () => "next-customer", () => {
+    identityNestedBlocked &= !identityTotalWindow.RefreshTrustedBasketTotal() &&
+        !identityTotalWindow.EndFinancialSession() && !identityTotalWindow.ShowCashierEntry();
+    return activeTotalIdentity;
+});
+Check(identityTotalWindow.RefreshTrustedBasketTotal() && identityNestedBlocked &&
+    identityTotalReads == 1 && identityTotalVm.PaymentContext is null && !identityTotalVm.CanCommit &&
+    identityTotalWindow.TrustedBasketTotal.Text.Contains("12.50"),
+    "consumed tender must not hide next customer's total or allow nested identity callbacks");
+activeTotalIdentity = null;
+identityTotalVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "Cash", 12.50m);
+Check(!identityTotalWindow.RefreshTrustedBasketTotal() && identityTotalReads == 1 &&
+    identityTotalWindow.TrustedBasketTotal.Text.Contains("unavailable"),
+    "revoked Host identity must not fall back to a valid-looking UI payment context");
+identityTotalWindow.Close();
+
 // Real STA window: a Host total read may pump Dispatcher; it must not
 // concurrently end the cashier session or open a second login dialog.
 var readLockWindow = new Hanouty.Desktop.Wpf.MainWindow(new EmptyCatalogueReader(),
