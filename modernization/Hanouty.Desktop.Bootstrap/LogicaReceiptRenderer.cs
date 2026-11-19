@@ -28,19 +28,22 @@ internal static class LogicaReceiptRenderer
         using var format = new StringFormat(StringFormatFlags.NoClip);
         graphics.DrawImage(logo, logoBounds);
         graphics.DrawString(Separator, regular, Brushes.Black, 0, headerHeight, format);
-        var y = headerHeight + 10;
+        var separatorHeight = Math.Max(10f, regular.GetHeight(graphics) + 1f);
+        var articleHeight = Math.Max(16f, bold.GetHeight(graphics) + 1f);
+        var y = headerHeight + separatorHeight;
         foreach (var line in lines)
         {
             graphics.DrawString(line, bold, Brushes.Black, 0, y, format);
-            y += 16;
+            y += articleHeight;
         }
         graphics.DrawString(Separator, regular, Brushes.Black, 0, y, format);
-        graphics.DrawString(totalText, total, Brushes.Black, 0, y + 10, format);
+        var totalY = y + separatorHeight;
+        graphics.DrawString(totalText, total, Brushes.Black, 0, totalY, format);
         // Preserve the original order/spacing when its font is available. A
         // Windows fallback font must not clip DH or strike through the total.
-        var separatorY = Math.Max(y + 30f, y + 10f + total.GetHeight(graphics) + 2f);
+        var separatorY = Math.Max(y + 30f, totalY + total.GetHeight(graphics) + 2f);
         graphics.DrawString(Separator, regular, Brushes.Black, 0, separatorY, format);
-        graphics.DrawString(tail, bold, Brushes.Black, 0, separatorY + 10f, format);
+        graphics.DrawString(tail, bold, Brushes.Black, 0, separatorY + separatorHeight, format);
 
     }
 }
