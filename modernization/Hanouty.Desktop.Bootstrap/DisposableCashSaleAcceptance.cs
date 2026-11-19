@@ -3321,7 +3321,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             dropAcknowledgement = true;
             ReviewThroughDialog(host, pin, true, () => host.Window.ConfirmReturnDraft());
             Require(host.ViewModel.CheckoutUncertain && !host.ViewModel.CanCommit &&
-                host.Session.State == CheckoutCommitState.OutcomeUnknown &&
+                host.ViewModel.PendingOperationId is not null &&
                 Number(settings, "SELECT COUNT(*) FROM hanouty_checkout_operations") == before + 1 &&
                 Number(settings, "SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id=@id", original) == 1 &&
                 Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='RETURN-CYCLE'") == 5m,
