@@ -11,6 +11,8 @@ namespace LOGICA.Infrastructure.Checkout
     internal static class CashReturnOriginalSaleEvidence
     {
         // Validate the original payment evidence using the same locked transaction.
+        // LOGICA cash postings retain received cash and a signed change row.
+        // Only their net is refundable; never refund the gross received amount.
         // A positive header alone cannot establish eligibility for a cash refund.
         internal static decimal ReadExactCashTenderAmount(
             MySqlConnection connection, MySqlTransaction transaction, string originalTicketId)
@@ -26,7 +28,7 @@ namespace LOGICA.Infrastructure.Checkout
                 using (var reader = command.ExecuteReader())
                 {
                     decimal sum = 0m;
-                    int count = 0;
+                    int receivedRows = 0, changeRows = 0;
                     while (reader.Read())
                     {
                         if (reader.IsDBNull(0) || reader.IsDBNull(1) || reader.IsDBNull(2) ||
@@ -34,14 +36,14 @@ namespace LOGICA.Infrastructure.Checkout
                             !string.Equals(Convert.ToString(reader.GetValue(2)), "VENTE", StringComparison.Ordinal))
                             throw new InvalidOperationException("Original payment is not an exact cash sale.");
                         decimal amount = Convert.ToDecimal(reader.GetValue(0));
-                        if (amount <= 0m)
-                            throw new InvalidOperationException("Original cash payment must be positive.");
+                        if (amount == 0m || decimal.Round(amount, 2, MidpointRounding.AwayFromZero) != amount)
+                            throw new InvalidOperationException("Original cash movement must be nonzero whole-cent MAD.");
+                        if (amount > 0m) receivedRows++; else changeRows++;
                         sum = checked(sum + amount);
-                        count++;
                     }
-                    if (count != 1 || sum != originalTotal ||
+                    if (receivedRows != 1 || changeRows > 1 || sum != originalTotal ||
                         decimal.Round(sum, 2, MidpointRounding.AwayFromZero) != sum)
-                        throw new InvalidOperationException("Original sale has no unique whole-cent exact cash settlement.");
+                        throw new InvalidOperationException("Original sale has no unique cash receipt and optional change matching the net total.");
                     return sum;
                 }
             }
