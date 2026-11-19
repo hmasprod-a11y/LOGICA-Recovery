@@ -10,6 +10,18 @@ namespace Hanouty.ArchitectureBridge;
 public enum CheckoutPaymentKind { Cash, Card, BankTransfer, Credit }
 
 public sealed record CheckoutPayment(CheckoutPaymentKind Kind, decimal Amount);
+public sealed record CheckoutCustomerIdentity(string Id, string Code, string Name)
+{
+    public void Validate()
+    {
+        if (string.IsNullOrWhiteSpace(Id) || Id.Length > 64 || Id != Id.Trim() || Id == "0" ||
+            Id.Any(character => char.IsControl(character) || char.IsSurrogate(character)) ||
+            Code is null || Code.Length > 128 || string.IsNullOrWhiteSpace(Name) || Name.Length > 256 ||
+            Code.Any(character => char.IsControl(character) || char.IsSurrogate(character)) ||
+            Name.Any(character => char.IsControl(character) || char.IsSurrogate(character)))
+            throw new ArgumentException("A reviewed, complete customer identity is required.");
+    }
+}
 
 public sealed record AuthorizedCheckoutRequest(
     string OperationId,
@@ -19,7 +31,8 @@ public sealed record AuthorizedCheckoutRequest(
     IReadOnlyList<CheckoutBatchLine> Lines,
     IReadOnlyList<CheckoutPayment> Payments,
     decimal ExpectedTotal,
-    string? OriginalTicketId = null)
+    string? OriginalTicketId = null,
+    CheckoutCustomerIdentity? Customer = null)
 {
     public void Validate()
     {
@@ -45,6 +58,12 @@ public sealed record AuthorizedCheckoutRequest(
             throw new ArgumentException("An original ticket reference is only valid for returns.", nameof(OriginalTicketId));
         if (ExpectedTotal <= 0)
             throw new ArgumentOutOfRangeException(nameof(ExpectedTotal));
+        var credit = Payments.Any(payment => payment.Kind == CheckoutPaymentKind.Credit);
+        if (credit && (IsReturn || Payments.Count != 1 || Customer is null))
+            throw new ArgumentException("A reviewed customer and a single credit allocation are required.", nameof(Customer));
+        if (credit) Customer!.Validate();
+        if (!credit && Customer is not null)
+            throw new ArgumentException("Named paid-sale metadata requires its own accepted flow.", nameof(Customer));
         // Never compare totals here: legacy checkout owns rounding, discounts,
         // credit settlement and cash change; the financial port verifies them.
     }

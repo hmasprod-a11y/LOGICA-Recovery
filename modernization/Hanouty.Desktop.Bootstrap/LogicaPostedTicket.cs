@@ -9,6 +9,9 @@ internal sealed record LogicaTicketPayment(string Mode, decimal Amount);
 internal sealed record LogicaPostedTicket(string Number, string Date, string Cashier, string Register,
     string Operation, string Seller, decimal Total, IReadOnlyList<LogicaTicketLine> Lines, IReadOnlyList<LogicaTicketPayment> Payments)
 {
+    internal string CustomerId { get; init; } = "0";
+    internal string CustomerCode { get; init; } = "0";
+    internal string CustomerName { get; init; } = "";
     internal IEnumerable<string> FormatFrenchThreeColumnLines(
         Func<decimal, string> formatQuantity, Func<decimal, string> formatAmount) =>
         Lines.Select(line => LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Line(
@@ -33,6 +36,11 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
 
     internal IReadOnlyList<string> FormatFrenchThreeColumnPayment(Func<decimal, string> formatAmount)
     {
+        if (Operation == "CREDIT")
+        {
+            if (Payments.Count != 0) throw new InvalidOperationException("Un crédit ne doit pas contenir d’encaissement.");
+            return Array.Empty<string>();
+        }
         if (Payments.Any(payment => payment.Mode == "CARTE"))
         {
             var card = Payments.Where(payment => payment.Mode == "CARTE").ToArray();
@@ -57,6 +65,12 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
 
     internal IEnumerable<string> FormatFrenchThreeColumnIdentity(bool showTicketNumber)
     {
+        if (Operation == "CREDIT") yield return "-------------------CREDIT------------------";
+        if (CustomerId != "0" && CustomerName.Length != 0)
+        {
+            yield return "* CLIENT    : " + CustomerName;
+            yield return "* ID        : " + CustomerId;
+        }
         yield return LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Cashier(Cashier, Seller);
         if (showTicketNumber)
             yield return LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.TicketNumber(Number);
@@ -71,12 +85,13 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
         command.Parameters.AddWithValue("@cashier", cashier);
         command.Parameters.AddWithValue("@register", register);
         command.CommandText = """
-            SELECT TICKET, DATES, CAISSIER, POSTE, OPERATION, Total_NET
+            SELECT TICKET, DATES, CAISSIER, POSTE, OPERATION, Total_NET, ID_CLIENT, CODE_CLIENT, CLIENT
             FROM TABLE_VENTES_ENTETE
             WHERE BINARY ID_TICKET = BINARY @id AND BINARY CAISSIER = BINARY @cashier
-              AND BINARY POSTE = BINARY @register AND OPERATION = 'VENTE'
+              AND BINARY POSTE = BINARY @register AND BINARY OPERATION IN ('VENTE','CREDIT')
             """;
         string number, date, operation;
+        string customerId, customerCode, customerName;
         decimal total;
         using (var reader = command.ExecuteReader())
         {
@@ -85,10 +100,14 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
             date = Convert.ToString(reader.GetValue(1), System.Globalization.CultureInfo.InvariantCulture) ?? "";
             operation = reader.GetString(4);
             total = reader.GetDecimal(5);
+            customerId = reader.IsDBNull(6) ? "0" : Convert.ToString(reader.GetValue(6))!;
+            customerCode = reader.IsDBNull(7) ? "0" : Convert.ToString(reader.GetValue(7))!;
+            customerName = reader.IsDBNull(8) ? "" : Convert.ToString(reader.GetValue(8))!;
+            if (reader.Read()) return null;
         }
 
         command.CommandText = """
-            SELECT Article, Qté, PRIX_V, Remise, Total_NET, Vendeur
+            SELECT Article, Qté, PRIX_V, Remise, Total_NET, Vendeur, OPERATION, ID_CLIENT, CODE_CLIENT, CLIENT
             FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET = BINARY @id
             ORDER BY BINARY ID_ARTICLE
             """;
@@ -98,6 +117,9 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
         {
             while (reader.Read())
             {
+                if (operation == "CREDIT" && (reader.IsDBNull(6) || reader.IsDBNull(7) || reader.IsDBNull(8) || reader.IsDBNull(9) ||
+                    reader.GetString(6) != operation || Convert.ToString(reader.GetValue(7)) != customerId ||
+                    Convert.ToString(reader.GetValue(8)) != customerCode || reader.GetString(9) != customerName)) return null;
                 var rowSeller = reader.IsDBNull(5) ? "" : reader.GetString(5);
                 if (seller is not null && seller != rowSeller) return null;
                 seller = rowSeller;
@@ -114,12 +136,13 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
             while (reader.Read())
                 payments.Add(new LogicaTicketPayment(reader.GetString(0), reader.GetDecimal(1)));
 
-        if (lines.Count == 0 || payments.Count == 0 ||
-            lines.Sum(line => line.Net) != total || payments.Sum(payment => payment.Amount) != total)
+        if (lines.Count == 0 || total <= 0m || lines.Sum(line => line.Net) != total ||
+            (operation == "CREDIT" ? payments.Count != 0 || customerId == "0" || string.IsNullOrWhiteSpace(customerName)
+                : payments.Count == 0 || payments.Sum(payment => payment.Amount) != total))
             return null;
 
         transaction.Commit();
         return new LogicaPostedTicket(number, date, cashier, register, operation, seller ?? "", total,
-            lines.AsReadOnly(), payments.AsReadOnly());
+            lines.AsReadOnly(), payments.AsReadOnly()) { CustomerId = customerId, CustomerCode = customerCode, CustomerName = customerName };
     }
 }

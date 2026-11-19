@@ -24,9 +24,10 @@ namespace LOGICA.Infrastructure.Checkout
         private readonly Func<string> readPin;
         private readonly Func<string?>? readWaitingSale;
         private readonly Func<ApprovedManualDiscount?>? readManualDiscount;
+        private readonly string creditConfigurationDirectory;
 
         internal MariaDbCashCheckoutPreparation(string workstation, Func<string> readPin, Func<string?>? readWaitingSale = null,
-            Func<ApprovedManualDiscount?>? readManualDiscount = null)
+            Func<ApprovedManualDiscount?>? readManualDiscount = null, string creditConfigurationDirectory = null)
         {
             if (workstation == null || workstation.Length != 2 ||
                 workstation.Any(c => c < '0' || c > '9'))
@@ -34,6 +35,7 @@ namespace LOGICA.Infrastructure.Checkout
             this.workstation = workstation;
             this.readWaitingSale = readWaitingSale;
             this.readManualDiscount = readManualDiscount;
+            this.creditConfigurationDirectory = creditConfigurationDirectory;
             this.readPin = readPin ?? throw new ArgumentNullException(nameof(readPin));
         }
 
@@ -49,10 +51,13 @@ namespace LOGICA.Infrastructure.Checkout
                 transaction == null || !ReferenceEquals(transaction.Connection, connection))
                 throw new InvalidOperationException("Trusted preparation requires the active checkout transaction.");
             if (request.Currency != "MAD" || request.Payments.Count is < 1 or > 2 ||
-                request.Payments.Any(payment => payment.Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card)) ||
+                request.Payments.Any(payment => payment.Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card or CheckoutPaymentKind.Credit)) ||
                 request.Payments.Select(payment => payment.Kind).Distinct().Count() != request.Payments.Count ||
                 request.OperationId.Length > 64)
                 throw new NotSupportedException("Only cash/card MAD sale allocations are accepted.");
+            var credit = request.Payments.Count == 1 && request.Payments[0].Kind == CheckoutPaymentKind.Credit;
+            if (credit && !MariaDbCashCheckoutServices.IsCreditSaleEnabled(creditConfigurationDirectory))
+                throw new InvalidOperationException("La gestion du crédit est désactivée dans la configuration LOGICA.");
             var card = request.Payments.Any(payment => payment.Kind == CheckoutPaymentKind.Card);
             var mixed = request.Payments.Count == 2;
             if (card && request.IsReturn)
@@ -91,6 +96,10 @@ namespace LOGICA.Infrastructure.Checkout
             MariaDbCashCheckoutServices.ValidateManualDiscountForPosting(manualDiscount, cashier,
                 workstation, request.Lines, connection, transaction);
             if (card) RequireCardMode(connection, transaction);
+            var customer = credit ? MariaDbCashCheckoutServices.ReadCreditCustomer(connection, transaction, request.Customer.Id)
+                : new CreditCustomer("0", "0", "", "");
+            if (credit && (customer.Id != request.Customer.Id || customer.Code != request.Customer.Code || customer.Name != request.Customer.Name))
+                throw new InvalidOperationException("Le client a changé. Revoyez la vente à crédit.");
 
             // Lock the same original sequence and basket used by the writers.
             // Reject an unsupported sequence layout rather than advance other counters.
@@ -195,13 +204,15 @@ namespace LOGICA.Infrastructure.Checkout
             }
             decimal cashPaid = request.Payments.Where(payment => payment.Kind == CheckoutPaymentKind.Cash).Sum(payment => payment.Amount);
             decimal cardPaid = request.Payments.Where(payment => payment.Kind == CheckoutPaymentKind.Card).Sum(payment => payment.Amount);
-            decimal tendered = checked(cashPaid + cardPaid);
+            decimal tendered = credit ? request.Payments[0].Amount : checked(cashPaid + cardPaid);
             if (request.Payments.Any(payment => decimal.Round(payment.Amount, 2) != payment.Amount))
                 throw new InvalidOperationException("Payment components require whole cents.");
             if (mixed && cardPaid >= total)
                 throw new InvalidOperationException("Mixed card component must be below the authoritative total.");
             if (card && !mixed && tendered != total)
                 throw new InvalidOperationException("Card amount must equal the authoritative total.");
+            if (credit && tendered != total)
+                throw new InvalidOperationException("Le crédit doit correspondre exactement au net du ticket.");
             if (total <= 0m || request.ExpectedTotal != total || tendered < total ||
                 decimal.Round(tendered, 2, MidpointRounding.AwayFromZero) != tendered)
                 throw new InvalidOperationException("Cash tender must cover the authoritative total in whole cents.");
@@ -213,22 +224,23 @@ namespace LOGICA.Infrastructure.Checkout
             var date = DateTime.Now;
             var idTicket = request.OperationId;
             var amount = total.ToString(CultureInfo.CurrentCulture);
-            // This slice is an explicit anonymous cash sale. Named customer,
-            // credit and alternate tender context must use their own accepted flow.
+            // CREDIT is the original deferred-sale operation: stock and ticket,
+            // but no payment row and no cash entering the drawer.
+            var operation = credit ? "CREDIT" : "VENTE";
             var paymentContext = new TicketPaymentContext { TicketId = idTicket, TicketNumber = ticket,
-                SaleDate = date, Cashier = cashier, ClientId = "0", ClientCode = "0", ClientName = "",
-                Workstation = workstation, Operation = "VENTE", Remark = "" };
+                SaleDate = date, Cashier = cashier, ClientId = customer.Id, ClientCode = customer.Code, ClientName = customer.Name,
+                Workstation = workstation, Operation = operation, Remark = "" };
             return new CheckoutPostingInput
             {
                 ReadStock = () => stock,
                 ReadHeader = () => new TicketHeaderRecord { TicketId = idTicket, TicketNumber = ticket,
-                    SaleDate = date, Cashier = cashier, ClientId = "0", ClientCode = "0", ClientName = "",
-                    Workstation = workstation, TotalText = amount, Operation = "VENTE" },
+                    SaleDate = date, Cashier = cashier, ClientId = customer.Id, ClientCode = customer.Code, ClientName = customer.Name,
+                    Workstation = workstation, TotalText = amount, Operation = operation },
                 ReadJournal = () => new TicketJournalRecord { TicketId = idTicket, TicketNumber = ticket,
-                    SaleDate = date, Cashier = cashier, Seller = "", ClientId = "0", ClientCode = "0", ClientName = "",
-                    Workstation = workstation, Operation = "VENTE", PriceType = "PRIX 1", PaymentModes = mixed ? "ESPECES;CARTE" : card ? "CARTE" : "ESPECES" },
+                    SaleDate = date, Cashier = cashier, Seller = "", ClientId = customer.Id, ClientCode = customer.Code, ClientName = customer.Name,
+                    Workstation = workstation, Operation = operation, PriceType = "PRIX 1", PaymentModes = credit ? "" : mixed ? "ESPECES;CARTE" : card ? "CARTE" : "ESPECES" },
                 // Reuse LOGICA's streaming multi-mode payment projection, including cash change.
-                ReadPayments = () => card
+                ReadPayments = () => credit ? Array.Empty<TicketPaymentWrite>() : card
                     ? CheckoutPaymentReadService.Read(() => "VENTE", () => paymentContext, () => true,
                         () => request.Payments.Count, index => request.Payments[index].Amount,
                         index => request.Payments[index].Kind == CheckoutPaymentKind.Cash ? "ESPECES" : "CARTE",
@@ -246,6 +258,8 @@ namespace LOGICA.Infrastructure.Checkout
                 // Stage a verifiable persisted receipt within this transaction.
                 // Physical printing is a separate post-commit/peripheral gate.
                 Print = () => {
+                    if (credit && !MariaDbCashCheckoutServices.IsCreditSaleEnabled(creditConfigurationDirectory))
+                        throw new InvalidOperationException("La configuration crédit a changé avant l’enregistrement.");
                     var receipt = Read(connection, transaction,
                         "SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id", ("@id", idTicket));
                     var payments = Read(connection, transaction,
@@ -253,8 +267,8 @@ namespace LOGICA.Infrastructure.Checkout
                     var detail = Read(connection, transaction,
                         "SELECT ID_ARTICLE FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET=@id", ("@id", idTicket));
                     if (receipt.Rows.Count != 1 || Number(receipt.Rows[0], "Total_NET") != total ||
-                        payments.Rows.Count != request.Payments.Count + (change < 0m ? 1 : 0) ||
-                        payments.Rows.Cast<DataRow>().Sum(row => Number(row, "MONTANT")) != total ||
+                        payments.Rows.Count != (credit ? 0 : request.Payments.Count + (change < 0m ? 1 : 0)) ||
+                        payments.Rows.Cast<DataRow>().Sum(row => Number(row, "MONTANT")) != (credit ? 0m : total) ||
                         (change < 0m && (!payments.Rows.Cast<DataRow>().Any(row => Number(row, "MONTANT") == cashPaid) ||
                             !payments.Rows.Cast<DataRow>().Any(row => Number(row, "MONTANT") == change))) ||
                         detail.Rows.Count != stock.Count)

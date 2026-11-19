@@ -87,6 +87,13 @@ SELECT COUNT(*), COALESCE(SUM(STOCK),0) FROM TABLE_ARTICLES;
 SELECT ID_ARTICLE, HEX(ARTICLE), STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article';
 SELECT OBJET, VALEUR FROM TABLE_PARAMETRES WHERE OBJET='FONDS_CAISSE';
 SELECT COUNT(*) FROM hanouty_checkout_operations;
+SELECT ID_CLIENT, HEX(CODE_CLIENT), HEX(CLIENT), COALESCE(CREDIT_INITIAL,0)
+FROM TABLE_CLIENTS ORDER BY BINARY ID_CLIENT, BINARY CODE_CLIENT, BINARY CLIENT;
+SELECT ID_CLIENT, OPERATION, COUNT(*), COALESCE(SUM(TOTAL_NET),0)
+FROM TABLE_VENTES_JOURNAL WHERE OPERATION IN ('CREDIT','RETOUR CREDIT') GROUP BY ID_CLIENT, OPERATION ORDER BY ID_CLIENT, OPERATION;
+SELECT ID_CLIENT, MODE_P, COUNT(*), COALESCE(SUM(MONTANT),0), COUNT(CLOTURE_GLOBALE)
+FROM TABLE_CLIENTS_REGLE GROUP BY ID_CLIENT, MODE_P ORDER BY ID_CLIENT, MODE_P;
+SELECT COUNT(*) FROM hanouty_client_settlement_operations;
 '@
     $original = & $client @connection --batch --skip-column-names logica_ci "--execute=$probeSql"
     if ($LASTEXITCODE -ne 0 -or -not $original) { throw 'Could not read the original backup verification totals.' }
@@ -96,8 +103,9 @@ SELECT COUNT(*) FROM hanouty_checkout_operations;
     }
     [ordered]@{
         RestoreVerified = $true
+        CreditDemoEnabled = ((Get-Content -LiteralPath (Join-Path $appDir 'gestion_credit.sni') -Raw).Trim() -ceq 'True')
         BackupSha256 = (Get-FileHash -LiteralPath $dump -Algorithm SHA256).Hash
-        Compared = @('sales and closing counts', 'payments by mode', 'stock and article text', 'opening amount', 'checkout journal')
+        Compared = @('sales and closing counts', 'payments by mode', 'stock and article text', 'opening amount', 'checkout journal', 'customer identities and credit debt', 'customer settlements and operation journal')
     } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'backup-restore.json') -Encoding UTF8
     Write-Host 'PASS: disposable backup restored into a fresh schema with matching financial and stock checks.' -ForegroundColor Green
 }
@@ -232,10 +240,17 @@ GRANT ALL PRIVILEGES ON logica_ci.* TO 'w2_test'@'127.0.0.1';
     if ($report.W2Accepted -ne $true -or $report.FullCashReturnThroughWpfUi -ne $true) {
         throw "Financial acceptance did not report a successful cash sale and return. Evidence: $evidence"
     }
+    $creditReport = Get-Content -LiteralPath (Join-Path $evidence 'w2-credit-sales.json') -Raw | ConvertFrom-Json
+    foreach ($field in @('AtomicDebtStockNoPayment','CashUnchangedAtCredit','NewDebtPartialAndFullSettlement','LostAcknowledgementReview','ClosingAndStockReconciled')) {
+        if ($creditReport.$field -ne $true) { throw "Credit acceptance proof missing: $field" }
+    }
+    # This directory is the fingerprint-verified, bundle-owned disposable app
+    # extraction. Enable LOGICA's original switch only for the test cashier.
+    Set-Content -LiteralPath (Join-Path $appDir 'gestion_credit.sni') -Value 'True' -Encoding UTF8
     $env:HANOUTY_W2_DISPOSABLE_MARKER = $null
     $env:HANOUTY_W2_TEST_PIN = $null
     $env:HANOUTY_W2_DISPOSABLE_PORT = $null
-    Write-Host 'PASS: cash sale, full-ticket return, rollback and reconciliation verified on disposable data.' -ForegroundColor Green
+    Write-Host 'PASS: cash/card sales, credit/customer settlement, full-ticket return, rollback and reconciliation verified on disposable data.' -ForegroundColor Green
     if ($VerifyOnly) {
         Test-HanoutyBackupRestore
     } else {

@@ -37,6 +37,16 @@ internal static class Program
         string Amount(decimal n) => n.ToString("0.00");
         var tail = LogicaReceiptSummary.Format(discounted) + string.Join("\r\n", discounted.FormatFrenchThreeColumnCashPayment(Amount).Concat(discounted.FormatFrenchThreeColumnIdentity(true))) + "\r\nMerci de votre visite\r\n18/11/2026 08:00:00(1)";
         var png = Path.Combine(output, "receipt-summary.png");
+        foreach (var width in new[] { 304, 420 })
+        using (var surface = new Bitmap(width, 300))
+        using (var graphics = Graphics.FromImage(surface))
+        foreach (var amount in new[] { "21.60", "9999999999999.99" })
+        {
+            var text = "TOTAL NET: " + (amount + " DH").PadLeft(12);
+            using var fitted = LogicaReceiptRenderer.FitTotalFont(graphics, text);
+            Check(graphics.MeasureString(text, fitted).Width <= width && fitted.Size <= 16f,
+                "whole total and currency fit narrow receipt with Windows font fallback");
+        }
         using (var bitmap = new Bitmap(420, 650))
         using (var graphics = Graphics.FromImage(bitmap))
         {

@@ -27,7 +27,8 @@ public sealed class SessionBoundCashCheckoutSubmission :
     private static bool IsSaleTender(string tender) =>
         string.Equals(tender, "Cash", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(tender, "Card", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(tender, "Mixed", StringComparison.OrdinalIgnoreCase);
+        string.Equals(tender, "Mixed", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(tender, "Credit", StringComparison.OrdinalIgnoreCase);
 
     public CheckoutSubmissionResult Submit(string stableOperationId) =>
         throw new InvalidOperationException("Authorized cashier/payment context is required.");
