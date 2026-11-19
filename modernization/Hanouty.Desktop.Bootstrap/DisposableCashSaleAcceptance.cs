@@ -916,7 +916,10 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             AfterPaymentRollback = true, UnknownJournalLocked = true, LostAcknowledgementPersisted = true, Reconciliation = true,
             FullCashReturnThroughWpfUi = true, FullCashReturnSqlReadback = true, FullCashReturnRollback = true, FullCashReturnIdempotency = true,
             CashDrawerSaleSurvivesPrinterFailure = true,
-            W2Accepted = true, Remaining = "Partial returns, mixed tenders, discounts/credit, device parity, and commercial rollout acceptance"
+            CardPaymentThroughWpfUi = true, MixedPaymentThroughWpfUi = true, SameSessionCashCardCashAndClosing = true,
+            PrintedReceiptReturnLookup = true, RefundLostAcknowledgementReview = true, CashChangeNetRefund = true,
+            NextCustomerVisibleTotal = true,
+            W2Accepted = true, Remaining = "Partial/card returns, discounts/credit sales, device parity, and commercial rollout acceptance"
         }));
     }
 
@@ -3271,11 +3274,14 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 foreach (var nested in Children(child)) yield return nested;
             }
         }
-        string CashSale()
+        string CashSale(decimal received = 5.25m)
         {
             host.ViewModel.ScannerText = "RETURN-CODE";
             host.ViewModel.ScanCommand.Execute(null);
             Require(host.Session.PendingCount == 1, "Return-cycle scanner did not prepare one sale.");
+            Require(host.Window.RefreshTrustedBasketTotal() &&
+                ((System.Windows.Controls.TextBlock)host.Window.FindName("TrustedBasketTotal")).Text.EndsWith("5.25", StringComparison.Ordinal),
+                "Next customer lost the authoritative visible total before tender entry.");
             host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
             {
                 var dialog = Application.Current.Windows.OfType<CashierEntryDialog>().SingleOrDefault();
@@ -3286,7 +3292,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                     void Touch(string label) => buttons.Single(button => Equals(button.Content, label))
                         .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                     Touch("Pavé numérique");
-                    foreach (var digit in "5.25") Touch(digit.ToString());
+                    foreach (var digit in received.ToString("0.##", CultureInfo.InvariantCulture)) Touch(digit.ToString());
                     Touch("Appliquer le montant");
                     buttons.Single(button => button.IsDefault).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 }
@@ -3308,7 +3314,10 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         try
         {
             Require(CashierEntry(host, "O'Neil", "01", "0", 0m, pin), "Return-cycle cashier login failed.");
-            var original = CashSale();
+            var original = CashSale(10m);
+            Require(Number(settings, "SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id", original) == 5.25m &&
+                Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id", original) == 2,
+                "Return-cycle original did not retain received cash and signed change.");
             var receipt = Convert.ToString(Value(settings,
                 "SELECT TICKET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id", original), CultureInfo.InvariantCulture)!;
             Require(receipt != original && !string.IsNullOrWhiteSpace(receipt), "Fixture lacks the printed receipt number.");

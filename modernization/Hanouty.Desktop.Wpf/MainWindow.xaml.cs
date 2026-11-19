@@ -250,6 +250,8 @@ public partial class MainWindow : Window
         if (DataContext is not CatalogueViewModel vm) return;
         _trustedTotalRevision++;
         TrustedBasketTotal.Text = "Trusted basket total unavailable";
+        if (vm.FinancialSessionActive && !vm.CheckoutUncertain && vm.PendingOperationId is null)
+            Dispatcher.BeginInvoke(new Action(() => RefreshTrustedBasketTotal()), System.Windows.Threading.DispatcherPriority.Background);
         // A valid-looking replacement cashier context is not the context that
         // authorized these receipt results. Invalidate on every identity change,
         // including cashier A -> cashier B without an intermediate null.
@@ -442,10 +444,11 @@ public partial class MainWindow : Window
         if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
             _originalSaleLookupBusy || _readTrustedCashTotal is null ||
             DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
-            vm.PaymentContext is null || vm.CheckoutBusy || vm.CheckoutUncertain ||
+            ReadSessionIdentity()?.IsWellFormed != true || vm.CheckoutBusy || vm.CheckoutUncertain ||
             vm.PendingOperationId is not null) return false;
         _trustedTotalReadBusy = true;
         var context = vm.PaymentContext;
+        var identity = ReadSessionIdentity();
         var revision = _trustedTotalRevision;
         try
         {
@@ -455,6 +458,7 @@ public partial class MainWindow : Window
                 revision != _trustedTotalRevision ||
                 !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
                 vm.PendingOperationId is not null || !ReferenceEquals(vm.PaymentContext, context) ||
+                identity?.IsWellFormed != true || !Equals(identity, ReadSessionIdentity()) ||
                 _readBasketIdentity?.Invoke() != basketIdentity) return false;
             TrustedBasketTotal.Text = "Trusted basket total (MAD): " +
                 total.Value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);

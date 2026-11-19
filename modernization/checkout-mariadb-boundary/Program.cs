@@ -695,6 +695,68 @@ namespace LOGICA.Infrastructure.Checkout
                             Require(CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
                                 evidenceDb, evidenceTx, operation, "CSharp-Stock", 2m) == 10.50m,
                                 "Original full-quantity line must use persisted paid price.");
+                            // Real LOGICA received/change rows refund only the net paid total.
+                            using (var received = evidenceDb.CreateCommand())
+                            {
+                                received.Transaction = evidenceTx;
+                                received.CommandText = "UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=20 WHERE ID_TICKET=@id";
+                                received.Parameters.AddWithValue("@id", operation);
+                                received.ExecuteNonQuery();
+                            }
+                            using (var change = evidenceDb.CreateCommand())
+                            {
+                                change.Transaction = evidenceTx;
+                                change.CommandText = "INSERT INTO TABLE_VENTES_REGLEMENTS (ID_TICKET,MONTANT,MODE_P,OPERATION) VALUES (@id,-9.50,'ESPECES','VENTE')";
+                                change.Parameters.AddWithValue("@id", operation);
+                                change.ExecuteNonQuery();
+                            }
+                            Require(CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                evidenceDb, evidenceTx, operation) == 10.50m,
+                                "Cash received minus change must prove only the net refundable amount.");
+                            foreach (string mutation in new[] {
+                                "UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=-9.49 WHERE ID_TICKET=@id AND MONTANT<0",
+                                "UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=-9.501 WHERE ID_TICKET=@id AND MONTANT<0",
+                                "UPDATE TABLE_VENTES_REGLEMENTS SET MODE_P='CARTE' WHERE ID_TICKET=@id AND MONTANT<0"
+                            })
+                            {
+                                using (var corrupt = evidenceDb.CreateCommand())
+                                {
+                                    corrupt.Transaction = evidenceTx; corrupt.CommandText = mutation;
+                                    corrupt.Parameters.AddWithValue("@id", operation); corrupt.ExecuteNonQuery();
+                                }
+                                bool rejected = false;
+                                try { CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(evidenceDb, evidenceTx, operation); }
+                                catch (InvalidOperationException) { rejected = true; }
+                                Require(rejected, "Corrupt change row qualified for a cash refund: " + mutation);
+                                using (var restore = evidenceDb.CreateCommand())
+                                {
+                                    restore.Transaction = evidenceTx;
+                                    restore.CommandText = "UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=-9.50,MODE_P='ESPECES' WHERE ID_TICKET=@id AND MONTANT<0";
+                                    restore.Parameters.AddWithValue("@id", operation); restore.ExecuteNonQuery();
+                                }
+                            }
+                            using (var duplicate = evidenceDb.CreateCommand())
+                            {
+                                duplicate.Transaction = evidenceTx;
+                                duplicate.CommandText = "INSERT INTO TABLE_VENTES_REGLEMENTS (ID_TICKET,MONTANT,MODE_P,OPERATION) VALUES (@id,1,'ESPECES','VENTE'),(@id,-1,'ESPECES','VENTE')";
+                                duplicate.Parameters.AddWithValue("@id", operation); duplicate.ExecuteNonQuery();
+                            }
+                            bool duplicateCashRejected = false;
+                            try { CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(evidenceDb, evidenceTx, operation); }
+                            catch (InvalidOperationException) { duplicateCashRejected = true; }
+                            Require(duplicateCashRejected, "Extra offsetting cash rows must not qualify even when their net matches.");
+                            using (var cleanup = evidenceDb.CreateCommand())
+                            {
+                                cleanup.Transaction = evidenceTx;
+                                cleanup.CommandText = "DELETE FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MONTANT IN (1,-1)";
+                                cleanup.Parameters.AddWithValue("@id", operation); cleanup.ExecuteNonQuery();
+                            }
+                            using (var restore = evidenceDb.CreateCommand())
+                            {
+                                restore.Transaction = evidenceTx;
+                                restore.CommandText = "DELETE FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MONTANT<0; UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=10.50 WHERE ID_TICKET=@id";
+                                restore.Parameters.AddWithValue("@id", operation); restore.ExecuteNonQuery();
+                            }
                             // Price integrity must come from the persisted
                             // original journal, not from the current catalogue.
                             using (var originalPriceTamper = evidenceDb.CreateCommand())
