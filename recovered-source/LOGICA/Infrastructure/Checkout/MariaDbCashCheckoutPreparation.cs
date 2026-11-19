@@ -43,10 +43,13 @@ namespace LOGICA.Infrastructure.Checkout
             if (connection == null || connection.State != ConnectionState.Open ||
                 transaction == null || !ReferenceEquals(transaction.Connection, connection))
                 throw new InvalidOperationException("Trusted preparation requires the active checkout transaction.");
-            if (request.Currency != "MAD" || request.Payments.Count != 1 ||
-                request.Payments[0].Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card) || request.OperationId.Length > 64)
-                throw new NotSupportedException("Only single cash or exact-card MAD sales are accepted.");
-            var card = request.Payments[0].Kind == CheckoutPaymentKind.Card;
+            if (request.Currency != "MAD" || request.Payments.Count is < 1 or > 2 ||
+                request.Payments.Any(payment => payment.Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card)) ||
+                request.Payments.Select(payment => payment.Kind).Distinct().Count() != request.Payments.Count ||
+                request.OperationId.Length > 64)
+                throw new NotSupportedException("Only cash/card MAD sale allocations are accepted.");
+            var card = request.Payments.Any(payment => payment.Kind == CheckoutPaymentKind.Card);
+            var mixed = request.Payments.Count == 2;
             if (card && request.IsReturn)
                 throw new NotSupportedException("Card refunds require their own original-payment policy.");
 
@@ -179,8 +182,14 @@ namespace LOGICA.Infrastructure.Checkout
                 stock.Add(new CheckoutStockLine { TicketNumber = ticket, ArticleId = id,
                     ArticleCode = row["Code"], ArticleName = row["Article"], BasketQuantity = (decimal)quantity });
             }
-            decimal tendered = request.Payments[0].Amount;
-            if (card && tendered != total)
+            decimal cashPaid = request.Payments.Where(payment => payment.Kind == CheckoutPaymentKind.Cash).Sum(payment => payment.Amount);
+            decimal cardPaid = request.Payments.Where(payment => payment.Kind == CheckoutPaymentKind.Card).Sum(payment => payment.Amount);
+            decimal tendered = checked(cashPaid + cardPaid);
+            if (request.Payments.Any(payment => decimal.Round(payment.Amount, 2) != payment.Amount))
+                throw new InvalidOperationException("Payment components require whole cents.");
+            if (mixed && cardPaid >= total)
+                throw new InvalidOperationException("Mixed card component must be below the authoritative total.");
+            if (card && !mixed && tendered != total)
                 throw new InvalidOperationException("Card amount must equal the authoritative total.");
             if (total <= 0m || request.ExpectedTotal != total || tendered < total ||
                 decimal.Round(tendered, 2, MidpointRounding.AwayFromZero) != tendered)
@@ -205,10 +214,14 @@ namespace LOGICA.Infrastructure.Checkout
                     Workstation = workstation, TotalText = amount, Operation = "VENTE" },
                 ReadJournal = () => new TicketJournalRecord { TicketId = idTicket, TicketNumber = ticket,
                     SaleDate = date, Cashier = cashier, Seller = "", ClientId = "0", ClientCode = "0", ClientName = "",
-                    Workstation = workstation, Operation = "VENTE", PriceType = "PRIX 1", PaymentModes = card ? "CARTE" : "ESPECES" },
+                    Workstation = workstation, Operation = "VENTE", PriceType = "PRIX 1", PaymentModes = mixed ? "ESPECES;CARTE" : card ? "CARTE" : "ESPECES" },
+                // Reuse LOGICA's streaming multi-mode payment projection, including cash change.
                 ReadPayments = () => card
-                    ? new[] { new TicketPaymentWrite { Kind = TicketPaymentKind.Tendered,
-                        Context = paymentContext, Amount = tendered, Mode = "CARTE" } }
+                    ? CheckoutPaymentReadService.Read(() => "VENTE", () => paymentContext, () => true,
+                        () => request.Payments.Count, index => request.Payments[index].Amount,
+                        index => request.Payments[index].Kind == CheckoutPaymentKind.Cash ? "ESPECES" : "CARTE",
+                        () => amount, () => change.ToString(CultureInfo.CurrentCulture),
+                        new PreparedPaymentSemantics(change))
                     : change == 0m
                     ? new[] { new TicketPaymentWrite {
                         Kind = TicketPaymentKind.Cash, Context = paymentContext, AmountText = amount } }
@@ -228,9 +241,9 @@ namespace LOGICA.Infrastructure.Checkout
                     var detail = Read(connection, transaction,
                         "SELECT ID_ARTICLE FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET=@id", ("@id", idTicket));
                     if (receipt.Rows.Count != 1 || Number(receipt.Rows[0], "Total_NET") != total ||
-                        payments.Rows.Count != (change == 0m ? 1 : 2) ||
+                        payments.Rows.Count != request.Payments.Count + (change < 0m ? 1 : 0) ||
                         payments.Rows.Cast<DataRow>().Sum(row => Number(row, "MONTANT")) != total ||
-                        (change < 0m && (!payments.Rows.Cast<DataRow>().Any(row => Number(row, "MONTANT") == tendered) ||
+                        (change < 0m && (!payments.Rows.Cast<DataRow>().Any(row => Number(row, "MONTANT") == cashPaid) ||
                             !payments.Rows.Cast<DataRow>().Any(row => Number(row, "MONTANT") == change))) ||
                         detail.Rows.Count != stock.Count)
                         throw new InvalidOperationException("Persisted receipt staging failed.");
@@ -403,6 +416,15 @@ namespace LOGICA.Infrastructure.Checkout
 
         // Shared by posting preparation and explicit cashier reauthorization.
         // A caller-owned transaction and real TABLE_PASS remain authoritative.
+        private sealed class PreparedPaymentSemantics : ILegacyCheckoutPaymentReadSemantics
+        {
+            private readonly decimal change;
+            internal PreparedPaymentSemantics(decimal change) { this.change = change; }
+            public int CompareOperation(string actual, string expected) => string.Compare(actual, expected, StringComparison.Ordinal);
+            // Prepared amounts are decimals; do not reparse French text with VB Val.
+            public bool IsNegativeChange(string ignored) => change < 0m;
+        }
+
         internal static void RequireCardMode(MySqlConnection connection, MySqlTransaction transaction)
         {
             foreach (var table in new[] { "TABLE_PARAMETRES", "TABLE_MODE_P" })

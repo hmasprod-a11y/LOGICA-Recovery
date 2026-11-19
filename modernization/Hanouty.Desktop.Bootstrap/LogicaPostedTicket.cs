@@ -33,11 +33,25 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
 
     internal IReadOnlyList<string> FormatFrenchThreeColumnPayment(Func<decimal, string> formatAmount)
     {
-        if (Payments.Count == 1 && Payments[0].Mode == "CARTE" &&
-            Payments[0].Amount == Total && Total > 0m)
-            return new[] {
-                LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Payment("CARTE", formatAmount(Total)),
-                LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Payment("RENDU", formatAmount(0m)) };
+        if (Payments.Any(payment => payment.Mode == "CARTE"))
+        {
+            var card = Payments.Where(payment => payment.Mode == "CARTE").ToArray();
+            var cash = Payments.Where(payment => payment.Mode == "ESPECES" && payment.Amount > 0m).ToArray();
+            var change = Payments.Where(payment => payment.Mode == "ESPECES" && payment.Amount < 0m).ToArray();
+            if (card.Length != 1 || card[0].Amount <= 0m || cash.Length > 1 || change.Length > 1 ||
+                Payments.Any(payment => payment.Mode is not ("CARTE" or "ESPECES") || payment.Amount == 0m) ||
+                Payments.Sum(payment => payment.Amount) != Total ||
+                (cash.Length == 0 && (change.Length != 0 || card[0].Amount != Total)) ||
+                (cash.Length == 1 && card[0].Amount >= Total))
+                throw new InvalidOperationException("Invalid persisted cash/card allocation.");
+            var result = new List<string>();
+            if (cash.Length == 1)
+                result.Add(LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Payment("ESPECES", formatAmount(cash[0].Amount)));
+            result.Add(LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Payment("CARTE", formatAmount(card[0].Amount)));
+            result.Add(LOGICA.ApplicationLayer.Checkout.LogicaFrenchThreeColumn.Payment("RENDU",
+                formatAmount(-change.Sum(payment => payment.Amount))));
+            return result;
+        }
         return FormatFrenchThreeColumnCashPayment(formatAmount);
     }
 

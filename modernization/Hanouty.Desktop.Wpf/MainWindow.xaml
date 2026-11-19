@@ -162,6 +162,8 @@
                                     IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Enter sale cash tender"/>
                             <Button Content="Payer par CARTE" Click="PayByCard_Click" MinHeight="40"
                                     IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Pay sale by card"/>
+                            <Button Content="Paiement mixte · espèces + CARTE" Click="PayMixed_Click" MinHeight="40"
+                                    IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Pay sale with cash and card"/>
                             <TextBlock x:Name="CardPaymentStatus" TextWrapping="Wrap" />
                             <Button Content="ENCAISSER · PAIEMENT" Command="{Binding CommitCommand}" IsEnabled="{Binding CanCommit}" MinHeight="58" FontSize="17" FontWeight="Bold" Margin="0,10,0,0" AutomationProperties.Name="Complete checkout"/>
                                 </StackPanel>

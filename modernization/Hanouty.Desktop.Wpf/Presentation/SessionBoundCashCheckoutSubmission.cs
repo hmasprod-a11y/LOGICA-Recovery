@@ -26,7 +26,8 @@ public sealed class SessionBoundCashCheckoutSubmission :
 
     private static bool IsSaleTender(string tender) =>
         string.Equals(tender, "Cash", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(tender, "Card", StringComparison.OrdinalIgnoreCase);
+        string.Equals(tender, "Card", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(tender, "Mixed", StringComparison.OrdinalIgnoreCase);
 
     public CheckoutSubmissionResult Submit(string stableOperationId) =>
         throw new InvalidOperationException("Authorized cashier/payment context is required.");
@@ -55,7 +56,7 @@ public sealed class SessionBoundCashCheckoutSubmission :
             !string.Equals(context.CashierId, trusted.CashierId, StringComparison.Ordinal) ||
             !string.Equals(context.RegisterId, trusted.RegisterId, StringComparison.Ordinal) ||
             !string.Equals(context.CurrencyCode, trusted.CurrencyCode, StringComparison.Ordinal) ||
-            context.TenderedAmount != trusted.TenderedAmount)
+            context.TenderedAmount != trusted.TenderedAmount || context.CardAmount != trusted.CardAmount)
             return CheckoutSubmissionResult.Invalidated;
 
         // This is the same financial CheckoutSession populated by WPF selection.

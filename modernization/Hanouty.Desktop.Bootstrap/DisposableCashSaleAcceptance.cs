@@ -903,6 +903,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyCustomerSettlementPosting(settings, pin);
         VerifySupplierSettlementPosting(settings, pin);
         VerifyCardPayment(settings, pin);
+        VerifyMixedPayment(settings, pin);
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -3060,6 +3061,185 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 CardRows = 1, CashRows = 0, PhysicalCashIncrease = 0m, StockChange = -1m,
                 ConfigurationDenied = true, ExactAmountOnly = true, Rollback = true, Replay = true,
                 ActualBankTerminalTested = false }));
+    }
+
+
+    private static void VerifyMixedPayment(CatalogueSettings settings, string pin)
+    {
+        var previousCulture = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
+        try
+        {
+            var total = Number(settings, "SELECT PRIX_V_1 FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+            const decimal cardPart = 2m, cashReceived = 5m;
+            Require(total > cardPart && total < cardPart + cashReceived, "Mixed fixture needs positive fractional cash change.");
+            var change = cashReceived + cardPart - total;
+            var port = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(
+                () => new MySqlConnection(settings.ConnectionString), "01", () => pin);
+            var request = new AuthorizedCheckoutRequest("MIXED-TEST", "O'Neil", "MAD", false,
+                new[] { new CheckoutBatchLine("W2-Article", 1) }, new[] {
+                    new CheckoutPayment(CheckoutPaymentKind.Cash, cashReceived),
+                    new CheckoutPayment(CheckoutPaymentKind.Card, cardPart) }, total);
+            void Rejected(AuthorizedCheckoutRequest candidate, string reason)
+            {
+                var before = Snapshot(settings);
+                var rejected = false;
+                try { port.Commit(candidate); }
+                catch (Exception ex) when (ex.Message.Contains(reason, StringComparison.Ordinal)) { rejected = true; }
+                Require(rejected && Snapshot(settings) == before, "Rejected mixed payment changed SQL or stock.");
+            }
+            Sql(settings, "UPDATE TABLE_PARAMETRES SET VALEUR='False' WHERE OBJET='FENETRE_MODE_P'");
+            Rejected(request with { OperationId = "MIXED-CONFIG" }, "modes de paiement sont désactivés");
+            Sql(settings, "UPDATE TABLE_PARAMETRES SET VALEUR='True' WHERE OBJET='FENETRE_MODE_P'");
+            Rejected(request with { OperationId = "MIXED-UNDER", Payments = new[] {
+                new CheckoutPayment(CheckoutPaymentKind.Cash, .01m), new CheckoutPayment(CheckoutPaymentKind.Card, .01m) } },
+                "Cash tender must cover");
+            Rejected(request with { OperationId = "MIXED-CARD-EXCESS", Payments = new[] {
+                new CheckoutPayment(CheckoutPaymentKind.Cash, 1m), new CheckoutPayment(CheckoutPaymentKind.Card, total) } },
+                "Mixed card component must be below");
+            Rejected(request with { OperationId = "MIXED-PRECISION", Payments = new[] {
+                new CheckoutPayment(CheckoutPaymentKind.Cash, 5.001m), new CheckoutPayment(CheckoutPaymentKind.Card, cardPart) } },
+                "Payment components require whole cents");
+            Rejected(request with { OperationId = "MIXED-REFUND", IsReturn = true, OriginalTicketId = "original-mixed" },
+                "cash refunds only");
+            Sql(settings, """
+                CREATE TRIGGER fail_mixed_card BEFORE INSERT ON TABLE_VENTES_REGLEMENTS FOR EACH ROW
+                BEGIN
+                    IF NEW.MODE_P='CARTE' THEN
+                        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Synthetic second-tender failure';
+                    END IF;
+                END;
+                """);
+            try { Rejected(request with { OperationId = "MIXED-ROLLBACK" }, "Synthetic second-tender failure"); }
+            finally { Sql(settings, "DROP TRIGGER fail_mixed_card"); }
+
+            static IEnumerable<DependencyObject> Children(DependencyObject parent)
+            {
+                foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+                {
+                    yield return child;
+                    foreach (var nested in Children(child)) yield return nested;
+                }
+            }
+            var mixedStockBefore = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=\'W2-Article\'");
+            var workstation = CatalogueHost.CreateCashierWorkstation(settings, "01");
+            string? operation = null;
+            try
+            {
+                Require(CashierEntry(workstation, "O'Neil", "01", "0", 0m, pin), "Mixed cashier login failed.");
+                workstation.ViewModel.ScannerText = "CODE'1";
+                workstation.ViewModel.ScanCommand.Execute(null);
+                Require(workstation.Session.PendingCount == 1, "Mixed scanner did not stage the basket.");
+                bool FromButton(bool confirm)
+                {
+                    Exception? failure = null;
+                    System.Windows.Controls.PasswordBox? entered = null;
+                    var reviewed = false;
+                    workstation.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+                    {
+                        var dialog = Application.Current.Windows.OfType<MixedPaymentDialog>().SingleOrDefault();
+                        try
+                        {
+                            Require(dialog is not null, "Mixed payment review did not open.");
+                            reviewed = true;
+                            Require(!workstation.Window.PayByCard() && !workstation.Window.PayMixed() &&
+                                !workstation.Window.EndFinancialSession(), "Mixed review allowed another payment/logout.");
+                            if (!confirm) { dialog!.Close(); return; }
+                            var cardField = Children(dialog!).OfType<System.Windows.Controls.TextBox>().Single(field =>
+                                System.Windows.Automation.AutomationProperties.GetName(field) == "Montant CARTE");
+                            Require(cardField.IsReadOnly, "Mixed card amount required physical typing.");
+                            workstation.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+                            {
+                                var numeric = Application.Current.Windows.OfType<TouchNumericEntryDialog>().SingleOrDefault();
+                                try
+                                {
+                                    Require(numeric is not null, "Mixed card amount did not open the numeric keypad.");
+                                    var keys = Children(numeric!).OfType<System.Windows.Controls.Button>().ToArray();
+                                    keys.Single(button => Equals(button.Content, "2"))
+                                        .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                                    keys.Single(button => Equals(button.Content, "Appliquer"))
+                                        .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                                }
+                                catch (Exception ex) { failure = ex; numeric?.Close(); }
+                            }));
+                            cardField.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(
+                                System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
+                                { RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent });
+                            if (failure is not null) throw failure;
+                            Children(dialog!).OfType<System.Windows.Controls.Button>()
+                                .Single(button => System.Windows.Automation.AutomationProperties.GetName(button) == "5 DH")
+                                .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                            Require(Children(dialog!).OfType<System.Windows.Controls.TextBlock>().Any(block =>
+                                block.Text == "RENDU : " + change.ToString("N2") + " DH"),
+                                "Mixed review displayed incorrect French fractional change.");
+                            workstation.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+                            {
+                                var pinDialog = Application.Current.Windows.Cast<Window>().SingleOrDefault(window =>
+                                    window.Owner == workstation.Window && Children(window).OfType<System.Windows.Controls.PasswordBox>().Any());
+                                try
+                                {
+                                    Require(pinDialog is not null, "Mixed posting did not request PIN.");
+                                    operation = workstation.ViewModel.PendingOperationId;
+                                    entered = Children(pinDialog!).OfType<System.Windows.Controls.PasswordBox>().Single();
+                                    entered.Password = pin;
+                                    Children(pinDialog!).OfType<System.Windows.Controls.Button>().Single(button => button.IsDefault)
+                                        .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                                }
+                                catch (Exception ex) { failure = ex; pinDialog?.Close(); }
+                            }));
+                            Children(dialog!).OfType<System.Windows.Controls.Button>()
+                                .Single(button => Equals(button.Content, "Confirmer le paiement mixte"))
+                                .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                        }
+                        catch (Exception ex) { failure = ex; dialog?.Close(); }
+                    }));
+                    var result = workstation.Window.PayMixed();
+                    if (failure is not null) throw new InvalidOperationException("Mixed WPF flow failed: " + failure.Message, failure);
+                    Require(reviewed, "Mixed payment entry did not open.");
+                    if (entered is not null) Require(entered.Password.Length == 0, "Mixed PIN was retained.");
+                    return result;
+                }
+                var beforeReview = Snapshot(settings);
+                Require(!FromButton(false) && Snapshot(settings) == beforeReview &&
+                    workstation.ViewModel.PendingOperationId is null, "Cancelled mixed payment changed SQL or operation identity.");
+                Require(FromButton(true) && operation is not null && workstation.Session.PendingCount == 0 &&
+                    !workstation.ViewModel.CheckoutUncertain, "Mixed sale did not commit: " + workstation.ViewModel.CommitFeedback);
+            }
+            finally { workstation.Window.Close(); }
+            Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id", operation) == 3 &&
+                Number(settings, "SELECT MONTANT FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MODE_P='CARTE'", operation) == cardPart &&
+                Number(settings, "SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MODE_P='ESPECES'", operation) == total - cardPart &&
+                Number(settings, "SELECT MONTANT FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MODE_P='ESPECES' AND MONTANT<0", operation) == -change,
+                "Mixed cash/card/change rows do not reconcile.");
+            Require(Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=\'W2-Article\'") == mixedStockBefore - 1m,
+                "Mixed payment did not decrement stock exactly once.");
+            var stable = Snapshot(settings);
+            port.Commit(request with { OperationId = operation! });
+            Require(Snapshot(settings) == stable, "Mixed replay duplicated posting.");
+            using (var db = Open(settings))
+            {
+                var ticket = LogicaPostedTicket.Read(db, operation!, "O'Neil", "01");
+                var printed = ticket!.FormatFrenchThreeColumnPayment(value => value.ToString("0.00"));
+                Require(printed.Count == 3 && printed[0].Contains("ESPECES") && printed[1].Contains("CARTE") &&
+                    printed[2].Contains(change.ToString("0.00")), "Mixed persisted receipt lost tender/change.");
+            }
+            var closing = new CashDrawerClosing(settings.ConnectionString);
+            var summary = closing.Read("O'Neil", pin);
+            Require(summary.CashSales == total - cardPart && summary.NetSales == total &&
+                summary.Expected == summary.Opening + total - cardPart, "Mixed closing counted card as physical cash.");
+            closing.Close("O'Neil", pin, summary);
+            Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND CLOTURE_GLOBALE IS NOT NULL", operation) == 3,
+                "Mixed closing omitted a tender/change row.");
+            port.Commit(request with { OperationId = operation! });
+            Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id", operation) == 3,
+                "Mixed replay after closing duplicated payment rows.");
+            File.WriteAllText(Path.Combine(EvidenceDirectory, "w2-mixed-sale.json"),
+                JsonSerializer.Serialize(new { OriginalPaymentReadService = true, ProductionTouchAndPin = true,
+                    Total = total, Card = cardPart, CashReceived = cashReceived, Change = change,
+                    PhysicalCashIncrease = total - cardPart, RejectedUnderpayment = true, RollbackSecondTender = true,
+                    ExactOnce = true, FrenchFractionalChange = true, ActualBankTerminalTested = false }));
+        }
+        finally { CultureInfo.CurrentCulture = previousCulture; }
     }
 
     public static int Run(string evidenceDirectory)
