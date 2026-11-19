@@ -1286,6 +1286,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         {
             Require(CashierEntry(variantHost, "Test admin", "01", "0", 0m, "6789"),
                 "Variant cashier could not sign in.");
+            VerifyCatalogueVariantChoice(variantHost, variantId);
             variantHost.ViewModel.ScannerText = "CARD'1";
             variantHost.ViewModel.ScanCommand.Execute(null);
             Require(variantHost.ViewModel.BasketLines.Count == 0 &&
