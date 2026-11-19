@@ -205,6 +205,7 @@ public partial class MainWindow : Window
     private long _trustedTotalRevision;
     private Func<string, string, decimal, bool>? _setFinancialContext;
     private Func<decimal?>? _readTrustedCashTotal;
+    private Func<CashierPaymentContext?>? _readActiveCashierContext;
     private Func<bool>? _endFinancialSession;
     private Func<string>? _readBasketIdentity;
     private readonly ReturnReviewDraft _returnDraft = new();
@@ -503,7 +504,7 @@ public partial class MainWindow : Window
 
     public void ConfigureCashierEntry(Func<string, string, decimal, bool> setFinancialContext,
         Func<decimal?> readTrustedCashTotal, Func<bool>? endFinancialSession = null,
-        Func<string>? readBasketIdentity = null)
+        Func<string>? readBasketIdentity = null, Func<CashierPaymentContext?>? readActiveCashierContext = null)
     {
         ArgumentNullException.ThrowIfNull(setFinancialContext);
         ArgumentNullException.ThrowIfNull(readTrustedCashTotal);
@@ -512,6 +513,7 @@ public partial class MainWindow : Window
         _readTrustedCashTotal = readTrustedCashTotal;
         _endFinancialSession = endFinancialSession;
         _readBasketIdentity = readBasketIdentity;
+        _readActiveCashierContext = readActiveCashierContext;
     }
 
     public bool EndFinancialSession()
@@ -568,7 +570,9 @@ public partial class MainWindow : Window
             var total = _readTrustedCashTotal();
             if (total is null || total < 0m) return false;
             var identity = _readBasketIdentity?.Invoke();
-            var context = forPayment ? vm.PaymentContext : null;
+            // Session identity is not a reusable payment authorization.
+            // When the Host supplies this reader, null revokes entry even if the VM has stale data.
+            var context = forPayment ? ReadSessionIdentity() : null;
             if (forPayment && (!vm.FinancialSessionActive || context is null || total <= 0m))
                 return false;
             var dialog = new CashierEntryDialog(total, context) { Owner = this };
@@ -687,8 +691,16 @@ public partial class MainWindow : Window
         ReviewResolvedCheckout(ReadReviewPin);
 
     public string PromptCashierPin() => PromptCashierPin((DataContext as CatalogueViewModel)?.PaymentContext?.CashierId ?? "");
+    private CashierPaymentContext? ReadSessionIdentity()
+    {
+        try { return _readActiveCashierContext is null
+            ? (DataContext as CatalogueViewModel)?.PaymentContext : _readActiveCashierContext(); }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException) { return null; }
+    }
+
     public string PromptCashierPin(string cashier)
     {
+        var authorizedSession = ReadSessionIdentity();
         var cashierEntryPin = _cashierEntryOpen &&
             string.Equals(_entryPinCashier, cashier, StringComparison.Ordinal);
         if ((_cashierEntryOpen && !cashierEntryPin) || _logoutOpen || _reviewOpen ||
@@ -698,8 +710,8 @@ public partial class MainWindow : Window
                 ? vm.CheckoutBusy || vm.PendingOperationId is not null
                 : !vm.FinancialSessionActive ||
                   (vm.PendingOperationId is not null && !vm.CheckoutBusy) ||
-                  vm.PaymentContext is null ||
-                  !string.Equals(vm.PaymentContext.CashierId, cashier, StringComparison.Ordinal)))
+                  authorizedSession?.IsWellFormed != true ||
+                  !string.Equals(authorizedSession.CashierId, cashier, StringComparison.Ordinal)))
             return "";
         return ReadPin(cashierEntryPin ? "Authorize cashier session" : "Authorize checkout",
             $"Cashier: {cashier}\nConfirm this cashier session for the displayed payment.",
@@ -709,9 +721,9 @@ public partial class MainWindow : Window
     public string PromptCashDrawerApproval(string role)
     {
         if (role is not ("MANAGER" or "ADMIN") || _cashierEntryOpen || _logoutOpen || _reviewOpen ||
-            _pinOpen || _originalSaleLookupBusy || DataContext is not CatalogueViewModel
-            { FinancialSessionActive: true, CheckoutBusy: false, CheckoutUncertain: false, PendingOperationId: null,
-                PaymentContext: not null })
+            _pinOpen || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
+            !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
+            vm.PendingOperationId is not null || ReadSessionIdentity()?.IsWellFormed != true)
             return "";
         return ReadPin("Autorisation de caisse", $"Saisissez le code d’autorisation {role}.");
     }
@@ -740,7 +752,27 @@ public partial class MainWindow : Window
             Text = message,
             TextWrapping = TextWrapping.Wrap
         });
-        panel.Children.Add(pin); panel.Children.Add(confirm); panel.Children.Add(cancel);
+        panel.Children.Add(pin);
+        var keypad = new System.Windows.Controls.Primitives.UniformGrid { Columns = 3 };
+        foreach (var key in new[] { "7", "8", "9", "4", "5", "6", "1", "2", "3", "⌫", "0", "Effacer" })
+        {
+            var digit = new System.Windows.Controls.Button { Content = key, MinHeight = 44,
+                FontSize = 18, Margin = new Thickness(2) };
+            System.Windows.Automation.AutomationProperties.SetName(digit, "PIN " + key);
+            digit.Click += (_, _) =>
+            {
+                if (key == "Effacer") pin.Clear();
+                else if (key == "⌫")
+                {
+                    if (pin.Password.Length > 0) pin.Password = pin.Password[..^1];
+                }
+                else if (pin.Password.Length < pin.MaxLength) pin.Password += key;
+            };
+            keypad.Children.Add(digit);
+        }
+        panel.Children.Add(keypad);
+        panel.Children.Add(confirm);
+        panel.Children.Add(cancel);
         var dialog = new Window {
             Title = title, Owner = this, Content = panel,
             Width = 420, SizeToContent = SizeToContent.Height,
@@ -758,6 +790,7 @@ public partial class MainWindow : Window
         // Never release a secret captured under a different cashier context.
         var vmAtPrompt = DataContext as CatalogueViewModel;
         var contextAtPrompt = vmAtPrompt?.PaymentContext;
+        var identityAtPrompt = ReadSessionIdentity();
         var sessionAtPrompt = vmAtPrompt?.FinancialSessionActive;
         var pendingAtPrompt = vmAtPrompt?.PendingOperationId;
         var uncertainAtPrompt = vmAtPrompt?.CheckoutUncertain;
@@ -778,8 +811,9 @@ public partial class MainWindow : Window
                     vmAtPrompt.CheckoutBusy != busyAtPrompt)
                     return "";
             }
-            else if (!IsPinContextStillValid(vmAtPrompt, contextAtPrompt, pendingAtPrompt,
-                uncertainAtPrompt == true, busyAtPrompt == true))
+            else if (identityAtPrompt?.IsWellFormed != true || !Equals(identityAtPrompt, ReadSessionIdentity()) ||
+                !IsPinContextStillValid(vmAtPrompt, contextAtPrompt, pendingAtPrompt,
+                    uncertainAtPrompt == true, busyAtPrompt == true))
                 return "";
             return pin.Password;
         }

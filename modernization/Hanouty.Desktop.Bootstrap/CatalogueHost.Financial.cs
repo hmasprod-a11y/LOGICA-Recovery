@@ -285,7 +285,11 @@ public sealed partial record CatalogueHost
             return result.TrySetFinancialContext(new AuthorizedCheckoutPaymentContext(
                 cashier, "MAD", false, new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, tender) }, total.Value));
         }, ReadTrustedTotal, result.TryEndFinancialSession,
-            () => System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines));
+            () => System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines), () =>
+            {
+                if (!vm.FinancialSessionActive || activeCashierId is null) return null;
+                return new CashierPaymentContext(activeCashierId, twoDigitWorkstation, "MAD", "Cash", 0m);
+            });
         window.ConfigureCardPayment(() =>
         {
             if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } actor ||
