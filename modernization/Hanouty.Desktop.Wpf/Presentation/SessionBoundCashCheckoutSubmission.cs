@@ -24,6 +24,10 @@ public sealed class SessionBoundCashCheckoutSubmission :
             throw new ArgumentNullException(nameof(currentAuthorizedCashContext));
     }
 
+    private static bool IsSaleTender(string tender) =>
+        string.Equals(tender, "Cash", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(tender, "Card", StringComparison.OrdinalIgnoreCase);
+
     public CheckoutSubmissionResult Submit(string stableOperationId) =>
         throw new InvalidOperationException("Authorized cashier/payment context is required.");
 
@@ -31,7 +35,7 @@ public sealed class SessionBoundCashCheckoutSubmission :
     {
         if (string.IsNullOrWhiteSpace(stableOperationId) ||
             context?.IsWellFormed != true ||
-            !string.Equals(context.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase))
+            !IsSaleTender(context.TenderCode))
             return CheckoutSubmissionResult.Invalidated;
 
         // Re-read the host's authenticated context on every attempt; never trust
@@ -46,7 +50,8 @@ public sealed class SessionBoundCashCheckoutSubmission :
             return CheckoutSubmissionResult.Invalidated;
         }
         if (trusted?.IsWellFormed != true ||
-            !string.Equals(trusted.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase) ||
+            !IsSaleTender(trusted.TenderCode) ||
+            !string.Equals(context.TenderCode, trusted.TenderCode, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(context.CashierId, trusted.CashierId, StringComparison.Ordinal) ||
             !string.Equals(context.RegisterId, trusted.RegisterId, StringComparison.Ordinal) ||
             !string.Equals(context.CurrencyCode, trusted.CurrencyCode, StringComparison.Ordinal) ||

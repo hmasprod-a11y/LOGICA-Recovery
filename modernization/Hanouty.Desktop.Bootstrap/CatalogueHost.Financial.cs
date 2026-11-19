@@ -42,11 +42,13 @@ public sealed partial record CatalogueHost
         if (string.IsNullOrWhiteSpace(frozen.CashierId) ||
             frozen.Currency != "MAD" || frozen.IsReturn ||
             frozen.Payments.Count != 1 ||
-            frozen.Payments[0] is not { Kind: CheckoutPaymentKind.Cash, Amount: > 0m } ||
+            frozen.Payments[0] is not { Amount: > 0m } ||
+            frozen.Payments[0].Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card) ||
+            (frozen.Payments[0].Kind == CheckoutPaymentKind.Card && frozen.ExpectedTotal != frozen.Payments[0].Amount) ||
             frozen.ExpectedTotal <= 0m ||
             frozen.ExpectedTotal > frozen.Payments[0].Amount ||
             decimal.Round(frozen.Payments[0].Amount, 2) != frozen.Payments[0].Amount)
-            throw new ArgumentException("Explicit MAD cash context required.", nameof(value));
+            throw new ArgumentException("Explicit MAD cash or exact-card context required.", nameof(value));
         return frozen;
     }
 
@@ -130,7 +132,7 @@ public sealed partial record CatalogueHost
                 ? captured : throw new InvalidOperationException("Fresh payment context required."),
             returnHost);
         CashierPaymentContext? context = captured is null ? null : new CashierPaymentContext(captured.CashierId,
-            twoDigitWorkstation, captured.Currency, "Cash", captured.Payments[0].Amount);
+            twoDigitWorkstation, captured.Currency, captured.Payments[0].Kind.ToString(), captured.Payments[0].Amount);
         // Reuse WPF's single-session adapter rather than maintain a second
         // contextual implementation in the Host. SQL still authenticates on commit.
         var services = AuthorizedWpfServiceRegistration.CreateSessionBound(
@@ -165,7 +167,7 @@ public sealed partial record CatalogueHost
             activeCashierId = frozen.CashierId;
             contextConsumed = false;
             context = new CashierPaymentContext(frozen.CashierId,
-                twoDigitWorkstation, frozen.Currency, "Cash", frozen.Payments[0].Amount);
+                twoDigitWorkstation, frozen.Currency, frozen.Payments[0].Kind.ToString(), frozen.Payments[0].Amount);
             vm.FinancialSessionActive = true;
             vm.PaymentContext = context;
             return true;
@@ -271,6 +273,30 @@ public sealed partial record CatalogueHost
                 cashier, "MAD", false, new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, tender) }, total.Value));
         }, ReadTrustedTotal, result.TryEndFinancialSession,
             () => System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines));
+        window.ConfigureCardPayment(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } actor ||
+                binding.Session.PendingCount == 0) return false;
+            if (!MariaDbCashCheckoutServices.IsCardPaymentAvailable(connections))
+            {
+                window.SetCardPaymentFeedback("Le mode CARTE n’est pas disponible dans la configuration des paiements.");
+                return false;
+            }
+            var total = ReadTrustedTotal();
+            if (total is null or <= 0m) return false;
+            var basket = binding.Session.PendingLines.ToArray();
+            reviewing = true;
+            bool confirmed;
+            try { confirmed = new CardPaymentDialog(total.Value) { Owner = window }.ShowDialog() == true; }
+            finally { reviewing = false; }
+            if (!confirmed || !CanChangeContext() || activeCashierId != actor ||
+                !vm.FinancialSessionActive || !binding.Session.PendingLines.SequenceEqual(basket) ||
+                ReadTrustedTotal() != total) return false;
+            if (!result.TrySetFinancialContext(new AuthorizedCheckoutPaymentContext(actor, "MAD", false,
+                new[] { new CheckoutPayment(CheckoutPaymentKind.Card, total.Value) }, total.Value))) return false;
+            vm.CommitCheckout();
+            return !vm.CheckoutUncertain && binding.Session.PendingCount == 0;
+        });
         var cashClosing = new CashDrawerClosing(settings.ConnectionString);
         window.ConfigureCashDrawerClosing((counted, cashierOnly) =>
         {

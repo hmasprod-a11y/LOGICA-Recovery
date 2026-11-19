@@ -43,7 +43,7 @@ internal static class LogicaCashReceiptPrinter
         static string Amount(decimal amount) => amount.ToString("0.00", CultureInfo.CurrentCulture);
         var lines = ticket.FormatFrenchThreeColumnLines(
             quantity => quantity.ToString("0.###", CultureInfo.CurrentCulture), Amount).ToArray();
-        var payment = Flag("AFFICHER_MODE_P") ? ticket.FormatFrenchThreeColumnCashPayment(Amount) : Array.Empty<string>();
+        var payment = Flag("AFFICHER_MODE_P") ? ticket.FormatFrenchThreeColumnPayment(Amount) : Array.Empty<string>();
         var identity = ticket.FormatFrenchThreeColumnIdentity(Flag("AFFICHER_N_TICKET"));
         var tail = LogicaReceiptSummary.Format(ticket) + string.Join("\r\n", payment.Concat(identity)) + "\r\n" + footer + "\r\n" +
             DateTime.Now.ToString("            dd/MM/yyy HH:mm:ss", CultureInfo.CurrentCulture) +

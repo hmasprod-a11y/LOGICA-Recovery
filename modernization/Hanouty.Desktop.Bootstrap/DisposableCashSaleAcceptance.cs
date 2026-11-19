@@ -902,6 +902,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyCustomerSettlementRetry();
         VerifyCustomerSettlementPosting(settings, pin);
         VerifySupplierSettlementPosting(settings, pin);
+        VerifyCardPayment(settings, pin);
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -2901,6 +2902,164 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             JsonSerializer.Serialize(new { ProductionHostAndPin = true, TouchKeypad = true, Initial = 80m,
                 PartialBalance = 50m, FinalBalance = 0m, CashDecrease = 80m, ExactOnce = true,
                 Rollback = true, WrongPinDenied = true, ClosedRowsPreserved = true }));
+    }
+
+
+    private static void VerifyCardPayment(CatalogueSettings settings, string pin)
+    {
+        var cardTotal = Number(settings, "SELECT PRIX_V_1 FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+        Sql(settings, "DELETE FROM TABLE_PARAMETRES WHERE OBJET='FENETRE_MODE_P'; INSERT INTO TABLE_PARAMETRES VALUES ('FENETRE_MODE_P','False');");
+        var port = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(
+            () => new MySqlConnection(settings.ConnectionString), "01", () => pin);
+        var request = new AuthorizedCheckoutRequest("CARD-CONFIG-DENIED", "O'Neil", "MAD", false,
+            new[] { new CheckoutBatchLine("W2-Article", 1) },
+            new[] { new CheckoutPayment(CheckoutPaymentKind.Card, cardTotal) }, cardTotal);
+        void Rejected(AuthorizedCheckoutRequest rejectedRequest, string expectedReason)
+        {
+            var before = Snapshot(settings);
+            var rejected = false;
+            try { port.Commit(rejectedRequest); }
+            catch (Exception ex) when (ex.Message.Contains(expectedReason, StringComparison.Ordinal)) { rejected = true; }
+            Require(rejected && Snapshot(settings) == before, "Rejected card posting changed financial or stock state.");
+        }
+        Rejected(request, "Les modes de paiement sont désactivés.");
+        Sql(settings, "UPDATE TABLE_PARAMETRES SET VALEUR='True' WHERE OBJET='FENETRE_MODE_P'; DELETE FROM TABLE_MODE_P WHERE MODE_P='CARTE';");
+        Rejected(request with { OperationId = "CARD-MODE-MISSING" }, "Le mode CARTE est absent");
+        Sql(settings, "INSERT INTO TABLE_MODE_P VALUES ('CARTE')");
+        Rejected(request with { OperationId = "CARD-OVERPAY", Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Card, cardTotal + 0.01m) } }, "Card amount must equal");
+        Rejected(request with { OperationId = "CARD-UNDERPAY", Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Card, cardTotal - 0.01m) } }, "Card amount must equal");
+        Rejected(request with { OperationId = "CARD-REFUND-DENIED", IsReturn = true, OriginalTicketId = "original-card" }, "cash refunds only");
+        Sql(settings, """
+            CREATE TRIGGER fail_card_payment BEFORE INSERT ON TABLE_VENTES_REGLEMENTS
+            FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Synthetic card payment failure';
+            """);
+        try { Rejected(request with { OperationId = "CARD-ROLLBACK" }, "Synthetic card payment failure"); }
+        finally { Sql(settings, "DROP TRIGGER fail_card_payment"); }
+
+        static IEnumerable<DependencyObject> Children(DependencyObject parent)
+        {
+            foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+            {
+                yield return child;
+                foreach (var nested in Children(child)) yield return nested;
+            }
+        }
+        (bool Accepted, string? Operation) FromButton(CatalogueHost host, bool confirm, string enteredPin)
+        {
+            Exception? failure = null;
+            string? operation = null;
+            var reviewed = false;
+            System.Windows.Controls.PasswordBox? enteredPinControl = null;
+            host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+            {
+                var dialog = Application.Current.Windows.OfType<CardPaymentDialog>().SingleOrDefault();
+                try
+                {
+                    Require(dialog is not null && Children(dialog).OfType<System.Windows.Controls.TextBlock>()
+                        .Any(block => block.Text == cardTotal.ToString("N2", CultureInfo.CurrentCulture) + " DH"),
+                        "Card review did not display the authoritative total.");
+                    Require(!host.Window.ShowCashierEntry() && !host.Window.EndFinancialSession(),
+                        "Card review allowed cashier entry or logout.");
+                    reviewed = true;
+                    if (!confirm) { dialog!.Close(); return; }
+                    host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+                    {
+                        var pinDialog = Application.Current.Windows.Cast<Window>()
+                            .SingleOrDefault(w => w.Owner == host.Window &&
+                                Children(w).OfType<System.Windows.Controls.PasswordBox>().Any());
+                        try
+                        {
+                            Require(pinDialog is not null, "Card posting did not request a fresh cashier PIN.");
+                            operation = host.ViewModel.PendingOperationId;
+                            Require(!string.IsNullOrWhiteSpace(operation), "Card posting did not retain a stable operation ID.");
+                            var password = Children(pinDialog!).OfType<System.Windows.Controls.PasswordBox>().Single();
+                            enteredPinControl = password;
+                            password.Password = enteredPin;
+                            Children(pinDialog!).OfType<System.Windows.Controls.Button>().Single(button => button.IsDefault)
+                                .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                        }
+                        catch (Exception ex) { failure = ex; pinDialog?.Close(); }
+                    }));
+                    Children(dialog!).OfType<System.Windows.Controls.Button>()
+                        .Single(button => Equals(button.Content, "Confirmer le paiement CARTE"))
+                        .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                }
+                catch (Exception ex) { failure = ex; dialog?.Close(); }
+            }));
+            var accepted = host.Window.PayByCard();
+            if (failure is not null) throw new InvalidOperationException("Production card UI failed: " + failure.Message, failure);
+            if (enteredPinControl is not null) Require(enteredPinControl.Password.Length == 0, "Card posting retained the cashier PIN.");
+            Require(reviewed, "Card payment button did not open its review.");
+            return (accepted, operation);
+        }
+        CatalogueHost Workstation()
+        {
+            var host = CatalogueHost.CreateCashierWorkstation(settings, "01");
+            Require(CashierEntry(host, "O'Neil", "01", "0", 0m, pin), "Card test cashier login failed.");
+            host.ViewModel.ScannerText = "CODE'1";
+            host.ViewModel.ScanCommand.Execute(null);
+            Require(host.Session.PendingCount == 1, "Card test did not stage the real scanner selection.");
+            return host;
+        }
+        var deniedHost = Workstation();
+        try
+        {
+            Sql(settings, "UPDATE TABLE_PARAMETRES SET VALEUR='False' WHERE OBJET='FENETRE_MODE_P'");
+            var before = Snapshot(settings);
+            Require(!deniedHost.Window.PayByCard() && Snapshot(settings) == before &&
+                deniedHost.ViewModel.PendingOperationId is null,
+                "Disabled payment modes minted a card operation.");
+            Sql(settings, "UPDATE TABLE_PARAMETRES SET VALEUR='True' WHERE OBJET='FENETRE_MODE_P'");
+            Require(!FromButton(deniedHost, false, pin).Accepted && Snapshot(settings) == before &&
+                deniedHost.ViewModel.PendingOperationId is null, "Cancelled card review changed SQL or minted an operation.");
+            Require(!FromButton(deniedHost, true, "wrong PIN").Accepted &&
+                deniedHost.ViewModel.CheckoutUncertain && Snapshot(settings) == before,
+                "Wrong card PIN changed financial state or unlocked an uncertain operation.");
+        }
+        finally { deniedHost.Window.Close(); }
+        var stockBefore = Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'");
+        var successfulHost = Workstation();
+        string committedOperation;
+        try
+        {
+            var posted = FromButton(successfulHost, true, pin);
+            Require(posted.Accepted && posted.Operation is not null &&
+                successfulHost.ViewModel.PendingOperationId is null && successfulHost.Session.PendingCount == 0,
+                "Card sale did not commit: " + successfulHost.ViewModel.CommitFeedback + "; pending=" + successfulHost.Session.PendingCount);
+            committedOperation = posted.Operation!;
+            Require(!successfulHost.Window.PayByCard(), "Consumed card payment context authorized a second operation.");
+        }
+        finally { successfulHost.Window.Close(); }
+        Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id AND OPERATION='VENTE'", committedOperation) == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MODE_P='CARTE' ", committedOperation) == 1 &&
+            Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MODE_P='ESPECES'", committedOperation) == 0 &&
+            Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article'") == stockBefore - 1m,
+            "Card receipt, payment and stock do not reconcile.");
+        Require(Number(settings, "SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id", committedOperation) == cardTotal &&
+            Number(settings, "SELECT MONTANT FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id", committedOperation) == cardTotal,
+            "Persisted card amounts differ from the authoritative total.");
+        var snapshot = Snapshot(settings);
+        port.Commit(request with { OperationId = committedOperation });
+        Require(Snapshot(settings) == snapshot, "Card retry duplicated the sale.");
+        using (var db = Open(settings))
+        {
+            var ticket = LogicaPostedTicket.Read(db, committedOperation, "O'Neil", "01");
+            var lines = ticket!.FormatFrenchThreeColumnPayment(value => value.ToString("0.00", CultureInfo.CurrentCulture));
+            Require(lines.Count == 2 && lines[0].Contains("CARTE") && lines[1].Contains("RENDU"),
+                "Persisted card payment could not render the original FR_3C payment summary.");
+        }
+        var closing = new CashDrawerClosing(settings.ConnectionString);
+        var summary = closing.Read("O'Neil", pin);
+        Require(summary.CashSales == 0m && summary.NetSales == cardTotal && summary.Expected == summary.Opening,
+            "Card sale inflated expected physical cash.");
+        closing.Close("O'Neil", pin, summary);
+        Require(Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND CLOTURE_GLOBALE IS NOT NULL", committedOperation) == 1,
+            "Card payment did not participate in global cash closing.");
+        File.WriteAllText(Path.Combine(EvidenceDirectory, "w2-card-sale.json"),
+            JsonSerializer.Serialize(new { ProductionButton = true, FreshPin = true, Amount = cardTotal,
+                CardRows = 1, CashRows = 0, PhysicalCashIncrease = 0m, StockChange = -1m,
+                ConfigurationDenied = true, ExactAmountOnly = true, Rollback = true, Replay = true,
+                ActualBankTerminalTested = false }));
     }
 
     public static int Run(string evidenceDirectory)

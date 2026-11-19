@@ -44,8 +44,11 @@ namespace LOGICA.Infrastructure.Checkout
                 transaction == null || !ReferenceEquals(transaction.Connection, connection))
                 throw new InvalidOperationException("Trusted preparation requires the active checkout transaction.");
             if (request.Currency != "MAD" || request.Payments.Count != 1 ||
-                request.Payments[0].Kind != CheckoutPaymentKind.Cash || request.OperationId.Length > 64)
-                throw new NotSupportedException("Only single-tender cash MAD sales are accepted by this preparation.");
+                request.Payments[0].Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card) || request.OperationId.Length > 64)
+                throw new NotSupportedException("Only single cash or exact-card MAD sales are accepted.");
+            var card = request.Payments[0].Kind == CheckoutPaymentKind.Card;
+            if (card && request.IsReturn)
+                throw new NotSupportedException("Card refunds require their own original-payment policy.");
 
             // Refuse nontransactional legacy tables instead of silently claiming
             // that stock, receipt and operation rollback is atomic.
@@ -76,6 +79,7 @@ namespace LOGICA.Infrastructure.Checkout
             }
 
             string cashier = AuthenticateCashier(request.CashierId, connection, transaction, readPin);
+            if (card) RequireCardMode(connection, transaction);
 
             // Lock the same original sequence and basket used by the writers.
             // Reject an unsupported sequence layout rather than advance other counters.
@@ -176,6 +180,8 @@ namespace LOGICA.Infrastructure.Checkout
                     ArticleCode = row["Code"], ArticleName = row["Article"], BasketQuantity = (decimal)quantity });
             }
             decimal tendered = request.Payments[0].Amount;
+            if (card && tendered != total)
+                throw new InvalidOperationException("Card amount must equal the authoritative total.");
             if (total <= 0m || request.ExpectedTotal != total || tendered < total ||
                 decimal.Round(tendered, 2, MidpointRounding.AwayFromZero) != tendered)
                 throw new InvalidOperationException("Cash tender must cover the authoritative total in whole cents.");
@@ -199,8 +205,11 @@ namespace LOGICA.Infrastructure.Checkout
                     Workstation = workstation, TotalText = amount, Operation = "VENTE" },
                 ReadJournal = () => new TicketJournalRecord { TicketId = idTicket, TicketNumber = ticket,
                     SaleDate = date, Cashier = cashier, Seller = "", ClientId = "0", ClientCode = "0", ClientName = "",
-                    Workstation = workstation, Operation = "VENTE", PriceType = "PRIX 1", PaymentModes = "ESPECES" },
-                ReadPayments = () => change == 0m
+                    Workstation = workstation, Operation = "VENTE", PriceType = "PRIX 1", PaymentModes = card ? "CARTE" : "ESPECES" },
+                ReadPayments = () => card
+                    ? new[] { new TicketPaymentWrite { Kind = TicketPaymentKind.Tendered,
+                        Context = paymentContext, Amount = tendered, Mode = "CARTE" } }
+                    : change == 0m
                     ? new[] { new TicketPaymentWrite {
                         Kind = TicketPaymentKind.Cash, Context = paymentContext, AmountText = amount } }
                     : new[] {
@@ -394,6 +403,29 @@ namespace LOGICA.Infrastructure.Checkout
 
         // Shared by posting preparation and explicit cashier reauthorization.
         // A caller-owned transaction and real TABLE_PASS remain authoritative.
+        internal static void RequireCardMode(MySqlConnection connection, MySqlTransaction transaction)
+        {
+            foreach (var table in new[] { "TABLE_PARAMETRES", "TABLE_MODE_P" })
+            {
+                var engines = Read(connection, transaction,
+                    "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@table",
+                    ("@table", table));
+                if (engines.Rows.Count != 1 || Convert.ToString(engines.Rows[0][0]) != "InnoDB")
+                    throw new InvalidOperationException("Card mode configuration must be transactional.");
+            }
+            // Form_3_VENTE.Check_ACCES_MODEP comes from FENETRE_MODE_P.
+            // When disabled LOGICA exposes ESPECES only.
+            var configuration = Read(connection, transaction,
+                "SELECT VALEUR FROM TABLE_PARAMETRES WHERE BINARY OBJET=BINARY 'FENETRE_MODE_P' FOR UPDATE");
+            if (configuration.Rows.Count != 1 ||
+                !bool.TryParse(Convert.ToString(configuration.Rows[0][0]), out var enabled) || !enabled)
+                throw new UnauthorizedAccessException("Les modes de paiement sont désactivés.");
+            var modes = Read(connection, transaction,
+                "SELECT MODE_P FROM TABLE_MODE_P WHERE BINARY MODE_P=BINARY 'CARTE' FOR UPDATE");
+            if (modes.Rows.Count != 1)
+                throw new InvalidOperationException("Le mode CARTE est absent ou ambigu.");
+        }
+
         internal static string AuthenticateCashier(string cashierId,
             MySqlConnection connection, MySqlTransaction transaction, Func<string> readPin)
         {
