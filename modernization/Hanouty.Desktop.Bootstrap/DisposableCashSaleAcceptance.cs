@@ -923,6 +923,79 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         }));
     }
 
+
+    private static IEnumerable<T> CatalogueControls<T>(DependencyObject parent) where T : DependencyObject
+    {
+        foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+        {
+            if (child is T control) yield return control;
+            foreach (var nested in CatalogueControls<T>(child)) yield return nested;
+        }
+    }
+
+    private static void TouchCataloguePrice(Window owner, System.Windows.Controls.TextBox field, decimal amount, bool confirm = true)
+    {
+        Require(field.IsReadOnly && field.IsEnabled, "Catalogue amount still requires a physical keyboard.");
+        Exception? failure = null;
+        owner.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+        {
+            var numeric = Application.Current.Windows.OfType<TouchNumericEntryDialog>().SingleOrDefault(window => window.Owner == owner);
+            try
+            {
+                Require(numeric is not null, "Catalogue price did not open its numeric keypad.");
+                var buttons = CatalogueControls<System.Windows.Controls.Button>(numeric!).ToArray();
+                foreach (var digit in amount.ToString("0.##", CultureInfo.CurrentCulture))
+                    buttons.Single(button => Equals(button.Content, digit.ToString()))
+                        .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                buttons.Single(button => Equals(button.Content, confirm ? "Appliquer" : "Annuler"))
+                    .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            }
+            catch (Exception ex) { failure = ex; numeric?.Close(); }
+        }));
+        field.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(
+            System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
+            { RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent });
+        if (failure is not null) throw new InvalidOperationException("Catalogue touch amount failed.", failure);
+    }
+
+    private static void VerifyCatalogueVariantChoice(CatalogueHost host, string variantId)
+    {
+        Exception? failure = null;
+        host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+        {
+            var dialog = Application.Current.Windows.OfType<CataloguePriceDialog>().SingleOrDefault(window => window.Owner == host.Window);
+            try
+            {
+                Require(dialog is not null, "Variant catalogue lookup did not open.");
+                var fields = CatalogueControls<System.Windows.Controls.TextBox>(dialog!).ToArray();
+                System.Windows.Controls.TextBox Field(string name) => fields.Single(field =>
+                    System.Windows.Automation.AutomationProperties.GetName(field) == name);
+                Field("Rechercher un article par nom ou code-barres").Text = "CARD'1";
+                CatalogueControls<System.Windows.Controls.Button>(dialog!).Single(button => Equals(button.Content, "Rechercher les articles"))
+                    .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                var list = CatalogueControls<System.Windows.Controls.ListBox>(dialog!).Single();
+                Require(list.Items.Count == 2 && list.SelectedItem is null &&
+                    Field("Identifiant de l’article").Text == "" && !Field("Nouveau prix de vente").IsEnabled,
+                    "Shared catalogue barcode silently selected a variant.");
+                list.SelectedItem = list.Items.Cast<CataloguePriceEditor.ArticleChoice>().Single(row => row.Id == variantId);
+                Require(Field("Identifiant de l’article").Text == variantId &&
+                    decimal.Parse(Field("Nouveau prix de vente").Text, CultureInfo.CurrentCulture) == 11.25m,
+                    "Explicit catalogue variant selection loaded another identity or price.");
+                Field("Rechercher un article par nom ou code-barres").Text = "No such article";
+                Require(list.Items.Count == 0 && Field("Identifiant de l’article").Text == "" &&
+                    !Field("Nouveau prix de vente").IsEnabled &&
+                    !CatalogueControls<System.Windows.Controls.Button>(dialog!).Single(button => Equals(button.Content, "Enregistrer le prix")).IsEnabled,
+                    "Editing catalogue query retained an editable stale selection.");
+            }
+            catch (Exception ex) { failure = ex; }
+            finally { dialog?.Close(); }
+        }));
+        CatalogueControls<System.Windows.Controls.Button>(host.Window).Single(button =>
+            System.Windows.Automation.AutomationProperties.GetName(button) == "Open catalogue prices")
+            .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        if (failure is not null) throw new InvalidOperationException("Catalogue variant UI acceptance failed.", failure);
+    }
+
     private static void RunCatalogueCardFromWindow(CatalogueSettings settings)
     {
         var host = CatalogueHost.CreateCashierWorkstation(settings, "01");
@@ -971,7 +1044,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                         Require(newFamily.Items.Cast<string>().SequenceEqual(new[] { "Food", "Test famille" }),
                             "Catalogue creation did not load LOGICA families.");
                         newFamily.SelectedItem = "Food";
-                        Field("Prix du nouvel article").Text = "9.75";
+                        TouchCataloguePrice(dialog, Field("Prix du nouvel article"), 9.75m);
                         timer.Start();
                         Click(Button("Créer l’article"));
                         Require(Field("Identifiant de l’article").Text == "ART000001", "Article creation did not display its ID.");
@@ -1112,11 +1185,28 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                                 System.Windows.Automation.AutomationProperties.GetName(field) == name);
                         System.Windows.Controls.Button Button(string text) =>
                             Controls<System.Windows.Controls.Button>(dialog).Single(button => Equals(button.Content, text));
-                        Field("Identifiant de l’article").Text = "W2-Article";
-                        Click(Button("Lire le prix"));
+                        Field("Rechercher un article par nom ou code-barres").Text = "CODE'1";
+                        Controls<System.Windows.Controls.CheckBox>(dialog).Single(box =>
+                            System.Windows.Automation.AutomationProperties.GetName(box) == "Recherche exacte du catalogue").IsChecked = true;
+                        Click(Button("Rechercher les articles"));
+                        var matches = Controls<System.Windows.Controls.ListBox>(dialog).Single();
+                        Require(matches.SelectedItem is null && Field("Identifiant de l’article").IsReadOnly,
+                            "Catalogue lookup auto-selected or exposed editable internal identity.");
+                        matches.SelectedItem = matches.Items.Cast<CataloguePriceEditor.ArticleChoice>().Single(row => row.Id == "W2-Article");
                         Require(decimal.Parse(Field("Nouveau prix de vente").Text, CultureInfo.CurrentCulture) == original.Amount,
                             "Catalogue dialog displayed the wrong starting price.");
-                        Field("Nouveau prix de vente").Text = price.ToString(CultureInfo.InvariantCulture);
+                        TouchCataloguePrice(dialog, Field("Nouveau prix de vente"), price + 1m, confirm: false);
+                        Require(decimal.Parse(Field("Nouveau prix de vente").Text, CultureInfo.CurrentCulture) == original.Amount,
+                            "Cancelling keypad changed the reviewed price.");
+                        TouchCataloguePrice(dialog, Field("Nouveau prix de vente"), price);
+                        dialog.UpdateLayout();
+                        var image = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                            (int)Math.Ceiling(dialog.ActualWidth), (int)Math.Ceiling(dialog.ActualHeight),
+                            96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                        image.Render(dialog);
+                        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
+                        using (var stream = File.Create(Path.Combine(EvidenceDirectory, "catalogue-search-touch-price.png"))) encoder.Save(stream);
                         timer.Start();
                         Click(Button("Enregistrer le prix"));
                         Require(Controls<System.Windows.Controls.TextBlock>(dialog).Any(text => text.Text.Contains("enregistré")),
@@ -1173,6 +1263,24 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             "Test admin", "6789", variantOf: id);
         Require(variantId == "ART000002" && editor.ReadCard(variantId).Barcode == editor.ReadCard(id).Barcode,
             "Variant did not get its own LOGICA identity and shared barcode.");
+        Require(editor.Search("CARD'1", exact: true).Articles.Select(row => row.Id).OrderBy(value => value)
+                .SequenceEqual(new[] { id, variantId }.OrderBy(value => value)) &&
+            editor.Search("corrigé", exact: false).Articles.Any(row => row.Id == id) &&
+            editor.Search("' OR 1=1 --", exact: false).Articles.Count == 0,
+            "Catalogue name/quoted-barcode search confused variants or interpreted SQL text.");
+        try
+        {
+            Sql(settings, "UPDATE TABLE_ARTICLES SET Article='100%_ literal' WHERE ID_ARTICLE='ART000002'");
+            Require(editor.Search("%_", exact: false).Articles.Single().Id == variantId,
+                "Catalogue partial search interpreted literal wildcard characters.");
+            Sql(settings, "UPDATE TABLE_ARTICLES SET ID_ARTICLE='art000001' WHERE ID_ARTICLE='ART000002'");
+            Require(editor.Search("CARD'1", exact: true).Articles.Count == 0,
+                "Ambiguous case-colliding catalogue identities were offered for editing.");
+        }
+        finally
+        {
+            Sql(settings, "UPDATE TABLE_ARTICLES SET ID_ARTICLE='ART000002',Article='Article corrigé — bleu' WHERE BINARY ID_ARTICLE=BINARY 'ART000002' OR BINARY ID_ARTICLE=BINARY 'art000001'");
+        }
         var variantHost = CatalogueHost.CreateCashierWorkstation(settings, "01");
         try
         {

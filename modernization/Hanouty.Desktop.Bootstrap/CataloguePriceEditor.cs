@@ -7,6 +7,44 @@ internal sealed class CataloguePriceEditor(string connectionString)
 {
     internal sealed record Price(string Id, string Name, decimal Amount);
 
+
+    internal sealed record ArticleChoice(string Id, string Name, string Barcode, decimal Amount)
+    {
+        public string Label => $"{Name} · {Barcode} · {Amount:N2} MAD";
+    }
+    internal sealed record SearchResult(IReadOnlyList<ArticleChoice> Articles, bool HasMore);
+
+    // Form_2_ARTICLES.Picture_FIND_Click: exact or partial name/code lookup.
+    // INSTR keeps pasted % and _ literal; values never become SQL syntax.
+    internal SearchResult Search(string query, bool exact)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return new(Array.Empty<ArticleChoice>(), false);
+        if (query.Length > 128 || query.Any(character => char.IsControl(character) || char.IsSurrogate(character)))
+            throw new ArgumentException("Recherche limitée à 128 caractères sans caractères de contrôle.");
+        using var connection = Open();
+        using var command = new MySqlCommand(
+            "SELECT a.ID_ARTICLE,a.Article,a.Code,a.PRIX_V_1 FROM TABLE_ARTICLES a " +
+            "WHERE ((@exact=1 AND (BINARY a.Code=BINARY @query OR BINARY a.Article=BINARY @query)) OR " +
+            "(@exact=0 AND (INSTR(a.Code,@query)>0 OR INSTR(a.Article,@query)>0))) " +
+            "AND NOT EXISTS (SELECT 1 FROM TABLE_ARTICLES d WHERE " +
+            "UPPER(d.ID_ARTICLE)=UPPER(a.ID_ARTICLE) AND d.ID<>a.ID) " +
+            "ORDER BY CASE WHEN BINARY a.Code=BINARY @query THEN 0 ELSE 1 END,a.Article,a.ID_ARTICLE LIMIT 51", connection);
+        command.Parameters.AddWithValue("@query", query);
+        command.Parameters.AddWithValue("@exact", exact ? 1 : 0);
+        using var rows = command.ExecuteReader();
+        var found = new List<ArticleChoice>();
+        while (rows.Read())
+        {
+            if (rows.IsDBNull(0) || rows.IsDBNull(1) || rows.IsDBNull(3))
+                throw new InvalidOperationException("Fiche ou prix incomplet dans les résultats.");
+            var amount = rows.GetDecimal(3);
+            if (string.IsNullOrWhiteSpace(rows.GetString(0)) || amount < 0 || decimal.Round(amount, 2) != amount)
+                throw new InvalidOperationException("Identité ou prix invalide dans les résultats.");
+            found.Add(new(rows.GetString(0), rows.GetString(1), rows.IsDBNull(2) ? "" : rows.GetString(2), amount));
+        }
+        return new(found.Take(50).ToArray(), found.Count > 50);
+    }
+
     internal IReadOnlyList<string> ReadFamilies()
     {
         using var connection = Open();
