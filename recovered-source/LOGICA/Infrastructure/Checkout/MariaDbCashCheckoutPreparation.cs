@@ -6,6 +6,7 @@ using System.Linq;
 using Hanouty.ArchitectureBridge;
 using LOGICA.ApplicationLayer.Checkout;
 using LOGICA.Domain;
+using LOGICA.Infrastructure.Compatibility;
 using MySql.Data.MySqlClient;
 
 namespace LOGICA.Infrastructure.Checkout
@@ -14,8 +15,8 @@ namespace LOGICA.Infrastructure.Checkout
     // validates an existing workstation basket against locked authoritative rows,
     // and reuses the established posting writers. No schema mutation or default
     // credential, no UI price, no privilege inferred from a supplied UserId.
-    // Returns/discounts/tier prices remain on the characterized legacy
-    // path until their complete monetary policy is accepted for this new port.
+    // Catalogue promotion and quantity tiers reuse the characterized domain rules.
+    // Arbitrary UI prices or manual-discount grants are never inferred.
     internal sealed class MariaDbCashCheckoutPreparation : ITrustedCheckoutPostingPreparation
     {
         private readonly string workstation;
@@ -115,16 +116,18 @@ namespace LOGICA.Infrastructure.Checkout
                 if (authoritative.Rows.Count != 1)
                     throw new InvalidOperationException("Requested article is unavailable.");
                 var article = authoritative.Rows[0];
-                decimal unit = Number(article, "PRIX_V_1");
-                decimal net = StandardCashLineTotal(article, line.Quantity);
-                if (waiting is not null && (waiting[line.ArticleId].Price != unit || waiting[line.ArticleId].Net != net))
+                var pricing = ReadSaleLinePrice(article, line.Quantity);
+                decimal unit = pricing.UnitPrice;
+                decimal net = pricing.Amount;
+                if (waiting is not null && (waiting[line.ArticleId].Price != unit || waiting[line.ArticleId].Net != net ||
+                    waiting[line.ArticleId].Discount != pricing.DiscountPercent))
                     throw new InvalidOperationException("Le prix du panier en attente a changé.");
                 using (var write = connection.CreateCommand())
                 {
                     write.Transaction = transaction;
                     write.CommandText = "INSERT INTO TABLE_" + workstation +
                         " (ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté,Remise,TOTAL_NET,TAUX_TVA,GROUPE)" +
-                        " VALUES (@id,@code,@article,@family,@cost,@mean,@price,@quantity,0,@net,@tax,@group)";
+                        " VALUES (@id,@code,@article,@family,@cost,@mean,@price,@quantity,@discount,@net,@tax,@group)";
                     write.Parameters.AddWithValue("@id", line.ArticleId);
                     write.Parameters.AddWithValue("@code", article["Code"]);
                     write.Parameters.AddWithValue("@article", article["Article"]);
@@ -133,6 +136,7 @@ namespace LOGICA.Infrastructure.Checkout
                     write.Parameters.AddWithValue("@mean", article["PRIX_MP"]);
                     write.Parameters.AddWithValue("@price", unit);
                     write.Parameters.AddWithValue("@quantity", line.Quantity);
+                    write.Parameters.AddWithValue("@discount", pricing.DiscountPercent);
                     write.Parameters.AddWithValue("@net", net);
                     write.Parameters.AddWithValue("@tax", article["TAUX_TVA"]);
                     write.Parameters.AddWithValue("@group", article["GROUPE"]);
@@ -160,16 +164,16 @@ namespace LOGICA.Infrastructure.Checkout
                 if (articles.Rows.Count != 1)
                     throw new InvalidOperationException("Article identity is no longer unique.");
                 var article = articles.Rows[0];
-                if (OptionalNumber(article, "PROMOTION") != 0m || OptionalNumber(article, "PRIX_QTE") != 0m ||
-                    Number(row, "Remise") != 0m)
-                    throw new NotSupportedException("Promotion, tier-price and manual-discount policy is not yet accepted for this cash slice.");
-                decimal price = Number(article, "PRIX_V_1");
+                var pricing = ReadSaleLinePrice(article, quantity);
+                if (Number(row, "Remise") != pricing.DiscountPercent)
+                    throw new InvalidOperationException("Authoritative catalogue discount changed.");
+                decimal price = pricing.UnitPrice;
                 if (price < 0m || Number(row, "PRIX_V") != price ||
                     Number(row, "TAUX_TVA") != Number(article, "TAUX_TVA"))
                     throw new InvalidOperationException("Authoritative article price or tax changed.");
                 // The existing domain rule supplies the decimal operation order.
                 // The standard legacy basket stores each line to two decimals.
-                decimal net = StandardCashLineTotal(article, quantity);
+                decimal net = pricing.Amount;
                 if (Number(row, "TOTAL_NET") != net)
                     throw new InvalidOperationException("Authoritative line total changed.");
                 foreach (var field in new[] { "Code", "Article", "Famille", "GROUPE" })
@@ -294,7 +298,7 @@ namespace LOGICA.Infrastructure.Checkout
                 originalById.Add(id, row);
                 decimal quantity = Number(row, "quantity");
                 decimal lineAmount = Number(row, "line_amount");
-                if (quantity <= 0m || lineAmount <= 0m || Number(row, "Remise") != 0m)
+                if (quantity <= 0m || lineAmount < 0m || Number(row, "Remise") < 0m || Number(row, "Remise") > 100m)
                     throw new InvalidOperationException("Original line is outside the full exact-cash return policy.");
                 var article = Read(connection, transaction,
                     "SELECT ID_ARTICLE FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE",
@@ -474,7 +478,7 @@ namespace LOGICA.Infrastructure.Checkout
             MySqlConnection connection, MySqlTransaction transaction) =>
             ReadCashSaleLines(lines, connection, transaction).Sum(line => line.Amount);
 
-        internal sealed record CashSaleLine(string ArticleId, string ArticleName, int Quantity, decimal UnitPrice, decimal Amount);
+        internal sealed record CashSaleLine(string ArticleId, string ArticleName, int Quantity, decimal UnitPrice, decimal Amount, decimal DiscountPercent);
 
         internal static IReadOnlyList<CashSaleLine> ReadCashSaleLines(IReadOnlyList<CheckoutBatchLine> lines,
             MySqlConnection connection, MySqlTransaction transaction)
@@ -492,26 +496,37 @@ namespace LOGICA.Infrastructure.Checkout
                 if (article.Rows.Count != 1)
                     throw new InvalidOperationException("Requested article is unavailable.");
                 var row = article.Rows[0];
-                var amount = StandardCashLineTotal(row, line.Quantity);
+                var pricing = ReadSaleLinePrice(row, line.Quantity);
                 result.Add(new CashSaleLine(line.ArticleId, Convert.ToString(row["Article"]) ?? line.ArticleId,
-                    line.Quantity, Number(row, "PRIX_V_1"), amount));
+                    line.Quantity, pricing.UnitPrice, pricing.Amount, pricing.DiscountPercent));
             }
             return result.AsReadOnly();
         }
 
-        private static decimal StandardCashLineTotal(DataRow article, int quantity)
+        private sealed record SaleLinePrice(decimal UnitPrice, decimal DiscountPercent, decimal Amount);
+
+        // Form_3_VENTE quantity editing reuses these exact LOGICA domain rules.
+        // Catalogue promotion is a percentage, not a new promotion/date engine.
+        private static SaleLinePrice ReadSaleLinePrice(DataRow article, int quantity)
         {
-            if (OptionalNumber(article, "PROMOTION") != 0m ||
-                OptionalNumber(article, "PRIX_QTE") != 0m)
-                throw new NotSupportedException("Promotions and tier pricing require V1 parity.");
-            decimal unit = Number(article, "PRIX_V_1");
-            if (unit < 0m || quantity <= 0)
-                throw new InvalidOperationException("Authoritative price or quantity is invalid.");
-            return Math.Round(SalesLinePricing.CalculateNetAmount(unit, quantity, 0m),
+            decimal standard = Number(article, "PRIX_V_1");
+            decimal tier = OptionalNumber(article, "PRIX_QTE");
+            decimal discount = OptionalNumber(article, "PROMOTION");
+            if (standard < 0m || quantity <= 0 || discount < 0m || discount > 100m)
+                throw new InvalidOperationException("Authoritative price, quantity or promotion is invalid.");
+            var legacy = VisualBasicCheckoutSemantics.Instance;
+            decimal minimum = legacy.Val(tier) > 0.0 ? Number(article, "PRIX_QTE_MIN") : 0m;
+            if (minimum < 0m)
+                throw new InvalidOperationException("Authoritative quantity-price threshold is invalid.");
+            decimal unit = SalesLinePricing.SelectQuantityPrice(quantity, minimum, tier, standard, legacy) ?? standard;
+            if (unit < 0m) throw new InvalidOperationException("Authoritative selected price is invalid.");
+            decimal net = Math.Round(SalesLinePricing.CalculateNetAmount(unit, quantity, discount),
                 2, MidpointRounding.ToEven);
+            if (net < 0m) throw new InvalidOperationException("Authoritative net amount is invalid.");
+            return new SaleLinePrice(unit, discount, net);
         }
 
-        private static Dictionary<string, (decimal Price, decimal Net)> ReadWaitingSale(
+        private static Dictionary<string, (decimal Price, decimal Net, decimal Discount)> ReadWaitingSale(
             MySqlConnection connection, MySqlTransaction transaction, AuthorizedCheckoutRequest request, string id)
         {
             var engine = Read(connection, transaction,
@@ -524,15 +539,15 @@ namespace LOGICA.Infrastructure.Checkout
                 ("@id", id));
             if (rows.Rows.Count != request.Lines.Count)
                 throw new InvalidOperationException("La vente en attente est indisponible ou a changé.");
-            var result = new Dictionary<string, (decimal Price, decimal Net)>(StringComparer.Ordinal);
+            var result = new Dictionary<string, (decimal Price, decimal Net, decimal Discount)>(StringComparer.Ordinal);
             foreach (DataRow row in rows.Rows)
             {
                 var article = Convert.ToString(row["ID_ARTICLE"]);
                 var line = request.Lines.SingleOrDefault(x => x.ArticleId == article);
                 var customer = Convert.ToString(row["ID_CLIENT"]);
-                if (line is null || Number(row, "waiting_quantity") != line.Quantity || Number(row, "Remise") != 0m ||
+                if (line is null || Number(row, "waiting_quantity") != line.Quantity || (Number(row, "Remise") < 0m || Number(row, "Remise") > 100m) ||
                     (customer != "0" && !string.IsNullOrEmpty(customer)) ||
-                    !result.TryAdd(line.ArticleId, (Number(row, "PRIX_V"), Number(row, "TOTAL_NET"))))
+                    !result.TryAdd(line.ArticleId, (Number(row, "PRIX_V"), Number(row, "TOTAL_NET"), Number(row, "Remise"))))
                     throw new InvalidOperationException("La vente en attente ne correspond plus au panier.");
             }
 

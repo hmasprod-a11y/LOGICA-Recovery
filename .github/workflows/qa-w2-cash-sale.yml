@@ -202,6 +202,10 @@ jobs:
             if ($report.$field -ne $true) { throw "Missing executed same-SHA acceptance assertion: $field" }
           }
           if ($report.W2Accepted -ne $true) { throw 'W2 remains unaccepted: full real WPF/MariaDB evidence missing' }
+          $pricing = Get-Content evidence/w2/w2-logica-pricing.json -Raw | ConvertFrom-Json
+          foreach ($field in @('CataloguePromotion','QuantityThreshold','CultureFrEn','DomainRounding','InvalidPolicyRejected','WaitingSnapshot','StaleWaitingRejected','CashWpf','CardWpf','MixedSql','OriginalNetRefund','ZeroNetLineRefund','ReceiptData','Duplicate','StockCashReconciled')) {
+            if ($pricing.$field -ne $true) { throw "Missing executed LOGICA pricing proof: $field" }
+          }
           Write-Host "PASS W2 accepted on source SHA $env:GITHUB_SHA: WPF cash sale, full-ticket return, SQL readback, rollback, unknown reconciliation, exact-once"
       - name: Upload full W2 source and SQL evidence
         if: always()

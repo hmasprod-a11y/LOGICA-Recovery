@@ -33,23 +33,35 @@ internal static class LogicaWaitingSale
     {
         using var connection = connections();
         if (connection.State != ConnectionState.Open) connection.Open();
+        using var transaction = connection.BeginTransaction();
+        InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_ATTENTE", "TABLE_ARTICLES");
         using var command = new MySqlCommand(
-            "SELECT ID_ARTICLE, Qté, Remise, ID_CLIENT FROM TABLE_ATTENTE WHERE V=@id ORDER BY ID",
-            connection);
+            "SELECT ID_ARTICLE, Qté, Remise, ID_CLIENT, PRIX_V, TOTAL_NET FROM TABLE_ATTENTE WHERE V=@id ORDER BY ID FOR UPDATE",
+            connection, transaction);
         command.Parameters.AddWithValue("@id", id);
-        using var rows = command.ExecuteReader();
         var lines = new List<CheckoutBatchLine>();
-        while (rows.Read())
+        var saved = new Dictionary<string, (decimal Price, decimal Discount, decimal Net)>(StringComparer.Ordinal);
+        using (var rows = command.ExecuteReader())
         {
-            var quantity = rows.GetDecimal(1);
-            var customer = Convert.ToString(rows.GetValue(3));
-            if (quantity <= 0 || quantity > int.MaxValue || decimal.Truncate(quantity) != quantity ||
-                rows.GetDecimal(2) != 0m || (customer != "0" && !string.IsNullOrEmpty(customer)))
-                throw new InvalidOperationException("Reprenez ce panier dans LOGICA pour conserver ses conditions d’origine.");
-            lines.Add(new CheckoutBatchLine(rows.GetString(0), (int)quantity));
+            while (rows.Read())
+            {
+                var quantity = rows.GetDecimal(1);
+                var discount = rows.GetDecimal(2);
+                var customer = Convert.ToString(rows.GetValue(3));
+                var article = rows.GetString(0);
+                if (quantity <= 0 || quantity > int.MaxValue || decimal.Truncate(quantity) != quantity ||
+                    discount < 0m || discount > 100m || (customer != "0" && !string.IsNullOrEmpty(customer)) ||
+                    !saved.TryAdd(article, (rows.GetDecimal(4), discount, rows.GetDecimal(5))))
+                    throw new InvalidOperationException("Reprenez ce panier dans LOGICA pour conserver ses conditions d’origine.");
+                lines.Add(new CheckoutBatchLine(article, (int)quantity));
+            }
         }
         if (lines.Count == 0 || lines.Select(x => x.ArticleId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != lines.Count)
             throw new InvalidOperationException("Vente en attente indisponible ou contenant des lignes en double.");
+        var current = MariaDbCashCheckoutServices.ReadCashSaleBasketInTransaction(connection, transaction, lines);
+        if (current.Any(line => saved[line.ArticleId] != (line.UnitPrice, line.DiscountPercent, line.Amount)))
+            throw new InvalidOperationException("Les conditions du panier en attente ont changé. Reprenez-le dans LOGICA.");
+        transaction.Commit();
         return lines.ToArray();
     }
 
@@ -57,7 +69,6 @@ internal static class LogicaWaitingSale
         string cashier, string register)
     {
         if (basket.Count == 0) throw new InvalidOperationException("Le panier est vide.");
-        var priced = MariaDbCashCheckoutServices.ReadCashSaleBasket(connections, basket);
         using var connection = connections();
         if (connection.State != ConnectionState.Open) connection.Open();
         using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
@@ -69,6 +80,7 @@ internal static class LogicaWaitingSale
         existing.Parameters.AddWithValue("@id", id);
         if (existing.ExecuteScalar() is not null)
             throw new InvalidOperationException("Numéro d’attente déjà utilisé, réessayez.");
+        var priced = MariaDbCashCheckoutServices.ReadCashSaleBasketInTransaction(connection, transaction, basket);
 
         foreach (var line in priced)
         {
@@ -78,13 +90,14 @@ internal static class LogicaWaitingSale
                    Remise, TOTAL_NET, Caissier, TAUX_TVA, PRINTER, PRINTER_DUPLICATA, GROUPE, V, POSTE,
                    ID_CLIENT, CODE_CLIENT, CLIENT)
                 SELECT @date, @time, ID_ARTICLE, Code, Article, Famille, PRIX_A, PRIX_MP, @price, @quantity,
-                       0, @amount, @cashier, TAUX_TVA, PRINTER, PRINTER_DUPLICATA, GROUPE, @id, @register, '0', '0', ''
-                FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @article AND PRIX_V_1=@price
+                       @discount, @amount, @cashier, TAUX_TVA, PRINTER, PRINTER_DUPLICATA, GROUPE, @id, @register, '0', '0', ''
+                FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @article
                 """, connection, transaction);
             command.Parameters.AddWithValue("@date", now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
             command.Parameters.AddWithValue("@time", now.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
             command.Parameters.AddWithValue("@price", line.UnitPrice);
             command.Parameters.AddWithValue("@quantity", line.Quantity);
+            command.Parameters.AddWithValue("@discount", line.DiscountPercent);
             command.Parameters.AddWithValue("@amount", line.Amount);
             command.Parameters.AddWithValue("@cashier", cashier);
             command.Parameters.AddWithValue("@id", id);

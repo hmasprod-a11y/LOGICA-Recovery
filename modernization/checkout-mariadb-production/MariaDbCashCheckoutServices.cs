@@ -1,4 +1,5 @@
 using System;
+using System.Data;
 using System.Collections.Generic;
 using System.Linq;
 using Hanouty.ArchitectureBridge;
@@ -306,7 +307,7 @@ namespace Hanouty.Checkout.MariaDb
             IReadOnlyList<CheckoutBatchLine> lines) =>
             ReadCashSaleBasket(connections, lines).Sum(line => line.Amount);
 
-        public sealed record CashSaleBasketLine(string ArticleId, string ArticleName, int Quantity, decimal UnitPrice, decimal Amount);
+        public sealed record CashSaleBasketLine(string ArticleId, string ArticleName, int Quantity, decimal UnitPrice, decimal Amount, decimal DiscountPercent = 0m);
 
         public static IReadOnlyList<CashSaleBasketLine> ReadCashSaleBasket(Func<MySqlConnection> connections,
             IReadOnlyList<CheckoutBatchLine> lines)
@@ -338,19 +339,49 @@ namespace Hanouty.Checkout.MariaDb
                 connection.Open();
                 using (var transaction = connection.BeginTransaction())
                 {
-                    using (var command = new MySqlCommand(
-                        "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='TABLE_ARTICLES'",
-                        connection, transaction))
-                    {
-                        if (!string.Equals(Convert.ToString(command.ExecuteScalar()), "InnoDB", StringComparison.Ordinal))
-                            throw new InvalidOperationException("Price preview requires transactional article storage.");
-                    }
-                    var basket = MariaDbCashCheckoutPreparation.ReadCashSaleLines(snapshot, connection, transaction);
+                    var basket = ReadCashSaleBasketInTransaction(connection, transaction, snapshot);
                     transaction.Commit();
-                    return basket.Select(line => new CashSaleBasketLine(line.ArticleId, line.ArticleName,
-                        line.Quantity, line.UnitPrice, line.Amount)).ToArray();
+                    return basket;
                 }
             }
+        }
+
+        // Used by parking: quote and saved rows share the same locked transaction.
+        public static IReadOnlyList<CashSaleBasketLine> ReadCashSaleBasketInTransaction(
+            MySqlConnection connection, MySqlTransaction transaction, IReadOnlyList<CheckoutBatchLine> lines)
+        {
+            if (connection is null || transaction is null || connection.State != ConnectionState.Open ||
+                !ReferenceEquals(transaction.Connection, connection))
+                throw new InvalidOperationException("An active local pricing transaction is required.");
+            var settings = new MySqlConnectionStringBuilder(connection.ConnectionString);
+            if ((settings.Server != "127.0.0.1" && settings.Server != "localhost" && settings.Server != "::1") ||
+                string.IsNullOrWhiteSpace(settings.Database) || string.IsNullOrWhiteSpace(settings.UserID))
+                throw new InvalidOperationException("An explicitly configured local pricing transaction is required.");
+            if (lines == null) throw new ArgumentNullException(nameof(lines));
+            // Reject malformed cashier basket input before touching MariaDB.
+            // The commit gate independently revalidates current stock and prices.
+            var snapshot = Array.AsReadOnly(lines.ToArray());
+            // Empty preview is required to open a cashier session before the
+            // first scan. It is not a posting authorization; commit still rejects an empty sale.
+            if (snapshot.Count == 0)
+                return Array.Empty<CashSaleBasketLine>();
+            if (snapshot.Any(line => line == null || string.IsNullOrWhiteSpace(line.ArticleId) ||
+                line.ArticleId.Length > 64 ||
+                !string.Equals(line.ArticleId, line.ArticleId.Trim(), StringComparison.Ordinal) ||
+                line.ArticleId.Any(char.IsControl) ||
+                line.Quantity <= 0))
+                throw new ArgumentException("Basket requires canonical article identities and positive quantities.", nameof(lines));
+            // A repeated live article identity is not a valid basket. Reject it
+            // before opening MariaDB; the posting gate also validates it.
+            // Legacy article identifiers can be case-insensitive in MariaDB. Never allow
+            // two basket lines that resolve to one persisted stock identity.
+            var articleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (snapshot.Any(line => !articleIds.Add(line.ArticleId)))
+                throw new ArgumentException("Basket contains duplicate article identities.", nameof(lines));
+            RequireInnoDb(connection, transaction, "TABLE_ARTICLES");
+            return MariaDbCashCheckoutPreparation.ReadCashSaleLines(snapshot, connection, transaction)
+                .Select(line => new CashSaleBasketLine(line.ArticleId, line.ArticleName, line.Quantity,
+                    line.UnitPrice, line.Amount, line.DiscountPercent)).ToArray();
         }
 
         private static MySqlConnection LocalConnection(Func<MySqlConnection> connections)

@@ -2,6 +2,7 @@ using System;
 using System.Data;
 using System.Collections.Generic;
 using MySql.Data.MySqlClient;
+using LOGICA.Domain;
 
 namespace LOGICA.Infrastructure.Checkout
 {
@@ -68,7 +69,7 @@ namespace LOGICA.Infrastructure.Checkout
         }
 
         // Lock and validate the complete original ticket line set. Every line must
-        // be an undiscounted exact-cash V1 sale line; no current catalogue value
+        // retain the verified original unit price, discount and net amount; no current catalogue value
         // or caller-supplied amount participates in the proof.
         internal static IReadOnlyList<CashReturnOriginalSaleLine> ReadOriginalFullQuantityLines(
             MySqlConnection connection, MySqlTransaction transaction, string originalTicketId)
@@ -99,10 +100,10 @@ namespace LOGICA.Infrastructure.Checkout
                         string operation = Convert.ToString(reader.GetValue(5));
                         if (string.IsNullOrWhiteSpace(articleId) || !identities.Add(articleId))
                             throw new InvalidOperationException("Original sale contains a missing or duplicate article identity.");
-                        decimal expectedNet = Math.Round(checked(price * quantity), 2,
-                            MidpointRounding.AwayFromZero);
-                        if (quantity <= 0m || price < 0m || discount != 0m ||
-                            lineAmount <= 0m || lineAmount != expectedNet ||
+                        decimal expectedNet = Math.Round(SalesLinePricing.CalculateNetAmount(price, quantity, discount), 2,
+                            MidpointRounding.ToEven);
+                        if (quantity <= 0m || price < 0m || discount < 0m || discount > 100m ||
+                            lineAmount < 0m || lineAmount != expectedNet ||
                             !string.Equals(operation, "VENTE", StringComparison.Ordinal))
                             throw new InvalidOperationException("Original sale contains a line outside the exact-cash full-return policy.");
                         total = checked(total + lineAmount);

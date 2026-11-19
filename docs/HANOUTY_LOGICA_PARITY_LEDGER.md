@@ -103,3 +103,12 @@ La preuve de cette livraison et son SHA sont consignés dans PR #133 et le table
 ## Démarrage de la recette sans téléchargement à l'ouverture
 
 L'archive MariaDB officielle déjà vérifiée par W2 et son fichier de sommes SHA-256 sont livrés avec le paquet d'essai. Le lanceur exige ces deux fichiers locaux et vérifie l'archive avant de lancer un serveur. Il n'effectue plus de requête réseau, même si un ancien cache existe. La CI vérifie un profil réellement neuf, sans archive préchargée dans son cache, avec les commandes HTTP bloquées et le port 3307 occupé ; elle doit aussi refuser une somme altérée avant démarrage. Les diagnostics d'échec sont conservés dans le dossier de preuve. La préparation CI peut télécharger le composant officiel avec tentatives bornées et contrôle de longueur puis SHA-256 ; cela ne devient pas une dépendance réseau du poste d'essai.
+
+
+## Tarifs quantité, promotion catalogue et remboursement du net
+
+Le parcours financier réutilise `SalesLinePricing.SelectQuantityPrice`, `CalculateNetAmount` et `VisualBasicCheckoutSemantics` existants : prix standard sous le seuil, prix quantité à partir du seuil, puis pourcentage PROMOTION et arrondi monétaire de la ligne. Le panier affiche prix retenu, remise et net issus de la lecture SQL autorisée. L'écriture recalcule la même politique sous transaction ; aucun prix ni taux libre n'est déduit du texte WPF.
+
+L'attente conserve le prix, la remise et le net. Sa lecture et son enregistrement utilisent un même verrou transactionnel sur les articles ; une modification des conditions doit refuser la reprise ou le paiement. Le remboursement cash complet utilise le journal original, y compris ses remises et lignes offertes, sans recalculer les prix catalogue actuels. Entête et règlement originaux doivent toujours prouver un montant net positif, et la consommation unique reste obligatoire.
+
+La recette dédiée `w2-logica-pricing.json` couvre seuils 1/2/3/4, cultures fr/en, arrondi, politique invalide, attente, modification concurrente, vente WPF cash et CARTE, mixte SQL et rendu, reçu, remboursement après changement catalogue, ligne à net zéro, doublon et rapprochement stock/caisse. La CI exige cette preuve exécutée. Cela ne donne pas accès à la remise manuelle, aux tarifs client ni à une nouvelle politique de remboursement carte/mixte ; ces variantes restent à raccorder depuis LOGICA.
