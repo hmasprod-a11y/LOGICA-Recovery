@@ -6,7 +6,7 @@ using Hanouty.Desktop.Wpf.Presentation;
 namespace Hanouty.Desktop.Wpf;
 
 public sealed record ManualDiscountChoice(string? ArticleId, bool Percentage, decimal Value);
-public sealed record ManualDiscountPreviewData(decimal Percentage, decimal NetTotal, decimal Savings);
+public sealed record ManualDiscountPreviewData(decimal Percentage, decimal NetTotal, decimal Savings, string Conditions = "");
 public interface IManualDiscountReview : IDisposable
 {
     ManualDiscountPreviewData Preview(ManualDiscountChoice choice);
@@ -99,7 +99,7 @@ public sealed class ManualDiscountDialog : Window
             {
                 if (shownQuote is not null && shownChoice == choice && shownQuote != lastShownQuote)
                 {
-                    status.Text = "Le montant a changé. Vérifiez le nouveau net et confirmez à nouveau.";
+                    status.Text = "Les conditions du panier ont changé. Vérifiez et confirmez à nouveau.";
                     return;
                 }
                 Choice = choice; DialogResult = true;

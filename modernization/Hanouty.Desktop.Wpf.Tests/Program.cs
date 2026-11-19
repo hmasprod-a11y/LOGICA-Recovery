@@ -87,6 +87,43 @@ try
 }
 finally { System.Globalization.CultureInfo.CurrentCulture = originalEntryCulture; }
 
+// A changed line-price snapshot requires another confirmation even when the
+// percentage, ticket net and savings remain numerically identical.
+{
+    var reviewOwner = new System.Windows.Window { Width = 200, Height = 100, Left = -10000, Top = -10000,
+        WindowStartupLocation = System.Windows.WindowStartupLocation.Manual, ShowInTaskbar = false };
+    reviewOwner.Show();
+    var revision = "before";
+    var discount = new Hanouty.Desktop.Wpf.ManualDiscountDialog(
+        new[] { new BasketDisplayLine("article", "Article", 1m, 20m) }, "article",
+        _ => new Hanouty.Desktop.Wpf.ManualDiscountPreviewData(10m, 18m, 2m, revision)) { Owner = reviewOwner };
+    Exception? failure = null;
+    var timeout = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+    timeout.Tick += (_, _) => { failure = new TimeoutException("Discount review did not settle."); timeout.Stop(); discount.Close(); };
+    reviewOwner.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+    {
+        try
+        {
+            var panel = (System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)discount.Content).Content;
+            panel.Children.OfType<System.Windows.Controls.TextBox>().Single().Text = "10";
+            var apply = panel.Children.OfType<System.Windows.Controls.Button>().Single(button => button.IsDefault);
+            revision = "after";
+            apply.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Check(discount.IsVisible && discount.Choice is null,
+                "Equal-total changed article conditions must remain open for review.");
+            apply.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        }
+        catch (Exception ex) { failure = ex; discount.Close(); }
+    }));
+    timeout.Start();
+    try
+    {
+        Check(discount.ShowDialog() == true && failure is null && discount.Choice?.Value == 10m,
+            "Only the second explicit confirmation can accept changed article conditions: " + failure);
+    }
+    finally { timeout.Stop(); reviewOwner.Close(); }
+}
+
 Check(CashDrawerCount.Calculate(new[] { 1, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3 }) == 201.20m,
     "cash drawer recount must preserve LOGICA banknote and fractional coin totals");
 Hanouty.Desktop.Wpf.MainWindow.TestOnlyAllowUnauthorizedPaymentContext = false;

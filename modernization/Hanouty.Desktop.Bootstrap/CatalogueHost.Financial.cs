@@ -228,7 +228,7 @@ public sealed partial record CatalogueHost
                         snapshot, previous, choice.ArticleId, choice.Percentage, choice.Value);
                     reviewedChoice = choice;
                     reviewedPreview = preview;
-                    return new ManualDiscountPreviewData(preview.Percentage, preview.NetTotal, preview.Savings);
+                    return new ManualDiscountPreviewData(preview.Percentage, preview.NetTotal, preview.Savings, preview.Conditions);
                 }, choice =>
                 {
                     RequireSameReview();

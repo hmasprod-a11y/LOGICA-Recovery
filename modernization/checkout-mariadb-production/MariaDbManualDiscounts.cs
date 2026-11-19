@@ -68,7 +68,7 @@ namespace Hanouty.Checkout.MariaDb
 
     public sealed record AuthorizedWaitingBasket(
         IReadOnlyList<CheckoutBatchLine> Lines, ApprovedManualDiscount Approval);
-    public sealed record ManualDiscountPreview(decimal Percentage, decimal NetTotal, decimal Savings);
+    public sealed record ManualDiscountPreview(decimal Percentage, decimal NetTotal, decimal Savings, string Conditions = "");
 
     public static partial class MariaDbCashCheckoutServices
     {
@@ -153,7 +153,7 @@ namespace Hanouty.Checkout.MariaDb
             var calculation = CalculateManualDiscount(connection, transaction, authorization, basket,
                 previous, articleId, percentage, value);
             if (expectedPreview != null && expectedPreview !=
-                new ManualDiscountPreview(calculation.Rate, calculation.Net, calculation.Savings))
+                new ManualDiscountPreview(calculation.Rate, calculation.Net, calculation.Savings, calculation.Conditions))
                 throw new InvalidOperationException("Le prix a changé. Revoyez la remise avant de l’appliquer.");
             authorization.State.ApplyOnce();
             transaction.Commit();
@@ -173,10 +173,10 @@ namespace Hanouty.Checkout.MariaDb
             var calculation = CalculateManualDiscount(connection, transaction, authorization, basket,
                 previous, articleId, percentage, value);
             transaction.Commit();
-            return new ManualDiscountPreview(calculation.Rate, calculation.Net, calculation.Savings);
+            return new ManualDiscountPreview(calculation.Rate, calculation.Net, calculation.Savings, calculation.Conditions);
         }
 
-        private static (ApprovedManualDiscount Approval, decimal Rate, decimal Net, decimal Savings)
+        private static (ApprovedManualDiscount Approval, decimal Rate, decimal Net, decimal Savings, string Conditions)
             CalculateManualDiscount(MySqlConnection connection, MySqlTransaction transaction,
             ManualDiscountAuthorization authorization, IReadOnlyList<CheckoutBatchLine> basket,
             ApprovedManualDiscount previous, string articleId, bool percentage, decimal value)
@@ -229,7 +229,16 @@ namespace Hanouty.Checkout.MariaDb
                 throw new ArgumentException("Le net du ticket doit rester positif.");
             var savings = Math.Round(quoted.Sum(line => checked(line.UnitPrice * line.Quantity)) - net,
                 2, MidpointRounding.ToEven);
-            return (result, rate, net, savings);
+            // Equal overall totals do not imply equal article prices. Bind the review
+            // to the effective prices of every line, including untargeted lines.
+            var conditions = string.Join("|", quoted.OrderBy(line => line.ArticleId, StringComparer.Ordinal).Select(line =>
+                Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(line.ArticleId)) + ":" +
+                line.Quantity.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" +
+                line.UnitPrice.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" +
+                line.DiscountPercent.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" +
+                line.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            return (result, rate, net, savings, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(conditions))));
         }
 
         public static ApprovedManualDiscount RetainManualDiscountForBasket(

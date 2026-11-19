@@ -122,6 +122,12 @@ internal static partial class DisposableCashSaleAcceptance
         Refused(() => MariaDbCashCheckoutServices.ApplyManualDiscount(Connect, stale, basket, null, null, true, 25m, reviewed),
             "A price change after preview was silently applied.");
         Sql(settings, "UPDATE TABLE_ARTICLES SET PRIX_V_1=20 WHERE ID_ARTICLE='MANUAL-B'");
+        Sql(settings, "UPDATE TABLE_ARTICLES SET PRIX_QTE=9 WHERE ID_ARTICLE='MANUAL-A'; UPDATE TABLE_ARTICLES SET PRIX_V_1=17 WHERE ID_ARTICLE='MANUAL-B'");
+        Require(MariaDbCashCheckoutServices.PreviewManualDiscount(Connect, stale, basket, null, null, true, 25m).NetTotal == reviewed.NetTotal,
+            "Equal-total price-race fixture must preserve the reviewed net.");
+        Refused(() => MariaDbCashCheckoutServices.ApplyManualDiscount(Connect, stale, basket, null, null, true, 25m, reviewed),
+            "Offsetting article price changes bypassed confirmation because total was unchanged.");
+        Sql(settings, "UPDATE TABLE_ARTICLES SET PRIX_QTE=8 WHERE ID_ARTICLE='MANUAL-A'; UPDATE TABLE_ARTICLES SET PRIX_V_1=20 WHERE ID_ARTICLE='MANUAL-B'");
         var manual = Apply(Grant(), null, true, 25m);
         var waiting = LogicaWaitingSale.Save(Connect, basket, "O'Neil", "01", manual);
         Access("ACCES MANAGER");
