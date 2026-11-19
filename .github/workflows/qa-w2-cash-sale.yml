@@ -207,6 +207,10 @@ jobs:
             if ($pricing.$field -ne $true) { throw "Missing executed LOGICA pricing proof: $field" }
           }
           Write-Host "PASS W2 accepted on source SHA $env:GITHUB_SHA: WPF cash sale, full-ticket return, SQL readback, rollback, unknown reconciliation, exact-once"
+          $manual = Get-Content evidence/w2/w2-manual-discounts.json -Raw | ConvertFrom-Json
+          foreach ($field in @('ExactOriginalRoles','GlobalAndSelectedPercentAndDh','OriginalZeroReset','BothCultures','NonPositiveTicketRejected','PreviewPriceRaceRejected','FreshWaitingAuthorization','RevocationBeforePosting','AtomicWaitingConsumption','OriginalReceiptNetAndChange','DurableReplay','DifferentOperationDenied','OriginalManualNetRefund','CashierTouchReviewAndPayment','BasketAndFixedPaymentVisible','RevokedManagerRejected','DatabaseScopeBound','SelectedGrossRounding')) {
+            if ($manual.$field -ne $true) { throw "Missing executed manual discount proof: $field" }
+          }
       - name: Upload full W2 source and SQL evidence
         if: always()
         uses: actions/upload-artifact@v4

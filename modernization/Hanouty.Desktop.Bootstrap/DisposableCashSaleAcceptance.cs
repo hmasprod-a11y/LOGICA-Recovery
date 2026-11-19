@@ -12,9 +12,14 @@ using MySql.Data.MySqlClient;
 namespace Hanouty.Desktop.Bootstrap;
 
 // Executable acceptance only: the cashier entry point and shop schemas are untouched.
-internal static class DisposableCashSaleAcceptance
+internal static partial class DisposableCashSaleAcceptance
 {
     private static string EvidenceDirectory = "";
+    private static void TraceStep(string step, [System.Runtime.CompilerServices.CallerLineNumber] int line = 0)
+    {
+        if (EvidenceDirectory.Length != 0)
+            File.AppendAllText(Path.Combine(EvidenceDirectory, "w2-progress.txt"), $"{DateTime.UtcNow:O} {line}: {step}\n");
+    }
     private static MySqlConnection Open(CatalogueSettings settings)
     {
         var db = new MySqlConnection(settings.ConnectionString);
@@ -121,6 +126,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
 
     private static void ReviewThroughDialog(CatalogueHost host, string pin, bool confirm, Action? execute = null)
     {
+        TraceStep("PIN review opening");
         host.Window.Show();
         System.Windows.Controls.PasswordBox? entered = null;
         Exception? uiFailure = null;
@@ -161,6 +167,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         if (uiFailure is not null) throw new InvalidOperationException("PIN dialog acceptance failed.", uiFailure);
         Require(entered is not null && entered.Password.Length == 0,
             "PIN remained in the password control after review.");
+        TraceStep("PIN review finished");
     }
 
 
@@ -168,6 +175,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         string tender, decimal expectedTotal, string? pin = null, bool confirm = true,
         Action? duringEntry = null, bool fromPaymentPanel = false)
     {
+        TraceStep("Cashier/tender entry opening");
         host.Window.Show();
         Exception? failure = null;
         System.Windows.Controls.PasswordBox? pinControl = null;
@@ -908,6 +916,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyDailyCashierCycle(settings, pin);
         VerifyInteractiveReturnCycle(settings, pin);
         VerifyLogicaCataloguePricing(settings, pin);
+        VerifyManualDiscounts(settings, pin);
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -921,7 +930,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             CardPaymentThroughWpfUi = true, MixedPaymentThroughWpfUi = true, SameSessionCashCardCashAndClosing = true,
             PrintedReceiptReturnLookup = true, RefundLostAcknowledgementReview = true, CashChangeNetRefund = true,
             NextCustomerVisibleTotal = true,
-            W2Accepted = true, Remaining = "Partial/card returns, discounts/credit sales, device parity, and commercial rollout acceptance"
+            W2Accepted = true, Remaining = "Partial/card returns, customer tariffs/credit sales, device parity, and commercial rollout acceptance"
         }));
     }
 

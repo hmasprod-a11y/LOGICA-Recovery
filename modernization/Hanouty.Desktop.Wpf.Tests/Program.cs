@@ -266,10 +266,27 @@ Check(cashierScroll is not null && cashierScroll.VerticalScrollBarVisibility ==
     "cashier and return controls remain vertically reachable in compact high-DPI window");
 lockedWindow.Width = lockedWindow.MinWidth;
 lockedWindow.Height = lockedWindow.MinHeight;
+lockedWindow.WindowStartupLocation = System.Windows.WindowStartupLocation.Manual;
+lockedWindow.Left = -10000; lockedWindow.Top = -10000;
+lockedWindow.ShowInTaskbar = false; lockedWindow.ShowActivated = false;
+lockedWindow.Show();
 lockedWindow.UpdateLayout();
-Check(cashierScroll is { ActualHeight: >= 0 } && lockedWindow.FlowDirection ==
-    System.Windows.FlowDirection.LeftToRight,
-    "compact WPF window measures cashier workflow without clipping horizontal controls");
+var basketGeometry = (System.Windows.Controls.DataGrid)lockedWindow.FindName("CashierBasket");
+var paymentGeometry = (System.Windows.FrameworkElement)lockedWindow.FindName("FixedPaymentPanel");
+var commitGeometry = (System.Windows.FrameworkElement)lockedWindow.FindName("CompleteCheckoutButton");
+var totalGeometry = (System.Windows.FrameworkElement)lockedWindow.FindName("TrustedBasketTotal");
+foreach (var size in new[] { (760d, 480d), (1280d, 760d) })
+{
+    lockedWindow.Width = size.Item1; lockedWindow.Height = size.Item2; lockedWindow.UpdateLayout();
+    var basketBottom = basketGeometry.TranslatePoint(new System.Windows.Point(0, basketGeometry.ActualHeight), lockedWindow).Y;
+    var paymentTop = paymentGeometry.TranslatePoint(new System.Windows.Point(0, 0), lockedWindow).Y;
+    var buttonBottom = commitGeometry.TranslatePoint(new System.Windows.Point(0, commitGeometry.ActualHeight), lockedWindow).Y;
+    Check(basketGeometry.ActualHeight >= 72 && basketBottom <= paymentTop &&
+        commitGeometry.ActualHeight >= 49 && buttonBottom < lockedWindow.ActualHeight - 8 &&
+        totalGeometry.IsVisible && totalGeometry.ActualHeight > 20,
+        $"Basket/payment at {size}: basket={basketGeometry.ActualHeight}, bottom={basketBottom}, payment={paymentTop}, button={commitGeometry.ActualHeight}/{buttonBottom}, total={totalGeometry.IsVisible}/{totalGeometry.ActualHeight}.");
+}
+lockedWindow.Hide();
 var lockedVm = (CatalogueViewModel)lockedWindow.DataContext;
 Check(!lockedVm.FinancialSessionActive && !lockedVm.CanSelectProduct && !lockedVm.CanCommit,
     "unauthenticated production window must start locked");
@@ -294,7 +311,7 @@ Check(lockedWindow.RefreshTrustedBasketTotal() && trustedReads == 1 &&
     ((System.Windows.Controls.TextBlock)lockedWindow.FindName("TrustedBasketTotal")).Text.Contains("17.25"),
     "STA window displays Host-authoritative MAD total");
 lockedVm.FinancialSessionActive = false;
-Check(((System.Windows.Controls.TextBlock)lockedWindow.FindName("TrustedBasketTotal")).Text.Contains("unavailable") &&
+Check(((System.Windows.Controls.TextBlock)lockedWindow.FindName("TrustedBasketTotal")).Text.Contains("indisponible") &&
     !lockedWindow.RefreshTrustedBasketTotal() && trustedReads == 1,
     "logout revokes trusted total and blocks another readback");
 lockedWindow.Close();
@@ -369,7 +386,7 @@ Check(identityTotalWindow.RefreshTrustedBasketTotal() && identityNestedBlocked &
 activeTotalIdentity = null;
 identityTotalVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "Cash", 12.50m);
 Check(!identityTotalWindow.RefreshTrustedBasketTotal() && identityTotalReads == 1 &&
-    identityTotalWindow.TrustedBasketTotal.Text.Contains("unavailable"),
+    identityTotalWindow.TrustedBasketTotal.Text.Contains("indisponible"),
     "revoked Host identity must not fall back to a valid-looking UI payment context");
 identityTotalWindow.Close();
 
@@ -399,7 +416,7 @@ var precisionVm = (CatalogueViewModel)precisionWindow.DataContext;
 precisionVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "Cash", 12m);
 precisionWindow.ConfigureCashierEntry((_, _, _) => false, () => 12.345m, () => true, () => "basket-1");
 Check(!precisionWindow.RefreshTrustedBasketTotal() &&
-    ((System.Windows.Controls.TextBlock)precisionWindow.FindName("TrustedBasketTotal")).Text.Contains("unavailable"),
+    ((System.Windows.Controls.TextBlock)precisionWindow.FindName("TrustedBasketTotal")).Text.Contains("indisponible"),
     "non-cent MAD amount is not rounded into a misleading trusted total");
 precisionWindow.Close();
 
