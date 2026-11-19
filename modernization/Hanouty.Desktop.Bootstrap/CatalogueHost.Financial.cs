@@ -104,7 +104,7 @@ public sealed partial record CatalogueHost
         var host = CreateFinancialCore(settings, twoDigitWorkstation,
             () => window?.PromptCashierPin() ??
                 throw new InvalidOperationException("Cashier window unavailable."),
-            null, afterCommitFault, null, selectImportFile);
+            null, afterCommitFault, afterCommitFault is null ? null : ex => Console.Error.WriteLine(ex), selectImportFile);
         window = host.Window;
         return host;
     }

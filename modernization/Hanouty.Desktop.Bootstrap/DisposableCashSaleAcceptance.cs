@@ -3325,7 +3325,10 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 Number(settings, "SELECT COUNT(*) FROM hanouty_checkout_operations") == before + 1 &&
                 Number(settings, "SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id=@id", original) == 1 &&
                 Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='RETURN-CYCLE'") == 5m,
-                "Actual refund lost-acknowledgement did not persist exactly once and lock the UI: " + host.ViewModel.CommitFeedback);
+                "Actual refund lost-acknowledgement did not persist exactly once and lock the UI: " + host.ViewModel.CommitFeedback +
+                "; state=" + host.Session.State + "; operations=" + Number(settings, "SELECT COUNT(*) FROM hanouty_checkout_operations") +
+                "; before=" + before + "; claim=" + Number(settings, "SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id=@id", original) +
+                "; stock=" + Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE=\'RETURN-CYCLE\'"));
             var persisted = Snapshot(settings);
             Require(!host.Window.ConfirmReturnDraft() && Snapshot(settings) == persisted,
                 "Uncertain refund repeated the financial write.");
