@@ -2949,6 +2949,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             Exception? failure = null;
             string? operation = null;
             var reviewed = false;
+            System.Windows.Controls.PasswordBox? enteredPinControl = null;
             host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
             {
                 var dialog = Application.Current.Windows.OfType<CardPaymentDialog>().SingleOrDefault();
@@ -2972,10 +2973,10 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                             operation = host.ViewModel.PendingOperationId;
                             Require(!string.IsNullOrWhiteSpace(operation), "Card posting did not retain a stable operation ID.");
                             var password = Children(pinDialog!).OfType<System.Windows.Controls.PasswordBox>().Single();
+                            enteredPinControl = password;
                             password.Password = enteredPin;
                             Children(pinDialog!).OfType<System.Windows.Controls.Button>().Single(button => button.IsDefault)
                                 .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-                            Require(password.Password.Length == 0, "Card posting retained the cashier PIN.");
                         }
                         catch (Exception ex) { failure = ex; pinDialog?.Close(); }
                     }));
@@ -2986,7 +2987,8 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 catch (Exception ex) { failure = ex; dialog?.Close(); }
             }));
             var accepted = host.Window.PayByCard();
-            if (failure is not null) throw new InvalidOperationException("Production card UI failed.", failure);
+            if (failure is not null) throw new InvalidOperationException("Production card UI failed: " + failure.Message, failure);
+            if (enteredPinControl is not null) Require(enteredPinControl.Password.Length == 0, "Card posting retained the cashier PIN.");
             Require(reviewed, "Card payment button did not open its review.");
             return (accepted, operation);
         }
@@ -3023,7 +3025,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             var posted = FromButton(successfulHost, true, pin);
             Require(posted.Accepted && posted.Operation is not null &&
                 successfulHost.ViewModel.PendingOperationId is null && successfulHost.Session.PendingCount == 0,
-                "Card sale did not commit through the production WPF/session graph.");
+                "Card sale did not commit: " + successfulHost.ViewModel.CommitFeedback + "; pending=" + successfulHost.Session.PendingCount);
             committedOperation = posted.Operation!;
             Require(!successfulHost.Window.PayByCard(), "Consumed card payment context authorized a second operation.");
         }
