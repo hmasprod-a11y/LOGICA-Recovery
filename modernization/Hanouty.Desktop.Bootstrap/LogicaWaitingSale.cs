@@ -66,13 +66,15 @@ internal static class LogicaWaitingSale
     }
 
     internal static string Save(Func<MySqlConnection> connections, IReadOnlyList<CheckoutBatchLine> basket,
-        string cashier, string register)
+        string cashier, string register, ApprovedManualDiscount? manualDiscount = null)
     {
         if (basket.Count == 0) throw new InvalidOperationException("Le panier est vide.");
         using var connection = connections();
         if (connection.State != ConnectionState.Open) connection.Open();
         using var transaction = connection.BeginTransaction(IsolationLevel.Serializable);
         InventoryDocumentValidation.RequireTransactionalTables(connection, transaction, "TABLE_ATTENTE", "TABLE_ARTICLES");
+        MariaDbCashCheckoutServices.ValidateManualDiscountForWaiting(manualDiscount, cashier, register,
+            basket, connection, transaction);
         var now = DateTime.Now;
         var id = now.ToString("HHmmssfffffff", CultureInfo.InvariantCulture).TrimStart('0');
         if (id.Length == 0) id = "0";
@@ -80,7 +82,7 @@ internal static class LogicaWaitingSale
         existing.Parameters.AddWithValue("@id", id);
         if (existing.ExecuteScalar() is not null)
             throw new InvalidOperationException("Numéro d’attente déjà utilisé, réessayez.");
-        var priced = MariaDbCashCheckoutServices.ReadCashSaleBasketInTransaction(connection, transaction, basket);
+        var priced = MariaDbCashCheckoutServices.ReadCashSaleBasketInTransaction(connection, transaction, basket, manualDiscount);
 
         foreach (var line in priced)
         {

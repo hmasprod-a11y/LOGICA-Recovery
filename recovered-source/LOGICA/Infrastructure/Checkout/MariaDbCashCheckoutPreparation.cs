@@ -4,6 +4,7 @@ using System.Data;
 using System.Globalization;
 using System.Linq;
 using Hanouty.ArchitectureBridge;
+using Hanouty.Checkout.MariaDb;
 using LOGICA.ApplicationLayer.Checkout;
 using LOGICA.Domain;
 using LOGICA.Infrastructure.Compatibility;
@@ -22,14 +23,17 @@ namespace LOGICA.Infrastructure.Checkout
         private readonly string workstation;
         private readonly Func<string> readPin;
         private readonly Func<string?>? readWaitingSale;
+        private readonly Func<ApprovedManualDiscount?>? readManualDiscount;
 
-        internal MariaDbCashCheckoutPreparation(string workstation, Func<string> readPin, Func<string?>? readWaitingSale = null)
+        internal MariaDbCashCheckoutPreparation(string workstation, Func<string> readPin, Func<string?>? readWaitingSale = null,
+            Func<ApprovedManualDiscount?>? readManualDiscount = null)
         {
             if (workstation == null || workstation.Length != 2 ||
                 workstation.Any(c => c < '0' || c > '9'))
                 throw new ArgumentException("An explicit two-digit workstation is required.", nameof(workstation));
             this.workstation = workstation;
             this.readWaitingSale = readWaitingSale;
+            this.readManualDiscount = readManualDiscount;
             this.readPin = readPin ?? throw new ArgumentNullException(nameof(readPin));
         }
 
@@ -82,7 +86,10 @@ namespace LOGICA.Infrastructure.Checkout
                     throw new InvalidOperationException("Cash refund requires a transactional original-ticket claim table.");
             }
 
+            var manualDiscount = request.IsReturn ? null : readManualDiscount?.Invoke();
             string cashier = AuthenticateCashier(request.CashierId, connection, transaction, readPin);
+            MariaDbCashCheckoutServices.ValidateManualDiscountForPosting(manualDiscount, cashier,
+                workstation, request.Lines, connection, transaction);
             if (card) RequireCardMode(connection, transaction);
 
             // Lock the same original sequence and basket used by the writers.
@@ -116,7 +123,7 @@ namespace LOGICA.Infrastructure.Checkout
                 if (authoritative.Rows.Count != 1)
                     throw new InvalidOperationException("Requested article is unavailable.");
                 var article = authoritative.Rows[0];
-                var pricing = ReadSaleLinePrice(article, line.Quantity);
+                var pricing = ReadSaleLinePrice(article, line.Quantity, manualDiscount?.PercentageFor(line.ArticleId));
                 decimal unit = pricing.UnitPrice;
                 decimal net = pricing.Amount;
                 if (waiting is not null && (waiting[line.ArticleId].Price != unit || waiting[line.ArticleId].Net != net ||
@@ -164,7 +171,7 @@ namespace LOGICA.Infrastructure.Checkout
                 if (articles.Rows.Count != 1)
                     throw new InvalidOperationException("Article identity is no longer unique.");
                 var article = articles.Rows[0];
-                var pricing = ReadSaleLinePrice(article, quantity);
+                var pricing = ReadSaleLinePrice(article, quantity, manualDiscount?.PercentageFor(id));
                 if (Number(row, "Remise") != pricing.DiscountPercent)
                     throw new InvalidOperationException("Authoritative catalogue discount changed.");
                 decimal price = pricing.UnitPrice;
@@ -201,6 +208,7 @@ namespace LOGICA.Infrastructure.Checkout
             // V1 FormDialog_calc: FLOUSS(total - paid), persisted as a negative
             // ESPECES change row. Never store both net cash and gross tender.
             decimal change = decimal.Round(checked(total - tendered), 2, MidpointRounding.AwayFromZero);
+            manualDiscount?.BindOperation(request.OperationId);
 
             var date = DateTime.Now;
             var idTicket = request.OperationId;
@@ -481,7 +489,7 @@ namespace LOGICA.Infrastructure.Checkout
         internal sealed record CashSaleLine(string ArticleId, string ArticleName, int Quantity, decimal UnitPrice, decimal Amount, decimal DiscountPercent);
 
         internal static IReadOnlyList<CashSaleLine> ReadCashSaleLines(IReadOnlyList<CheckoutBatchLine> lines,
-            MySqlConnection connection, MySqlTransaction transaction)
+            MySqlConnection connection, MySqlTransaction transaction, ApprovedManualDiscount approval = null)
         {
             if (lines == null || lines.Any(x => x == null ||
                 string.IsNullOrWhiteSpace(x.ArticleId) || x.Quantity <= 0) ||
@@ -496,7 +504,7 @@ namespace LOGICA.Infrastructure.Checkout
                 if (article.Rows.Count != 1)
                     throw new InvalidOperationException("Requested article is unavailable.");
                 var row = article.Rows[0];
-                var pricing = ReadSaleLinePrice(row, line.Quantity);
+                var pricing = ReadSaleLinePrice(row, line.Quantity, approval?.PercentageFor(line.ArticleId));
                 result.Add(new CashSaleLine(line.ArticleId, Convert.ToString(row["Article"]) ?? line.ArticleId,
                     line.Quantity, pricing.UnitPrice, pricing.Amount, pricing.DiscountPercent));
             }
@@ -507,11 +515,11 @@ namespace LOGICA.Infrastructure.Checkout
 
         // Form_3_VENTE quantity editing reuses these exact LOGICA domain rules.
         // Catalogue promotion is a percentage, not a new promotion/date engine.
-        private static SaleLinePrice ReadSaleLinePrice(DataRow article, int quantity)
+        private static SaleLinePrice ReadSaleLinePrice(DataRow article, int quantity, decimal? manualPercentage = null)
         {
             decimal standard = Number(article, "PRIX_V_1");
             decimal tier = OptionalNumber(article, "PRIX_QTE");
-            decimal discount = OptionalNumber(article, "PROMOTION");
+            decimal discount = manualPercentage ?? OptionalNumber(article, "PROMOTION");
             if (standard < 0m || quantity <= 0 || discount < 0m || discount > 100m)
                 throw new InvalidOperationException("Authoritative price, quantity or promotion is invalid.");
             var legacy = VisualBasicCheckoutSemantics.Instance;

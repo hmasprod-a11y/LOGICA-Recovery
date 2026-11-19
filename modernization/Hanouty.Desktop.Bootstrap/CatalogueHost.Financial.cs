@@ -11,14 +11,33 @@ namespace Hanouty.Desktop.Bootstrap;
 // Included only when the build explicitly references the real Checkout library.
 public sealed partial record CatalogueHost
 {
-    private sealed class CashierBasketReader(Func<MySqlConnection> connections, CheckoutSession session)
+    private sealed class CashierBasketReader(Func<MySqlConnection> connections, CheckoutSession session,
+        Func<ApprovedManualDiscount?> currentManualDiscount)
         : ICurrentBasketReader
     {
         public IReadOnlyList<BasketDisplayLine> ReadCurrentBasket() =>
-            MariaDbCashCheckoutServices.ReadCashSaleBasket(connections, session.PendingLines)
+            MariaDbCashCheckoutServices.ReadCashSaleBasket(connections, session.PendingLines, currentManualDiscount())
                 .Select(line => new BasketDisplayLine(line.ArticleId, line.ArticleName, line.Quantity, line.UnitPrice,
                     line.DiscountPercent, line.Amount))
                 .ToArray();
+    }
+
+    private sealed class ManualDiscountReview(
+        Func<ManualDiscountChoice, ManualDiscountPreviewData> preview,
+        Func<ManualDiscountChoice, bool> apply, Action release) : IManualDiscountReview
+    {
+        private bool disposed;
+        public ManualDiscountPreviewData Preview(ManualDiscountChoice choice)
+        {
+            if (disposed) throw new ObjectDisposedException(nameof(ManualDiscountReview));
+            return preview(choice);
+        }
+        public bool Apply(ManualDiscountChoice choice)
+        {
+            if (disposed) throw new ObjectDisposedException(nameof(ManualDiscountReview));
+            return apply(choice);
+        }
+        public void Dispose() { if (!disposed) { disposed = true; release(); } }
     }
 
     private Func<string, CheckoutResolution, Func<string>, bool>? reviewedReset;
@@ -138,14 +157,16 @@ public sealed partial record CatalogueHost
         string? activeCashierId = captured?.CashierId;
         var contextConsumed = false;
         string? waitingSaleId = null;
+        ApprovedManualDiscount? manualDiscount = null;
         Func<MySqlConnection> connections = () => new MySqlConnection(settings.ConnectionString);
         var posting = MariaDbCashCheckoutServices.CreatePostingPort(
-            connections, twoDigitWorkstation, transientPinProvider, () => waitingSaleId);
+            connections, twoDigitWorkstation, transientPinProvider, () => waitingSaleId, () => manualDiscount);
         posting = new AcknowledgementFaultPort(posting, () => {
             // Consume at the real financial boundary, not merely in UI state.
             // Retain the immutable context for lost-ack journal review only.
             contextConsumed = true;
             waitingSaleId = null;
+            manualDiscount = null;
             afterCommitAcknowledgementFault?.Invoke();
         }, postingFailureDiagnostic);
         var journal = MariaDbCashCheckoutServices.CreateOperationJournal(connections);
@@ -161,7 +182,13 @@ public sealed partial record CatalogueHost
         var services = AuthorizedWpfServiceRegistration.CreateSessionBound(
             binding.Catalogue, binding.Checkout, binding.Submission,
             () => contextConsumed && context?.TenderedAmount != 0m ? null! : context!);
-        var basketReader = new CashierBasketReader(connections, binding.Session);
+        ApprovedManualDiscount? CurrentManualDiscount()
+        {
+            manualDiscount = MariaDbCashCheckoutServices.RetainManualDiscountForBasket(manualDiscount, binding.Session.PendingLines);
+            if (manualDiscount?.CashierId != activeCashierId) manualDiscount = null;
+            return manualDiscount;
+        }
+        var basketReader = new CashierBasketReader(connections, binding.Session, CurrentManualDiscount);
         var window = new MainWindow(services.Catalogue, services.Checkout, services.Submission, context,
             requireFreshPaymentContext: true, basketReader: basketReader);
         var vm = (CatalogueViewModel)window.DataContext;
@@ -174,12 +201,59 @@ public sealed partial record CatalogueHost
         bool CanChangeContext() => !reviewing && !vm.CheckoutBusy &&
             !vm.CheckoutUncertain && vm.PendingOperationId is null &&
             binding.Session.OperationId is null && binding.Session.State == CheckoutCommitState.Ready;
+        window.ConfigureManualDiscounts(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } cashier ||
+                binding.Session.PendingCount == 0) return null;
+            reviewing = true;
+            try
+            {
+                var snapshot = binding.Session.PendingLines.ToArray();
+                var previous = CurrentManualDiscount();
+                var authorization = MariaDbCashCheckoutServices.AuthorizeManualDiscount(connections, cashier,
+                    twoDigitWorkstation, window.PromptDiscountApprovalPin);
+                ManualDiscountChoice? reviewedChoice = null;
+                Hanouty.Checkout.MariaDb.ManualDiscountPreview? reviewedPreview = null;
+                void RequireSameReview()
+                {
+                    if (!reviewing || !vm.FinancialSessionActive || activeCashierId != cashier ||
+                        vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
+                        !snapshot.SequenceEqual(binding.Session.PendingLines))
+                        throw new InvalidOperationException("Le panier ou la session a changé. Revoyez la remise.");
+                }
+                return new ManualDiscountReview(choice =>
+                {
+                    RequireSameReview();
+                    var preview = MariaDbCashCheckoutServices.PreviewManualDiscount(connections, authorization,
+                        snapshot, previous, choice.ArticleId, choice.Percentage, choice.Value);
+                    reviewedChoice = choice;
+                    reviewedPreview = preview;
+                    return new ManualDiscountPreviewData(preview.Percentage, preview.NetTotal, preview.Savings, preview.Conditions);
+                }, choice =>
+                {
+                    RequireSameReview();
+                    if (reviewedChoice != choice || reviewedPreview is null)
+                        throw new InvalidOperationException("Vérifiez le calcul de la remise avant de confirmer.");
+                    var approved = MariaDbCashCheckoutServices.ApplyManualDiscount(connections, authorization,
+                        snapshot, previous, choice.ArticleId, choice.Percentage, choice.Value, reviewedPreview);
+                    manualDiscount = approved;
+                    captured = null;
+                    contextConsumed = true;
+                    context = new CashierPaymentContext(cashier, twoDigitWorkstation, "MAD", "Cash", 0m);
+                    vm.PaymentContext = context;
+                    return true;
+                }, () => reviewing = false);
+            }
+            catch { reviewing = false; throw; }
+        }, () => activeCashierId is { } cashier && vm.FinancialSessionActive &&
+            MariaDbCashCheckoutServices.CanUseManualDiscount(connections, cashier));
         window.ConfigureOriginalSaleLookup(returnHost, () =>
         {
             if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is null ||
                 binding.Session.PendingCount != 0) return false;
             // A return uses persisted original amounts, never a consumed sale tender.
             contextConsumed = true;
+            manualDiscount = null;
             context = new CashierPaymentContext(activeCashierId, twoDigitWorkstation, "MAD", "Cash", 0m);
             vm.PaymentContext = context;
             return true;
@@ -196,6 +270,7 @@ public sealed partial record CatalogueHost
                 (activeCashierId is null || frozen.CashierId != activeCashierId))
                 return false;
             captured = frozen;
+            if (binding.Session.PendingCount == 0 || activeCashierId != frozen.CashierId) manualDiscount = null;
             activeCashierId = frozen.CashierId;
             contextConsumed = false;
             context = ToWpfContext(frozen, twoDigitWorkstation);
@@ -208,6 +283,7 @@ public sealed partial record CatalogueHost
             if (!CanChangeContext() || binding.Session.PendingCount != 0) return false;
             captured = null;
             activeCashierId = null;
+            manualDiscount = null;
             waitingSaleId = null;
             contextConsumed = true;
             context = null;
@@ -245,6 +321,7 @@ public sealed partial record CatalogueHost
                     return false;
                 binding.Session.DiscardInvalidated();
                 waitingSaleId = null;
+                manualDiscount = null;
                 contextConsumed = true;
                 lastReviewed = operation;
                 return true; // UI owner may now explicitly reset its review state.
@@ -258,7 +335,7 @@ public sealed partial record CatalogueHost
         decimal? ReadTrustedTotal()
         {
             if (!CanChangeContext()) return null;
-            return MariaDbCashCheckoutServices.ReadCashSaleTotal(connections, binding.Session.PendingLines);
+            return MariaDbCashCheckoutServices.ReadCashSaleTotal(connections, binding.Session.PendingLines, CurrentManualDiscount());
         }
         window.ConfigureBasketQuantity((articleId, quantity) =>
         {
@@ -266,6 +343,7 @@ public sealed partial record CatalogueHost
                 activeCashierId is null || !binding.Session.SetPendingQuantity(articleId, quantity))
                 return false;
             if (binding.Session.PendingCount == 0) waitingSaleId = null;
+            CurrentManualDiscount();
             captured = null;
             contextConsumed = true;
             context = new CashierPaymentContext(activeCashierId, twoDigitWorkstation, "MAD", "Cash", 0m);
@@ -696,9 +774,13 @@ public sealed partial record CatalogueHost
         vm.PrintCommittedSale = (operation, payment) =>
         {
             var directory = AppContext.BaseDirectory;
-            if (!System.IO.File.Exists(System.IO.Path.Combine(directory, "PRINTER_CL.sni"))) return;
             using var connection = connections();
             if (connection.State != System.Data.ConnectionState.Open) connection.Open();
+            var ticket = LogicaPostedTicket.Read(connection, operation, payment.CashierId, payment.RegisterId)
+                ?? throw new InvalidOperationException("Le ticket enregistré est introuvable.");
+            var change = -ticket.Payments.Where(row => row.Mode == "ESPECES" && row.Amount < 0m).Sum(row => row.Amount);
+            window.SetLastSaleSummary($"Dernier ticket {ticket.Number} · À rendre {change:F2} MAD");
+            if (!System.IO.File.Exists(System.IO.Path.Combine(directory, "PRINTER_CL.sni"))) return;
             LogicaCashReceiptPrinter.Print(connection, directory, operation, payment.CashierId, payment.RegisterId);
         };
         window.ConfigureWaitingSale(() =>
@@ -710,8 +792,10 @@ public sealed partial record CatalogueHost
             reviewing = true;
             try
             {
-                var waitingId = LogicaWaitingSale.Save(connections, binding.Session.PendingLines, cashier, twoDigitWorkstation);
+                var waitingId = LogicaWaitingSale.Save(connections, binding.Session.PendingLines, cashier,
+                    twoDigitWorkstation, CurrentManualDiscount());
                 binding.Session.Clear();
+                manualDiscount = null;
                 captured = null;
                 contextConsumed = true;
                 context = new CashierPaymentContext(cashier, twoDigitWorkstation, "MAD", "Cash", 0m);
@@ -746,7 +830,9 @@ public sealed partial record CatalogueHost
                 if (dialog.ShowDialog() != true || list.SelectedItem is not LogicaWaitingSale.Waiting selected)
                     return false;
 
-                var lines = LogicaWaitingSale.Read(connections, selected.Id);
+                var restored = MariaDbCashCheckoutServices.ReadWaitingBasketForAuthorizedResume(connections,
+                    selected.Id, cashier, twoDigitWorkstation, window.PromptDiscountApprovalPin);
+                var lines = restored.Lines;
                 binding.Session.RefreshCatalogue();
                 try
                 {
@@ -760,10 +846,12 @@ public sealed partial record CatalogueHost
                 catch
                 {
                     binding.Session.Clear();
+                    manualDiscount = null;
                     throw;
                 }
 
                 waitingSaleId = selected.Id;
+                manualDiscount = restored.Approval;
                 captured = null;
                 contextConsumed = true;
                 context = new CashierPaymentContext(cashier, twoDigitWorkstation, "MAD", "Cash", 0m);

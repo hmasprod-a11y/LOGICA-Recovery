@@ -87,6 +87,43 @@ try
 }
 finally { System.Globalization.CultureInfo.CurrentCulture = originalEntryCulture; }
 
+// A changed line-price snapshot requires another confirmation even when the
+// percentage, ticket net and savings remain numerically identical.
+{
+    var reviewOwner = new System.Windows.Window { Width = 200, Height = 100, Left = -10000, Top = -10000,
+        WindowStartupLocation = System.Windows.WindowStartupLocation.Manual, ShowInTaskbar = false };
+    reviewOwner.Show();
+    var revision = "before";
+    var discount = new Hanouty.Desktop.Wpf.ManualDiscountDialog(
+        new[] { new BasketDisplayLine("article", "Article", 1m, 20m) }, "article",
+        _ => new Hanouty.Desktop.Wpf.ManualDiscountPreviewData(10m, 18m, 2m, revision)) { Owner = reviewOwner };
+    Exception? failure = null;
+    var timeout = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+    timeout.Tick += (_, _) => { failure = new TimeoutException("Discount review did not settle."); timeout.Stop(); discount.Close(); };
+    reviewOwner.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+    {
+        try
+        {
+            var panel = (System.Windows.Controls.StackPanel)((System.Windows.Controls.ScrollViewer)discount.Content).Content;
+            panel.Children.OfType<System.Windows.Controls.TextBox>().Single().Text = "10";
+            var apply = panel.Children.OfType<System.Windows.Controls.Button>().Single(button => button.IsDefault);
+            revision = "after";
+            apply.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Check(discount.IsVisible && discount.Choice is null,
+                "Equal-total changed article conditions must remain open for review.");
+            apply.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        }
+        catch (Exception ex) { failure = ex; discount.Close(); }
+    }));
+    timeout.Start();
+    try
+    {
+        Check(discount.ShowDialog() == true && failure is null && discount.Choice?.Value == 10m,
+            "Only the second explicit confirmation can accept changed article conditions: " + failure);
+    }
+    finally { timeout.Stop(); reviewOwner.Close(); }
+}
+
 Check(CashDrawerCount.Calculate(new[] { 1, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3 }) == 201.20m,
     "cash drawer recount must preserve LOGICA banknote and fractional coin totals");
 Hanouty.Desktop.Wpf.MainWindow.TestOnlyAllowUnauthorizedPaymentContext = false;
@@ -266,10 +303,31 @@ Check(cashierScroll is not null && cashierScroll.VerticalScrollBarVisibility ==
     "cashier and return controls remain vertically reachable in compact high-DPI window");
 lockedWindow.Width = lockedWindow.MinWidth;
 lockedWindow.Height = lockedWindow.MinHeight;
+lockedWindow.WindowStartupLocation = System.Windows.WindowStartupLocation.Manual;
+lockedWindow.Left = -10000; lockedWindow.Top = -10000;
+lockedWindow.ShowInTaskbar = false; lockedWindow.ShowActivated = false;
+lockedWindow.Show();
 lockedWindow.UpdateLayout();
-Check(cashierScroll is { ActualHeight: >= 0 } && lockedWindow.FlowDirection ==
-    System.Windows.FlowDirection.LeftToRight,
-    "compact WPF window measures cashier workflow without clipping horizontal controls");
+var basketGeometry = (System.Windows.Controls.DataGrid)lockedWindow.FindName("CashierBasket");
+var paymentGeometry = (System.Windows.FrameworkElement)lockedWindow.FindName("FixedPaymentPanel");
+var commitGeometry = (System.Windows.FrameworkElement)lockedWindow.FindName("CompleteCheckoutButton");
+var totalGeometry = (System.Windows.FrameworkElement)lockedWindow.FindName("TrustedBasketTotal");
+foreach (var size in new[] { (760d, 480d), (1280d, 760d) })
+{
+    // A successful previous sale and current discount must not grow the fixed
+    // footer until the basket row disappears on a small cashier display.
+    ((System.Windows.Controls.TextBlock)lockedWindow.FindName("LastSaleSummary")).Text = "Dernier ticket 000001 · À rendre 200,00 MAD";
+    ((System.Windows.Controls.TextBlock)lockedWindow.FindName("ManualDiscountStatus")).Text = "Remise appliquée. Revoyez le montant reçu.";
+    lockedWindow.Width = size.Item1; lockedWindow.Height = size.Item2; lockedWindow.UpdateLayout();
+    var basketBottom = basketGeometry.TranslatePoint(new System.Windows.Point(0, basketGeometry.ActualHeight), lockedWindow).Y;
+    var paymentTop = paymentGeometry.TranslatePoint(new System.Windows.Point(0, 0), lockedWindow).Y;
+    var buttonBottom = commitGeometry.TranslatePoint(new System.Windows.Point(0, commitGeometry.ActualHeight), lockedWindow).Y;
+    Check(basketGeometry.ActualHeight >= 72 && basketBottom <= paymentTop &&
+        commitGeometry.ActualHeight >= 49 && buttonBottom < lockedWindow.ActualHeight - 8 &&
+        totalGeometry.IsVisible && totalGeometry.ActualHeight > 20,
+        $"Basket/payment at {size}: basket={basketGeometry.ActualHeight}, bottom={basketBottom}, payment={paymentTop}, button={commitGeometry.ActualHeight}/{buttonBottom}, total={totalGeometry.IsVisible}/{totalGeometry.ActualHeight}.");
+}
+lockedWindow.Hide();
 var lockedVm = (CatalogueViewModel)lockedWindow.DataContext;
 Check(!lockedVm.FinancialSessionActive && !lockedVm.CanSelectProduct && !lockedVm.CanCommit,
     "unauthenticated production window must start locked");
@@ -293,8 +351,13 @@ lockedVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD"
 Check(lockedWindow.RefreshTrustedBasketTotal() && trustedReads == 1 &&
     ((System.Windows.Controls.TextBlock)lockedWindow.FindName("TrustedBasketTotal")).Text.Contains("17.25"),
     "STA window displays Host-authoritative MAD total");
+lockedWindow.SetCardPaymentFeedback("Ancien message de paiement");
+lockedVm.CommitCheckout();
+Check(((System.Windows.Controls.TextBlock)lockedWindow.FindName("ManualDiscountStatus")).Text == "" &&
+    ((System.Windows.Controls.TextBlock)lockedWindow.FindName("CardPaymentStatus")).Text == "",
+    "An actual financial result must supersede prior discount/payment messages.");
 lockedVm.FinancialSessionActive = false;
-Check(((System.Windows.Controls.TextBlock)lockedWindow.FindName("TrustedBasketTotal")).Text.Contains("unavailable") &&
+Check(((System.Windows.Controls.TextBlock)lockedWindow.FindName("TrustedBasketTotal")).Text.Contains("indisponible") &&
     !lockedWindow.RefreshTrustedBasketTotal() && trustedReads == 1,
     "logout revokes trusted total and blocks another readback");
 lockedWindow.Close();
@@ -369,7 +432,7 @@ Check(identityTotalWindow.RefreshTrustedBasketTotal() && identityNestedBlocked &
 activeTotalIdentity = null;
 identityTotalVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "Cash", 12.50m);
 Check(!identityTotalWindow.RefreshTrustedBasketTotal() && identityTotalReads == 1 &&
-    identityTotalWindow.TrustedBasketTotal.Text.Contains("unavailable"),
+    identityTotalWindow.TrustedBasketTotal.Text.Contains("indisponible"),
     "revoked Host identity must not fall back to a valid-looking UI payment context");
 identityTotalWindow.Close();
 
@@ -399,7 +462,7 @@ var precisionVm = (CatalogueViewModel)precisionWindow.DataContext;
 precisionVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD", "Cash", 12m);
 precisionWindow.ConfigureCashierEntry((_, _, _) => false, () => 12.345m, () => true, () => "basket-1");
 Check(!precisionWindow.RefreshTrustedBasketTotal() &&
-    ((System.Windows.Controls.TextBlock)precisionWindow.FindName("TrustedBasketTotal")).Text.Contains("unavailable"),
+    ((System.Windows.Controls.TextBlock)precisionWindow.FindName("TrustedBasketTotal")).Text.Contains("indisponible"),
     "non-cent MAD amount is not rounded into a misleading trusted total");
 precisionWindow.Close();
 
