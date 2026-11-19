@@ -23,14 +23,64 @@ internal sealed class CataloguePriceDialog : Window
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         var panel = new StackPanel { Margin = new Thickness(20) };
-        var id = new TextBox { MinHeight = 36 };
+        var id = new TextBox { MinHeight = 36, IsReadOnly = true, Visibility = Visibility.Collapsed };
         var price = new TextBox { MinHeight = 36, IsEnabled = false };
         System.Windows.Automation.AutomationProperties.SetName(id, "Identifiant de l’article");
         System.Windows.Automation.AutomationProperties.SetName(price, "Nouveau prix de vente");
         var open = new Button { Content = "Lire le prix", MinHeight = 36, Margin = new Thickness(0, 6, 0, 8) };
         var write = new Button { Content = "Enregistrer le prix", MinHeight = 36, Margin = new Thickness(0, 6, 0, 0), IsEnabled = false };
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
-        panel.Children.Add(new TextBlock { Text = "Identifiant de l’article" });
+        var search = new TextBox { MinHeight = 40, MaxLength = 128 };
+        System.Windows.Automation.AutomationProperties.SetName(search, "Rechercher un article par nom ou code-barres");
+        var exact = new CheckBox { Content = "Correspondance exacte", Margin = new Thickness(0, 6, 0, 6) };
+        System.Windows.Automation.AutomationProperties.SetName(exact, "Recherche exacte du catalogue");
+        var find = new Button { Content = "Rechercher les articles", MinHeight = 40 };
+        var choices = new ListBox { MinHeight = 80, MaxHeight = 160, DisplayMemberPath = "Label",
+            Margin = new Thickness(0, 6, 0, 6) };
+        System.Windows.Automation.AutomationProperties.SetName(choices, "Articles trouvés");
+        var selected = new TextBlock { Text = "Sélectionnez un article dans les résultats.", TextWrapping = TextWrapping.Wrap };
+        panel.Children.Add(new TextBlock { Text = "Nom ou code-barres" });
+        panel.Children.Add(search);
+        panel.Children.Add(exact);
+        panel.Children.Add(find);
+        panel.Children.Add(choices);
+        panel.Children.Add(selected);
+        void RevokeSelection()
+        {
+            choices.ItemsSource = null;
+            id.Clear();
+            price.Clear();
+            selected.Text = "Sélectionnez un article dans les résultats.";
+        }
+        void Find()
+        {
+            RevokeSelection();
+            try
+            {
+                var result = service.Search(search.Text, exact.IsChecked == true);
+                choices.ItemsSource = result.Articles;
+                status.Text = result.HasMore ? "Plus de 50 articles : précisez la recherche." :
+                    result.Articles.Count == 0 ? "Aucun article trouvé." : $"{result.Articles.Count} article(s). Sélectionnez la variante souhaitée.";
+            }
+            catch (Exception ex) when (ex is MySqlException or InvalidOperationException or ArgumentException)
+            { status.Text = ex is ArgumentException or InvalidOperationException ? ex.Message : "Recherche indisponible."; }
+        }
+        search.TextChanged += (_, _) => RevokeSelection();
+        exact.Checked += (_, _) => RevokeSelection();
+        exact.Unchecked += (_, _) => RevokeSelection();
+        find.Click += (_, _) => Find();
+        search.KeyDown += (_, args) =>
+        {
+            if (args.Key == System.Windows.Input.Key.Enter) { args.Handled = true; Find(); }
+        };
+        choices.SelectionChanged += (_, _) =>
+        {
+            if (choices.SelectedItem is not CataloguePriceEditor.ArticleChoice choice) return;
+            id.Text = choice.Id;
+            selected.Text = choice.Label;
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        };
+        Hanouty.Desktop.Wpf.TouchNumericEntry.Attach(price, "Prix de vente (MAD)", allowZero: true);
         panel.Children.Add(id);
         panel.Children.Add(open);
         panel.Children.Add(new TextBlock { Text = "Prix de vente (MAD)" });
@@ -107,6 +157,7 @@ internal sealed class CataloguePriceDialog : Window
         }
         var family = FamilyField(fields, "Famille du nouvel article");
         var newPrice = Field("Prix du nouvel article");
+        Hanouty.Desktop.Wpf.TouchNumericEntry.Attach(newPrice, "Prix du nouvel article (MAD)", allowZero: true);
         var variant = Field("Identifiant de l’article source (variante, facultatif)");
         var add = new Button { Content = "Créer l’article", MinHeight = 36 };
         add.Click += (_, _) =>
@@ -124,7 +175,9 @@ internal sealed class CataloguePriceDialog : Window
                     string.IsNullOrWhiteSpace(variant.Text) ? null : variant.Text.Trim());
                 if (articleId is not null)
                 {
+                    RevokeSelection();
                     id.Text = articleId;
+                    selected.Text = name.Text + " · " + amount.ToString("N2") + " MAD";
                     status.Text = $"Article {articleId} créé.";
                     name.Clear();
                     code.Clear();
@@ -236,6 +289,7 @@ internal sealed class CataloguePriceDialog : Window
                 reviewed = service.Read(id.Text.Trim());
                 price.Text = reviewed.Amount.ToString("0.00", CultureInfo.CurrentCulture);
                 status.Text = reviewed.Name;
+                selected.Text = reviewed.Name + " · " + reviewed.Amount.ToString("N2") + " MAD";
                 price.IsEnabled = true;
                 write.IsEnabled = true;
             }
