@@ -724,10 +724,10 @@ namespace LOGICA.Infrastructure.Checkout
                                     corrupt.Transaction = evidenceTx; corrupt.CommandText = mutation;
                                     corrupt.Parameters.AddWithValue("@id", operation); corrupt.ExecuteNonQuery();
                                 }
-                                bool rejected = false;
+                                bool corruptChangeRejected = false;
                                 try { CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(evidenceDb, evidenceTx, operation); }
-                                catch (InvalidOperationException) { rejected = true; }
-                                Require(rejected, "Corrupt change row qualified for a cash refund: " + mutation);
+                                catch (InvalidOperationException) { corruptChangeRejected = true; }
+                                Require(corruptChangeRejected, "Corrupt change row qualified for a cash refund: " + mutation);
                                 using (var restore = evidenceDb.CreateCommand())
                                 {
                                     restore.Transaction = evidenceTx;
