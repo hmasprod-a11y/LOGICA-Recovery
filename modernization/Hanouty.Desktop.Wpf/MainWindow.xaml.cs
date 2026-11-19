@@ -59,6 +59,7 @@ public partial class MainWindow : Window
             DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null) return false;
         _alternatePaymentOpen = true;
+        ManualDiscountStatus.Text = "";
         CardPaymentStatus.Text = "";
         try { return pay(); }
         finally { _alternatePaymentOpen = false; }

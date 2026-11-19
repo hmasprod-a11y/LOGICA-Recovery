@@ -178,6 +178,16 @@ internal static partial class DisposableCashSaleAcceptance
         Sql(settings, "UPDATE TABLE_ARTICLES SET PRIX_V_1=10,PRIX_QTE=8,PROMOTION=10 WHERE ID_ARTICLE='MANUAL-A'");
         Access("VISIBLE");
         VerifyManualDiscountCashierUi(settings, pin);
+        var mixedLines = new[] { new CheckoutBatchLine("MANUAL-A", 1) };
+        var mixedApproval = MariaDbCashCheckoutServices.ApplyManualDiscount(Connect, Grant(), mixedLines, null, null, true, 20m);
+        var mixedPort = MariaDbCashCheckoutServices.CreatePostingPort(Connect, "01", () => pin,
+            readManualDiscount: () => mixedApproval);
+        mixedPort.Commit(new AuthorizedCheckoutRequest("manual-mixed-payment", "O'Neil", "MAD", false, mixedLines,
+            new[] { new CheckoutPayment(CheckoutPaymentKind.Cash, 10m), new CheckoutPayment(CheckoutPaymentKind.Card, 3m) }, 8m));
+        Require(Number(settings, "SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='manual-mixed-payment'") == 8m &&
+            Number(settings, "SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='manual-mixed-payment' AND MODE_P='ESPECES'") == 5m &&
+            Number(settings, "SELECT MONTANT FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='manual-mixed-payment' AND MODE_P='CARTE'") == 3m,
+            "Manual mixed payment did not persist its exact discounted allocation/change.");
         File.WriteAllText(Path.Combine(EvidenceDirectory, "w2-manual-discounts.json"), JsonSerializer.Serialize(new {
             ExactOriginalRoles = true, GlobalAndSelectedPercentAndDh = true, OriginalZeroReset = true,
             BothCultures = true, NonPositiveTicketRejected = true, PreviewPriceRaceRejected = true,
@@ -185,6 +195,7 @@ internal static partial class DisposableCashSaleAcceptance
             RevokedManagerRejected = true, DatabaseScopeBound = true, SelectedGrossRounding = true,
             OriginalReceiptNetAndChange = true, DurableReplay = true, DifferentOperationDenied = true,
             OriginalManualNetRefund = true,
+            DiscountedCardWpf = true, DiscountedMixedSql = true,
             CashierTouchReviewAndPayment = true, BasketAndFixedPaymentVisible = true
         }, new JsonSerializerOptions { WriteIndented = true }));
     }
@@ -317,6 +328,38 @@ internal static partial class DisposableCashSaleAcceptance
                     "Fresh exact-manager touch PIN did not authorize the real discount dialog: " + failure);
             }
             finally { approvalTimer.Stop(); timeout.Stop(); }
+            PasswordBox? cardPin = null;
+            host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+            {
+                var card = Application.Current.Windows.OfType<CardPaymentDialog>().SingleOrDefault();
+                try
+                {
+                    Require(card is not null, "Discounted card confirmation did not open.");
+                    host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+                    {
+                        var prompt = Application.Current.Windows.Cast<Window>().SingleOrDefault(window =>
+                            window.Owner == host.Window && CatalogueControls<PasswordBox>(window).Any());
+                        try
+                        {
+                            Require(prompt is not null, "Discounted card did not request fresh cashier PIN.");
+                            cardPin = CatalogueControls<PasswordBox>(prompt!).Single(); cardPin.Password = pin;
+                            CatalogueControls<Button>(prompt!).Single(button => button.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        }
+                        catch (Exception ex) { failure = ex; prompt?.Close(); }
+                    }));
+                    CatalogueControls<Button>(card!).Single(button => button.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                }
+                catch (Exception ex) { failure = ex; card?.Close(); }
+            }));
+            timeout.Start();
+            try
+            {
+                Require(host.Window.PayByCard() && failure is null && cardPin?.Password.Length == 0 && host.Session.PendingCount == 0 &&
+                    Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_ARTICLE='MANUAL-B' AND Remise=10 AND Total_NET=18") == 1 &&
+                    Number(settings, "SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE MODE_P='CARTE' AND MONTANT=18") >= 1,
+                    "Discounted real card payment/PIN failed: " + failure);
+            }
+            finally { timeout.Stop(); }
         }
         finally
         {

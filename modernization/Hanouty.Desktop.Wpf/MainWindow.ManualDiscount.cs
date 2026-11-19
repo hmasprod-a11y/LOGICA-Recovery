@@ -52,6 +52,7 @@ public partial class MainWindow
         _manualDiscountOpen = true;
         var applied = false;
         ManualDiscountStatus.Text = "";
+        CardPaymentStatus.Text = "";
         try
         {
             using var review = _beginManualDiscount();

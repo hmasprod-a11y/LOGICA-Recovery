@@ -234,7 +234,11 @@
                     <Border x:Name="FixedPaymentPanel" Grid.Row="2" Padding="8" BorderThickness="1" BorderBrush="#B9C5D1" Background="#F2F6FA" CornerRadius="6">
                         <StackPanel>
                             <DockPanel Height="36">
-                                <TextBlock DockPanel.Dock="Left" Text="TOTAL · MAD" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0" MaxWidth="230">
+                                    <TextBlock Text="TOTAL · MAD" FontWeight="Bold" FontSize="14"/>
+                                    <TextBlock x:Name="LastSaleSummary" TextTrimming="CharacterEllipsis" FontSize="10"
+                                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                                </StackPanel>
                                 <Viewbox Stretch="Uniform" StretchDirection="DownOnly">
                                     <TextBlock x:Name="TrustedBasketTotal" Text="Total indisponible" FontSize="30" FontWeight="Bold" Foreground="#173D64"
                                                FlowDirection="LeftToRight" AutomationProperties.Name="Trusted basket total MAD"/>
@@ -250,16 +254,24 @@
                                 <Button Content="Mixte" Click="PayMixed_Click" MinHeight="44" FontSize="15"
                                         IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Pay sale with cash and card"/>
                             </UniformGrid>
-                            <TextBlock Text="{Binding CommitFeedback, Converter={StaticResource CashierFeedback}}" TextWrapping="Wrap" MaxHeight="32" Margin="0,3,0,0"/>
-                            <TextBlock x:Name="LastSaleSummary" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" FontWeight="SemiBold" Margin="0,3,0,0">
+                            <Grid Height="20" Margin="0,3,0,0">
+                            <TextBlock Text="{Binding CommitFeedback, Converter={StaticResource CashierFeedback}}" TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}">
+                                <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers>
+                                    <MultiDataTrigger><MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding Text, ElementName=ManualDiscountStatus}" Value=""/>
+                                        <Condition Binding="{Binding Text, ElementName=CardPaymentStatus}" Value=""/>
+                                    </MultiDataTrigger.Conditions><Setter Property="Visibility" Value="Visible"/></MultiDataTrigger>
+                                </Style.Triggers></Style></TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock x:Name="ManualDiscountStatus" TextTrimming="CharacterEllipsis" AutomationProperties.Name="Manual discount status"
+                                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}">
                                 <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed"/></Trigger></Style.Triggers></Style></TextBlock.Style>
                             </TextBlock>
-                            <TextBlock x:Name="ManualDiscountStatus" TextWrapping="Wrap" MaxHeight="32" AutomationProperties.Name="Manual discount status">
+                            <TextBlock x:Name="CardPaymentStatus" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}">
                                 <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed"/></Trigger></Style.Triggers></Style></TextBlock.Style>
                             </TextBlock>
-                            <TextBlock x:Name="CardPaymentStatus" TextWrapping="Wrap" MaxHeight="32">
-                                <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed"/></Trigger></Style.Triggers></Style></TextBlock.Style>
-                            </TextBlock>
+                            </Grid>
                             <Button x:Name="CompleteCheckoutButton" Content="ENCAISSER" Command="{Binding CommitCommand}" IsEnabled="{Binding CanCommit}"
                                     MinHeight="50" FontSize="18" FontWeight="Bold" Margin="0,6,0,0">
                                 <Button.Style><Style TargetType="Button"><Setter Property="Background" Value="#1D5789"/><Setter Property="Foreground" Value="White"/><Style.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#D9E0E6"/><Setter Property="Foreground" Value="#647280"/></Trigger></Style.Triggers></Style></Button.Style>

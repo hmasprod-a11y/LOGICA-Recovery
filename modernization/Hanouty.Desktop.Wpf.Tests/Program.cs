@@ -314,6 +314,10 @@ var commitGeometry = (System.Windows.FrameworkElement)lockedWindow.FindName("Com
 var totalGeometry = (System.Windows.FrameworkElement)lockedWindow.FindName("TrustedBasketTotal");
 foreach (var size in new[] { (760d, 480d), (1280d, 760d) })
 {
+    // A successful previous sale and current discount must not grow the fixed
+    // footer until the basket row disappears on a small cashier display.
+    ((System.Windows.Controls.TextBlock)lockedWindow.FindName("LastSaleSummary")).Text = "Dernier ticket 000001 · À rendre 200,00 MAD";
+    ((System.Windows.Controls.TextBlock)lockedWindow.FindName("ManualDiscountStatus")).Text = "Remise appliquée. Revoyez le montant reçu.";
     lockedWindow.Width = size.Item1; lockedWindow.Height = size.Item2; lockedWindow.UpdateLayout();
     var basketBottom = basketGeometry.TranslatePoint(new System.Windows.Point(0, basketGeometry.ActualHeight), lockedWindow).Y;
     var paymentTop = paymentGeometry.TranslatePoint(new System.Windows.Point(0, 0), lockedWindow).Y;
