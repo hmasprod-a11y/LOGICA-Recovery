@@ -572,9 +572,7 @@ public partial class MainWindow : Window
             var identity = _readBasketIdentity?.Invoke();
             // Session identity is not a reusable payment authorization.
             // When the Host supplies this reader, null revokes entry even if the VM has stale data.
-            var context = forPayment
-                ? (_readActiveCashierContext is null ? vm.PaymentContext : _readActiveCashierContext())
-                : null;
+            var context = forPayment ? ReadSessionIdentity() : null;
             if (forPayment && (!vm.FinancialSessionActive || context is null || total <= 0m))
                 return false;
             var dialog = new CashierEntryDialog(total, context) { Owner = this };
@@ -693,8 +691,16 @@ public partial class MainWindow : Window
         ReviewResolvedCheckout(ReadReviewPin);
 
     public string PromptCashierPin() => PromptCashierPin((DataContext as CatalogueViewModel)?.PaymentContext?.CashierId ?? "");
+    private CashierPaymentContext? ReadSessionIdentity()
+    {
+        try { return _readActiveCashierContext is null
+            ? (DataContext as CatalogueViewModel)?.PaymentContext : _readActiveCashierContext(); }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException) { return null; }
+    }
+
     public string PromptCashierPin(string cashier)
     {
+        var authorizedSession = ReadSessionIdentity();
         var cashierEntryPin = _cashierEntryOpen &&
             string.Equals(_entryPinCashier, cashier, StringComparison.Ordinal);
         if ((_cashierEntryOpen && !cashierEntryPin) || _logoutOpen || _reviewOpen ||
@@ -704,8 +710,8 @@ public partial class MainWindow : Window
                 ? vm.CheckoutBusy || vm.PendingOperationId is not null
                 : !vm.FinancialSessionActive ||
                   (vm.PendingOperationId is not null && !vm.CheckoutBusy) ||
-                  vm.PaymentContext is null ||
-                  !string.Equals(vm.PaymentContext.CashierId, cashier, StringComparison.Ordinal)))
+                  authorizedSession?.IsWellFormed != true ||
+                  !string.Equals(authorizedSession.CashierId, cashier, StringComparison.Ordinal)))
             return "";
         return ReadPin(cashierEntryPin ? "Authorize cashier session" : "Authorize checkout",
             $"Cashier: {cashier}\nConfirm this cashier session for the displayed payment.",
@@ -715,9 +721,9 @@ public partial class MainWindow : Window
     public string PromptCashDrawerApproval(string role)
     {
         if (role is not ("MANAGER" or "ADMIN") || _cashierEntryOpen || _logoutOpen || _reviewOpen ||
-            _pinOpen || _originalSaleLookupBusy || DataContext is not CatalogueViewModel
-            { FinancialSessionActive: true, CheckoutBusy: false, CheckoutUncertain: false, PendingOperationId: null,
-                PaymentContext: not null })
+            _pinOpen || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
+            !vm.FinancialSessionActive || vm.CheckoutBusy || vm.CheckoutUncertain ||
+            vm.PendingOperationId is not null || ReadSessionIdentity()?.IsWellFormed != true)
             return "";
         return ReadPin("Autorisation de caisse", $"Saisissez le code d’autorisation {role}.");
     }
@@ -784,6 +790,7 @@ public partial class MainWindow : Window
         // Never release a secret captured under a different cashier context.
         var vmAtPrompt = DataContext as CatalogueViewModel;
         var contextAtPrompt = vmAtPrompt?.PaymentContext;
+        var identityAtPrompt = ReadSessionIdentity();
         var sessionAtPrompt = vmAtPrompt?.FinancialSessionActive;
         var pendingAtPrompt = vmAtPrompt?.PendingOperationId;
         var uncertainAtPrompt = vmAtPrompt?.CheckoutUncertain;
@@ -804,8 +811,9 @@ public partial class MainWindow : Window
                     vmAtPrompt.CheckoutBusy != busyAtPrompt)
                     return "";
             }
-            else if (!IsPinContextStillValid(vmAtPrompt, contextAtPrompt, pendingAtPrompt,
-                uncertainAtPrompt == true, busyAtPrompt == true))
+            else if (identityAtPrompt?.IsWellFormed != true || !Equals(identityAtPrompt, ReadSessionIdentity()) ||
+                !IsPinContextStillValid(vmAtPrompt, contextAtPrompt, pendingAtPrompt,
+                    uncertainAtPrompt == true, busyAtPrompt == true))
                 return "";
             return pin.Password;
         }

@@ -10,8 +10,9 @@ public sealed class TouchNumericEntryDialog : Window
 {
     public decimal? Value { get; private set; }
 
-    public TouchNumericEntryDialog(string title, decimal initial, bool allowZero = false)
+    public TouchNumericEntryDialog(string title, decimal initial, bool allowZero = false, int decimalPlaces = 2)
     {
+        if (decimalPlaces is < 0 or > 2) throw new ArgumentOutOfRangeException(nameof(decimalPlaces));
         Title = title;
         Width = 360;
         SizeToContent = SizeToContent.Height;
@@ -27,9 +28,9 @@ public sealed class TouchNumericEntryDialog : Window
         var keypad = new UniformGrid { Columns = 3 };
         var replace = true;
         // Same numeric key order as LOGICA FormDialog_calc / the cash-entry keypad.
-        foreach (var key in new[] { "7", "8", "9", "4", "5", "6", "1", "2", "3", separator, "0", "⌫" })
+        foreach (var key in new[] { "7", "8", "9", "4", "5", "6", "1", "2", "3", decimalPlaces == 0 ? "" : separator, "0", "⌫" })
         {
-            var button = new Button { Content = key, MinHeight = 48, FontSize = 20, Margin = new Thickness(2) };
+            var button = new Button { Content = key, IsEnabled = key.Length > 0, MinHeight = 48, FontSize = 20, Margin = new Thickness(2) };
             button.Click += (_, _) =>
             {
                 feedback.Text = "";
@@ -50,7 +51,7 @@ public sealed class TouchNumericEntryDialog : Window
                 }
                 var next = input == "0" ? key : input + key;
                 var point = next.IndexOf(separator, StringComparison.Ordinal);
-                if ((point < 0 || next.Length - point - separator.Length <= 2) &&
+                if ((point < 0 || next.Length - point - separator.Length <= decimalPlaces) &&
                     decimal.TryParse(next, NumberStyles.AllowDecimalPoint, culture, out _))
                 {
                     amount.Text = next;
@@ -67,7 +68,7 @@ public sealed class TouchNumericEntryDialog : Window
         apply.Click += (_, _) =>
         {
             if (!decimal.TryParse(amount.Text, NumberStyles.AllowDecimalPoint, culture, out var value) ||
-                value < 0 || (!allowZero && value == 0) || decimal.Round(value, 2) != value)
+                value < 0 || (!allowZero && value == 0) || decimal.Round(value, decimalPlaces) != value)
             {
                 feedback.Text = allowZero ? "Saisissez une valeur positive ou nulle." : "Saisissez une valeur positive.";
                 return;
@@ -87,7 +88,7 @@ public sealed class TouchNumericEntryDialog : Window
 
 public static class TouchNumericEntry
 {
-    public static void Attach(TextBox field, string title, bool allowZero = false)
+    public static void Attach(TextBox field, string title, bool allowZero = false, int decimalPlaces = 2)
     {
         field.IsReadOnly = true;
         var opening = false;
@@ -98,7 +99,7 @@ public static class TouchNumericEntry
             try
             {
                 decimal.TryParse(field.Text, NumberStyles.Number, CultureInfo.CurrentCulture, out var initial);
-                var dialog = new TouchNumericEntryDialog(title, initial, allowZero) { Owner = Window.GetWindow(field) };
+                var dialog = new TouchNumericEntryDialog(title, initial, allowZero, decimalPlaces) { Owner = Window.GetWindow(field) };
                 if (dialog.ShowDialog() == true && dialog.Value is decimal value)
                     field.Text = value.ToString("0.##", CultureInfo.CurrentCulture);
             }

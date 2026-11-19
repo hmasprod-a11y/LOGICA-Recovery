@@ -287,7 +287,7 @@ public sealed partial record CatalogueHost
         }, ReadTrustedTotal, result.TryEndFinancialSession,
             () => System.Text.Json.JsonSerializer.Serialize(binding.Session.PendingLines), () =>
             {
-                if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is null) return null;
+                if (!vm.FinancialSessionActive || activeCashierId is null) return null;
                 return new CashierPaymentContext(activeCashierId, twoDigitWorkstation, "MAD", "Cash", 0m);
             });
         window.ConfigureCardPayment(() =>

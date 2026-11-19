@@ -3266,7 +3266,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 foreach (var nested in Children(child)) yield return nested;
             }
         }
-        void QueueTouchPin()
+        void QueueTouchPin(Action? afterPin = null)
         {
             workstation.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
             {
@@ -3289,6 +3289,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                     postingPins++;
                     buttons.Single(button => button.IsDefault)
                         .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                    afterPin?.Invoke();
                 }
                 catch (Exception ex) { failure = ex; dialog?.Close(); }
             }));
@@ -3375,7 +3376,98 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             var summary = closing.Read("O'Neil", pin);
             Require(summary.CashSales == price * 2m && summary.NetSales == price * 3m &&
                 summary.Expected == summary.Opening + price * 2m, "Cash/card/cash daily closing does not reconcile.");
-            closing.Close("O'Neil", pin, summary);
+
+            var reportSeen = false;
+            void QueueClosingConfirmation()
+            {
+                workstation.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+                {
+                    var confirmation = Application.Current.Windows.Cast<Window>()
+                        .SingleOrDefault(window => window.Owner == workstation.Window && window.Title == "Clôture globale");
+                    try
+                    {
+                        Require(confirmation is not null, "Daily cashier closing confirmation did not open after the consumed tender.");
+                        Require(Children(confirmation!).OfType<System.Windows.Controls.TextBlock>().Any(block =>
+                            block.Text.Contains("Écart : " + 0m.ToString("N2") + " MAD")),
+                            "Daily closing did not display zero difference against counted cash.");
+                        workstation.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+                        {
+                            var report = Application.Current.Windows.Cast<Window>().SingleOrDefault(window =>
+                                window.Owner == workstation.Window && window.Title.StartsWith("Clôture n°", StringComparison.Ordinal));
+                            try
+                            {
+                                Require(report is not null && Children(report).OfType<System.Windows.Controls.TextBlock>().Any(block =>
+                                    block.Text.Contains("Attendu : " + summary.Expected.ToString("N2") + " MAD")),
+                                    "Daily cash closing did not display its persisted report.");
+                                reportSeen = true;
+                            }
+                            catch (Exception ex) { failure = ex; }
+                            finally { report?.Close(); }
+                        }));
+                        Children(confirmation!).OfType<System.Windows.Controls.Button>()
+                            .Single(button => Equals(button.Content, "Confirmer"))
+                            .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                    }
+                    catch (Exception ex) { failure = ex; confirmation?.Close(); }
+                }));
+            }
+            workstation.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+            {
+                var countDialog = Application.Current.Windows.Cast<Window>().SingleOrDefault(window =>
+                    window.Owner == workstation.Window && window.Title == "Comptage et clôture de caisse");
+                try
+                {
+                    Require(countDialog is not null, "Daily cash-count entry did not open.");
+                    var remainder = summary.Expected;
+                    foreach (var denomination in CashDrawerCount.Denominations)
+                    {
+                        var count = (int)decimal.Floor(remainder / denomination);
+                        remainder -= count * denomination;
+                        if (count == 0) continue;
+                        var field = Children(countDialog!).OfType<System.Windows.Controls.TextBox>().Single(input =>
+                            System.Windows.Automation.AutomationProperties.GetName(input) ==
+                                denomination.ToString("0.##", CultureInfo.CurrentCulture) + " MAD");
+                        Require(field.IsReadOnly, "Cash drawer count still required a physical keyboard.");
+                        workstation.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+                        {
+                            var numeric = Application.Current.Windows.OfType<TouchNumericEntryDialog>().SingleOrDefault();
+                            try
+                            {
+                                Require(numeric is not null, "Cash note count did not open its integer keypad.");
+                                var buttons = Children(numeric!).OfType<System.Windows.Controls.Button>().ToArray();
+                                foreach (var digit in count.ToString(CultureInfo.InvariantCulture))
+                                    buttons.Single(button => Equals(button.Content, digit.ToString()))
+                                        .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                                buttons.Single(button => Equals(button.Content, "Appliquer"))
+                                    .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                            }
+                            catch (Exception ex) { failure = ex; numeric?.Close(); }
+                        }));
+                        field.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(
+                            System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
+                            { RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent });
+                        if (failure is not null) throw failure;
+                    }
+                    Require(remainder == 0m, "Daily fixture cash could not be represented by LOGICA denominations.");
+                    QueueTouchPin(QueueClosingConfirmation);
+                    Children(countDialog!).OfType<System.Windows.Controls.Button>()
+                        .Single(button => Equals(button.Content, "Préparer la clôture"))
+                        .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                }
+                catch (Exception ex) { failure = ex; }
+                finally { if (countDialog?.IsVisible == true) countDialog.Close(); }
+            }));
+            Children(workstation.Window).OfType<System.Windows.Controls.Button>()
+                .Single(button => Equals(button.Content, "Clôture de caisse"))
+                .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            if (failure is not null) throw new InvalidOperationException("Daily closing UI failed: " + failure.Message, failure);
+            Require(reportSeen && postingPins == 4 && entered?.Password.Length == 0 &&
+                workstation.ViewModel.PaymentContext is null,
+                "Daily closing reused a tender, omitted its report or did not erase its fresh PIN.");
+            Require(Number(settings, """
+                SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE CLOTURE_GLOBALE IS NOT NULL
+                AND ID_TICKET IN (SELECT ID_TICKET FROM TABLE_VENTES_JOURNAL WHERE ID_ARTICLE='DAILY-CYCLE')
+                """) == 3, "Daily UI closing did not mark all three payments.");
             Require(workstation.Window.EndFinancialSession(), "Completed daily cashier could not sign out.");
             var beforeLogoutAttempt = Snapshot(settings);
             Require(!workstation.Window.PayByCard() && !workstation.Window.PayMixed() &&
@@ -3384,6 +3476,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             File.WriteAllText(Path.Combine(EvidenceDirectory, "w2-daily-cashier-cycle.json"),
                 JsonSerializer.Serialize(new { SingleLogin = true, SameWindow = true,
                     Sequence = new[] { "ESPECES", "CARTE", "ESPECES" }, FreshTouchPins = postingPins,
+                    CountByTouch = true, ClosingFromCashierButton = true, PersistedReport = true,
                     FreshTenderEachSale = true, CashTotal = price * 2m, NetSales = price * 3m,
                     StockBefore = 10m, StockAfter = 7m, Closed = true, SignedOut = true }));
         }

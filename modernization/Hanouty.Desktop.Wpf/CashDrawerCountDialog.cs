@@ -30,6 +30,7 @@ internal sealed class CashDrawerCountDialog : Window
             System.Windows.Automation.AutomationProperties.SetName(count, label);
             row.Children.Add(count);
             row.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
+            TouchNumericEntry.Attach(count, "Nombre de " + label, allowZero: true, decimalPlaces: 0);
             counts.Add(count);
             count.TextChanged += (_, _) => RefreshTotal();
             panel.Children.Add(row);
