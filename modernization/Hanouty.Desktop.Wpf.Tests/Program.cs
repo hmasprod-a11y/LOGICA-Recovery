@@ -351,6 +351,11 @@ lockedVm.PaymentContext = new CashierPaymentContext("cashier", "register", "MAD"
 Check(lockedWindow.RefreshTrustedBasketTotal() && trustedReads == 1 &&
     ((System.Windows.Controls.TextBlock)lockedWindow.FindName("TrustedBasketTotal")).Text.Contains("17.25"),
     "STA window displays Host-authoritative MAD total");
+lockedWindow.SetCardPaymentFeedback("Ancien message de paiement");
+lockedVm.CommitCheckout();
+Check(((System.Windows.Controls.TextBlock)lockedWindow.FindName("ManualDiscountStatus")).Text == "" &&
+    ((System.Windows.Controls.TextBlock)lockedWindow.FindName("CardPaymentStatus")).Text == "",
+    "An actual financial result must supersede prior discount/payment messages.");
 lockedVm.FinancialSessionActive = false;
 Check(((System.Windows.Controls.TextBlock)lockedWindow.FindName("TrustedBasketTotal")).Text.Contains("indisponible") &&
     !lockedWindow.RefreshTrustedBasketTotal() && trustedReads == 1,

@@ -223,6 +223,10 @@ public partial class MainWindow : Window
         // the previously displayed quote. Only a new Host read can restore it.
         if (e.PropertyName == nameof(CatalogueViewModel.CommitFeedback))
         {
+            // Financial results, including printer failures, take precedence
+            // over an earlier discount or payment-availability message.
+            ManualDiscountStatus.Text = "";
+            CardPaymentStatus.Text = "";
             _trustedTotalRevision++;
             TrustedBasketTotal.Text = "Total à vérifier";
             // A cash checkout outcome invalidates any separately prepared return.
