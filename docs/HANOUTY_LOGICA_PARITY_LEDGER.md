@@ -89,3 +89,12 @@ Les jalons suivants remplacent les anciennes mentions « carte/mixte ouverts » 
 - Suite : le total affiché utilise l'identité de session encore active, indépendamment de l'autorisation monétaire consommée. L'évidence d'un original espèces accepte un reçu positif unique et au plus un rendu négatif, tous en centimes et de somme exactement égale au net original. Un retour rembourse ce net, jamais le montant brut reçu. Les règles de lignes complètes, prix persistés, absence de remise, verrou et consommation unique restent appliquées. Les tests MariaDB refusent rendu incohérent, fraction de centime, carte et mouvements surnuméraires même de somme correcte.
 
 Retours partiels, remboursements carte/mixte, remises autorisées, ventes à crédit, autres documents et recette matérielle restent des écarts distincts. Une CI verte sur ces scénarios ne vaut pas recette commerciale complète.
+
+
+## Catalogue : recherche et prix au toucher — 19 novembre 2026
+
+Le parcours de gestion reprend la recherche exacte ou partielle de `Form_2_ARTICLES.Picture_FIND_Click` : nom ou code-barres, résultats visibles et sélection explicite d'une variante. L'identifiant interne reste une clé cachée et non éditable. Toute modification du texte ou du mode de recherche révoque le résultat sélectionné et désactive son prix. La recherche est paramétrée ; les caractères % et _ restent littéraux. Les identités ambiguës sont exclues, et au-delà de 50 résultats l'utilisateur doit préciser la recherche.
+
+Les prix de création et de modification utilisent le pavé numérique existant, zéro et annulation compris. Le service conserve le PIN administrateur, la comparaison du prix relu sous transaction et l'audit atomique. La recette WPF/MariaDB exécute création tactile, recherche d'un code avec apostrophe, sélection, annulation/application du pavé et écriture par PIN ; elle vérifie aussi variantes partagées sans présélection, révocation après édition de recherche, refus des droits insuffisants, rollback d'audit et prix effectivement repris par la vente.
+
+La preuve de cette livraison et son SHA sont consignés dans PR #133 et le tableau #94. La capture `catalogue-search-touch-price.png` documente le parcours automatisé. Cette tranche ne clôt pas les champs avancés, suppressions/historique, promotions, autres tarifs ou la recette magasin du catalogue LOGICA complet.
