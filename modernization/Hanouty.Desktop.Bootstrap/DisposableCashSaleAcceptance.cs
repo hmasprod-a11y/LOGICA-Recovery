@@ -905,6 +905,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyCardPayment(settings, pin);
         VerifyMixedPayment(settings, pin);
         VerifyDailyCashierCycle(settings, pin);
+        VerifyInteractiveReturnCycle(settings, pin);
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -3245,6 +3246,110 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         finally { CultureInfo.CurrentCulture = previousCulture; }
     }
 
+
+
+    private static void VerifyInteractiveReturnCycle(CatalogueSettings settings, string pin)
+    {
+        Sql(settings, """
+            INSERT INTO TABLE_ARTICLES
+                (ID_ARTICLE,STOCK,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V_1,TAUX_TVA,GROUPE,PROMOTION,PRIX_QTE)
+            VALUES ('RETURN-CYCLE',5,'RETURN-CODE','Cycle retour','Food',1,1,5.25,20,'G',0,0);
+            """);
+        var dropAcknowledgement = false;
+        var host = CatalogueHost.CreateCashierWorkstationWithAcknowledgementFault(settings, "01", () =>
+        {
+            if (!dropAcknowledgement) return;
+            dropAcknowledgement = false;
+            throw new IOException("interactive-refund-after-real-commit");
+        });
+        Exception? failure = null;
+        static IEnumerable<DependencyObject> Children(DependencyObject parent)
+        {
+            foreach (var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>())
+            {
+                yield return child;
+                foreach (var nested in Children(child)) yield return nested;
+            }
+        }
+        string CashSale()
+        {
+            host.ViewModel.ScannerText = "RETURN-CODE";
+            host.ViewModel.ScanCommand.Execute(null);
+            Require(host.Session.PendingCount == 1, "Return-cycle scanner did not prepare one sale.");
+            host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+            {
+                var dialog = Application.Current.Windows.OfType<CashierEntryDialog>().SingleOrDefault();
+                try
+                {
+                    Require(dialog is not null && dialog.Title == "Paiement en espèces", "Return cycle forced another login.");
+                    var buttons = Children(dialog!).OfType<System.Windows.Controls.Button>().ToArray();
+                    void Touch(string label) => buttons.Single(button => Equals(button.Content, label))
+                        .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                    Touch("Pavé numérique");
+                    foreach (var digit in "5.25") Touch(digit.ToString());
+                    Touch("Appliquer le montant");
+                    buttons.Single(button => button.IsDefault).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                }
+                catch (Exception ex) { failure = ex; dialog?.Close(); }
+            }));
+            Children(host.Window).OfType<System.Windows.Controls.Button>().Single(button =>
+                System.Windows.Automation.AutomationProperties.GetName(button) == "Enter sale cash tender")
+                .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            if (failure is not null) throw failure;
+            string? operation = null;
+            host.Window.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle,
+                new Action(() => operation = host.ViewModel.PendingOperationId));
+            ReviewThroughDialog(host, pin, true, () => host.ViewModel.CommitCommand.Execute(null));
+            Require(operation is not null && !host.ViewModel.CheckoutUncertain && host.ViewModel.PaymentContext is null &&
+                host.Session.PendingCount == 0 && host.ViewModel.FinancialSessionActive,
+                "Return-cycle cash sale did not finish with consumed tender and active identity: " + host.ViewModel.CommitFeedback);
+            return operation!;
+        }
+        try
+        {
+            Require(CashierEntry(host, "O'Neil", "01", "0", 0m, pin), "Return-cycle cashier login failed.");
+            var original = CashSale();
+            var receipt = Convert.ToString(Value(settings,
+                "SELECT TICKET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id", original), CultureInfo.InvariantCulture)!;
+            Require(receipt != original && !string.IsNullOrWhiteSpace(receipt), "Fixture lacks the printed receipt number.");
+            Require(host.Window.SearchOriginalSales(receipt), "Consumed sale context blocked printed receipt lookup.");
+            var results = (System.Windows.Controls.ListBox)host.Window.FindName("OriginalSaleResults");
+            var candidate = results.Items.Cast<OriginalSaleCandidate>().Single(row => row.SaleId == original);
+            results.SelectedItem = candidate;
+            Require(host.Window.SelectOriginalSale(candidate), "Printed receipt did not preserve canonical original identity.");
+            var before = Number(settings, "SELECT COUNT(*) FROM hanouty_checkout_operations");
+            dropAcknowledgement = true;
+            ReviewThroughDialog(host, pin, true, () => host.Window.ConfirmReturnDraft());
+            Require(host.ViewModel.CheckoutUncertain && !host.ViewModel.CanCommit &&
+                host.Session.State == CheckoutCommitState.OutcomeUnknown &&
+                Number(settings, "SELECT COUNT(*) FROM hanouty_checkout_operations") == before + 1 &&
+                Number(settings, "SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id=@id", original) == 1 &&
+                Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='RETURN-CYCLE'") == 5m,
+                "Actual refund lost-acknowledgement did not persist exactly once and lock the UI: " + host.ViewModel.CommitFeedback);
+            var persisted = Snapshot(settings);
+            Require(!host.Window.ConfirmReturnDraft() && Snapshot(settings) == persisted,
+                "Uncertain refund repeated the financial write.");
+            host.ViewModel.ReconcileCommand.Execute(null);
+            Require(host.ViewModel.CheckoutUncertain && host.Session.State == CheckoutCommitState.Ready,
+                "Refund reconciliation skipped explicit cashier review.");
+            ReviewThroughDialog(host, "incorrect", true);
+            Require(host.ViewModel.CheckoutUncertain && Snapshot(settings) == persisted,
+                "Invalid PIN unlocked a persisted refund.");
+            ReviewThroughDialog(host, pin, true);
+            Require(!host.ViewModel.CheckoutUncertain && host.ViewModel.PendingOperationId is null &&
+                host.Session.PendingCount == 0 && Snapshot(settings) == persisted,
+                "Normal-login refund review failed or replayed the refund.");
+            host.Window.SearchOriginalSales(receipt);
+            Require(results.Items.Count == 0, "Consumed original was offered for another refund.");
+            CashSale();
+            Require(Number(settings, "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='RETURN-CYCLE'") == 4m &&
+                Number(settings, "SELECT COUNT(DISTINCT ID_TICKET) FROM TABLE_VENTES_JOURNAL WHERE ID_ARTICLE='RETURN-CYCLE'") == 3 &&
+                Number(settings, "SELECT SUM(Total_NET) FROM TABLE_VENTES_JOURNAL WHERE ID_ARTICLE='RETURN-CYCLE'") == 5.25m,
+                "Sale/refund/next-sale same-session cycle changed stock or money incorrectly.");
+            Console.WriteLine("PASS: printed receipt -> same-session full cash refund -> lost acknowledgement -> fresh PIN review -> next customer; no duplicate refund.");
+        }
+        finally { host.Window.Close(); }
+    }
 
     private static void VerifyDailyCashierCycle(CatalogueSettings settings, string pin)
     {

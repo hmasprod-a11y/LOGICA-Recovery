@@ -266,16 +266,19 @@ public partial class MainWindow : Window
         OriginalSaleStatus.Text = "Cashier context changed — search again";
     }
 
-    public void ConfigureOriginalSaleLookup(IOriginalSaleLookup lookup)
+    private Func<bool>? _prepareReturnSession;
+
+    public void ConfigureOriginalSaleLookup(IOriginalSaleLookup lookup, Func<bool>? prepareSession = null)
     {
         ArgumentNullException.ThrowIfNull(lookup);
         if (_originalSaleSelection is not null) throw new InvalidOperationException("Original-sale lookup already configured.");
         _originalSaleSelection = new OriginalSaleSelection(lookup);
+        _prepareReturnSession = prepareSession;
     }
 
     public bool SearchOriginalSales(string receipt)
     {
-        if (_originalSaleLookupBusy || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen) return false;
+        if (_originalSaleLookupBusy || _cashierEntryOpen || _alternatePaymentOpen || _reviewOpen || _logoutOpen || _pinOpen) return false;
         OriginalSaleResults.ItemsSource = null;
         _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
         _originalSaleSelection?.Clear();
@@ -283,7 +286,8 @@ public partial class MainWindow : Window
         ReturnDraftStatus.Text = _returnDraft.Status;
         _originalSaleLookupContext = null;
         OriginalSaleStatus.Text = "No original sale selected — refunds unavailable";
-        if (_originalSaleLookupBusy || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
+        if (_prepareReturnSession is not null && !_prepareReturnSession()) return false;
+        if (_originalSaleLookupBusy || _cashierEntryOpen || _alternatePaymentOpen || _reviewOpen || _logoutOpen || _pinOpen ||
             _originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
             !vm.FinancialSessionActive || vm.PaymentContext is null || vm.CheckoutBusy || vm.CheckoutUncertain ||
             vm.PendingOperationId is not null) return false;
@@ -355,7 +359,7 @@ public partial class MainWindow : Window
 
     public bool ReviewReturnQuantity(string quantity)
     {
-        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy ||
+        if (_cashierEntryOpen || _alternatePaymentOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy ||
             _originalSaleSelection?.Selected is null || DataContext is not CatalogueViewModel vm ||
             !vm.FinancialSessionActive || vm.PaymentContext is null || vm.CheckoutBusy ||
             vm.CheckoutUncertain || vm.PendingOperationId is not null ||
@@ -372,7 +376,7 @@ public partial class MainWindow : Window
 
     public bool ConfirmReturnDraft()
     {
-        if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy ||
+        if (_cashierEntryOpen || _alternatePaymentOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy ||
             DataContext is not CatalogueViewModel vm || _originalSaleSelection?.Selected is null ||
             _returnDraft.OriginalSaleId != _originalSaleSelection.Selected.SaleId ||
             !ReferenceEquals(OriginalSaleResults.ItemsSource, _originalSaleResults) ||

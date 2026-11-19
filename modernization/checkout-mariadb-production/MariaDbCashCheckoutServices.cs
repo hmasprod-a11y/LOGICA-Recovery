@@ -42,7 +42,48 @@ namespace Hanouty.Checkout.MariaDb
             { return false; }
         }
 
-        public sealed record PersistedCashSaleCandidate(string SaleId, decimal PaidMad);
+        public sealed record PersistedCashSaleCandidate(string SaleId, decimal PaidMad,
+            string TicketNumber = "", string ReceiptDate = "", string Register = "");
+
+        // User-facing receipt lookup; financial preparation still uses the selected canonical ID.
+        public static IReadOnlyList<PersistedCashSaleCandidate> FindFullCashReturnCandidatesByReceipt(
+            Func<MySqlConnection> connections, string receipt)
+        {
+            if (connections is null) throw new ArgumentNullException(nameof(connections));
+            if (string.IsNullOrWhiteSpace(receipt) || receipt.Length > 64 ||
+                receipt != receipt.Trim() || receipt.Any(char.IsControl))
+                return Array.Empty<PersistedCashSaleCandidate>();
+            var headers = new List<(string Id, string Number, string Date, string Register)>();
+            using (var connection = LocalConnection(connections))
+            {
+                connection.Open();
+                using var command = new MySqlCommand(
+                    "SELECT ID_TICKET,TICKET,DATES,POSTE FROM TABLE_VENTES_ENTETE " +
+                    "WHERE BINARY OPERATION=BINARY 'VENTE' AND " +
+                    "(BINARY ID_TICKET=BINARY @receipt OR BINARY TICKET=BINARY @receipt) LIMIT 21", connection);
+                command.Parameters.AddWithValue("@receipt", receipt);
+                using var rows = command.ExecuteReader();
+                while (rows.Read())
+                    headers.Add((Convert.ToString(rows.GetValue(0)) ?? "", Convert.ToString(rows.GetValue(1)) ?? "",
+                        Convert.ToString(rows.GetValue(2), System.Globalization.CultureInfo.InvariantCulture) ?? "",
+                        Convert.ToString(rows.GetValue(3)) ?? ""));
+            }
+            if (headers.Count > 20) throw new InvalidOperationException("Too many receipt matches; original identity needs review.");
+            var result = new List<PersistedCashSaleCandidate>();
+            foreach (var header in headers)
+            {
+                if (headers.Count(row => string.Equals(row.Id, header.Id, StringComparison.OrdinalIgnoreCase)) != 1)
+                    continue;
+                try
+                {
+                    foreach (var candidate in FindFullCashReturnCandidates(connections, header.Id))
+                        result.Add(candidate with { TicketNumber = header.Number,
+                            ReceiptDate = header.Date, Register = header.Register });
+                }
+                catch (InvalidOperationException) { } // Corrupt/non-cash evidence is never offered.
+            }
+            return result;
+        }
 
         // Exact-ID lookup for UI display. Only persisted, complete, exact-cash
         // V1 sales with no existing return claim are exposed; this is read-only.

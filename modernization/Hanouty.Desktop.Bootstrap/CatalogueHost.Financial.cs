@@ -90,13 +90,21 @@ public sealed partial record CatalogueHost
     // Real development cashier entry uses the SAME production graph, initially
     // signed out and without a dummy payment/identity/price.
     public static CatalogueHost CreateCashierWorkstation(CatalogueSettings settings,
-        string twoDigitWorkstation, Func<System.Windows.Window, string?>? selectImportFile = null)
+        string twoDigitWorkstation, Func<System.Windows.Window, string?>? selectImportFile = null) =>
+        CreateWorkstationCore(settings, twoDigitWorkstation, selectImportFile, null);
+
+    internal static CatalogueHost CreateCashierWorkstationWithAcknowledgementFault(
+        CatalogueSettings settings, string twoDigitWorkstation, Action afterCommitFault) =>
+        CreateWorkstationCore(settings, twoDigitWorkstation, null, afterCommitFault);
+
+    private static CatalogueHost CreateWorkstationCore(CatalogueSettings settings,
+        string twoDigitWorkstation, Func<System.Windows.Window, string?>? selectImportFile, Action? afterCommitFault)
     {
         MainWindow? window = null;
         var host = CreateFinancialCore(settings, twoDigitWorkstation,
             () => window?.PromptCashierPin() ??
                 throw new InvalidOperationException("Cashier window unavailable."),
-            null, null, null, selectImportFile);
+            null, afterCommitFault, null, selectImportFile);
         window = host.Window;
         return host;
     }
@@ -155,7 +163,6 @@ public sealed partial record CatalogueHost
         var basketReader = new CashierBasketReader(connections, binding.Session);
         var window = new MainWindow(services.Catalogue, services.Checkout, services.Submission, context,
             requireFreshPaymentContext: true, basketReader: basketReader);
-        window.ConfigureOriginalSaleLookup(returnHost);
         var vm = (CatalogueViewModel)window.DataContext;
         vm.FinancialSessionActive = captured is not null;
         if (!vm.CatalogueAvailable)
@@ -166,6 +173,16 @@ public sealed partial record CatalogueHost
         bool CanChangeContext() => !reviewing && !vm.CheckoutBusy &&
             !vm.CheckoutUncertain && vm.PendingOperationId is null &&
             binding.Session.OperationId is null && binding.Session.State == CheckoutCommitState.Ready;
+        window.ConfigureOriginalSaleLookup(returnHost, () =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is null ||
+                binding.Session.PendingCount != 0) return false;
+            // A return uses persisted original amounts, never a consumed sale tender.
+            contextConsumed = true;
+            context = new CashierPaymentContext(activeCashierId, twoDigitWorkstation, "MAD", "Cash", 0m);
+            vm.PaymentContext = context;
+            return true;
+        });
         result.setFinancialContext = next =>
         {
             if (!CanChangeContext()) return false;
@@ -199,7 +216,10 @@ public sealed partial record CatalogueHost
         };
         result.reviewedReset = (operation, expected, reviewPin) =>
         {
-            if (reviewing || captured is null || context is null || reviewPin is null || string.IsNullOrWhiteSpace(operation) ||
+            var actor = activeCashierId;
+            var reviewedContext = context;
+            if (reviewing || actor is null || reviewedContext is null || reviewedContext.CashierId != actor ||
+                reviewPin is null || string.IsNullOrWhiteSpace(operation) ||
                 operation == lastReviewed ||
                 expected is not (CheckoutResolution.Persisted or CheckoutResolution.Absent) ||
                 !vm.CanReviewResolvedCheckout || vm.ReviewedResolution != expected ||
@@ -212,14 +232,15 @@ public sealed partial record CatalogueHost
                 var outcome = expected == CheckoutResolution.Persisted
                     ? CheckoutOperationOutcome.Persisted : CheckoutOperationOutcome.Absent;
                 if (journal.Lookup(operation) != outcome) return false;
-                MariaDbCashCheckoutServices.VerifyCashierSession(connections, captured.CashierId, reviewPin);
+                MariaDbCashCheckoutServices.VerifyCashierSession(connections, actor, reviewPin);
                 // PIN entry can pump UI events. Recheck durable/session identity
                 // after reauthorization before touching even the staged draft.
-                if (journal.Lookup(operation) != outcome ||
+                if (activeCashierId != actor || !ReferenceEquals(context, reviewedContext) ||
+                    journal.Lookup(operation) != outcome ||
                     !vm.CanReviewResolvedCheckout || vm.ReviewedResolution != expected ||
                     !string.Equals(vm.PendingOperationId, operation, StringComparison.Ordinal) ||
                     binding.Session.State != CheckoutCommitState.Ready ||
-                    !vm.RestoreAuthorizedPaymentContextAfterReview(context))
+                    !vm.RestoreAuthorizedPaymentContextAfterReview(reviewedContext))
                     return false;
                 binding.Session.DiscardInvalidated();
                 waitingSaleId = null;
@@ -780,9 +801,9 @@ public sealed partial record CatalogueHost
         IOriginalSaleLookup, ITrustedWpfFullCashReturnPreparation
     {
         public IReadOnlyList<OriginalSaleCandidate> FindPersistedSales(string receiptSearch) =>
-            MariaDbCashCheckoutServices.FindFullCashReturnCandidates(connections, receiptSearch)
+            MariaDbCashCheckoutServices.FindFullCashReturnCandidatesByReceipt(connections, receiptSearch)
                 .Select(sale => new OriginalSaleCandidate(sale.SaleId,
-                    sale.SaleId + " — full cash ticket", sale.PaidMad))
+                    $"Ticket {sale.TicketNumber} · {sale.ReceiptDate} · poste {sale.Register} — {sale.PaidMad:N2} MAD", sale.PaidMad))
                 .ToArray();
 
         public AuthorizedCheckoutRequest PrepareFullCashReturn(
