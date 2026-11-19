@@ -444,14 +444,15 @@ public partial class MainWindow : Window
         if (_cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
             _originalSaleLookupBusy || _readTrustedCashTotal is null ||
             DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
-            ReadSessionIdentity()?.IsWellFormed != true || vm.CheckoutBusy || vm.CheckoutUncertain ||
+            vm.CheckoutBusy || vm.CheckoutUncertain ||
             vm.PendingOperationId is not null) return false;
         _trustedTotalReadBusy = true;
         var context = vm.PaymentContext;
-        var identity = ReadSessionIdentity();
         var revision = _trustedTotalRevision;
         try
         {
+            var identity = ReadSessionIdentity();
+            if (identity?.IsWellFormed != true) return false;
             var basketIdentity = _readBasketIdentity?.Invoke();
             var total = _readTrustedCashTotal();
             if (total is null || total < 0m || decimal.Round(total.Value, 2) != total.Value ||
