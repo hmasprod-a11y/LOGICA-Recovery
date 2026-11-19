@@ -139,10 +139,16 @@ try {
 
     New-Item -ItemType Directory -Path $evidence -Force | Out-Null
     New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
-    $mariaZip = Join-Path $runtimeRoot 'mariadb-10.11.14-winx64.zip'
+    $mariaZip = Join-Path $bundle 'mariadb-10.11.14-winx64.zip'
     $serverDir = Join-Path $runtimeRoot 'server'
-    $url = 'https://archive.mariadb.org/mariadb-10.11.14/winx64-packages'
-    $checksums = (Invoke-WebRequest "$url/sha256sums.txt" -UseBasicParsing).Content
+    $runtimeChecksums = Join-Path $bundle 'mariadb-sha256sums.txt'
+    if (-not (Test-Path -LiteralPath $mariaZip -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $runtimeChecksums -PathType Leaf)) {
+        throw 'The bundled MariaDB runtime or checksum is missing. Extract the complete test bundle again.'
+    }
+    # The complete bundle contains the official archive and checksum verified by CI.
+    # Startup, including a fresh Windows profile, never downloads executable bytes.
+    $checksums = Get-Content -LiteralPath $runtimeChecksums -Raw
     $checksumMatches = @()
     foreach ($line in ($checksums -split '\r?\n')) {
         if ($line -match '^([0-9a-fA-F]{64})[ \t]+\*?(?:\./)?([^/\\]+)[ \t]*$' -and $Matches[2] -ceq 'mariadb-10.11.14-winx64.zip') {
@@ -151,16 +157,8 @@ try {
     }
     if ($checksumMatches.Count -ne 1) { throw 'Could not verify the official MariaDB download checksum.' }
     $expectedMariaHash = $checksumMatches[0]
-    $needDownload = -not (Test-Path -LiteralPath $mariaZip -PathType Leaf)
-    if (-not $needDownload) {
-        $needDownload = (Get-FileHash -LiteralPath $mariaZip -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expectedMariaHash
-    }
-    if ($needDownload) {
-        Remove-Item -LiteralPath $mariaZip -Force -ErrorAction SilentlyContinue
-        Invoke-WebRequest "$url/mariadb-10.11.14-winx64.zip" -OutFile $mariaZip -UseBasicParsing
-    }
     if ((Get-FileHash -LiteralPath $mariaZip -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expectedMariaHash) {
-        throw 'MariaDB download integrity verification failed.'
+        throw 'Bundled MariaDB runtime integrity verification failed.'
     }
     $installer = Get-ChildItem -LiteralPath $serverDir -Recurse -Filter 'mariadb-install-db.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
     $cachedServer = Get-ChildItem -LiteralPath $serverDir -Recurse -Filter 'mariadbd.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -249,7 +247,10 @@ GRANT ALL PRIVILEGES ON logica_ci.* TO 'w2_test'@'127.0.0.1';
     Write-Host "Evidence saved in: $evidence" -ForegroundColor Green
 } catch {
     Write-Host "TEST SETUP FAILED: $($_.Exception.Message)" -ForegroundColor Red
-    if (Test-Path -LiteralPath $evidence) { Write-Host "Evidence folder: $evidence" }
+    if (Test-Path -LiteralPath $evidence) {
+        Set-Content -LiteralPath (Join-Path $evidence 'setup-failure.txt') -Value $_.Exception.Message -Encoding UTF8 -ErrorAction SilentlyContinue
+        Write-Host "Evidence folder: $evidence"
+    }
     exit 1
 } finally {
     Stop-HanoutyTestDatabase

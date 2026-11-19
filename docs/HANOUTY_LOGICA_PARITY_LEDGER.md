@@ -98,3 +98,8 @@ Le parcours de gestion reprend la recherche exacte ou partielle de `Form_2_ARTIC
 Les prix de création et de modification utilisent le pavé numérique existant, zéro et annulation compris. Le service conserve le PIN administrateur, la comparaison du prix relu sous transaction et l'audit atomique. La recette WPF/MariaDB exécute création tactile, recherche d'un code avec apostrophe, sélection, annulation/application du pavé et écriture par PIN ; elle vérifie aussi variantes partagées sans présélection, révocation après édition de recherche, refus des droits insuffisants, rollback d'audit et prix effectivement repris par la vente.
 
 La preuve de cette livraison et son SHA sont consignés dans PR #133 et le tableau #94. La capture `catalogue-search-touch-price.png` documente le parcours automatisé. Cette tranche ne clôt pas les champs avancés, suppressions/historique, promotions, autres tarifs ou la recette magasin du catalogue LOGICA complet.
+
+
+## Démarrage de la recette sans téléchargement à l'ouverture
+
+L'archive MariaDB officielle déjà vérifiée par W2 et son fichier de sommes SHA-256 sont livrés avec le paquet d'essai. Le lanceur exige ces deux fichiers locaux et vérifie l'archive avant de lancer un serveur. Il n'effectue plus de requête réseau, même si un ancien cache existe. La CI vérifie un profil réellement neuf, sans archive préchargée dans son cache, avec les commandes HTTP bloquées et le port 3307 occupé ; elle doit aussi refuser une somme altérée avant démarrage. Les diagnostics d'échec sont conservés dans le dossier de preuve. La préparation CI peut télécharger le composant officiel avec tentatives bornées et contrôle de longueur puis SHA-256 ; cela ne devient pas une dépendance réseau du poste d'essai.

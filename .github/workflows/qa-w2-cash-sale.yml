@@ -131,11 +131,16 @@ jobs:
             $first = $part * $using:partSize
             $last = [Math]::Min($using:length - 1, $first + $using:partSize - 1)
             $output = Join-Path $using:dbRoot ("archive-{0:D2}.part" -f $part)
-            & curl.exe --fail --location --range "$first-$last" --retry 1 --connect-timeout 30 --max-time 180 --silent --show-error $using:archiveUrl --output $output 2> "$output.error"
-            if ($LASTEXITCODE -ne 0 -or (Get-Item -LiteralPath $output).Length -ne ($last - $first + 1)) {
-              throw "MariaDB archive part $part failed verification."
+            $verifiedPart = $false
+            for ($attempt = 0; $attempt -lt 2; $attempt++) {
+              & curl.exe --fail --location --range "$first-$last" --retry 4 --retry-all-errors --retry-max-time 90 --connect-timeout 30 --max-time 90 --silent --show-error $using:archiveUrl --output $output 2> "$output.error"
+              if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $output -PathType Leaf) -and
+                  (Get-Item -LiteralPath $output).Length -eq ($last - $first + 1)) {
+                $verifiedPart = $true; break
+              }
             }
-          } -ThrottleLimit 32
+            if (-not $verifiedPart) { throw "MariaDB archive part $part failed verification." }
+          } -ThrottleLimit 8
           $archive = [IO.File]::Create("$dbRoot/server.zip")
           try {
             foreach ($part in 0..31) {
@@ -143,9 +148,10 @@ jobs:
               try { $source.CopyTo($archive) } finally { $source.Dispose() }
             }
           } finally { $archive.Dispose() }
-          $checks = (Invoke-WebRequest "$url/sha256sums.txt" -TimeoutSec 30).Content
+          $checks = (Invoke-WebRequest "$url/sha256sums.txt" -TimeoutSec 30 -MaximumRetryCount 3 -RetryIntervalSec 2).Content
           $expected = (($checks -split '\r?\n' | Where-Object { $_ -match 'mariadb-10.11.14-winx64.zip\s*$' }) -split '\s+')[0]
           if ((Get-FileHash "$dbRoot/server.zip" -Algorithm SHA256).Hash -ne $expected) { throw 'MariaDB checksum mismatch' }
+          Set-Content -LiteralPath (Join-Path $dbRoot 'sha256sums.txt') -Value $checks -Encoding UTF8
           Expand-Archive "$dbRoot/server.zip" "$dbRoot/server"
           $bin = (Get-ChildItem "$dbRoot/server" -Recurse -Filter mariadb-install-db.exe | Select-Object -First 1).Directory.FullName
           & "$bin/mariadb-install-db.exe" "--datadir=$dbRoot/data" --password=logica-ci-only --port=3307
@@ -225,6 +231,10 @@ jobs:
           Copy-Item 'scripts/Start-Hanouty-Test.ps1' $bundle
           Copy-Item 'scripts/Start-Hanouty-Test.cmd' $bundle
           Copy-Item 'scripts/HANOUTY-TEST-START-HERE.txt' (Join-Path $bundle 'LE-MOI-DEMARRER.txt')
+          # Ship the SAME official bytes already verified and exercised above.
+          $verifiedRuntime = Join-Path $env:RUNNER_TEMP 'hanouty-w2-cash-mariadb'
+          Copy-Item -LiteralPath (Join-Path $verifiedRuntime 'server.zip') -Destination (Join-Path $bundle 'mariadb-10.11.14-winx64.zip')
+          Copy-Item -LiteralPath (Join-Path $verifiedRuntime 'sha256sums.txt') -Destination (Join-Path $bundle 'mariadb-sha256sums.txt')
       - name: Stop only this workflow's disposable MariaDB server
         if: always()
         shell: pwsh
@@ -254,11 +264,13 @@ jobs:
           $bundle = Join-Path $env:RUNNER_TEMP 'HANOUTY-WPF-TEST-BUNDLE'
           $profile = Join-Path $env:RUNNER_TEMP ("hanouty-launcher-" + [Guid]::NewGuid().ToString('N'))
           New-Item -ItemType Directory -Path $profile | Out-Null
-          # Reuse only the verified installer bytes; database and application profile remain fresh.
-          $runtimeCache = Join-Path $profile 'HANOUTY-Test/mariadb-10.11.14'
-          New-Item -ItemType Directory -Path $runtimeCache -Force | Out-Null
-          Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'hanouty-w2-cash-mariadb/server.zip') `
-            -Destination (Join-Path $runtimeCache 'mariadb-10.11.14-winx64.zip')
+          # A truly fresh profile: no preseeded runtime cache, no startup network.
+          function Invoke-WebRequest { throw 'Offline launcher attempted an HTTP download.' }
+          function Invoke-RestMethod { throw 'Offline launcher attempted an HTTP request.' }
+          function curl.exe { throw 'Offline launcher attempted curl.' }
+          if (Test-Path -LiteralPath (Join-Path $profile 'HANOUTY-Test')) {
+            throw 'Launcher profile was not fresh.'
+          }
           $previousLocalAppData = $env:LOCALAPPDATA
           $occupied = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 3307)
           try {
@@ -280,6 +292,29 @@ jobs:
           $proof = New-Item -ItemType Directory -Path 'evidence/windows-launcher' -Force
           Copy-Item -LiteralPath $reports[0].FullName -Destination $proof.FullName
           Copy-Item -LiteralPath 'evidence/source-manifest.txt' -Destination $proof.FullName
+          # An altered bundled checksum must fail before a database starts.
+          $runtimeChecksums = Join-Path $bundle 'mariadb-sha256sums.txt'
+          $originalChecksums = [IO.File]::ReadAllBytes($runtimeChecksums)
+          $badProfile = Join-Path $env:RUNNER_TEMP ("hanouty-tampered-runtime-" + [Guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $badProfile | Out-Null
+          try {
+            Set-Content -LiteralPath $runtimeChecksums -Value (('0' * 64) + '  mariadb-10.11.14-winx64.zip') -Encoding UTF8
+            $env:LOCALAPPDATA = $badProfile
+            & (Join-Path $bundle 'Start-Hanouty-Test.ps1') -VerifyOnly
+            if ($LASTEXITCODE -eq 0) { throw 'Tampered runtime checksum was accepted.' }
+            $failures = @(Get-ChildItem -LiteralPath (Join-Path $badProfile 'HANOUTY-Test/evidence') -Recurse -File -Filter 'setup-failure.txt')
+            if ($failures.Count -ne 1 -or (Get-Content -LiteralPath $failures[0].FullName -Raw) -notmatch 'Bundled MariaDB runtime integrity verification failed') {
+              throw 'Tamper test failed for a reason other than verified runtime integrity.'
+            }
+          } finally {
+            [IO.File]::WriteAllBytes($runtimeChecksums, $originalChecksums)
+            $env:LOCALAPPDATA = $previousLocalAppData
+          }
+          # The expected negative test exit was validated above, not a workflow failure.
+          $global:LASTEXITCODE = 0
+          @{ OfflineRuntimeBundled = $true; FreshProfileNoCache = $true; HttpDownloadsBlocked = $true;
+             Port3307Occupied = $true; RuntimeTamperRejected = $true; RestoreVerified = $true;
+             SourceSha = $env:GITHUB_SHA } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $proof.FullName 'offline-runtime.json') -Encoding UTF8
       - name: Upload Windows launcher restore evidence
         uses: actions/upload-artifact@v4
         with:
