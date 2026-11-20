@@ -918,6 +918,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyLogicaCataloguePricing(settings, pin);
         VerifyManualDiscounts(settings, pin);
         VerifyCreditSales(settings, pin);
+        VerifyCustomerFiles(settings, pin);
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,

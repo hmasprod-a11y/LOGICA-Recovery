@@ -16,7 +16,7 @@ public sealed record CheckoutCustomerIdentity(string Id, string Code, string Nam
     {
         if (string.IsNullOrWhiteSpace(Id) || Id.Length > 64 || Id != Id.Trim() || Id == "0" ||
             Id.Any(character => char.IsControl(character) || char.IsSurrogate(character)) ||
-            Code is null || Code.Length > 128 || string.IsNullOrWhiteSpace(Name) || Name.Length > 256 ||
+            Code is null || Code.Length > 255 || string.IsNullOrWhiteSpace(Name) || Name.Length > 255 ||
             Code.Any(character => char.IsControl(character) || char.IsSurrogate(character)) ||
             Name.Any(character => char.IsControl(character) || char.IsSurrogate(character)))
             throw new ArgumentException("A reviewed, complete customer identity is required.");

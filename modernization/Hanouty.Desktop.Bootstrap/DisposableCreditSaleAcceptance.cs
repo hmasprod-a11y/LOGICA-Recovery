@@ -263,7 +263,7 @@ internal static partial class DisposableCashSaleAcceptance
         finally { timeout.Stop(); host.Window.Close(); }
     }
 
-    private static bool CreditThroughDialog(CatalogueHost host, string pin, string customerId, bool confirm, out string operation)
+    private static bool CreditThroughDialog(CatalogueHost host, string pin, string customerId, bool confirm, out string operation, string searchCode = "C'100", string customerName = "Client d'été")
     {
         Exception? failure = null; string? captured = null; PasswordBox? entered = null;
         var watchdog = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
@@ -282,7 +282,7 @@ internal static partial class DisposableCashSaleAcceptance
                 Require(grid.SelectedItem is null && !host.Window.PayByCard() && !host.Window.EndFinancialSession(),
                     "Credit selection preselected a client or allowed nested payment/logout.");
                 var search = CatalogueControls<TextBox>(dialog!).Single();
-                search.Text = "C'100";
+                search.Text = searchCode;
                 Require(grid.Items.Count == 0, "Edited credit search retained stale customer selection.");
                 CatalogueControls<Button>(dialog!).Single(button => Equals(button.Content, "Rechercher"))
                     .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -290,7 +290,7 @@ internal static partial class DisposableCashSaleAcceptance
                 var approve = CatalogueControls<Button>(dialog!).Single(button => button.IsDefault);
                 approve.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Require(dialog!.Customer is null && Equals(approve.Content, "Confirmer le crédit") &&
-                    CatalogueControls<TextBlock>(dialog!).Any(block => block.Text.Contains("Client d'été") && block.Text.Contains("Aucun encaissement")),
+                    CatalogueControls<TextBlock>(dialog!).Any(block => block.Text.Contains(customerName) && block.Text.Contains("Aucun encaissement")),
                     "Credit did not require explicit second review of customer and amount.");
                 if (!confirm) { dialog.Close(); return; }
                 dialog.UpdateLayout();

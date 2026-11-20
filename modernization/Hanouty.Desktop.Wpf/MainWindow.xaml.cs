@@ -54,7 +54,7 @@ public partial class MainWindow : Window
     public bool PayMixed() => PayAlternate(_payMixed);
     private bool PayAlternate(Func<bool>? pay)
     {
-        if (_manualDiscountOpen || _alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
+        if (_customerFilesOpen || _manualDiscountOpen || _alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
             _trustedTotalReadBusy || _originalSaleLookupBusy || pay is null ||
             DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null) return false;
@@ -532,7 +532,7 @@ public partial class MainWindow : Window
 
     public bool EndFinancialSession()
     {
-        if (_manualDiscountOpen || _alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
+        if (_customerFilesOpen || _manualDiscountOpen || _alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _endFinancialSession is null) return false;
         _logoutOpen = true;
@@ -573,7 +573,7 @@ public partial class MainWindow : Window
 
     private bool ShowCashierEntry(bool forPayment)
     {
-        if (_manualDiscountOpen || _alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
+        if (_customerFilesOpen || _manualDiscountOpen || _alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _setFinancialContext is null || _readTrustedCashTotal is null) return false;
         // Lock BEFORE calling Host-provided delegates: those may pump the WPF
