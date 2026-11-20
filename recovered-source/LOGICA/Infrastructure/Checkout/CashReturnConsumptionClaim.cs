@@ -1,5 +1,6 @@
 using System;
 using System.Data;
+using System.Collections.Generic;
 using MySql.Data.MySqlClient;
 
 namespace LOGICA.Infrastructure.Checkout
@@ -9,9 +10,65 @@ namespace LOGICA.Infrastructure.Checkout
     // No schema creation or migration occurs on a shop database.
     internal static class CashReturnConsumptionClaim
     {
+        // Infrastructure remains compatible with the legacy .NET Framework build.
+        internal sealed class RequestedLine
+        {
+            internal string ArticleId { get; private set; }
+            internal decimal Quantity { get; private set; }
+            internal RequestedLine(string articleId, decimal quantity)
+            {
+                ArticleId = articleId;
+                Quantity = quantity;
+            }
+        }
+
         // The only supported full-ticket return preflight: authoritative original
         // journal and settlement are locked before the durable consumption claim.
         // Call inside the SAME transaction that posts signed refund/payment/stock.
+        // Verify the caller supplied every original line exactly once, then
+        // reserve the original ticket once for the whole return.
+        internal static decimal VerifyAndClaimFullOriginal(
+            MySqlConnection connection, MySqlTransaction transaction,
+            string originalTicketId, string returnOperationId,
+            IReadOnlyList<RequestedLine> requestedLines)
+        {
+            if (string.Equals(originalTicketId, returnOperationId, StringComparison.Ordinal))
+                throw new InvalidOperationException("A refund cannot reuse the original sale operation.");
+            if (requestedLines == null || requestedLines.Count == 0)
+                throw new InvalidOperationException("A complete original sale line set is required.");
+
+            var originalLines = CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLines(
+                connection, transaction, originalTicketId);
+            if (requestedLines.Count != originalLines.Count)
+                throw new InvalidOperationException("Refund request must contain every original sale line.");
+
+            var requested = new Dictionary<string, decimal>(StringComparer.Ordinal);
+            foreach (RequestedLine line in requestedLines)
+            {
+                if (line == null || string.IsNullOrWhiteSpace(line.ArticleId) || line.Quantity <= 0 ||
+                    requested.ContainsKey(line.ArticleId))
+                    throw new InvalidOperationException("Refund request contains an invalid or duplicate article line.");
+                requested.Add(line.ArticleId, line.Quantity);
+            }
+
+            decimal amount = 0m;
+            decimal consumedQuantity = 0m;
+            foreach (var original in originalLines)
+            {
+                decimal quantity;
+                if (!requested.TryGetValue(original.ArticleId, out quantity) ||
+                    quantity != original.Quantity)
+                    throw new InvalidOperationException("Refund request does not match the complete original line set.");
+                amount = checked(amount + original.Amount);
+                consumedQuantity = checked(consumedQuantity + original.Quantity);
+            }
+
+            ClaimFullOriginal(connection, transaction, originalTicketId,
+                returnOperationId, consumedQuantity);
+            return amount;
+        }
+
+        // Retain the one-line helper for existing isolated evidence callers.
         internal static decimal VerifyAndClaimFullOriginal(
             MySqlConnection connection, MySqlTransaction transaction,
             string originalTicketId, string returnOperationId,

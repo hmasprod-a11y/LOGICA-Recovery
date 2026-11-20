@@ -1,5 +1,6 @@
 using System;
 using System.Data;
+using System.Collections.Generic;
 using MySql.Data.MySqlClient;
 
 namespace LOGICA.Infrastructure.Checkout
@@ -49,64 +50,82 @@ namespace LOGICA.Infrastructure.Checkout
         // Original journal is the only eligible price/quantity source for a
         // full-quantity return; never recalculate from current TABLE_ARTICLES.
         // The caller must separately enforce durable one-return-per-original.
-        internal static decimal ReadOriginalFullQuantityLineAmount(
-            MySqlConnection connection, MySqlTransaction transaction,
-            string originalTicketId, string articleId, decimal originalQuantity)
+        // Immutable, authoritative row from the original sale journal.
+        internal sealed class CashReturnOriginalSaleLine
+        {
+            internal CashReturnOriginalSaleLine(string articleId, decimal quantity, decimal amount)
+            {
+                ArticleId = articleId;
+                Quantity = quantity;
+                Amount = amount;
+            }
+
+            internal string ArticleId { get; private set; }
+            internal decimal Quantity { get; private set; }
+            internal decimal Amount { get; private set; }
+        }
+
+        // Lock and validate the complete original ticket line set. Every line must
+        // be an undiscounted exact-cash V1 sale line; no current catalogue value
+        // or caller-supplied amount participates in the proof.
+        internal static IReadOnlyList<CashReturnOriginalSaleLine> ReadOriginalFullQuantityLines(
+            MySqlConnection connection, MySqlTransaction transaction, string originalTicketId)
         {
             decimal paid = ReadExactCashTenderAmount(connection, transaction, originalTicketId);
-            if (string.IsNullOrWhiteSpace(articleId) || originalQuantity <= 0m)
-                throw new InvalidOperationException("A positive original line quantity is required.");
-            // A full-ticket cash refund cannot be inferred from one matching
-            // line if other lines exist, even when totals happen to match.
-            // Lock the actual persisted detail rows, not an aggregate COUNT(*)
-            // result. This also rejects a multi-line ticket before claiming it.
-            using (var lines = connection.CreateCommand())
-            {
-                lines.Transaction = transaction;
-                lines.CommandText =
-                    "SELECT ID_ARTICLE FROM TABLE_VENTES_JOURNAL " +
-                    "WHERE BINARY ID_TICKET=BINARY @original FOR UPDATE";
-                lines.Parameters.AddWithValue("@original", originalTicketId);
-                using (var reader = lines.ExecuteReader())
-                {
-                    if (!reader.Read() || reader.IsDBNull(0) ||
-                        !string.Equals(Convert.ToString(reader.GetValue(0)), articleId,
-                            StringComparison.Ordinal) || reader.Read())
-                        throw new InvalidOperationException("Full-ticket cash return requires one matching original sale line.");
-                }
-            }
             using (var command = connection.CreateCommand())
             {
                 command.Transaction = transaction;
                 command.CommandText =
-                    "SELECT Qté,PRIX_V,Remise,Total_NET,OPERATION FROM TABLE_VENTES_JOURNAL " +
-                    "WHERE BINARY ID_TICKET=BINARY @original AND BINARY ID_ARTICLE=BINARY @article FOR UPDATE";
+                    "SELECT ID_ARTICLE,Qté,PRIX_V,Remise,Total_NET,OPERATION FROM TABLE_VENTES_JOURNAL " +
+                    "WHERE BINARY ID_TICKET=BINARY @original ORDER BY BINARY ID_ARTICLE FOR UPDATE";
                 command.Parameters.AddWithValue("@original", originalTicketId);
-                command.Parameters.AddWithValue("@article", articleId);
+                var result = new List<CashReturnOriginalSaleLine>();
+                var identities = new HashSet<string>(StringComparer.Ordinal);
+                decimal total = 0m;
                 using (var reader = command.ExecuteReader())
                 {
-                    if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1) ||
-                        reader.IsDBNull(2) || reader.IsDBNull(3) || reader.IsDBNull(4))
-                        throw new InvalidOperationException("Original sale line is missing.");
-                    decimal quantity = Convert.ToDecimal(reader.GetValue(0));
-                    decimal price = Convert.ToDecimal(reader.GetValue(1));
-                    decimal discount = Convert.ToDecimal(reader.GetValue(2));
-                    decimal lineTotal = Convert.ToDecimal(reader.GetValue(3));
-                    string operation = Convert.ToString(reader.GetValue(4));
-                    // MariaDB ROUND(positive DECIMAL, 2) rounds half away from zero.
-                    // Mirror that rule for persisted half-cent boundaries.
-                    // Detect a corrupted or mismatched original unit price rather
-                    // than treating the paid total alone as price evidence.
-                    decimal expectedNet = Math.Round(checked(price * quantity), 2,
-                        MidpointRounding.AwayFromZero);
-                    if (reader.Read() || quantity != originalQuantity || price < 0m ||
-                        discount != 0m || lineTotal <= 0m || lineTotal != paid ||
-                        expectedNet != lineTotal ||
-                        operation != "VENTE")
-                        throw new InvalidOperationException("Original line is not an eligible full-quantity exact-cash sale.");
-                    return lineTotal;
+                    while (reader.Read())
+                    {
+                        if (reader.IsDBNull(0) || reader.IsDBNull(1) || reader.IsDBNull(2) ||
+                            reader.IsDBNull(3) || reader.IsDBNull(4) || reader.IsDBNull(5))
+                            throw new InvalidOperationException("Original sale contains an incomplete line.");
+                        string articleId = Convert.ToString(reader.GetValue(0));
+                        decimal quantity = Convert.ToDecimal(reader.GetValue(1));
+                        decimal price = Convert.ToDecimal(reader.GetValue(2));
+                        decimal discount = Convert.ToDecimal(reader.GetValue(3));
+                        decimal lineAmount = Convert.ToDecimal(reader.GetValue(4));
+                        string operation = Convert.ToString(reader.GetValue(5));
+                        if (string.IsNullOrWhiteSpace(articleId) || !identities.Add(articleId))
+                            throw new InvalidOperationException("Original sale contains a missing or duplicate article identity.");
+                        decimal expectedNet = Math.Round(checked(price * quantity), 2,
+                            MidpointRounding.AwayFromZero);
+                        if (quantity <= 0m || price < 0m || discount != 0m ||
+                            lineAmount <= 0m || lineAmount != expectedNet ||
+                            !string.Equals(operation, "VENTE", StringComparison.Ordinal))
+                            throw new InvalidOperationException("Original sale contains a line outside the exact-cash full-return policy.");
+                        total = checked(total + lineAmount);
+                        result.Add(new CashReturnOriginalSaleLine(articleId, quantity, lineAmount));
+                    }
                 }
+                if (result.Count == 0 || total != paid ||
+                    decimal.Round(total, 2, MidpointRounding.AwayFromZero) != total)
+                    throw new InvalidOperationException("Original line set does not equal the exact cash settlement.");
+                return result.AsReadOnly();
             }
+        }
+
+        // Backward-compatible one-line evidence helper. A multi-line ticket must
+        // use the complete line-set contract; it can never be partially claimed.
+        internal static decimal ReadOriginalFullQuantityLineAmount(
+            MySqlConnection connection, MySqlTransaction transaction,
+            string originalTicketId, string articleId, decimal originalQuantity)
+        {
+            var lines = ReadOriginalFullQuantityLines(connection, transaction, originalTicketId);
+            if (lines.Count != 1 || string.IsNullOrWhiteSpace(articleId) ||
+                !string.Equals(lines[0].ArticleId, articleId, StringComparison.Ordinal) ||
+                lines[0].Quantity != originalQuantity || originalQuantity <= 0m)
+                throw new InvalidOperationException("Full-ticket return requires the exact complete original line set.");
+            return lines[0].Amount;
         }
 
         internal static decimal ReadExactCashSaleAmount(

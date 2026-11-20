@@ -227,85 +227,111 @@ namespace LOGICA.Infrastructure.Checkout
         // One-line, full-ticket, exact-cash V1 refund. This runs inside the
         // SAME operation-claim transaction and posting writers as a cash sale.
         // Original journal values, never current prices or UI amounts, are authoritative.
+        // Full-ticket exact-cash return. Every original line is locked, matched,
+        // and posted through the same transaction and production writers as sales.
         private CheckoutPostingInput PrepareFullCashReturn(AuthorizedCheckoutRequest request,
             MySqlConnection connection, MySqlTransaction transaction, string cashier, string ticket)
         {
-            if (request.Lines.Count != 1 || string.IsNullOrWhiteSpace(request.OriginalTicketId))
-                throw new NotSupportedException("Only one-line full-ticket cash returns are enabled.");
-            var line = request.Lines[0];
+            if (request.Lines.Count == 0 || string.IsNullOrWhiteSpace(request.OriginalTicketId))
+                throw new InvalidOperationException("A complete original ticket and line set are required.");
             decimal amount = CashReturnConsumptionClaim.VerifyAndClaimFullOriginal(
                 connection, transaction, request.OriginalTicketId, request.OperationId,
-                line.ArticleId, line.Quantity);
-            if (request.ExpectedTotal != amount || request.Payments[0].Amount != amount)
+                request.Lines.Select(line => new CashReturnConsumptionClaim.RequestedLine(
+                    line.ArticleId, line.Quantity)).ToArray());
+            if (request.ExpectedTotal != amount || request.Payments.Count != 1 ||
+                request.Payments[0].Amount != amount ||
+                request.Payments[0].Kind != CheckoutPaymentKind.Cash)
                 throw new InvalidOperationException("Refund must equal the persisted original exact-cash settlement.");
-            // Require the original article to remain uniquely addressable for stock restoration.
-            var article = Read(connection, transaction,
-                "SELECT ID_ARTICLE FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE",
-                ("@id", line.ArticleId));
-            if (article.Rows.Count != 1)
-                throw new InvalidOperationException("Original return article is no longer uniquely stocked.");
+
+            // Re-read all original detail fields under the same transaction lock.
+            // They are copied into the signed return journal without using current
+            // prices or mutable UI data.
+            var original = Read(connection, transaction,
+                "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté," +
+                "Total_NET AS line_amount,TAUX_TVA,GROUPE,OPERATION FROM TABLE_VENTES_JOURNAL " +
+                "WHERE BINARY ID_TICKET=BINARY @original AND BINARY OPERATION=BINARY 'VENTE' " +
+                "ORDER BY BINARY ID_ARTICLE FOR UPDATE",
+                ("@original", request.OriginalTicketId));
+            if (original.Rows.Count != request.Lines.Count)
+                throw new InvalidOperationException("Original sale line set changed during refund preparation.");
+
+            var originalById = new Dictionary<string, DataRow>(StringComparer.Ordinal);
+            decimal originalTotal = 0m;
+            var stock = new List<CheckoutStockLine>(original.Rows.Count);
+            foreach (DataRow row in original.Rows)
+            {
+                string id = Convert.ToString(row["ID_ARTICLE"], CultureInfo.InvariantCulture);
+                if (string.IsNullOrWhiteSpace(id) || originalById.ContainsKey(id))
+                    throw new InvalidOperationException("Original sale contains ambiguous article identity.");
+                originalById.Add(id, row);
+                decimal quantity = Number(row, "Qté");
+                decimal lineAmount = Number(row, "line_amount");
+                if (quantity <= 0m || lineAmount <= 0m || Number(row, "Remise") != 0m)
+                    throw new InvalidOperationException("Original line is outside the full exact-cash return policy.");
+                var article = Read(connection, transaction,
+                    "SELECT ID_ARTICLE FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE",
+                    ("@id", id));
+                if (article.Rows.Count != 1)
+                    throw new InvalidOperationException("Original return article is no longer uniquely stocked.");
+                originalTotal = checked(originalTotal + lineAmount);
+            }
+            if (originalTotal != amount)
+                throw new InvalidOperationException("Original journal line total changed after verification.");
+
             using (var command = connection.CreateCommand())
             {
                 command.Transaction = transaction;
                 command.CommandText = "INSERT INTO TABLE_" + workstation +
                     " (ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté,Remise,TOTAL_NET,TAUX_TVA,GROUPE) " +
                     "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,-Qté,Remise,-Total_NET,TAUX_TVA,GROUPE " +
-                    "FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @original AND BINARY ID_ARTICLE=BINARY @article " +
-                    "AND BINARY OPERATION=BINARY 'VENTE' AND Qté=@quantity AND Total_NET=@amount";
+                    "FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @original " +
+                    "AND BINARY OPERATION=BINARY 'VENTE' ORDER BY BINARY ID_ARTICLE";
                 command.Parameters.AddWithValue("@original", request.OriginalTicketId);
-                command.Parameters.AddWithValue("@article", line.ArticleId);
-                command.Parameters.AddWithValue("@quantity", line.Quantity);
-                command.Parameters.AddWithValue("@amount", amount);
-                if (command.ExecuteNonQuery() != 1)
-                    throw new InvalidOperationException("Could not stage the signed original return line.");
+                if (command.ExecuteNonQuery() != original.Rows.Count)
+                    throw new InvalidOperationException("Could not stage every signed original return line.");
             }
+
             var staged = Read(connection, transaction,
-                "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté,TOTAL_NET,TAUX_TVA,GROUPE FROM TABLE_" + workstation + " FOR UPDATE");
-            // Re-read the locked original journal as authoritative evidence.
-            // A workstation trigger must not silently replace the refunded
-            // article description or unit price while preserving its total.
-            var original = Read(connection, transaction,
-                "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté,Total_NET,TAUX_TVA,GROUPE FROM TABLE_VENTES_JOURNAL " +
-                "WHERE BINARY ID_TICKET=BINARY @original AND BINARY ID_ARTICLE=BINARY @article FOR UPDATE",
-                ("@original", request.OriginalTicketId), ("@article", line.ArticleId));
-            if (staged.Rows.Count != 1 || original.Rows.Count != 1 ||
-                !String.Equals(Convert.ToString(staged.Rows[0]["ID_ARTICLE"], CultureInfo.InvariantCulture),
-                    line.ArticleId, StringComparison.Ordinal) ||
-                !String.Equals(Convert.ToString(original.Rows[0]["ID_ARTICLE"], CultureInfo.InvariantCulture),
-                    line.ArticleId, StringComparison.Ordinal) ||
-                !String.Equals(Convert.ToString(staged.Rows[0]["Code"], CultureInfo.InvariantCulture),
-                    Convert.ToString(original.Rows[0]["Code"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
-                !String.Equals(Convert.ToString(staged.Rows[0]["Article"], CultureInfo.InvariantCulture),
-                    Convert.ToString(original.Rows[0]["Article"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
-                !String.Equals(Convert.ToString(staged.Rows[0]["Famille"], CultureInfo.InvariantCulture),
-                    Convert.ToString(original.Rows[0]["Famille"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
-                !String.Equals(Convert.ToString(staged.Rows[0]["GROUPE"], CultureInfo.InvariantCulture),
-                    Convert.ToString(original.Rows[0]["GROUPE"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
-                Number(staged.Rows[0], "PRIX_A") != Number(original.Rows[0], "PRIX_A") ||
-                Number(staged.Rows[0], "PRIX_MP") != Number(original.Rows[0], "PRIX_MP") ||
-                Number(staged.Rows[0], "TAUX_TVA") != Number(original.Rows[0], "TAUX_TVA") ||
-                Number(staged.Rows[0], "PRIX_V") != Number(original.Rows[0], "PRIX_V") ||
-                Number(staged.Rows[0], "Remise") != Number(original.Rows[0], "Remise") ||
-                Number(original.Rows[0], "Qté") != line.Quantity ||
-                Number(original.Rows[0], "Total_NET") != amount ||
-                Number(staged.Rows[0], "Qté") != -line.Quantity ||
-                Number(staged.Rows[0], "TOTAL_NET") != -amount)
-                throw new InvalidOperationException("Signed return staging differs from the original sale.");
+                "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté," +
+                "TOTAL_NET AS line_amount,TAUX_TVA,GROUPE FROM TABLE_" + workstation +
+                " ORDER BY BINARY ID_ARTICLE FOR UPDATE");
+            if (staged.Rows.Count != original.Rows.Count)
+                throw new InvalidOperationException("Signed return staging does not contain every original line.");
+
+            foreach (DataRow row in staged.Rows)
+            {
+                string id = Convert.ToString(row["ID_ARTICLE"], CultureInfo.InvariantCulture);
+                DataRow source;
+                if (!originalById.TryGetValue(id, out source) ||
+                    Convert.ToDecimal(row["Qté"], CultureInfo.CurrentCulture) != -Number(source, "Qté") ||
+                    Convert.ToDecimal(row["line_amount"], CultureInfo.CurrentCulture) != -Number(source, "line_amount"))
+                    throw new InvalidOperationException("Signed return staging differs from the original line set.");
+                foreach (string field in new[] { "Code", "Article", "Famille", "GROUPE" })
+                    if (!string.Equals(Convert.ToString(row[field], CultureInfo.InvariantCulture),
+                        Convert.ToString(source[field], CultureInfo.InvariantCulture), StringComparison.Ordinal))
+                        throw new InvalidOperationException("Signed return article details differ from the original.");
+                foreach (string field in new[] { "PRIX_A", "PRIX_MP", "PRIX_V", "Remise", "TAUX_TVA" })
+                    if (Convert.ToDecimal(row[field], CultureInfo.CurrentCulture) !=
+                        Convert.ToDecimal(source[field], CultureInfo.CurrentCulture))
+                        throw new InvalidOperationException("Signed return price or tax differs from the original.");
+                stock.Add(new CheckoutStockLine { TicketNumber = ticket, ArticleId = id,
+                    ArticleCode = row["Code"], ArticleName = row["Article"],
+                    BasketQuantity = -Number(source, "Qté") });
+            }
+
             var date = DateTime.Now;
-            string id = request.OperationId;
+            string idTicket = request.OperationId;
             string negativeAmount = (-amount).ToString(CultureInfo.CurrentCulture);
-            var context = new TicketPaymentContext { TicketId = id, TicketNumber = ticket,
+            var context = new TicketPaymentContext { TicketId = idTicket, TicketNumber = ticket,
                 SaleDate = date, Cashier = cashier, ClientId = "0", ClientCode = "0", ClientName = "",
                 Workstation = workstation, Operation = "RETOUR REMBOURSEMENT", Remark = request.OriginalTicketId };
             return new CheckoutPostingInput
             {
-                ReadStock = () => new[] { new CheckoutStockLine { TicketNumber = ticket,
-                    ArticleId = line.ArticleId, ArticleCode = staged.Rows[0]["Code"],
-                    ArticleName = staged.Rows[0]["Article"], BasketQuantity = -line.Quantity } },
-                ReadHeader = () => new TicketHeaderRecord { TicketId = id, TicketNumber = ticket,
+                ReadStock = () => stock,
+                ReadHeader = () => new TicketHeaderRecord { TicketId = idTicket, TicketNumber = ticket,
                     SaleDate = date, Cashier = cashier, ClientId = "0", ClientCode = "0", ClientName = "",
                     Workstation = workstation, TotalText = negativeAmount, Operation = "RETOUR REMBOURSEMENT" },
-                ReadJournal = () => new TicketJournalRecord { TicketId = id, TicketNumber = ticket,
+                ReadJournal = () => new TicketJournalRecord { TicketId = idTicket, TicketNumber = ticket,
                     SaleDate = date, Cashier = cashier, Seller = "", ClientId = "0", ClientCode = "0",
                     ClientName = "", Workstation = workstation, Operation = "RETOUR REMBOURSEMENT",
                     PriceType = "PRIX 1", PaymentModes = "ESPECES" },
@@ -313,40 +339,47 @@ namespace LOGICA.Infrastructure.Checkout
                     Context = context, AmountText = negativeAmount } },
                 Print = () => {
                     var receipt = Read(connection, transaction,
-                        "SELECT Total_NET,OPERATION FROM TABLE_VENTES_ENTETE WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
+                        "SELECT Total_NET,OPERATION FROM TABLE_VENTES_ENTETE WHERE BINARY ID_TICKET=BINARY @id",
+                        ("@id", idTicket));
                     var payment = Read(connection, transaction,
-                        "SELECT MONTANT,OPERATION,MODE_P FROM TABLE_VENTES_REGLEMENTS WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
+                        "SELECT MONTANT,OPERATION,MODE_P FROM TABLE_VENTES_REGLEMENTS WHERE BINARY ID_TICKET=BINARY @id",
+                        ("@id", idTicket));
                     var detail = Read(connection, transaction,
-                        "SELECT ID_ARTICLE,Code,Article,Famille,GROUPE,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté,Total_NET,TAUX_TVA,OPERATION FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @id", ("@id", id));
-                    if (receipt.Rows.Count != 1 || payment.Rows.Count != 1 || detail.Rows.Count != 1 ||
+                        "SELECT ID_ARTICLE,Code,Article,Famille,GROUPE,PRIX_A,PRIX_MP,PRIX_V,Remise," +
+                        "Qté,Total_NET AS line_amount,TAUX_TVA,OPERATION FROM TABLE_VENTES_JOURNAL " +
+                        "WHERE BINARY ID_TICKET=BINARY @id ORDER BY BINARY ID_ARTICLE",
+                        ("@id", idTicket));
+                    if (receipt.Rows.Count != 1 || payment.Rows.Count != 1 ||
+                        detail.Rows.Count != original.Rows.Count ||
                         Number(receipt.Rows[0], "Total_NET") != -amount ||
                         Number(payment.Rows[0], "MONTANT") != -amount ||
-                        !String.Equals(Convert.ToString(detail.Rows[0]["ID_ARTICLE"], CultureInfo.InvariantCulture),
-                            line.ArticleId, StringComparison.Ordinal) ||
-                        Number(detail.Rows[0], "Qté") != -line.Quantity ||
-                        Number(detail.Rows[0], "Total_NET") != -amount ||
-                        // A receipt trigger must not swap the refunded article's
-                        // canonical ID while leaving the signed amount intact.
-                        !String.Equals(Convert.ToString(detail.Rows[0]["ID_ARTICLE"], CultureInfo.InvariantCulture),
-                            Convert.ToString(original.Rows[0]["ID_ARTICLE"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
-                        !String.Equals(Convert.ToString(detail.Rows[0]["Code"], CultureInfo.InvariantCulture),
-                            Convert.ToString(original.Rows[0]["Code"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
-                        !String.Equals(Convert.ToString(detail.Rows[0]["Article"], CultureInfo.InvariantCulture),
-                            Convert.ToString(original.Rows[0]["Article"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
-                        Number(detail.Rows[0], "PRIX_V") != Number(original.Rows[0], "PRIX_V") ||
-                        Number(detail.Rows[0], "Remise") != Number(original.Rows[0], "Remise") ||
-                        !String.Equals(Convert.ToString(detail.Rows[0]["Famille"], CultureInfo.InvariantCulture),
-                            Convert.ToString(original.Rows[0]["Famille"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
-                        !String.Equals(Convert.ToString(detail.Rows[0]["GROUPE"], CultureInfo.InvariantCulture),
-                            Convert.ToString(original.Rows[0]["GROUPE"], CultureInfo.InvariantCulture), StringComparison.Ordinal) ||
-                        Number(detail.Rows[0], "PRIX_A") != Number(original.Rows[0], "PRIX_A") ||
-                        Number(detail.Rows[0], "PRIX_MP") != Number(original.Rows[0], "PRIX_MP") ||
-                        Number(detail.Rows[0], "TAUX_TVA") != Number(original.Rows[0], "TAUX_TVA") ||
                         Convert.ToString(receipt.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT" ||
                         Convert.ToString(payment.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT" ||
-                        !String.Equals(Convert.ToString(payment.Rows[0]["MODE_P"], CultureInfo.InvariantCulture),
-                            "ESPECES", StringComparison.Ordinal) ||
-                        Convert.ToString(detail.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT")
+                        !string.Equals(Convert.ToString(payment.Rows[0]["MODE_P"], CultureInfo.InvariantCulture),
+                            "ESPECES", StringComparison.Ordinal))
+                        throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
+
+                    decimal signedTotal = 0m;
+                    var returned = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (DataRow row in detail.Rows)
+                    {
+                        string id = Convert.ToString(row["ID_ARTICLE"], CultureInfo.InvariantCulture);
+                        DataRow source;
+                        if (!returned.Add(id) || !originalById.TryGetValue(id, out source) ||
+                            Number(row, "Qté") != -Number(source, "Qté") ||
+                            Number(row, "line_amount") != -Number(source, "line_amount") ||
+                            Convert.ToString(row["OPERATION"]) != "RETOUR REMBOURSEMENT")
+                            throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
+                        foreach (string field in new[] { "Code", "Article", "Famille", "GROUPE" })
+                            if (!string.Equals(Convert.ToString(row[field], CultureInfo.InvariantCulture),
+                                Convert.ToString(source[field], CultureInfo.InvariantCulture), StringComparison.Ordinal))
+                                throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
+                        foreach (string field in new[] { "PRIX_A", "PRIX_MP", "PRIX_V", "Remise", "TAUX_TVA" })
+                            if (Number(row, field) != Number(source, field))
+                                throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
+                        signedTotal = checked(signedTotal + Number(row, "line_amount"));
+                    }
+                    if (returned.Count != original.Rows.Count || signedTotal != -amount)
                         throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
                 },
                 ReadCompletion = () => new CheckoutCompletionRecord { Workstation = workstation, TicketNumber = ticket }
