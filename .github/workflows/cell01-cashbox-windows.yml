@@ -1,0 +1,25 @@
+name: CELL01 cashbox Windows contract
+on:
+  pull_request:
+    paths:
+      - 'modernization/architecture/CashboxLifecycle.cs'
+      - 'modernization/architecture/CashboxJournalReplay.cs'
+      - 'modernization/architecture/CashboxLifecycle.Tests/**'
+      - '.github/workflows/cell01-cashbox-windows.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cashbox-contract:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run isolated cashbox lifecycle and journal assertions
+        shell: pwsh
+        run: dotnet run --project modernization/architecture/CashboxLifecycle.Tests/CashboxLifecycle.Tests.csproj --configuration Release
