@@ -75,7 +75,7 @@ $partSize = [long][Math]::Ceiling($length / 32)
   $part = $_
   $first = $part * $using:partSize
   $last = [Math]::Min($using:length - 1, $first + $using:partSize - 1)
-  $output = Join-Path $using:dbRoot ("archive-{0:D2}.part" -f $part)
+  $output = Join-Path $using:root ("archive-{0:D2}.part" -f $part)
   $verifiedPart = $false
   for ($attempt = 0; $attempt -lt 2; $attempt++) {
     & curl.exe --fail --location --range "$first-$last" --retry 4 --retry-all-errors --retry-max-time 90 --connect-timeout 30 --max-time 90 --silent --show-error $using:archiveUrl --output $output 2> "$output.error"
@@ -86,13 +86,13 @@ $partSize = [long][Math]::Ceiling($length / 32)
   }
   if (-not $verifiedPart) { throw "MariaDB archive part $part failed verification." }
 } -ThrottleLimit 8
-$archive = [IO.File]::Create((Join-Path $root $archive))
+$archiveStream = [IO.File]::Create((Join-Path $root $archive))
 try {
   foreach ($part in 0..31) {
     $source = [IO.File]::OpenRead((Join-Path $root ("archive-{0:D2}.part" -f $part)))
-    try { $source.CopyTo($archive) } finally { $source.Dispose() }
+    try { $source.CopyTo($archiveStream) } finally { $source.Dispose() }
   }
-} finally { $archive.Dispose() }
+} finally { $archiveStream.Dispose() }
 $checks = (Invoke-WebRequest "$url/sha256sums.txt" -TimeoutSec 30 -MaximumRetryCount 3 -RetryIntervalSec 2).Content
 # Parse GNU sha256sum format (two spaces or binary '*') and optional ./ prefix.
 # Require exactly one archive entry and a full 64-character digest; never bypass integrity.
