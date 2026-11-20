@@ -11,9 +11,14 @@ on:
       - 'modernization/checkout-mariadb-boundary/**'
       - 'modernization/checkout-mariadb-production/**'
       - 'modernization/architecture/**'
+      - 'modernization/inventory/**'
+      - 'input/migrations/20261120-stock-issue-create-operations.sql'
+      - 'scripts/Test-HanoutySupplierAvoir.ps1'
       - 'recovered-source/LOGICA/Application/Checkout/**'
       - 'recovered-source/LOGICA/Infrastructure/Checkout/**'
       - 'scripts/Package-HanoutyWpf.ps1'
+      - 'scripts/Install-Hanouty*'
+      - 'scripts/Test-HanoutyInstallation.ps1'
       - 'scripts/Test-HanoutyFinancialPackage.ps1'
       - 'scripts/Start-Hanouty-Test.ps1'
       - 'scripts/Start-Hanouty-Test.cmd'
@@ -29,9 +34,14 @@ on:
       - 'modernization/checkout-mariadb-boundary/**'
       - 'modernization/checkout-mariadb-production/**'
       - 'modernization/architecture/**'
+      - 'modernization/inventory/**'
+      - 'input/migrations/20261120-stock-issue-create-operations.sql'
+      - 'scripts/Test-HanoutySupplierAvoir.ps1'
       - 'recovered-source/LOGICA/Application/Checkout/**'
       - 'recovered-source/LOGICA/Infrastructure/Checkout/**'
       - 'scripts/Package-HanoutyWpf.ps1'
+      - 'scripts/Install-Hanouty*'
+      - 'scripts/Test-HanoutyInstallation.ps1'
       - 'scripts/Test-HanoutyFinancialPackage.ps1'
       - 'scripts/Start-Hanouty-Test.ps1'
       - 'scripts/Start-Hanouty-Test.cmd'
@@ -218,7 +228,34 @@ jobs:
           foreach ($field in @('OriginalClNumbering','FullMetadata','OptionalUniqueCode','ImmutableIdentity','FourDecimalSignedTouch','OpeningHistoryAtomic','InitialCreditSeparate','StaleSnapshotDenied','ExactRoleAndRevocation','FreshCashierPin','CreateReplay','HistoryReplay','JournalRollback','RecoveryAfterRestart','LocalLease','NoCashStockSideEffects','ExistingCreditAndStatementLinked')) {
             if ($customers.$field -ne $true) { throw "Missing executed customer file proof: $field" }
           }
-          Write-Host "PASS W2 accepted on source SHA $env:GITHUB_SHA: WPF paid/credit sales, customer files and opening history, authorized discounts, full-ticket return, customer settlements, rollback, reconciliation and exact-once"
+          $configuration = Get-Content evidence/w2/w2-workstation-configuration.json -Raw | ConvertFrom-Json
+          foreach ($field in @('EncryptedCurrentUser','ReloadWithoutEnvironment','InvalidConfigurationPreservesPrevious','DamagedCiphertextRejected','ActualSetupDialog','NoFinancialWrites')) {
+            if ($configuration.$field -ne $true) { throw "Missing workstation setup proof: $field" }
+          }
+          $returns = Get-Content evidence/w2/w2-full-return-modes.json -Raw | ConvertFrom-Json
+          foreach ($field in @('CreditReturnUi','CardReturnUi','ExplicitDebtConfirmation','ExplicitExternalCardConfirmation','CanceledConfirmationNoWrite','FreshCashierPin','ModeFrozenDuringReview','CashUnchanged','DebtAndCardReconciled','OriginalStockRestored','ConsumedOriginalExcluded')) {
+            if ($returns.$field -ne $true) { throw "Missing full-return proof: $field" }
+          }
+          $documents = Get-Content evidence/w2/w2-business-documents.json -Raw | ConvertFrom-Json
+          foreach ($field in @('OriginalThreeKinds','PersistedTaxTotals','LiteralSearchAndLastDay','CustomerAndLines','UserValidationDenied','FreshManagerPin','StaleSnapshotDenied','AtomicValidationRollback','ValidatedReadback','MismatchDenied','PrintData','ActualDirectoryUi','NoCashStockEffects')) {
+            if ($documents.$field -ne $true) { throw "Missing business-document proof: $field" }
+          }
+          $unicode = Get-Content evidence/w2/w2-unicode-settlement.json -Raw | ConvertFrom-Json
+          foreach ($field in @('ExactUnicodeReplay','NoDuplicatePayment','ModifiedPersistedNotesDenied')) {
+            if ($unicode.$field -ne $true) { throw "Missing Unicode settlement replay proof: $field" }
+          }
+          Write-Host "PASS W2 accepted on source SHA $env:GITHUB_SHA: financial workflows and persisted workstation setup"
+      - name: Verify supplier AVOIR, statement signs, stock and actual WPF settlement on its own database
+        shell: pwsh
+        run: |
+          ./scripts/Test-HanoutySupplierAvoir.ps1 -MariaDbBin $env:HANOUTY_W2_MARIADB_BIN -EvidenceDirectory ./evidence/supplier-avoir
+          $proof = Get-Content ./evidence/supplier-avoir/supplier-avoir-wpf.json -Raw | ConvertFrom-Json
+          foreach ($field in @('ActualStockIssueEntry','SignedTouchPrice','VisibleReviewedTotal','FreshPin','PersistedDocument','StockUnchangedBeforeValidation','SharedStatementSign','PartialExactAndAdvanceSettlement','SettlementRollback')) {
+            if ($proof.$field -ne $true) { throw "Missing supplier AVOIR UI proof: $field" }
+          }
+      - name: Verify Windows installation preserves the previous version and refuses a changed package
+        shell: pwsh
+        run: ./scripts/Test-HanoutyInstallation.ps1 -PackageDirectory ./evidence -EvidenceDirectory ./evidence
       - name: Upload full W2 source and SQL evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -246,6 +283,8 @@ jobs:
           Copy-Item 'evidence/financial-package-acceptance.json' $bundle
           Copy-Item 'scripts/Start-Hanouty-Test.ps1' $bundle
           Copy-Item 'scripts/Start-Hanouty-Test.cmd' $bundle
+          Copy-Item 'scripts/Install-Hanouty.ps1' $bundle
+          Copy-Item 'scripts/Install-Hanouty.cmd' $bundle
           Copy-Item 'scripts/HANOUTY-TEST-START-HERE.txt' (Join-Path $bundle 'LE-MOI-DEMARRER.txt')
           # Ship the SAME official bytes already verified and exercised above.
           $verifiedRuntime = Join-Path $env:RUNNER_TEMP 'hanouty-w2-cash-mariadb'

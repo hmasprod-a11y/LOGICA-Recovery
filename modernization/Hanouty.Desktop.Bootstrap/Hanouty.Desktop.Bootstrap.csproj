@@ -10,6 +10,7 @@
     <Compile Include="../../recovered-source/LOGICA/Application/Checkout/ReceiptPrintRoute.cs" Link="ReceiptPrintRoute.cs" />
     <EmbeddedResource Include="Assets/LogicaReceiptLogo.jpg" LogicalName="LogicaReceiptLogo.jpg" />
     <EmbeddedResource Include="../../input/migrations/20261120-customer-file-operations.sql" LogicalName="Hanouty.CustomerFilesMigration" />
+    <EmbeddedResource Include="../../input/migrations/20261120-stock-issue-create-operations.sql" LogicalName="Hanouty.StockIssueCreateMigration" />
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <ProjectReference Include="../Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj"/>
     <ProjectReference Include="../architecture/Hanouty.WpfContractAdapter/Hanouty.WpfContractAdapter.csproj"/>

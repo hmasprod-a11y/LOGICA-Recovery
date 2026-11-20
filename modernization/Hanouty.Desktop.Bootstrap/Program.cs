@@ -17,26 +17,28 @@ public static class Program
             return DisposableCashSaleAcceptance.Run(Path.GetFullPath(args[1]));
 #endif
         #if HANOUTY_FINANCIAL
+        if (args.Length == 1 && args[0] == "--configure-workstation")
+        {
+            new WorkstationSetupDialog(WorkstationConfiguration.DefaultPath).ShowDialog();
+            return 0;
+        }
         // Financial builds open the real cashier workstation on double-click, initially locked.
         if (args.Length == 0)
         {
             try
             {
-                var settings = CatalogueSettings.FromEnvironment();
-                var workstationId = Environment.GetEnvironmentVariable("HANOUTY_WORKSTATION") ?? "01";
-                if (!System.Text.RegularExpressions.Regex.IsMatch(workstationId, "^[0-9]{2}$"))
-                    throw new InvalidOperationException("HANOUTY_WORKSTATION must contain exactly two digits.");
+                var settings = WorkstationConfiguration.Interactive();
+                if (settings is null) return 0;
                 var application = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
-                var workstation = CatalogueHost.CreateCashierWorkstation(settings, workstationId);
+                var workstation = CatalogueHost.CreateCashierWorkstation(settings, settings.WorkstationId);
                 application.MainWindow = workstation.Window;
                 application.Run(workstation.Window);
                 return 0;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                MessageBox.Show(ex.Message + Environment.NewLine +
-                    "Configure the local HANOUTY_CATALOGUE_CONNECTION, HANOUTY_DATA_DIRECTORY and HANOUTY_WORKSTATION.",
-                    "Hanouty — cashier startup blocked", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show("Impossible d’ouvrir la caisse. Vérifiez la base locale et les paramètres du poste.",
+                    "HANOUTY — Ouverture de caisse", MessageBoxButton.OK, MessageBoxImage.Error);
                 return 2;
             }
         }

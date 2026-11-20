@@ -11,7 +11,7 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
 
     internal sealed record SupplierAccount(decimal Opening, decimal Receipts, decimal Outgoing, decimal Payments)
     {
-        public decimal Balance => Opening + Receipts + Outgoing - Payments;
+        public decimal Balance => Opening + Receipts - Outgoing - Payments;
     }
 
     internal SupplierAccount ReadSupplierAccount(string supplierId)
@@ -29,7 +29,7 @@ internal sealed class PurchaseReceiptValidation(string connectionString)
             if (reader.Read()) throw new InvalidOperationException("Fournisseur ambigu.");
         }
 
-        // LOGICA Form_6_FOURNISSEURS_REGLE uses all saved receipts and signed outgoing
+        // LOGICA Form_6_FOURNISSEURS' account statement subtracts saved outgoing
         // amounts. Keep the same scope and round each subtotal before combining.
         decimal Sum(string table, string column)
         {

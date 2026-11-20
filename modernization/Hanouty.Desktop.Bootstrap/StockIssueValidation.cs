@@ -3,7 +3,7 @@ using MySql.Data.MySqlClient;
 
 namespace Hanouty.Desktop.Bootstrap;
 
-internal sealed class StockIssueValidation(string connectionString)
+internal sealed partial class StockIssueValidation(string connectionString)
 {
     internal sealed record Line(string ArticleId, string Code, string Article, decimal Quantity);
 

@@ -210,7 +210,8 @@ public sealed partial record CatalogueHost
         string? lastReviewed = null;
         var reviewing = false;
         var customerFilesOpen = false;
-        bool CanChangeContext() => !customerFilesOpen && !reviewing && !vm.CheckoutBusy &&
+        var businessDocumentsOpen = false;
+        bool CanChangeContext() => !businessDocumentsOpen && !customerFilesOpen && !reviewing && !vm.CheckoutBusy &&
             !vm.CheckoutUncertain && vm.PendingOperationId is null &&
             binding.Session.OperationId is null && binding.Session.State == CheckoutCommitState.Ready;
         window.ConfigureManualDiscounts(() =>
@@ -259,6 +260,23 @@ public sealed partial record CatalogueHost
             catch { reviewing = false; throw; }
         }, () => activeCashierId is { } cashier && vm.FinancialSessionActive &&
             MariaDbCashCheckoutServices.CanUseManualDiscount(connections, cashier));
+        window.ConfigureReturnPaymentMode(mode =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is null || binding.Session.PendingCount != 0) return false;
+            returnHost.Mode = mode;
+            return true;
+        });
+        returnHost.Confirm = request =>
+        {
+            var printedNumber = request.Payments[0].Kind == CheckoutPaymentKind.Card
+                ? MariaDbCashCheckoutServices.FindFullCardReturnCandidatesByReceipt(connections, request.OriginalTicketId!).Single(row => row.SaleId == request.OriginalTicketId).TicketNumber
+                : null;
+            return ConfirmCashDrawer(window,
+            request.Payments[0].Kind == CheckoutPaymentKind.Credit
+                ? $"Retour crédit de {request.ExpectedTotal:N2} MAD pour {request.Customer?.Name}.\nCette opération réduit la dette et remet le stock. Aucun remboursement espèces."
+                : $"Ticket {printedNumber} : remboursement CARTE de {request.ExpectedTotal:N2} MAD.\nConfirmez que le remboursement a été effectué sur le terminal externe. Aucun remboursement espèces.",
+            request.Payments[0].Kind == CheckoutPaymentKind.Credit ? "Confirmer le retour crédit" : "Confirmer le remboursement CARTE");
+        };
         window.ConfigureOriginalSaleLookup(returnHost, () =>
         {
             if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is null ||
@@ -266,7 +284,7 @@ public sealed partial record CatalogueHost
             // A return uses persisted original amounts, never a consumed sale tender.
             contextConsumed = true;
             manualDiscount = null;
-            context = new CashierPaymentContext(activeCashierId, twoDigitWorkstation, "MAD", "Cash", 0m);
+            context = new CashierPaymentContext(activeCashierId, twoDigitWorkstation, "MAD", returnHost.Mode, 0m);
             vm.PaymentContext = context;
             return true;
         });
@@ -730,6 +748,21 @@ public sealed partial record CatalogueHost
                     "Règlement fournisseur", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
             }
         });
+        window.ConfigureBusinessDocuments(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } actor || binding.Session.PendingCount != 0) return;
+            businessDocumentsOpen = true;
+            try
+            {
+                bool Active() => businessDocumentsOpen && vm.FinancialSessionActive && activeCashierId == actor &&
+                    !vm.CheckoutBusy && !vm.CheckoutUncertain && vm.PendingOperationId is null && binding.Session.PendingCount == 0 && binding.Session.State == CheckoutCommitState.Ready;
+                var workflow = new BusinessDocumentsWorkflow(new BusinessDocumentStore(settings.ConnectionString, actor), Active, () => window.PromptCashierPin(actor));
+                new BusinessDocumentsDialog(workflow) { Owner = window }.ShowDialog();
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+            { System.Windows.MessageBox.Show(window, ex is UnauthorizedAccessException or InvalidOperationException ? ex.Message : "Documents indisponibles.", "Documents commerciaux"); }
+            finally { businessDocumentsOpen = false; }
+        });
         window.ConfigureCustomerFiles(() =>
         {
             if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } actor || binding.Session.PendingCount != 0) return;
@@ -949,13 +982,31 @@ public sealed partial record CatalogueHost
 
     private sealed class MariaDbFullCashReturnHost(
         Func<MySqlConnection> connections, string workstation) :
-        IOriginalSaleLookup, ITrustedWpfFullCashReturnPreparation
+        IOriginalSaleLookup, ITrustedWpfFullCashReturnPreparation, ITrustedWpfFullTicketReturnPreparation
     {
+        public string Mode { get; set; } = "Cash";
+        public Func<AuthorizedCheckoutRequest, bool>? Confirm { get; set; }
         public IReadOnlyList<OriginalSaleCandidate> FindPersistedSales(string receiptSearch) =>
-            MariaDbCashCheckoutServices.FindFullCashReturnCandidatesByReceipt(connections, receiptSearch)
+            Mode == "Credit" ? MariaDbCashCheckoutServices.FindFullCreditReturnCandidatesByReceipt(connections, receiptSearch)
+                .Select(sale => new OriginalSaleCandidate(sale.SaleId, $"Ticket {sale.TicketNumber} · {sale.Customer.Name} — dette {sale.CreditMad:N2} MAD", sale.CreditMad)).ToArray()
+            : Mode == "Card" ? MariaDbCashCheckoutServices.FindFullCardReturnCandidatesByReceipt(connections, receiptSearch)
+                .Select(sale => new OriginalSaleCandidate(sale.SaleId, $"Ticket {sale.TicketNumber} — CARTE {sale.RefundMad:N2} MAD", sale.RefundMad)).ToArray()
+            : MariaDbCashCheckoutServices.FindFullCashReturnCandidatesByReceipt(connections, receiptSearch)
                 .Select(sale => new OriginalSaleCandidate(sale.SaleId,
                     $"Ticket {sale.TicketNumber} · {sale.ReceiptDate} · poste {sale.Register} — {sale.PaidMad:N2} MAD", sale.PaidMad))
                 .ToArray();
+
+        public AuthorizedCheckoutRequest PrepareFullTicketReturn(string operationId, string originalId, CashierPaymentContext context)
+        {
+            if (context?.IsWellFormed != true || context.TenderCode != Mode || context.RegisterId != workstation || context.CurrencyCode != "MAD")
+                throw new InvalidOperationException("La session du retour a changé.");
+            if (Mode == "Cash") return PrepareFullCashReturn(operationId, originalId, context);
+            var request = Mode == "Credit" ? MariaDbCashCheckoutServices.PrepareFullCreditReturnRequest(connections, operationId, context.CashierId, "MAD", originalId)
+                : Mode == "Card" ? MariaDbCashCheckoutServices.PrepareFullCardReturnRequest(connections, operationId, context.CashierId, "MAD", originalId, externalRefundConfirmed: true)
+                : throw new InvalidOperationException("Mode de retour invalide.");
+            if (Confirm?.Invoke(request) != true) throw new InvalidOperationException("Retour annulé avant écriture.");
+            return request;
+        }
 
         public AuthorizedCheckoutRequest PrepareFullCashReturn(
             string stableOperationId, string originalTicketId, CashierPaymentContext cashierContext)

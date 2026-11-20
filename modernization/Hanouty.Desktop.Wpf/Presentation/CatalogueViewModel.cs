@@ -531,10 +531,15 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     }
 
     public bool CommitFullCashReturn(string originalTicketId)
+        => CommitFullReturn(originalTicketId, false);
+
+    public bool CommitFullTicketReturn(string originalTicketId) => CommitFullReturn(originalTicketId, true);
+
+    private bool CommitFullReturn(string originalTicketId, bool general)
     {
         if (_selectionInFlight || CheckoutUncertain || !FinancialSessionActive ||
             PaymentContext?.IsWellFormed != true || string.IsNullOrWhiteSpace(originalTicketId) ||
-            _submission is not IContextualWpfCashReturnSubmission returnSubmission)
+            (!general && _submission is not IContextualWpfCashReturnSubmission || general && _submission is not IContextualWpfFullTicketReturnSubmission))
         { CommitFeedback = "Authorized full-ticket cash return unavailable"; return false; }
         ReviewedResolution = CheckoutResolution.Unknown;
         _pendingOperationId ??= Guid.NewGuid().ToString("N");
@@ -543,10 +548,11 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             _selectionInFlight = true;
             OnPropertyChanged(nameof(CanSelectProduct));
             OnPropertyChanged(nameof(CanCommit));
-            var result = returnSubmission.SubmitFullCashReturn(_pendingOperationId, originalTicketId, PaymentContext);
+            var result = general ? ((IContextualWpfFullTicketReturnSubmission)_submission!).SubmitFullTicketReturn(_pendingOperationId, originalTicketId, PaymentContext)
+                : ((IContextualWpfCashReturnSubmission)_submission!).SubmitFullCashReturn(_pendingOperationId, originalTicketId, PaymentContext);
             if (result == CheckoutSubmissionResult.Committed)
             {
-                CommitFeedback = "Full-ticket cash return committed";
+                CommitFeedback = general ? "Retour du ticket enregistré" : "Full-ticket cash return committed";
                 _pendingOperationId = null;
                 OnPropertyChanged(nameof(PendingOperationId));
                 ClearConsumedPaymentContext();

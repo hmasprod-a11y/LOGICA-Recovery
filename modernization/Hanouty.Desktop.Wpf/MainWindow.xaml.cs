@@ -54,7 +54,7 @@ public partial class MainWindow : Window
     public bool PayMixed() => PayAlternate(_payMixed);
     private bool PayAlternate(Func<bool>? pay)
     {
-        if (_customerFilesOpen || _manualDiscountOpen || _alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
+        if (_businessDocumentsOpen || _customerFilesOpen || _manualDiscountOpen || _alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
             _trustedTotalReadBusy || _originalSaleLookupBusy || pay is null ||
             DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null) return false;
@@ -286,7 +286,7 @@ public partial class MainWindow : Window
 
     public bool SearchOriginalSales(string receipt)
     {
-        if (_manualDiscountOpen || _originalSaleLookupBusy || _cashierEntryOpen || _alternatePaymentOpen || _reviewOpen || _logoutOpen || _pinOpen) return false;
+        if (_businessDocumentsOpen || _customerFilesOpen || _manualDiscountOpen || _originalSaleLookupBusy || _cashierEntryOpen || _alternatePaymentOpen || _reviewOpen || _logoutOpen || _pinOpen) return false;
         OriginalSaleResults.ItemsSource = null;
         _originalSaleResults = Array.Empty<OriginalSaleCandidate>();
         _originalSaleSelection?.Clear();
@@ -295,7 +295,7 @@ public partial class MainWindow : Window
         _originalSaleLookupContext = null;
         OriginalSaleStatus.Text = "No original sale selected — refunds unavailable";
         if (_prepareReturnSession is not null && !_prepareReturnSession()) return false;
-        if (_manualDiscountOpen || _originalSaleLookupBusy || _cashierEntryOpen || _alternatePaymentOpen || _reviewOpen || _logoutOpen || _pinOpen ||
+        if (_businessDocumentsOpen || _customerFilesOpen || _manualDiscountOpen || _originalSaleLookupBusy || _cashierEntryOpen || _alternatePaymentOpen || _reviewOpen || _logoutOpen || _pinOpen ||
             _originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
             !vm.FinancialSessionActive || vm.PaymentContext is null || vm.CheckoutBusy || vm.CheckoutUncertain ||
             vm.PendingOperationId is not null) return false;
@@ -319,7 +319,7 @@ public partial class MainWindow : Window
             _originalSaleLookupContext = context;
             OriginalSaleResults.ItemsSource = _originalSaleResults;
             OriginalSaleStatus.Text = _originalSaleResults.Count == 0 ? "No persisted sale found" :
-                "Select a persisted full-cash sale; only full-ticket refunds are supported";
+                _returnPaymentMode == "Cash" ? "Select a persisted full-cash sale; only full-ticket refunds are supported" : "Sélectionnez le ticket original complet et vérifiez le mode du retour.";
             return _originalSaleResults.Count > 0;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
@@ -334,7 +334,7 @@ public partial class MainWindow : Window
     {
         // Modal dialogs pump the dispatcher; a nested selection must not alter
         // the receipt evidence during PIN, login, logout or durable review.
-        if (_manualDiscountOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
+        if (_businessDocumentsOpen || _customerFilesOpen || _manualDiscountOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
             _originalSaleLookupBusy || _originalSaleSelection is null || DataContext is not CatalogueViewModel vm ||
             !vm.FinancialSessionActive || vm.PaymentContext is null || vm.CheckoutBusy || vm.CheckoutUncertain ||
             vm.PendingOperationId is not null || _originalSaleLookupContext is null ||
@@ -347,7 +347,7 @@ public partial class MainWindow : Window
         _returnDraft.SetOriginalSale(accepted ? candidate.SaleId : null);
         ReturnDraftStatus.Text = _returnDraft.Status;
         OriginalSaleStatus.Text = accepted ?
-            $"Original sale: {candidate.SaleId} — full-ticket cash refund only" :
+            _returnPaymentMode == "Cash" ? $"Original sale: {candidate.SaleId} — full-ticket cash refund only" : $"Ticket original : {candidate.SaleId} — retour {_returnPaymentMode} complet" :
             "Invalid original-sale selection";
         return accepted;
     }
@@ -367,7 +367,7 @@ public partial class MainWindow : Window
 
     public bool ReviewReturnQuantity(string quantity)
     {
-        if (_manualDiscountOpen || _cashierEntryOpen || _alternatePaymentOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy ||
+        if (_businessDocumentsOpen || _customerFilesOpen || _manualDiscountOpen || _cashierEntryOpen || _alternatePaymentOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy ||
             _originalSaleSelection?.Selected is null || DataContext is not CatalogueViewModel vm ||
             !vm.FinancialSessionActive || vm.PaymentContext is null || vm.CheckoutBusy ||
             vm.CheckoutUncertain || vm.PendingOperationId is not null ||
@@ -384,7 +384,7 @@ public partial class MainWindow : Window
 
     public bool ConfirmReturnDraft()
     {
-        if (_manualDiscountOpen || _cashierEntryOpen || _alternatePaymentOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy ||
+        if (_businessDocumentsOpen || _customerFilesOpen || _manualDiscountOpen || _cashierEntryOpen || _alternatePaymentOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy ||
             DataContext is not CatalogueViewModel vm || _originalSaleSelection?.Selected is null ||
             _returnDraft.OriginalSaleId != _originalSaleSelection.Selected.SaleId ||
             !ReferenceEquals(OriginalSaleResults.ItemsSource, _originalSaleResults) ||
@@ -400,7 +400,8 @@ public partial class MainWindow : Window
             vm.CheckoutUncertain || vm.PendingOperationId is not null))
         { ReturnDraftStatus.Text = _returnDraft.Status; return false; }
         ReturnDraftStatus.Text = _returnDraft.Status;
-        var committed = vm.CommitFullCashReturn(_originalSaleSelection.Selected.SaleId);
+        var committed = _returnPaymentMode == "Cash" ? vm.CommitFullCashReturn(_originalSaleSelection.Selected.SaleId)
+            : vm.CommitFullTicketReturn(_originalSaleSelection.Selected.SaleId);
         if (committed)
         {
             _returnDraft.Invalidate("Full-ticket refund submitted");
@@ -447,7 +448,7 @@ public partial class MainWindow : Window
         // overwrite the in-flight result or clear the current status.
         if (_trustedTotalReadBusy) return false;
         TrustedBasketTotal.Text = "Total indisponible";
-        if (_manualDiscountOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
+        if (_businessDocumentsOpen || _customerFilesOpen || _manualDiscountOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
             _originalSaleLookupBusy || _readTrustedCashTotal is null ||
             DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
             vm.CheckoutBusy || vm.CheckoutUncertain ||
@@ -486,7 +487,7 @@ public partial class MainWindow : Window
 
     public bool ChangeBasketQuantity(BasketDisplayLine line, int quantity)
     {
-        if (_manualDiscountOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
+        if (_businessDocumentsOpen || _customerFilesOpen || _manualDiscountOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
             _trustedTotalReadBusy || _originalSaleLookupBusy || _setBasketQuantity is null ||
             DataContext is not CatalogueViewModel vm || !vm.FinancialSessionActive ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
@@ -532,7 +533,7 @@ public partial class MainWindow : Window
 
     public bool EndFinancialSession()
     {
-        if (_customerFilesOpen || _manualDiscountOpen || _alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
+        if (_businessDocumentsOpen || _customerFilesOpen || _manualDiscountOpen || _alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _endFinancialSession is null) return false;
         _logoutOpen = true;
@@ -573,7 +574,7 @@ public partial class MainWindow : Window
 
     private bool ShowCashierEntry(bool forPayment)
     {
-        if (_customerFilesOpen || _manualDiscountOpen || _alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
+        if (_businessDocumentsOpen || _customerFilesOpen || _manualDiscountOpen || _alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
             _setFinancialContext is null || _readTrustedCashTotal is null) return false;
         // Lock BEFORE calling Host-provided delegates: those may pump the WPF

@@ -12,18 +12,25 @@ namespace Hanouty.Desktop.Bootstrap;
 // Composition belongs here: WPF must never reference its own adapter.
 public sealed record CatalogueSettings(string ConnectionString, string DataDirectory)
 {
+    public string WorkstationId { get; init; } = "01";
     public static CatalogueSettings FromEnvironment()
     {
         var connection = Environment.GetEnvironmentVariable("HANOUTY_CATALOGUE_CONNECTION")
-            ?? throw new InvalidOperationException("Local catalogue connection is not configured.");
+            ?? throw new InvalidOperationException("La connexion locale n’est pas configurée.");
+        return Validate(connection, Environment.GetEnvironmentVariable("HANOUTY_DATA_DIRECTORY"),
+            Environment.GetEnvironmentVariable("HANOUTY_WORKSTATION") ?? "01");
+    }
+    internal static CatalogueSettings Validate(string connection, string? directory, string workstation)
+    {
         var builder = new MySqlConnectionStringBuilder(connection);
         if (builder.Server is not ("127.0.0.1" or "localhost" or "::1") ||
             string.IsNullOrWhiteSpace(builder.Database) || string.IsNullOrWhiteSpace(builder.UserID))
             throw new InvalidOperationException("An explicitly configured local MariaDB account is required.");
-        var directory = Environment.GetEnvironmentVariable("HANOUTY_DATA_DIRECTORY");
         if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
             throw new InvalidOperationException("Local data directory is missing.");
-        return new CatalogueSettings(connection, Path.GetFullPath(directory));
+        if (!System.Text.RegularExpressions.Regex.IsMatch(workstation, "^[0-9]{2}$"))
+            throw new InvalidOperationException("Le numéro du poste doit contenir deux chiffres.");
+        return new CatalogueSettings(connection, Path.GetFullPath(directory)) { WorkstationId = workstation };
     }
 }
 

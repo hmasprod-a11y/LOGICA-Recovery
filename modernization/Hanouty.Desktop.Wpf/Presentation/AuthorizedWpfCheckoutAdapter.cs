@@ -26,7 +26,7 @@ public interface IContextualWpfCashReturnSubmission : ICheckoutOutcomeReconcilia
 
 // Maps WPF's existing context to Architecture's EXISTING AuthorizedCheckoutRequest.
 // No local DB reads, pricing, posting implementation, or implicit host registration.
-public sealed class AuthorizedWpfCheckoutAdapter : IContextualCheckoutSubmission, IContextualWpfCashReturnSubmission, ICheckoutOutcomeReconciliation
+public sealed class AuthorizedWpfCheckoutAdapter : IContextualCheckoutSubmission, IContextualWpfCashReturnSubmission, IContextualWpfFullTicketReturnSubmission, ICheckoutOutcomeReconciliation
 {
     private readonly ITrustedWpfCheckoutPreparation? _preparation;
     private readonly AuthorizedCheckoutCommitGate _gate;
@@ -89,15 +89,25 @@ public sealed class AuthorizedWpfCheckoutAdapter : IContextualCheckoutSubmission
 
     public CheckoutSubmissionResult SubmitFullCashReturn(string stableOperationId,
         string originalTicketId, CashierPaymentContext context)
+        => string.Equals(context?.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase) ? SubmitReturn(stableOperationId, originalTicketId, context!, false) : CheckoutSubmissionResult.Invalidated;
+
+    public CheckoutSubmissionResult SubmitFullTicketReturn(string stableOperationId,
+        string originalTicketId, CashierPaymentContext context) => SubmitReturn(stableOperationId, originalTicketId, context, true);
+
+    private CheckoutSubmissionResult SubmitReturn(string stableOperationId,
+        string originalTicketId, CashierPaymentContext context, bool general)
     {
         if (string.IsNullOrWhiteSpace(stableOperationId) ||
             string.IsNullOrWhiteSpace(originalTicketId) || originalTicketId.Length > 64 ||
             context?.IsWellFormed != true ||
-            !string.Equals(context.TenderCode, nameof(CheckoutPaymentKind.Cash), StringComparison.OrdinalIgnoreCase) ||
+            !Enum.TryParse<CheckoutPaymentKind>(context.TenderCode, true, out var tender) || tender is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Credit or CheckoutPaymentKind.Card) ||
             _returnPreparation is null)
             return CheckoutSubmissionResult.Invalidated;
         AuthorizedCheckoutRequest request;
-        try { request = _returnPreparation.PrepareFullCashReturn(stableOperationId, originalTicketId, context); }
+        try { request = general && _returnPreparation is ITrustedWpfFullTicketReturnPreparation full
+            ? full.PrepareFullTicketReturn(stableOperationId, originalTicketId, context)
+            : string.Equals(context.TenderCode, "Cash", StringComparison.OrdinalIgnoreCase) ? _returnPreparation.PrepareFullCashReturn(stableOperationId, originalTicketId, context)
+            : throw new InvalidOperationException("Return preparation unavailable."); }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         { return CheckoutSubmissionResult.Invalidated; }
         if (request is null || !request.IsReturn ||
@@ -106,7 +116,7 @@ public sealed class AuthorizedWpfCheckoutAdapter : IContextualCheckoutSubmission
             !string.Equals(request.CashierId, context.CashierId, StringComparison.Ordinal) ||
             !string.Equals(request.Currency, context.CurrencyCode, StringComparison.Ordinal) ||
             request.Payments is null || request.Payments.Count != 1 ||
-            request.Payments[0] is not { Kind: CheckoutPaymentKind.Cash, Amount: > 0m } ||
+            request.Payments[0].Amount <= 0m || request.Payments[0].Kind != tender ||
             request.ExpectedTotal != request.Payments[0].Amount)
             return CheckoutSubmissionResult.Invalidated;
         try

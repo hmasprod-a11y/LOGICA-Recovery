@@ -919,6 +919,12 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyManualDiscounts(settings, pin);
         VerifyCreditSales(settings, pin);
         VerifyCustomerFiles(settings, pin);
+        VerifyFullReturnModes(settings, pin);
+        VerifyWorkstationConfiguration(settings);
+        VerifyBusinessDocuments(settings, pin);
+        VerifyUnicodeSettlementReplay(settings, pin);
+        using (var stream = typeof(DisposableCashSaleAcceptance).Assembly.GetManifestResourceStream("Hanouty.StockIssueCreateMigration"))
+        using (var reader = new StreamReader(stream ?? throw new InvalidOperationException("Stock issue creation migration is missing."))) Sql(settings, reader.ReadToEnd());
 
         File.WriteAllText(Path.Combine(evidence, "w2-cash-sale.json"), JsonSerializer.Serialize(new {
             Gate = "real WPF cash workstation", CashierDialogProductionBound = true, TrustedQuoteDisplayed = true, DialogTwoSalesSameHost = true, LogoutLoginUi = true, ModalPriceChangeRejected = true, Operation = operation, WindowLoaded = true, EditedContextRejected = true, SingleSessionBinding = true,
@@ -3078,7 +3084,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         Sql(settings, "INSERT INTO TABLE_MODE_P VALUES ('CARTE')");
         Rejected(request with { OperationId = "CARD-OVERPAY", Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Card, cardTotal + 0.01m) } }, "Card amount must equal");
         Rejected(request with { OperationId = "CARD-UNDERPAY", Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Card, cardTotal - 0.01m) } }, "Card amount must equal");
-        Rejected(request with { OperationId = "CARD-REFUND-DENIED", IsReturn = true, OriginalTicketId = "original-card" }, "cash refunds only");
+        Rejected(request with { OperationId = "CARD-REFUND-DENIED", IsReturn = true, OriginalTicketId = "original-card" }, "explicit confirmation");
         Sql(settings, """
             CREATE TRIGGER fail_card_payment BEFORE INSERT ON TABLE_VENTES_REGLEMENTS
             FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Synthetic card payment failure';
@@ -3251,7 +3257,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                 new CheckoutPayment(CheckoutPaymentKind.Cash, 5.001m), new CheckoutPayment(CheckoutPaymentKind.Card, cardPart) } },
                 "Payment components require whole cents");
             Rejected(request with { OperationId = "MIXED-REFUND", IsReturn = true, OriginalTicketId = "original-mixed" },
-                "cash refunds only");
+                "explicit confirmation");
             Sql(settings, """
                 CREATE TRIGGER fail_mixed_card BEFORE INSERT ON TABLE_VENTES_REGLEMENTS FOR EACH ROW
                 BEGIN

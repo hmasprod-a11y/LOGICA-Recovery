@@ -35,12 +35,13 @@ namespace LOGICA.Infrastructure.Checkout
             if (request == null) throw new ArgumentNullException(nameof(request));
             request.Validate();
             // Paid Cash/Card or configured named CREDIT use the same transaction.
-            // Refunds retain the independently accepted single-cash policy.
+            // Full cash refunds and named credit-debt returns have independent
+            // original-evidence policies inside the same trusted preparation.
             if (request.Payments.Count is < 1 or > 2 ||
                 request.Payments.Any(payment => payment.Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card or CheckoutPaymentKind.Credit)) ||
                 request.Payments.Select(payment => payment.Kind).Distinct().Count() != request.Payments.Count ||
-                (request.IsReturn && (request.Payments.Count != 1 || request.Payments[0].Kind != CheckoutPaymentKind.Cash)))
-                throw new NotSupportedException("Cash/card or configured named credit sales, and cash refunds only.");
+                (request.IsReturn && (request.Payments.Count != 1 || request.Payments[0].Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card or CheckoutPaymentKind.Credit))))
+                throw new NotSupportedException("Cash/card or configured named credit sales, and single-mode full original returns only.");
 
             using (MySqlConnection connection = createConnection())
             {

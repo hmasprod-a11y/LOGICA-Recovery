@@ -98,6 +98,11 @@ FROM TABLE_VENTES_JOURNAL WHERE OPERATION IN ('CREDIT','RETOUR CREDIT') GROUP BY
 SELECT ID_CLIENT, MODE_P, COUNT(*), COALESCE(SUM(MONTANT),0), COUNT(CLOTURE_GLOBALE)
 FROM TABLE_CLIENTS_REGLE GROUP BY ID_CLIENT, MODE_P ORDER BY ID_CLIENT, MODE_P;
 SELECT COUNT(*) FROM hanouty_client_settlement_operations;
+SELECT OPERATION_ID, HEX(ACTOR), ISSUE_ID, HEX(PAYLOAD), CREATED_UTC
+FROM hanouty_stock_issue_create_operations ORDER BY OPERATION_ID;
+SELECT 'DEVIS',COUNT(*),COALESCE(SUM(TOTAL_HT_DOC),0),COALESCE(SUM(TOTAL_TVA_DOC),0),COALESCE(SUM(TOTAL_TTC_DOC),0) FROM TABLE_DEVIS_ENTETE;
+SELECT 'BL',COUNT(*),COALESCE(SUM(TOTAL_HT_DOC),0),COALESCE(SUM(TOTAL_TVA_DOC),0),COALESCE(SUM(TOTAL_TTC_DOC),0) FROM TABLE_BL_ENTETE;
+SELECT 'FACTURE',COUNT(*),COALESCE(SUM(TOTAL_HT_DOC),0),COALESCE(SUM(TOTAL_TVA_DOC),0),COALESCE(SUM(TOTAL_TTC_DOC),0) FROM TABLE_FACTURE_ENTETE;
 '@
     $original = & $client @connection --batch --skip-column-names logica_ci "--execute=$probeSql"
     if ($LASTEXITCODE -ne 0 -or -not $original) { throw 'Could not read the original backup verification totals.' }
@@ -253,6 +258,10 @@ GRANT ALL PRIVILEGES ON logica_ci.* TO 'w2_test'@'127.0.0.1';
     $customerReport = Get-Content -LiteralPath (Join-Path $evidence 'w2-customer-files.json') -Raw | ConvertFrom-Json
     foreach ($field in @('FourDecimalSignedTouch','OpeningHistoryAtomic','JournalRollback','RecoveryAfterRestart','ExistingCreditAndStatementLinked')) {
         if ($customerReport.$field -ne $true) { throw "Customer file acceptance proof missing: $field" }
+    }
+    $returnsReport = Get-Content -LiteralPath (Join-Path $evidence 'w2-full-return-modes.json') -Raw | ConvertFrom-Json
+    foreach ($field in @('CreditReturnUi','CardReturnUi','FreshCashierPin','CashUnchanged','DebtAndCardReconciled','OriginalStockRestored')) {
+        if ($returnsReport.$field -ne $true) { throw "Full return acceptance proof missing: $field" }
     }
     Set-Content -LiteralPath (Join-Path $appDir 'gestion_credit.sni') -Value 'True' -Encoding UTF8
     $env:HANOUTY_W2_DISPOSABLE_MARKER = $null

@@ -67,7 +67,7 @@ public sealed class ProductionWpfProductSelection : Wpf.IProductSelection
 // Application-owned submission adapter: WPF only supplies the stable operation ID.
 // No financial posting is authorized by this adapter without a configured
 // IAtomicCheckoutBatchPort and durable operation journal in CheckoutComposition.
-public sealed class ProductionWpfCheckoutSubmission : Wpf.ICheckoutSubmission, Wpf.IContextualWpfCashReturnSubmission, Wpf.ICheckoutOutcomeReconciliation
+public sealed class ProductionWpfCheckoutSubmission : Wpf.ICheckoutSubmission, Wpf.IContextualWpfCashReturnSubmission, Wpf.IContextualWpfFullTicketReturnSubmission, Wpf.ICheckoutOutcomeReconciliation
 {
     private readonly CheckoutSession _session;
     private readonly AuthorizedCheckoutCommitGate? _financialGate;
@@ -152,6 +152,17 @@ public sealed class ProductionWpfCheckoutSubmission : Wpf.ICheckoutSubmission, W
             return Wpf.CheckoutSubmissionResult.Invalidated;
         _returnOperationId = stableOperationId;
         return _returnSubmission.SubmitFullCashReturn(stableOperationId, originalTicketId, context);
+    }
+
+    public Wpf.CheckoutSubmissionResult SubmitFullTicketReturn(string stableOperationId, string originalTicketId, Wpf.CashierPaymentContext context)
+    {
+        if (string.IsNullOrWhiteSpace(stableOperationId) || string.IsNullOrWhiteSpace(originalTicketId) ||
+            context?.IsWellFormed != true || context.TenderCode is not ("Cash" or "Credit" or "Card") ||
+            _returnSubmission is not Wpf.IContextualWpfFullTicketReturnSubmission submission || _financialGate is null ||
+            _session.PendingCount != 0 || _session.State != CheckoutCommitState.Ready ||
+            _session.OperationId is not null || _financialGate.UncertainOperationId is not null) return Wpf.CheckoutSubmissionResult.Invalidated;
+        _returnOperationId = stableOperationId;
+        return submission.SubmitFullTicketReturn(stableOperationId, originalTicketId, context);
     }
 
     public Wpf.CheckoutSubmissionResult Submit(string stableOperationId)
