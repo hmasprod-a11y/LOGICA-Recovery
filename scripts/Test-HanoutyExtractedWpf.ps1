@@ -60,8 +60,40 @@ $root = Join-Path ([IO.Path]::GetFullPath($EvidenceDirectory)) 'disposable-maria
 New-Item -ItemType Directory -Path $root -Force | Out-Null
 $archive = 'mariadb-10.11.14-winx64.zip'
 $url = 'https://archive.mariadb.org/mariadb-10.11.14/winx64-packages'
-Invoke-WebRequest "$url/$archive" -OutFile (Join-Path $root $archive)
-$checks = (Invoke-WebRequest "$url/sha256sums.txt").Content
+# Same bounded, length-checked range transfer already exercised by financial W2.
+$archiveUrl = "$url/mariadb-10.11.14-winx64.zip"
+$headers = & curl.exe --fail --location --head --retry 3 --retry-delay 3 --connect-timeout 30 --max-time 60 --silent --show-error $archiveUrl 2> "$root/headers-error.txt"
+if ($LASTEXITCODE -ne 0) { throw 'Could not inspect MariaDB archive.' }
+$lengthHeader = @($headers | Where-Object { $_ -match '^Content-Length:\s*\d+' })[-1]
+$length = [long]($lengthHeader -replace '^Content-Length:\s*', '').Trim()
+if ($length -le 0) { throw 'MariaDB archive length unavailable.' }
+$partSize = [long][Math]::Ceiling($length / 32)
+0..31 | ForEach-Object -Parallel {
+  # curl retries transient server responses; inspect its final exit code.
+  $ErrorActionPreference = 'Continue'
+  $PSNativeCommandUseErrorActionPreference = $false
+  $part = $_
+  $first = $part * $using:partSize
+  $last = [Math]::Min($using:length - 1, $first + $using:partSize - 1)
+  $output = Join-Path $using:root ("archive-{0:D2}.part" -f $part)
+  $verifiedPart = $false
+  for ($attempt = 0; $attempt -lt 2; $attempt++) {
+    & curl.exe --fail --location --range "$first-$last" --retry 4 --retry-all-errors --retry-max-time 90 --connect-timeout 30 --max-time 90 --silent --show-error $using:archiveUrl --output $output 2> "$output.error"
+    if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $output -PathType Leaf) -and
+        (Get-Item -LiteralPath $output).Length -eq ($last - $first + 1)) {
+      $verifiedPart = $true; break
+    }
+  }
+  if (-not $verifiedPart) { throw "MariaDB archive part $part failed verification." }
+} -ThrottleLimit 8
+$archiveStream = [IO.File]::Create((Join-Path $root $archive))
+try {
+  foreach ($part in 0..31) {
+    $source = [IO.File]::OpenRead((Join-Path $root ("archive-{0:D2}.part" -f $part)))
+    try { $source.CopyTo($archiveStream) } finally { $source.Dispose() }
+  }
+} finally { $archiveStream.Dispose() }
+$checks = (Invoke-WebRequest "$url/sha256sums.txt" -TimeoutSec 30 -MaximumRetryCount 3 -RetryIntervalSec 2).Content
 # Parse GNU sha256sum format (two spaces or binary '*') and optional ./ prefix.
 # Require exactly one archive entry and a full 64-character digest; never bypass integrity.
 $matching = @()
