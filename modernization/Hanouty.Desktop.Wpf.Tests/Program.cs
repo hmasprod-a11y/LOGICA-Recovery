@@ -29,12 +29,14 @@ try
 {
     foreach (var cultureName in new[] { "fr-FR", "en-US" })
     foreach (var cancelNumericEntry in new[] { false, true })
+    foreach (var signedOpening in new[] { false, true })
     {
         System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo(cultureName);
         var field = new System.Windows.Controls.TextBox { Text = "7" };
         var owner = new System.Windows.Window { Content = field, Width = 220, Height = 120 };
         owner.Show();
-        Hanouty.Desktop.Wpf.TouchNumericEntry.Attach(field, "Quantité");
+        Hanouty.Desktop.Wpf.TouchNumericEntry.Attach(field, signedOpening ? "Crédit initial" : "Quantité",
+            decimalPlaces: signedOpening ? 4 : 2, allowNegative: signedOpening);
         Check(field.IsReadOnly, "Quantity entry must not require physical-keyboard typing.");
         Exception? numericFailure = null;
         var openedNumeric = false;
@@ -65,8 +67,11 @@ try
                     Check(dialog.IsVisible && dialog.Value is null, "Empty positive quantity must stay unconfirmed.");
                     Touch("1");
                     Touch(System.Globalization.CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator);
-                    Touch("2"); Touch("3"); Touch("4"); // Third decimal is ignored, never silently rounded.
-                    Touch("⌫"); Touch("5");
+                    Check(buttons.Any(b => Equals(b.Content, "±")) == signedOpening,
+                        "Signed opening must not enable negative quantities in the default keypad.");
+                    Touch("2"); Touch("3"); Touch("4");
+                    if (signedOpening) { Touch("5"); Touch("6"); Touch("±"); }
+                    else { Touch("⌫"); Touch("5"); } // Third decimal is ignored, never silently rounded.
                     if (cancelNumericEntry) dialog.Close();
                     else Touch("Appliquer");
                 }
@@ -79,8 +84,8 @@ try
                 { RoutedEvent = System.Windows.UIElement.PreviewMouseLeftButtonDownEvent });
             if (numericFailure is not null) throw numericFailure;
             Check(openedNumeric, "Attached quantity control did not open its keypad.");
-            Check(field.Text == (cancelNumericEntry ? "7" : 1.25m.ToString("0.##")),
-                "Touch quantity must preserve culture, two decimals, deletion and cancellation.");
+            Check(field.Text == (cancelNumericEntry ? "7" : signedOpening ? (-1.2345m).ToString("0.####") : 1.25m.ToString("0.##")),
+                "Touch entry must preserve culture, configured precision, sign, deletion and cancellation.");
         }
         finally { numericTimeout.Stop(); owner.Close(); }
     }

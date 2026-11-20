@@ -87,8 +87,12 @@ SELECT COUNT(*), COALESCE(SUM(STOCK),0) FROM TABLE_ARTICLES;
 SELECT ID_ARTICLE, HEX(ARTICLE), STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article';
 SELECT OBJET, VALEUR FROM TABLE_PARAMETRES WHERE OBJET='FONDS_CAISSE';
 SELECT COUNT(*) FROM hanouty_checkout_operations;
-SELECT ID_CLIENT, HEX(CODE_CLIENT), HEX(CLIENT), COALESCE(CREDIT_INITIAL,0)
+SELECT ID, ID_CLIENT, HEX(CODE_CLIENT), HEX(CLIENT), DATES, HEX(ICE), HEX(ADRESSE), HEX(VILLE), HEX(PAYS), HEX(TELEPHONE), HEX(NOTES), HEX(VENDEUR), HEX(ETAT), COALESCE(CREDIT_INITIAL,0)
 FROM TABLE_CLIENTS ORDER BY BINARY ID_CLIENT, BINARY CODE_CLIENT, BINARY CLIENT;
+SELECT ID, DATES, HEURE, HEX(UTILISATEUR), ID_CLIENT, HEX(CLIENT), VALEUR_ANCIENNE, VALEUR_NOUVELLE
+FROM TABLE_CLIENTS_HISTORIQUE_CREDIT_INITIAL ORDER BY ID;
+SELECT OPERATION_ID, HEX(ACTOR), KIND, CUSTOMER_ID, HEX(PAYLOAD), HEX(RESULT), CREATED_UTC
+FROM hanouty_customer_file_operations ORDER BY OPERATION_ID;
 SELECT ID_CLIENT, OPERATION, COUNT(*), COALESCE(SUM(TOTAL_NET),0)
 FROM TABLE_VENTES_JOURNAL WHERE OPERATION IN ('CREDIT','RETOUR CREDIT') GROUP BY ID_CLIENT, OPERATION ORDER BY ID_CLIENT, OPERATION;
 SELECT ID_CLIENT, MODE_P, COUNT(*), COALESCE(SUM(MONTANT),0), COUNT(CLOTURE_GLOBALE)
@@ -105,7 +109,7 @@ SELECT COUNT(*) FROM hanouty_client_settlement_operations;
         RestoreVerified = $true
         CreditDemoEnabled = ((Get-Content -LiteralPath (Join-Path $appDir 'gestion_credit.sni') -Raw).Trim() -ceq 'True')
         BackupSha256 = (Get-FileHash -LiteralPath $dump -Algorithm SHA256).Hash
-        Compared = @('sales and closing counts', 'payments by mode', 'stock and article text', 'opening amount', 'checkout journal', 'customer identities and credit debt', 'customer settlements and operation journal')
+        Compared = @('sales and closing counts', 'payments by mode', 'stock and article text', 'opening amount', 'checkout journal', 'full customer metadata and opening history', 'customer file operation journal', 'customer credit debt', 'customer settlements and operation journal')
     } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'backup-restore.json') -Encoding UTF8
     Write-Host 'PASS: disposable backup restored into a fresh schema with matching financial and stock checks.' -ForegroundColor Green
 }
@@ -246,6 +250,10 @@ GRANT ALL PRIVILEGES ON logica_ci.* TO 'w2_test'@'127.0.0.1';
     }
     # This directory is the fingerprint-verified, bundle-owned disposable app
     # extraction. Enable LOGICA's original switch only for the test cashier.
+    $customerReport = Get-Content -LiteralPath (Join-Path $evidence 'w2-customer-files.json') -Raw | ConvertFrom-Json
+    foreach ($field in @('FourDecimalSignedTouch','OpeningHistoryAtomic','JournalRollback','RecoveryAfterRestart','ExistingCreditAndStatementLinked')) {
+        if ($customerReport.$field -ne $true) { throw "Customer file acceptance proof missing: $field" }
+    }
     Set-Content -LiteralPath (Join-Path $appDir 'gestion_credit.sni') -Value 'True' -Encoding UTF8
     $env:HANOUTY_W2_DISPOSABLE_MARKER = $null
     $env:HANOUTY_W2_TEST_PIN = $null

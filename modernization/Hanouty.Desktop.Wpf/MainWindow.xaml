@@ -31,6 +31,8 @@
                 </StackPanel>
                 <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly">
                 <StackPanel Orientation="Horizontal">
+                <Button Content="Fichiers clients" Click="OpenCustomerFiles_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
+                        IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Gérer les fichiers clients"/>
 
                 <Button Content="État des crédits clients" Click="OpenCustomerCreditStatement_Click"
                         HorizontalAlignment="Left" Margin="0,4" Padding="12,6" />

@@ -214,7 +214,11 @@ jobs:
           foreach ($field in @('OriginalConfiguration','AnonymousAndDuplicateCustomerDenied','ReviewedIdentityRechecked','FreshCashierPin','QueryAndSelectionInvalidation','ExplicitCreditConfirmation','AtomicDebtStockNoPayment','CashUnchangedAtCredit','ReceiptCustomerAndTwoCopies','DurableDuplicate','NextCashSaleAnonymous','NewDebtPartialAndFullSettlement','LostAcknowledgementReview','Rollback','ClosingAndStockReconciled','ManualDiscountCredit')) {
             if ($credit.$field -ne $true) { throw "Missing executed credit sale proof: $field" }
           }
-          Write-Host "PASS W2 accepted on source SHA $env:GITHUB_SHA: WPF paid/credit sales, authorized discounts, full-ticket return, customer settlements, rollback, reconciliation and exact-once"
+          $customers = Get-Content evidence/w2/w2-customer-files.json -Raw | ConvertFrom-Json
+          foreach ($field in @('OriginalClNumbering','FullMetadata','OptionalUniqueCode','ImmutableIdentity','FourDecimalSignedTouch','OpeningHistoryAtomic','InitialCreditSeparate','StaleSnapshotDenied','ExactRoleAndRevocation','FreshCashierPin','CreateReplay','HistoryReplay','JournalRollback','RecoveryAfterRestart','LocalLease','NoCashStockSideEffects','ExistingCreditAndStatementLinked')) {
+            if ($customers.$field -ne $true) { throw "Missing executed customer file proof: $field" }
+          }
+          Write-Host "PASS W2 accepted on source SHA $env:GITHUB_SHA: WPF paid/credit sales, customer files and opening history, authorized discounts, full-ticket return, customer settlements, rollback, reconciliation and exact-once"
       - name: Upload full W2 source and SQL evidence
         if: always()
         uses: actions/upload-artifact@v4

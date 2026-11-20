@@ -209,7 +209,8 @@ public sealed partial record CatalogueHost
         var result = new CatalogueHost(window, vm, binding.Session);
         string? lastReviewed = null;
         var reviewing = false;
-        bool CanChangeContext() => !reviewing && !vm.CheckoutBusy &&
+        var customerFilesOpen = false;
+        bool CanChangeContext() => !customerFilesOpen && !reviewing && !vm.CheckoutBusy &&
             !vm.CheckoutUncertain && vm.PendingOperationId is null &&
             binding.Session.OperationId is null && binding.Session.State == CheckoutCommitState.Ready;
         window.ConfigureManualDiscounts(() =>
@@ -728,6 +729,25 @@ public sealed partial record CatalogueHost
                 System.Windows.MessageBox.Show(window, "Impossible d’ouvrir les règlements fournisseurs.",
                     "Règlement fournisseur", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
             }
+        });
+        window.ConfigureCustomerFiles(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } actor || binding.Session.PendingCount != 0) return;
+            customerFilesOpen = true;
+            try
+            {
+                var store = new CustomerFileStore(settings.ConnectionString);
+                var access = store.Authorize(actor, window.PromptCustomerFilesApproval);
+                bool Active() => customerFilesOpen && vm.FinancialSessionActive && activeCashierId == actor &&
+                    !vm.CheckoutBusy && !vm.CheckoutUncertain && vm.PendingOperationId is null &&
+                    binding.Session.PendingCount == 0 && binding.Session.State == CheckoutCommitState.Ready;
+                using var workflow = new CustomerFilesWorkflow(store, access, settings.ConnectionString, twoDigitWorkstation,
+                    settings.DataDirectory, Active, () => window.PromptCashierPin(actor));
+                new CustomerFilesDialog(workflow) { Owner = window }.ShowDialog();
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+            { System.Windows.MessageBox.Show(window, ex is UnauthorizedAccessException or InvalidOperationException ? ex.Message : "Fichiers clients indisponibles.", "Fichiers clients"); }
+            finally { customerFilesOpen = false; }
         });
         var customerCredits = new CustomerCreditStatementReader(settings.ConnectionString);
         var customerSettlements = new CustomerSettlementWriter(settings.ConnectionString);
