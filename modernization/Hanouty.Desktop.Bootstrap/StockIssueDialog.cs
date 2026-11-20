@@ -25,6 +25,20 @@ internal sealed class StockIssueDialog : Window
         input.Children.Add(history);
         var create = new Button { Content = "Nouveau bon", MinHeight = 36 };
         input.Children.Add(create);
+        var createAvoir = new Button { Content = "Nouvel avoir fournisseur", MinHeight = 36 };
+        input.Children.Add(createAvoir);
+        createAvoir.Click += (_, _) =>
+        {
+            try
+            {
+                using var workflow = service.OpenAvoirWorkflow(actor, readPin);
+                var editor = new SupplierAvoirCreateDialog(service, workflow) { Owner = this };
+                if (editor.ShowDialog() == true && editor.DocumentId is { } id)
+                { number.Text = id; open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or MySqlException)
+            { MessageBox.Show(this, ex.Message, Title); }
+        };
         create.Click += (_, _) =>
         {
             try

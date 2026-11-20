@@ -33,6 +33,8 @@
                 <StackPanel Orientation="Horizontal">
                 <Button Content="Fichiers clients" Click="OpenCustomerFiles_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
                         IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Gérer les fichiers clients"/>
+                <Button Content="Devis · BL · Factures" Click="OpenBusinessDocuments_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
+                        IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Ouvrir les documents commerciaux"/>
 
                 <Button Content="État des crédits clients" Click="OpenCustomerCreditStatement_Click"
                         HorizontalAlignment="Left" Margin="0,4" Padding="12,6" />
@@ -62,6 +64,13 @@
                           VerticalScrollBarVisibility="Auto">
                 <StackPanel MaxWidth="600" HorizontalAlignment="Stretch" Margin="8">
                         <TextBlock Text="Retour de vente" FontSize="26" FontWeight="SemiBold" Margin="0,0,0,18"/>
+                          <ComboBox x:Name="ReturnPaymentMode" SelectedIndex="0" MinHeight="40" Margin="0,0,0,12"
+                                    SelectionChanged="ReturnPaymentMode_SelectionChanged" IsEnabled="{Binding FinancialSessionActive}"
+                                    AutomationProperties.Name="Mode du retour">
+                              <ComboBoxItem Content="Retour espèces" Tag="Cash"/>
+                              <ComboBoxItem Content="Retour crédit — réduire la dette" Tag="Credit"/>
+                              <ComboBoxItem Content="Retour CARTE — remboursement externe confirmé" Tag="Card"/>
+                          </ComboBox>
                         <TextBlock Text="Numéro du ticket" Margin="0,0,0,6"/>
                         <TextBox x:Name="OriginalSaleSearch" MinHeight="36" TextChanged="OriginalSaleSearch_TextChanged"
                                  AutomationProperties.Name="Search original receipt identity"/>
@@ -73,7 +82,7 @@
                                 MinHeight="40" Margin="0,6,0,6"/>
                         <TextBlock Text="Le remboursement porte sur le ticket complet."
                                    Margin="0,8,0,4" TextWrapping="Wrap"/>
-                        <Button Content="Rembourser le ticket en espèces" Click="ConfirmReturnDraft_Click"
+                          <Button x:Name="ConfirmFullReturnButton" Content="Rembourser le ticket en espèces" Click="ConfirmReturnDraft_Click"
                                 MinHeight="44" Margin="0,4,0,4"/>
                         <TextBlock x:Name="ReturnDraftStatus" Text="Sélectionnez un ticket"
                                    TextWrapping="Wrap" AutomationProperties.Name="Return draft status"/>

@@ -9,5 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="../checkout-mariadb-production/CheckoutMariaDbProduction.csproj" />
     <Compile Include="Program.cs" />
+    <Compile Include="CreditReturnAcceptance.cs" />
+    <Compile Include="CardReturnAcceptance.cs" />
   </ItemGroup>
 </Project>

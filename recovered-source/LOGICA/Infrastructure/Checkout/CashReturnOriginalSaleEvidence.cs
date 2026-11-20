@@ -75,6 +75,14 @@ namespace LOGICA.Infrastructure.Checkout
             MySqlConnection connection, MySqlTransaction transaction, string originalTicketId)
         {
             decimal paid = ReadExactCashTenderAmount(connection, transaction, originalTicketId);
+            return ReadOriginalFullQuantityLines(connection, transaction, originalTicketId, paid);
+        }
+
+        // The card-return policy separately proves its original paid allocation
+        // before reusing exactly the same original line-price/quantity evidence.
+        internal static IReadOnlyList<CashReturnOriginalSaleLine> ReadOriginalFullQuantityLines(
+            MySqlConnection connection, MySqlTransaction transaction, string originalTicketId, decimal paid)
+        {
             using (var command = connection.CreateCommand())
             {
                 command.Transaction = transaction;

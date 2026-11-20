@@ -55,13 +55,16 @@ internal sealed class CustomerSettlementWriter(string connectionString)
         if (persisted is long saved)
         {
             using var verify = Command("""
-                SELECT COUNT(*) FROM TABLE_CLIENTS_REGLE WHERE ID=@id AND BINARY ID_REGLE=BINARY @operation
-                  AND BINARY ID_CLIENT=BINARY @client AND BINARY UTILISATEUR=BINARY @actor
-                  AND MONTANT=@amount AND BINARY MODE_P=BINARY @mode AND BINARY NOTES=BINARY @notes AND ETAT='VALIDER'
+                SELECT ID_REGLE,ID_CLIENT,UTILISATEUR,MONTANT,MODE_P,NOTES,ETAT
+                FROM TABLE_CLIENTS_REGLE WHERE ID=@id FOR UPDATE
                 """, ("@id", saved), ("@operation", request.OperationId), ("@client", request.CustomerId),
                 ("@actor", actor), ("@amount", request.Amount), ("@mode", request.PaymentMode), ("@notes", request.Notes));
-            if (Convert.ToInt64(verify.ExecuteScalar()) != 1)
+            using var row = verify.ExecuteReader();
+            if (!row.Read() || row.GetString(0) != request.OperationId || row.GetString(1) != request.CustomerId ||
+                row.GetString(2) != actor || row.GetDecimal(3) != request.Amount || row.GetString(4) != request.PaymentMode ||
+                row.GetString(5) != request.Notes || row.GetString(6) != "VALIDER" || row.Read())
                 throw new InvalidOperationException("Le règlement enregistré doit être vérifié.");
+            row.Close();
             transaction.Commit();
             return true;
         }

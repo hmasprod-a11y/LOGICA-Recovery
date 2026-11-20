@@ -60,8 +60,6 @@ namespace LOGICA.Infrastructure.Checkout
                 throw new InvalidOperationException("La gestion du crédit est désactivée dans la configuration LOGICA.");
             var card = request.Payments.Any(payment => payment.Kind == CheckoutPaymentKind.Card);
             var mixed = request.Payments.Count == 2;
-            if (card && request.IsReturn)
-                throw new NotSupportedException("Card refunds require their own original-payment policy.");
 
             // Refuse nontransactional legacy tables instead of silently claiming
             // that stock, receipt and operation rollback is atomic.
@@ -96,9 +94,9 @@ namespace LOGICA.Infrastructure.Checkout
             MariaDbCashCheckoutServices.ValidateManualDiscountForPosting(manualDiscount, cashier,
                 workstation, request.Lines, connection, transaction);
             if (card) RequireCardMode(connection, transaction);
-            var customer = credit ? MariaDbCashCheckoutServices.ReadCreditCustomer(connection, transaction, request.Customer.Id)
+            var customer = credit && !request.IsReturn ? MariaDbCashCheckoutServices.ReadCreditCustomer(connection, transaction, request.Customer.Id)
                 : new CreditCustomer("0", "0", "", "");
-            if (credit && (customer.Id != request.Customer.Id || customer.Code != request.Customer.Code || customer.Name != request.Customer.Name))
+            if (credit && !request.IsReturn && (customer.Id != request.Customer.Id || customer.Code != request.Customer.Code || customer.Name != request.Customer.Name))
                 throw new InvalidOperationException("Le client a changé. Revoyez la vente à crédit.");
 
             // Lock the same original sequence and basket used by the writers.
@@ -121,7 +119,7 @@ namespace LOGICA.Infrastructure.Checkout
                 throw new InvalidOperationException(
                     "Workstation basket is occupied; refusing to replace another cashier's sale.");
             if (request.IsReturn)
-                return PrepareFullCashReturn(request, connection, transaction, cashier, ticket);
+                return PrepareFullOriginalReturn(request, connection, transaction, cashier, ticket, credit, card);
             var waitingId = readWaitingSale?.Invoke();
             var waiting = waitingId is null ? null : ReadWaitingSale(connection, transaction, request, waitingId);
             foreach (var line in request.Lines)
@@ -278,23 +276,24 @@ namespace LOGICA.Infrastructure.Checkout
             };
         }
 
-        // One-line, full-ticket, exact-cash V1 refund. This runs inside the
-        // SAME operation-claim transaction and posting writers as a cash sale.
-        // Original journal values, never current prices or UI amounts, are authoritative.
-        // Full-ticket exact-cash return. Every original line is locked, matched,
+        // Full-ticket cash or named credit-debt return. Every original line is locked, matched,
         // and posted through the same transaction and production writers as sales.
-        private CheckoutPostingInput PrepareFullCashReturn(AuthorizedCheckoutRequest request,
-            MySqlConnection connection, MySqlTransaction transaction, string cashier, string ticket)
+        private CheckoutPostingInput PrepareFullOriginalReturn(AuthorizedCheckoutRequest request,
+            MySqlConnection connection, MySqlTransaction transaction, string cashier, string ticket, bool credit, bool card)
         {
             if (request.Lines.Count == 0 || string.IsNullOrWhiteSpace(request.OriginalTicketId))
                 throw new InvalidOperationException("A complete original ticket and line set are required.");
-            decimal amount = CashReturnConsumptionClaim.VerifyAndClaimFullOriginal(
+            var originalOperation = credit ? "CREDIT" : "VENTE";
+            var returnOperation = credit ? "RETOUR CREDIT" : "RETOUR REMBOURSEMENT";
+            var customer = credit ? request.Customer : new CheckoutCustomerIdentity("0", "0", "");
+            decimal amount = credit ? CreditReturnOriginalSaleEvidence.VerifyAndClaim(connection, transaction, request)
+                : card ? CardReturnOriginalSaleEvidence.VerifyAndClaim(connection, transaction, request) : CashReturnConsumptionClaim.VerifyAndClaimFullOriginal(
                 connection, transaction, request.OriginalTicketId, request.OperationId,
                 request.Lines.Select(line => new CashReturnConsumptionClaim.RequestedLine(
                     line.ArticleId, line.Quantity)).ToArray());
             if (request.ExpectedTotal != amount || request.Payments.Count != 1 ||
                 request.Payments[0].Amount != amount ||
-                request.Payments[0].Kind != CheckoutPaymentKind.Cash)
+                request.Payments[0].Kind != (credit ? CheckoutPaymentKind.Credit : card ? CheckoutPaymentKind.Card : CheckoutPaymentKind.Cash))
                 throw new InvalidOperationException("Refund must equal the persisted original exact-cash settlement.");
 
             // Re-read all original detail fields under the same transaction lock.
@@ -303,9 +302,9 @@ namespace LOGICA.Infrastructure.Checkout
             var original = Read(connection, transaction,
                 "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté AS quantity," +
                 "Total_NET AS line_amount,TAUX_TVA,GROUPE,OPERATION FROM TABLE_VENTES_JOURNAL " +
-                "WHERE BINARY ID_TICKET=BINARY @original AND BINARY OPERATION=BINARY 'VENTE' " +
+                "WHERE BINARY ID_TICKET=BINARY @original AND BINARY OPERATION=BINARY @originalOperation " +
                 "ORDER BY BINARY ID_ARTICLE FOR UPDATE",
-                ("@original", request.OriginalTicketId));
+                ("@original", request.OriginalTicketId), ("@originalOperation", originalOperation));
             if (original.Rows.Count != request.Lines.Count)
                 throw new InvalidOperationException("Original sale line set changed during refund preparation.");
 
@@ -339,8 +338,9 @@ namespace LOGICA.Infrastructure.Checkout
                     " (ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté,Remise,TOTAL_NET,TAUX_TVA,GROUPE) " +
                     "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,-Qté,Remise,-Total_NET,TAUX_TVA,GROUPE " +
                     "FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @original " +
-                    "AND BINARY OPERATION=BINARY 'VENTE' ORDER BY BINARY ID_ARTICLE";
+                    "AND BINARY OPERATION=BINARY @originalOperation ORDER BY BINARY ID_ARTICLE";
                 command.Parameters.AddWithValue("@original", request.OriginalTicketId);
+                command.Parameters.AddWithValue("@originalOperation", originalOperation);
                 if (command.ExecuteNonQuery() != original.Rows.Count)
                     throw new InvalidOperationException("Could not stage every signed original return line.");
             }
@@ -377,41 +377,46 @@ namespace LOGICA.Infrastructure.Checkout
             string idTicket = request.OperationId;
             string negativeAmount = (-amount).ToString(CultureInfo.CurrentCulture);
             var context = new TicketPaymentContext { TicketId = idTicket, TicketNumber = ticket,
-                SaleDate = date, Cashier = cashier, ClientId = "0", ClientCode = "0", ClientName = "",
-                Workstation = workstation, Operation = "RETOUR REMBOURSEMENT", Remark = request.OriginalTicketId };
+                SaleDate = date, Cashier = cashier, ClientId = customer.Id, ClientCode = customer.Code, ClientName = customer.Name,
+                Workstation = workstation, Operation = returnOperation, Remark = request.OriginalTicketId + (card ? " | CARTE confirmé extérieurement" : "") };
             return new CheckoutPostingInput
             {
                 ReadStock = () => stock,
                 ReadHeader = () => new TicketHeaderRecord { TicketId = idTicket, TicketNumber = ticket,
-                    SaleDate = date, Cashier = cashier, ClientId = "0", ClientCode = "0", ClientName = "",
-                    Workstation = workstation, TotalText = negativeAmount, Operation = "RETOUR REMBOURSEMENT" },
+                    SaleDate = date, Cashier = cashier, ClientId = customer.Id, ClientCode = customer.Code, ClientName = customer.Name,
+                    Workstation = workstation, TotalText = negativeAmount, Operation = returnOperation },
                 ReadJournal = () => new TicketJournalRecord { TicketId = idTicket, TicketNumber = ticket,
-                    SaleDate = date, Cashier = cashier, Seller = "", ClientId = "0", ClientCode = "0",
-                    ClientName = "", Workstation = workstation, Operation = "RETOUR REMBOURSEMENT",
-                    PriceType = "PRIX 1", PaymentModes = "ESPECES" },
-                ReadPayments = () => new[] { new TicketPaymentWrite { Kind = TicketPaymentKind.Cash,
+                    SaleDate = date, Cashier = cashier, Seller = "", ClientId = customer.Id, ClientCode = customer.Code,
+                    ClientName = customer.Name, Workstation = workstation, Operation = returnOperation,
+                    PriceType = "PRIX 1", PaymentModes = credit ? "CREDIT" : card ? "CARTE" : "ESPECES" },
+                ReadPayments = () => credit ? Array.Empty<TicketPaymentWrite>() : card ? new[] { new TicketPaymentWrite { Kind = TicketPaymentKind.Tendered,
+                    Context = context, Amount = -amount, Mode = "CARTE" } } : new[] { new TicketPaymentWrite { Kind = TicketPaymentKind.Cash,
                     Context = context, AmountText = negativeAmount } },
                 Print = () => {
                     var receipt = Read(connection, transaction,
-                        "SELECT Total_NET,OPERATION FROM TABLE_VENTES_ENTETE WHERE BINARY ID_TICKET=BINARY @id",
+                        "SELECT Total_NET,OPERATION,ID_CLIENT,CODE_CLIENT,CLIENT FROM TABLE_VENTES_ENTETE WHERE BINARY ID_TICKET=BINARY @id",
                         ("@id", idTicket));
                     var payment = Read(connection, transaction,
                         "SELECT MONTANT,OPERATION,MODE_P FROM TABLE_VENTES_REGLEMENTS WHERE BINARY ID_TICKET=BINARY @id",
                         ("@id", idTicket));
                     var detail = Read(connection, transaction,
                         "SELECT ID_ARTICLE,Code,Article,Famille,GROUPE,PRIX_A,PRIX_MP,PRIX_V,Remise," +
-                        "Qté AS quantity,Total_NET AS line_amount,TAUX_TVA,OPERATION FROM TABLE_VENTES_JOURNAL " +
+                        "Qté AS quantity,Total_NET AS line_amount,TAUX_TVA,OPERATION,ID_CLIENT,CODE_CLIENT,CLIENT FROM TABLE_VENTES_JOURNAL " +
                         "WHERE BINARY ID_TICKET=BINARY @id ORDER BY BINARY ID_ARTICLE",
                         ("@id", idTicket));
-                    if (receipt.Rows.Count != 1 || payment.Rows.Count != 1 ||
+                    if (receipt.Rows.Count != 1 || payment.Rows.Count != (credit ? 0 : 1) ||
                         detail.Rows.Count != original.Rows.Count ||
                         Number(receipt.Rows[0], "Total_NET") != -amount ||
-                        Number(payment.Rows[0], "MONTANT") != -amount ||
-                        Convert.ToString(receipt.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT" ||
-                        Convert.ToString(payment.Rows[0]["OPERATION"]) != "RETOUR REMBOURSEMENT" ||
+                        Convert.ToString(receipt.Rows[0]["OPERATION"]) != returnOperation ||
+                        (!credit && (Number(payment.Rows[0], "MONTANT") != -amount ||
+                        Convert.ToString(payment.Rows[0]["OPERATION"]) != returnOperation ||
                         !string.Equals(Convert.ToString(payment.Rows[0]["MODE_P"], CultureInfo.InvariantCulture),
-                            "ESPECES", StringComparison.Ordinal))
+                            card ? "CARTE" : "ESPECES", StringComparison.Ordinal))))
                         throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
+
+                    if (credit && (Convert.ToString(receipt.Rows[0]["ID_CLIENT"]) != customer.Id ||
+                        Convert.ToString(receipt.Rows[0]["CODE_CLIENT"]) != customer.Code || Convert.ToString(receipt.Rows[0]["CLIENT"]) != customer.Name))
+                        throw new InvalidOperationException("Credit-return receipt changed the original customer.");
 
                     decimal signedTotal = 0m;
                     var returned = new HashSet<string>(StringComparer.Ordinal);
@@ -422,8 +427,11 @@ namespace LOGICA.Infrastructure.Checkout
                         if (!returned.Add(id) || !originalById.TryGetValue(id, out source) ||
                             Number(row, "quantity") != -Number(source, "quantity") ||
                             Number(row, "line_amount") != -Number(source, "line_amount") ||
-                            Convert.ToString(row["OPERATION"]) != "RETOUR REMBOURSEMENT")
+                            Convert.ToString(row["OPERATION"]) != returnOperation)
                             throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
+                        if (credit && (Convert.ToString(row["ID_CLIENT"]) != customer.Id || Convert.ToString(row["CODE_CLIENT"]) != customer.Code ||
+                            Convert.ToString(row["CLIENT"]) != customer.Name))
+                            throw new InvalidOperationException("Credit-return journal changed the original customer.");
                         foreach (string field in new[] { "Code", "Article", "Famille", "GROUPE" })
                             if (!string.Equals(Convert.ToString(row[field], CultureInfo.InvariantCulture),
                                 Convert.ToString(source[field], CultureInfo.InvariantCulture), StringComparison.Ordinal))

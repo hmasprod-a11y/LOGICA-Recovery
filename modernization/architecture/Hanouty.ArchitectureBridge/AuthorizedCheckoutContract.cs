@@ -32,7 +32,8 @@ public sealed record AuthorizedCheckoutRequest(
     IReadOnlyList<CheckoutPayment> Payments,
     decimal ExpectedTotal,
     string? OriginalTicketId = null,
-    CheckoutCustomerIdentity? Customer = null)
+    CheckoutCustomerIdentity? Customer = null,
+    bool ExternalCardRefundConfirmed = false)
 {
     public void Validate()
     {
@@ -50,16 +51,17 @@ public sealed record AuthorizedCheckoutRequest(
         if (Payments is null || Payments.Count == 0 || Payments.Any(x =>
             x is null || !Enum.IsDefined(x.Kind) || x.Amount <= 0))
             throw new ArgumentException("At least one positive supported payment is required.", nameof(Payments));
-        if (IsReturn && Payments.Any(x => x.Kind == CheckoutPaymentKind.Credit))
-            throw new ArgumentException("Credit settlement on returns requires explicit Checkout policy.", nameof(Payments));
         if (IsReturn && string.IsNullOrWhiteSpace(OriginalTicketId))
             throw new ArgumentException("A durable original ticket reference is required for returns.", nameof(OriginalTicketId));
         if (!IsReturn && OriginalTicketId is not null)
             throw new ArgumentException("An original ticket reference is only valid for returns.", nameof(OriginalTicketId));
         if (ExpectedTotal <= 0)
             throw new ArgumentOutOfRangeException(nameof(ExpectedTotal));
+        var cardReturn = IsReturn && Payments.Any(payment => payment.Kind == CheckoutPaymentKind.Card);
+        if (cardReturn && (Payments.Count != 1 || !ExternalCardRefundConfirmed) || !cardReturn && ExternalCardRefundConfirmed)
+            throw new ArgumentException("A single card-refund mode requires explicit confirmation of externally completed reimbursement.", nameof(ExternalCardRefundConfirmed));
         var credit = Payments.Any(payment => payment.Kind == CheckoutPaymentKind.Credit);
-        if (credit && (IsReturn || Payments.Count != 1 || Customer is null))
+        if (credit && (Payments.Count != 1 || Customer is null))
             throw new ArgumentException("A reviewed customer and a single credit allocation are required.", nameof(Customer));
         if (credit) Customer!.Validate();
         if (!credit && Customer is not null)

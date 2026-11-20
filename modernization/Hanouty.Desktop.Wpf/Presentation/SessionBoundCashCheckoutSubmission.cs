@@ -6,7 +6,7 @@ namespace Hanouty.Desktop.Wpf.Presentation;
 // posting port, journal and trusted preparation. This adapter is UI plumbing only:
 // it never creates a second basket, prices articles or handles a PIN.
 public sealed class SessionBoundCashCheckoutSubmission :
-    IContextualCheckoutSubmission, IContextualWpfCashReturnSubmission, ICheckoutOutcomeReconciliation
+    IContextualCheckoutSubmission, IContextualWpfCashReturnSubmission, IContextualWpfFullTicketReturnSubmission, ICheckoutOutcomeReconciliation
 {
     private readonly ICheckoutSubmission _session;
     private readonly ICheckoutOutcomeReconciliation _reconciliation;
@@ -86,7 +86,17 @@ public sealed class SessionBoundCashCheckoutSubmission :
     }
 
     public CheckoutResolution Reconcile(string stableOperationId) =>
-        string.IsNullOrWhiteSpace(stableOperationId)
-            ? CheckoutResolution.Unknown
-            : _reconciliation.Reconcile(stableOperationId);
+        string.IsNullOrWhiteSpace(stableOperationId) ? CheckoutResolution.Unknown : _reconciliation.Reconcile(stableOperationId);
+
+    public CheckoutSubmissionResult SubmitFullTicketReturn(string stableOperationId, string originalTicketId, CashierPaymentContext context)
+    {
+        if (string.IsNullOrWhiteSpace(stableOperationId) || string.IsNullOrWhiteSpace(originalTicketId) ||
+            context?.IsWellFormed != true || context.TenderCode is not ("Cash" or "Credit" or "Card") ||
+            _session is not IContextualWpfFullTicketReturnSubmission submission) return CheckoutSubmissionResult.Invalidated;
+        CashierPaymentContext? trusted;
+        try { trusted = _authorizedContext(); } catch { return CheckoutSubmissionResult.Invalidated; }
+        if (trusted != context) return CheckoutSubmissionResult.Invalidated;
+        return submission.SubmitFullTicketReturn(stableOperationId, originalTicketId, context);
+    }
+
 }

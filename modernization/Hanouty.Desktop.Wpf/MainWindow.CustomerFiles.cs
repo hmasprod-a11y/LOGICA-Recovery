@@ -9,7 +9,7 @@ public partial class MainWindow
     public void ConfigureCustomerFiles(Action open) => _openCustomerFiles = open;
     public bool ShowCustomerFiles()
     {
-        if (_customerFilesOpen || _manualDiscountOpen || _alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
+        if (_businessDocumentsOpen || _customerFilesOpen || _manualDiscountOpen || _alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen ||
             DataContext is not CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false, CheckoutUncertain: false, PendingOperationId: null } ||
             _openCustomerFiles is null) return false;
         _customerFilesOpen = true;

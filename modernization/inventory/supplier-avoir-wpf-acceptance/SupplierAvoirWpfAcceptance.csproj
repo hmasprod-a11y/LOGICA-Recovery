@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><StartupObject>SupplierAvoirUiAcceptance</StartupObject></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="MySql.Data" Version="9.4.0" />
+    <ProjectReference Include="../../Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj" />
+    <Compile Include="../../Hanouty.Desktop.Bootstrap/StockIssueValidation.cs" Link="StockIssueValidation.cs" />
+    <Compile Include="../../Hanouty.Desktop.Bootstrap/StockIssueAvoir.cs" Link="StockIssueAvoir.cs" />
+    <Compile Include="../../Hanouty.Desktop.Bootstrap/SupplierAvoirWorkflow.cs" Link="SupplierAvoirWorkflow.cs" />
+    <Compile Include="../../Hanouty.Desktop.Bootstrap/InventoryDocumentValidation.cs" Link="InventoryDocumentValidation.cs" />
+    <Compile Include="../../Hanouty.Desktop.Bootstrap/PurchaseReceiptValidation.cs" Link="PurchaseReceiptValidation.cs" />
+    <Compile Include="../../Hanouty.Desktop.Bootstrap/SupplierSettlementWriter.cs" Link="SupplierSettlementWriter.cs" />
+    <Compile Include="../../Hanouty.Desktop.Bootstrap/SupplierAvoirCreateDialog.cs" Link="SupplierAvoirCreateDialog.cs" />
+    <Compile Include="../../Hanouty.Desktop.Bootstrap/StockIssueCreateDialog.cs" Link="StockIssueCreateDialog.cs" />
+    <Compile Include="../../Hanouty.Desktop.Bootstrap/StockIssueDialog.cs" Link="StockIssueDialog.cs" />
+    <None Include="../../../input/migrations/20261118-supplier-settlement-operations.sql" Link="settlements.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -6,7 +6,7 @@ using MySql.Data.MySqlClient;
 
 namespace LOGICA.Infrastructure.Checkout
 {
-    internal static class Program
+    internal static partial class Program
     {
         private static void Require(bool condition, string message)
         {
@@ -272,6 +272,8 @@ namespace LOGICA.Infrastructure.Checkout
             VerifyProductionPosting();
             VerifyAuthorizedPortTransaction();
             VerifyRealCashPreparation();
+            VerifyCreditReturns();
+            VerifyCardReturns();
             Console.WriteLine("PASS production C# stock sale/return, movement, missing article and rollback.");
             Console.WriteLine("PASS production C# MariaDB boundary: commit, replay, rollback, invalid ID and unknown reconciliation.");
         }

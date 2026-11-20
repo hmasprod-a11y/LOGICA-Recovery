@@ -608,6 +608,19 @@ Assert(InvalidW2(W2() with { IsReturn = true, Payments = new[] { new CheckoutPay
 var creditIdentity = new CheckoutCustomerIdentity("client-1", "C'01", "Client d'été");
 var creditEnvelope = W2(payments: new[] { new CheckoutPayment(CheckoutPaymentKind.Credit, 25m) }) with { Customer = creditIdentity };
 creditEnvelope.Validate();
+var creditReturnEnvelope = creditEnvelope with { IsReturn = true, OriginalTicketId = "persisted-credit-original" };
+creditReturnEnvelope.Validate();
+Assert(InvalidW2(creditReturnEnvelope with { Customer = null }) &&
+    InvalidW2(creditReturnEnvelope with { OriginalTicketId = null }) &&
+    InvalidW2(creditReturnEnvelope with { Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Credit, 20m), new CheckoutPayment(CheckoutPaymentKind.Cash, 5m) } }),
+    "Credit-debt return requires the reviewed named original and a single debt allocation, never cash mixing.");
+var cardRefundEnvelope = W2(payments: new[] { new CheckoutPayment(CheckoutPaymentKind.Card, 25m) }) with
+    { IsReturn = true, OriginalTicketId = "persisted-card-original", ExternalCardRefundConfirmed = true };
+cardRefundEnvelope.Validate();
+Assert(InvalidW2(cardRefundEnvelope with { ExternalCardRefundConfirmed = false }) &&
+    InvalidW2(creditEnvelope with { ExternalCardRefundConfirmed = true }) &&
+    InvalidW2(cardRefundEnvelope with { Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Card, 20m), new CheckoutPayment(CheckoutPaymentKind.Cash, 5m) } }),
+    "CARTE refund requires explicit external confirmation and exactly one reimbursement mode, never a split refund.");
 Assert(InvalidW2(creditEnvelope with { Customer = null }) &&
     InvalidW2(creditEnvelope with { Customer = creditIdentity with { Id = "0" } }) &&
     InvalidW2(creditEnvelope with { Customer = creditIdentity with { Id = " client-1" } }) &&
