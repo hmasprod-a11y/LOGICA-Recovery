@@ -147,6 +147,8 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     public bool CanCommit => FinancialSessionActive && _submission is IContextualCheckoutSubmission &&
         PaymentContext is { IsWellFormed: true, TenderedAmount: > 0m } &&
         CatalogueAvailable && !CheckoutUncertain && !_selectionInFlight;
+    public bool CanBeginCheckout => CanSelectProduct && _submission is IContextualCheckoutSubmission &&
+        PendingOperationId is null && BasketLines.Count > 0;
     public System.Windows.Input.ICommand CommitCommand { get; }
     private readonly IProductImageAvailability _images;
 
@@ -160,6 +162,7 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         _images = images ?? new LocalProductImageAvailability();
         _submission = submission;
         _reconciliation = reconciliation;
+        BasketLines.CollectionChanged += (_, _) => OnPropertyChanged(nameof(CanBeginCheckout));
         ReconcileCommand = new DelegateCommand(_ => ReconcileCheckout());
         CommitCommand = new DelegateCommand(_ => CommitCheckout());
         ScanCommand = new DelegateCommand(_ => ScanBarcode());
@@ -635,7 +638,11 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        if (propertyName is nameof(CanCommit) or nameof(CanSelectProduct) or nameof(PendingOperationId))
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanBeginCheckout)));
+    }
 }
 
 public interface IProductSelection

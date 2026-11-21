@@ -18,7 +18,7 @@ internal static partial class DisposableCashSaleAcceptance
         bitmap.Render(window); var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(bitmap));
         using var file = File.Create(Path.Combine(EvidenceDirectory, name)); png.Save(file);
     }
-    private static void VerifyDailySections(CatalogueSettings settings)
+    private static void PrepareDailyFixtureSchema(CatalogueSettings settings)
     {
         // Complete only the disposable fixture with original LOGICA columns and
         // defaults. Ordinary startup never creates or alters any shop schema.
@@ -32,6 +32,15 @@ internal static partial class DisposableCashSaleAcceptance
             using var command = new MySql.Data.MySqlClient.MySqlCommand("INSERT INTO TABLE_PARAMETRES (OBJET,VALEUR) SELECT @key,@value WHERE NOT EXISTS (SELECT 1 FROM TABLE_PARAMETRES WHERE BINARY OBJET=BINARY @key)", db);
             command.Parameters.AddWithValue("@key", key); command.Parameters.AddWithValue("@value", value); command.ExecuteNonQuery();
         }
+        foreach (var resource in new[] { "Hanouty.Migrations.20261117-stock-issue-history.sql", "Hanouty.StockIssueCreateMigration" })
+        {
+            using var stream = typeof(DisposableCashSaleAcceptance).Assembly.GetManifestResourceStream(resource) ?? throw new InvalidOperationException("Disposable fixture migration missing.");
+            using var reader = new StreamReader(stream); Sql(settings, reader.ReadToEnd());
+        }
+    }
+    private static void VerifyDailySections(CatalogueSettings settings)
+    {
+        PrepareDailyFixtureSchema(settings);
         var host = CatalogueHost.CreateCashierWorkstation(settings, "01"); host.Window.Show();
         try
         {

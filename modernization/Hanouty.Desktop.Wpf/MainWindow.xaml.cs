@@ -219,6 +219,14 @@ public partial class MainWindow : Window
     // VM state transitions can originate from Host reconciliation, not just clicks.
     private void InvalidateOriginalSaleOnSessionChange(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(CatalogueViewModel.CanCommit) && DataContext is CatalogueViewModel {
+                FinancialSessionActive: true, CheckoutBusy: false, CheckoutUncertain: false,
+                PendingOperationId: null, PaymentContext: null })
+        {
+            // An acknowledged operation consumed its tender. Refresh from the
+            // still-authenticated Host immediately after its busy guard clears.
+            RefreshTrustedBasketTotal();
+        }
         // Any checkout outcome (including Unknown/failed posting) invalidates
         // the previously displayed quote. Only a new Host read can restore it.
         if (e.PropertyName == nameof(CatalogueViewModel.CommitFeedback))
@@ -571,6 +579,16 @@ public partial class MainWindow : Window
     public bool ShowCashierEntry() => ShowCashierEntry(forPayment: false);
 
     private void EnterTender_Click(object sender, RoutedEventArgs e) => ShowCashierEntry(forPayment: true);
+
+    private void CompleteCheckout_Click(object sender, RoutedEventArgs e)
+    {
+        if (_businessDocumentsOpen || _customerFilesOpen || _manualDiscountOpen || _alternatePaymentOpen ||
+            _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _originalSaleLookupBusy ||
+            DataContext is not CatalogueViewModel vm || !vm.CanBeginCheckout) return;
+        // LOGICA Button_ClickCore opens FormDialog_calc before posting.
+        if (!vm.CanCommit && !ShowCashierEntry(forPayment: true)) return;
+        if (vm.CanCommit && vm.CanBeginCheckout) vm.CommitCommand.Execute(null);
+    }
 
     public bool ShowPinLogin() => ShowCashierEntry(forPayment: false, pinOnly: true);
     private bool ShowCashierEntry(bool forPayment, bool pinOnly = false)

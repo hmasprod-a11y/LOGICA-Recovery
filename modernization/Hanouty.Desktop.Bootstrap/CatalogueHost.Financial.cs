@@ -172,7 +172,7 @@ public sealed partial record CatalogueHost
         var utf8Connection = new MySqlConnectionStringBuilder(settings.ConnectionString) { CharacterSet = "utf8mb4" }.ConnectionString;
         Func<MySqlConnection> connections = () => new MySqlConnection(utf8Connection);
         var posting = MariaDbCashCheckoutServices.CreatePostingPort(
-            connections, twoDigitWorkstation, transientPinProvider, () => waitingSaleId, () => manualDiscount, AppContext.BaseDirectory);
+            connections, twoDigitWorkstation, transientPinProvider, () => waitingSaleId, () => manualDiscount, WorkstationPrinterProfile.FeatureDirectory(settings));
         posting = new AcknowledgementFaultPort(posting, () => {
             // Consume at the real financial boundary, not merely in UI state.
             // Retain the immutable context for lost-ack journal review only.
@@ -505,7 +505,7 @@ public sealed partial record CatalogueHost
         {
             if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } actor ||
                 binding.Session.PendingCount == 0) return false;
-            if (!MariaDbCashCheckoutServices.IsCreditSaleEnabled(AppContext.BaseDirectory))
+            if (!MariaDbCashCheckoutServices.IsCreditSaleEnabled(WorkstationPrinterProfile.FeatureDirectory(settings)))
             {
                 window.SetCardPaymentFeedback("La gestion du crédit est désactivée dans la configuration LOGICA.");
                 window.RefreshCreditSaleAvailability();
@@ -523,13 +523,13 @@ public sealed partial record CatalogueHost
             finally { reviewing = false; }
             if (!confirmed || dialog.Customer is not { } selected || !CanChangeContext() || activeCashierId != actor ||
                 !vm.FinancialSessionActive || !binding.Session.PendingLines.SequenceEqual(basket) ||
-                ReadTrustedTotal() != total || !MariaDbCashCheckoutServices.IsCreditSaleEnabled(AppContext.BaseDirectory)) return false;
+                ReadTrustedTotal() != total || !MariaDbCashCheckoutServices.IsCreditSaleEnabled(WorkstationPrinterProfile.FeatureDirectory(settings))) return false;
             if (!result.TrySetFinancialContext(new AuthorizedCheckoutPaymentContext(actor, "MAD", false,
                 new[] { new CheckoutPayment(CheckoutPaymentKind.Credit, total.Value) }, total.Value,
                 new CheckoutCustomerIdentity(selected.Id, selected.Code, selected.Name)))) return false;
             vm.CommitCheckout();
             return !vm.CheckoutUncertain && binding.Session.PendingCount == 0;
-        }, () => MariaDbCashCheckoutServices.IsCreditSaleEnabled(AppContext.BaseDirectory));
+        }, () => MariaDbCashCheckoutServices.IsCreditSaleEnabled(WorkstationPrinterProfile.FeatureDirectory(settings)));
         var cashClosing = new CashDrawerClosing(settings.ConnectionString);
         window.ConfigureCashDrawerClosing((counted, cashierOnly) =>
         {

@@ -47,16 +47,32 @@ internal static class WorkstationConfiguration
         using var command = connection.CreateCommand(); command.CommandTimeout = 5;
         command.CommandText = "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ('TABLE_PASS','TABLE_ARTICLES','TABLE_NUM','TABLE_VENTES_ENTETE','TABLE_PARAMETRES')";
         if (Convert.ToInt32(command.ExecuteScalar()) != 5) throw new InvalidOperationException("La base choisie ne contient pas les tables LOGICA attendues.");
+        if (!Directory.Exists(Path.Combine(settings.DataDirectory, "bd", "images")))
+        {
+            command.CommandText = "SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Images IS NOT NULL AND TRIM(Images) NOT IN ('','0')";
+            if (Convert.ToInt64(command.ExecuteScalar()) > 0)
+                throw new InvalidOperationException("Choisissez le dossier principal LOGICA contenant bd\\images pour conserver les photos des articles.");
+        }
     }
     internal static CatalogueSettings? Interactive()
     {
         // Existing explicit test/administrator environments stay isolated from the saved profile.
         if (Environment.GetEnvironmentVariable("HANOUTY_CATALOGUE_CONNECTION") is not null)
             return CatalogueSettings.FromEnvironment();
-        try { if (Load(DefaultPath) is { } configured) return configured; }
-        catch (Exception ex) when (ex is IOException or JsonException or CryptographicException or FormatException or InvalidOperationException or ArgumentException)
+        CatalogueSettings? previous = null;
+        try
+        {
+            if (Load(DefaultPath) is { } configured)
+            {
+                previous = configured;
+                if (WorkstationReadiness.IsReady(configured)) return configured;
+                var preparation = new ProtectedWorkstationCopyDialog(configured, DefaultPath) { WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen };
+                return preparation.ShowDialog() == true ? preparation.Settings : null;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or CryptographicException or FormatException or InvalidOperationException or ArgumentException or MySqlException)
         { /* A corrupt or foreign-user profile is repaired only by a successful explicit save. */ }
-        var dialog = new WorkstationSetupDialog(DefaultPath);
+        var dialog = new WorkstationSetupDialog(DefaultPath, previous);
         return dialog.ShowDialog() == true ? dialog.Settings : null;
     }
 }
