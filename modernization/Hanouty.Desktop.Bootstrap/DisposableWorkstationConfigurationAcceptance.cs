@@ -11,6 +11,8 @@ internal static partial class DisposableCashSaleAcceptance
 {
     private static void VerifyWorkstationConfiguration(CatalogueSettings settings)
     {
+        PrepareDailyFixtureSchema(settings);
+        Directory.CreateDirectory(Path.Combine(settings.DataDirectory, "bd", "images"));
         var root = Path.Combine(EvidenceDirectory, "workstation-configuration"); Directory.CreateDirectory(root);
         var path = Path.Combine(root, "workstation.json");
         var reviewed = settings with { WorkstationId = "07" };

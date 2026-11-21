@@ -1575,7 +1575,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
             ReviewThroughDialog(host, pin, true, () =>
                 Controls(host.Window).OfType<System.Windows.Controls.Button>()
                     .Single(button => Equals(System.Windows.Automation.AutomationProperties.GetName(button), "Complete checkout"))
-                    .Command.Execute(null));
+                    .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent)));
             Require(host.ViewModel.CommitFeedback == "Checkout committed", "The restored basket was not posted from WPF.");
         }
         finally { host.Window.Close(); }

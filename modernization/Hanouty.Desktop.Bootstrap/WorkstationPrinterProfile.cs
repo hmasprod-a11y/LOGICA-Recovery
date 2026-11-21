@@ -15,6 +15,9 @@ internal static class WorkstationPrinterProfile
     internal static string DirectoryFor(CatalogueSettings settings, string register)
     {
         var profile = ProfileDirectory(settings, register);
-        return File.Exists(Path.Combine(profile, "PRINTER_CL.sni")) ? profile : AppContext.BaseDirectory;
+        return File.Exists(Path.Combine(profile, "PRINTER_CL.sni")) ? profile
+            : File.Exists(Path.Combine(settings.DataDirectory, "PRINTER_CL.sni")) ? settings.DataDirectory : AppContext.BaseDirectory;
     }
+    internal static string FeatureDirectory(CatalogueSettings settings) =>
+        File.Exists(Path.Combine(settings.DataDirectory, "gestion_credit.sni")) ? settings.DataDirectory : AppContext.BaseDirectory;
 }
