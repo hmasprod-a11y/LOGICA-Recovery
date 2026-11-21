@@ -45,7 +45,8 @@ namespace LOGICA.Infrastructure.Checkout
             if (request == null) throw new ArgumentNullException(nameof(request));
             request.Validate();
             // Freeze the envelope even when called without the outer gate.
-            request = request with { Lines = request.Lines.ToArray(), Payments = request.Payments.ToArray() };
+            request = request with { Lines = request.Lines.ToArray(), Payments = request.Payments.ToArray(),
+                PartialCashReturn = request.PartialCashReturn is { } partialReview ? partialReview with { Selections = partialReview.Selections.ToArray() } : null };
             request.Validate();
             if (connection == null || connection.State != ConnectionState.Open ||
                 transaction == null || !ReferenceEquals(transaction.Connection, connection))
@@ -286,7 +287,9 @@ namespace LOGICA.Infrastructure.Checkout
             var originalOperation = credit ? "CREDIT" : "VENTE";
             var returnOperation = credit ? "RETOUR CREDIT" : "RETOUR REMBOURSEMENT";
             var customer = credit ? request.Customer : new CheckoutCustomerIdentity("0", "0", "");
-            decimal amount = credit ? CreditReturnOriginalSaleEvidence.VerifyAndClaim(connection, transaction, request)
+            var partial = request.PartialCashReturn is not null;
+            decimal amount = partial ? PartialCashReturnEvidence.VerifyAndClaim(connection, transaction, request)
+                : credit ? CreditReturnOriginalSaleEvidence.VerifyAndClaim(connection, transaction, request)
                 : card ? CardReturnOriginalSaleEvidence.VerifyAndClaim(connection, transaction, request) : CashReturnConsumptionClaim.VerifyAndClaimFullOriginal(
                 connection, transaction, request.OriginalTicketId, request.OperationId,
                 request.Lines.Select(line => new CashReturnConsumptionClaim.RequestedLine(
@@ -305,6 +308,22 @@ namespace LOGICA.Infrastructure.Checkout
                 "WHERE BINARY ID_TICKET=BINARY @original AND BINARY OPERATION=BINARY @originalOperation " +
                 "ORDER BY BINARY ID_ARTICLE FOR UPDATE",
                 ("@original", request.OriginalTicketId), ("@originalOperation", originalOperation));
+            if (partial)
+            {
+                // Select from the locked original rows, never from display prices.
+                var selected = request.PartialCashReturn.Selections.ToDictionary(item => item.Original.ArticleId, StringComparer.Ordinal);
+                var filtered = original.Clone();
+                foreach (DataRow source in original.Rows)
+                {
+                    CheckoutPartialReturnSelection selection;
+                    if (!selected.TryGetValue(Convert.ToString(source["ID_ARTICLE"]), out selection)) continue;
+                    var row = filtered.NewRow(); row.ItemArray = (object[])source.ItemArray.Clone();
+                    row["quantity"] = selection.Quantity;
+                    row["line_amount"] = PartialCashReturnEvidence.UnitNet(selection.Original) * selection.Quantity;
+                    filtered.Rows.Add(row);
+                }
+                original = filtered;
+            }
             if (original.Rows.Count != request.Lines.Count)
                 throw new InvalidOperationException("Original sale line set changed during refund preparation.");
 
@@ -331,7 +350,23 @@ namespace LOGICA.Infrastructure.Checkout
             if (originalTotal != amount)
                 throw new InvalidOperationException("Original journal line total changed after verification.");
 
-            using (var command = connection.CreateCommand())
+            if (partial)
+            {
+                foreach (DataRow row in original.Rows)
+                using (var command = connection.CreateCommand())
+                {
+                    command.Transaction = transaction;
+                    command.CommandText = "INSERT INTO TABLE_" + workstation +
+                        " (ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté,Remise,TOTAL_NET,TAUX_TVA,GROUPE) " +
+                        "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,-@quantity,Remise,-@amount,TAUX_TVA,GROUPE " +
+                        "FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @original AND BINARY ID_ARTICLE=BINARY @article AND BINARY OPERATION=BINARY 'VENTE'";
+                    command.Parameters.AddWithValue("@original", request.OriginalTicketId);
+                    command.Parameters.AddWithValue("@article", row["ID_ARTICLE"]);
+                    command.Parameters.AddWithValue("@quantity", Number(row, "quantity")); command.Parameters.AddWithValue("@amount", Number(row, "line_amount"));
+                    if (command.ExecuteNonQuery() != 1) throw new InvalidOperationException("Could not stage the selected original partial-return line.");
+                }
+            }
+            else using (var command = connection.CreateCommand())
             {
                 command.Transaction = transaction;
                 command.CommandText = "INSERT INTO TABLE_" + workstation +

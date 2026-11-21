@@ -229,12 +229,16 @@ jobs:
             if ($customers.$field -ne $true) { throw "Missing executed customer file proof: $field" }
           }
           $configuration = Get-Content evidence/w2/w2-workstation-configuration.json -Raw | ConvertFrom-Json
-          foreach ($field in @('EncryptedCurrentUser','ReloadWithoutEnvironment','InvalidConfigurationPreservesPrevious','DamagedCiphertextRejected','ActualSetupDialog','NoFinancialWrites')) {
+          foreach ($field in @('EncryptedCurrentUser','ReloadWithoutEnvironment','InvalidConfigurationPreservesPrevious','DamagedCiphertextRejected','ActualSetupDialog','NoFinancialWrites','PersistentUnicodePrinterProfile','InvalidPrinterPreservesPrevious','PrinterSeparatedByRegister')) {
             if ($configuration.$field -ne $true) { throw "Missing workstation setup proof: $field" }
           }
           $returns = Get-Content evidence/w2/w2-full-return-modes.json -Raw | ConvertFrom-Json
           foreach ($field in @('CreditReturnUi','CardReturnUi','ExplicitDebtConfirmation','ExplicitExternalCardConfirmation','CanceledConfirmationNoWrite','FreshCashierPin','ModeFrozenDuringReview','CashUnchanged','DebtAndCardReconciled','OriginalStockRestored','ConsumedOriginalExcluded')) {
             if ($returns.$field -ne $true) { throw "Missing full-return proof: $field" }
+          }
+          $partial = Get-Content evidence/w2/w2-partial-cash-return.json -Raw | ConvertFrom-Json
+          foreach ($field in @('ActualHost','OriginalTicketSelection','TouchQuantityKeypad','ExplicitReview','FreshPinEachReturn','TwoCumulativeReturns','OriginalStockAndCashRestored','FullyConsumedOriginalExcluded','ExactCentWholeQuantityScope')) {
+            if ($partial.$field -ne $true) { throw "Missing partial-return proof: $field" }
           }
           $documents = Get-Content evidence/w2/w2-business-documents.json -Raw | ConvertFrom-Json
           foreach ($field in @('OriginalThreeKinds','PersistedTaxTotals','LiteralSearchAndLastDay','CustomerAndLines','UserValidationDenied','FreshManagerPin','StaleSnapshotDenied','AtomicValidationRollback','ValidatedReadback','MismatchDenied','PrintData','ActualDirectoryUi','NoCashStockEffects')) {

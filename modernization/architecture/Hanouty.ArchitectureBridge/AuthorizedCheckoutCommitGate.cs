@@ -45,7 +45,9 @@ public sealed class AuthorizedCheckoutCommitGate
             var snapshot = request with
             {
                 Lines = Array.AsReadOnly(request.Lines?.ToArray() ?? Array.Empty<CheckoutBatchLine>()),
-                Payments = Array.AsReadOnly(request.Payments?.ToArray() ?? Array.Empty<CheckoutPayment>())
+                Payments = Array.AsReadOnly(request.Payments?.ToArray() ?? Array.Empty<CheckoutPayment>()),
+                PartialCashReturn = request.PartialCashReturn is { } partial ? partial with
+                    { Selections = Array.AsReadOnly(partial.Selections?.ToArray() ?? Array.Empty<CheckoutPartialReturnSelection>()) } : null
             };
             snapshot.Validate();
             CheckoutOperationOutcome prior;

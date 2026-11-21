@@ -19,7 +19,7 @@ internal static class LogicaCashReceiptPrinter
             ?? throw new InvalidOperationException("Ticket enregistré introuvable.");
         var route = ReceiptPrintRouting.Select(settings.Printer, true, ticket.Operation,
             settings.Connection, settings.Template, out var copies);
-        if (route != ReceiptPrintRoute.FrenchThreeColumn)
+        if (route is not (ReceiptPrintRoute.FrenchThreeColumn or ReceiptPrintRoute.Return))
             throw new InvalidOperationException("Ce modèle ou branchement LOGICA reste à raccorder.");
 
         using var command = connection.CreateCommand();
@@ -35,8 +35,8 @@ internal static class LogicaCashReceiptPrinter
         bool Flag(string name) => options.TryGetValue(name, out var value)
             ? Microsoft.VisualBasic.CompilerServices.Conversions.ToBoolean(value)
             : throw new InvalidOperationException("Paramètre LOGICA manquant : " + name);
-        if (Flag("AFFICHER_CODE_BARRE"))
-            throw new InvalidOperationException("Le QR du ticket LOGICA reste à raccorder.");
+        var isReturn = route == ReceiptPrintRoute.Return;
+        using var qr = isReturn || Flag("AFFICHER_CODE_BARRE") ? LogicaReceiptQr.Create(operation) : null;
         if (!options.TryGetValue("PIED_TICKET", out var footer))
             throw new InvalidOperationException("Paramètre LOGICA manquant : PIED_TICKET.");
 
@@ -54,7 +54,7 @@ internal static class LogicaCashReceiptPrinter
         document.PrinterSettings.Copies = checked((short)copies);
         document.PrintPage += (_, page) => LogicaReceiptRenderer.Draw(
             page.Graphics ?? throw new InvalidOperationException("Surface d'impression indisponible."),
-            lines, Amount(ticket.Total), tail);
+            lines, Amount(ticket.Total), tail, qr, isReturn ? ticket.Operation : null);
         document.Print();
     }
 }

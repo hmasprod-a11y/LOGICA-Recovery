@@ -3,6 +3,7 @@
 <ItemGroup>
 <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
 <PackageReference Include="MySql.Data" Version="9.4.0" />
+<PackageReference Include="QRCoder" Version="1.9.0" />
 <Compile Include="../Hanouty.Desktop.Bootstrap/LogicaReceipt*.cs" Link="%(Filename)%(Extension)" />
 <Compile Include="../Hanouty.Desktop.Bootstrap/LogicaCashReceiptPrinter.cs" Link="LogicaCashReceiptPrinter.cs" />
 <Compile Include="../Hanouty.Desktop.Bootstrap/LogicaPostedTicket.cs" Link="LogicaPostedTicket.cs" />

@@ -31,6 +31,12 @@
                 </StackPanel>
                 <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly">
                 <StackPanel Orientation="Horizontal">
+                <Button Content="Paramètres" Click="OpenWorkstationSettings_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
+                        IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Paramètres du poste"/>
+                <Button Content="Journal" Click="OpenSalesJournal_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
+                        IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Ouvrir le journal des ventes"/>
+                <Button Content="Statistiques" Click="OpenSalesStatistics_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
+                        IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Ouvrir les statistiques des ventes"/>
                 <Button Content="Fichiers clients" Click="OpenCustomerFiles_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
                         IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Gérer les fichiers clients"/>
                 <Button Content="Devis · BL · Factures" Click="OpenBusinessDocuments_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
@@ -70,6 +76,7 @@
                               <ComboBoxItem Content="Retour espèces" Tag="Cash"/>
                               <ComboBoxItem Content="Retour crédit — réduire la dette" Tag="Credit"/>
                               <ComboBoxItem Content="Retour CARTE — remboursement externe confirmé" Tag="Card"/>
+                              <ComboBoxItem Content="Retour partiel espèces" Tag="PartialCash"/>
                           </ComboBox>
                         <TextBlock Text="Numéro du ticket" Margin="0,0,0,6"/>
                         <TextBox x:Name="OriginalSaleSearch" MinHeight="36" TextChanged="OriginalSaleSearch_TextChanged"
@@ -80,7 +87,7 @@
                                  Height="80" AutomationProperties.Name="Persisted original sale results"/>
                         <Button Content="Vérifier le ticket sélectionné" Click="SelectOriginalSale_Click"
                                 MinHeight="40" Margin="0,6,0,6"/>
-                        <TextBlock Text="Le remboursement porte sur le ticket complet."
+                        <TextBlock x:Name="ReturnScopeLabel" Text="Le remboursement porte sur le ticket complet."
                                    Margin="0,8,0,4" TextWrapping="Wrap"/>
                           <Button x:Name="ConfirmFullReturnButton" Content="Rembourser le ticket en espèces" Click="ConfirmReturnDraft_Click"
                                 MinHeight="44" Margin="0,4,0,4"/>
@@ -92,7 +99,7 @@
             </ScrollViewer>
             <Grid Visibility="{Binding IsChecked, ElementName=SalesSection, Converter={StaticResource BoolVisibility}}">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="3*"/></Grid.ColumnDefinitions>
-                <DockPanel Grid.Column="0" Margin="0,0,18,0">
+                <DockPanel Grid.Column="1" Margin="18,0,0,0">
                     <StackPanel DockPanel.Dock="Top">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="Catalogue" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center"/>
@@ -176,7 +183,7 @@
                         </TabItem>
                     </TabControl>
                 </DockPanel>
-                <Grid Grid.Column="1" x:Name="CashierSalePane">
+                <Grid Grid.Column="0" x:Name="CashierSalePane">
                     <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                     <GroupBox x:Name="BasketPanel" Grid.Row="0" Margin="0,0,0,6" ClipToBounds="True"
                               AutomationProperties.Name="Current Host basket">
@@ -287,7 +294,7 @@
                             </Grid>
                             <Button x:Name="CompleteCheckoutButton" Content="ENCAISSER" Command="{Binding CommitCommand}" IsEnabled="{Binding CanCommit}"
                                     MinHeight="50" FontSize="18" FontWeight="Bold" Margin="0,6,0,0">
-                                <Button.Style><Style TargetType="Button"><Setter Property="Background" Value="#1D5789"/><Setter Property="Foreground" Value="White"/><Style.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#D9E0E6"/><Setter Property="Foreground" Value="#647280"/></Trigger></Style.Triggers></Style></Button.Style>
+                                <Button.Style><Style TargetType="Button"><Setter Property="Background" Value="#166AEE"/><Setter Property="Foreground" Value="White"/><Style.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#D9E0E6"/><Setter Property="Foreground" Value="#647280"/></Trigger></Style.Triggers></Style></Button.Style>
                                 <AutomationProperties.Name>Complete checkout</AutomationProperties.Name>
                             </Button>
                         </StackPanel>

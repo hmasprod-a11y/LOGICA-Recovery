@@ -135,7 +135,7 @@ namespace Hanouty.Checkout.MariaDb
                             "WHERE UPPER(original_ticket_id)=UPPER(@ticket)", connection, transaction))
                         {
                             claim.Parameters.AddWithValue("@ticket", saleId);
-                            if (Convert.ToInt64(claim.ExecuteScalar()) == 0)
+                            if (Convert.ToInt64(claim.ExecuteScalar()) == 0 && !CashReturnConsumptionClaim.HasPartialConsumption(connection, transaction, saleId))
                             {
                                 var lines = CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLines(
                                     connection, transaction, saleId);
@@ -209,7 +209,7 @@ namespace Hanouty.Checkout.MariaDb
                         "WHERE UPPER(original_ticket_id)=UPPER(@ticket)", connection, transaction))
                     {
                         claim.Parameters.AddWithValue("@ticket", originalTicketId);
-                        if (Convert.ToInt64(claim.ExecuteScalar()) != 0)
+                        if (Convert.ToInt64(claim.ExecuteScalar()) != 0 || CashReturnConsumptionClaim.HasPartialConsumption(connection, transaction, originalTicketId))
                             throw new InvalidOperationException("Original cash ticket was already returned.");
                     }
                     var lines = CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLines(

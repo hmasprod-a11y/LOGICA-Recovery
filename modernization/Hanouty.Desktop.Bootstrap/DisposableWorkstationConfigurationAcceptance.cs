@@ -15,6 +15,20 @@ internal static partial class DisposableCashSaleAcceptance
         var path = Path.Combine(root, "workstation.json");
         var reviewed = settings with { WorkstationId = "07" };
         var before = Snapshot(settings);
+        var printerDirectory = Path.Combine(root, "printer-profile");
+        WorkstationPrinterDialog.SavePrinter(printerDirectory, "Imprimante d’été");
+        var printerPath = Path.Combine(printerDirectory, "PRINTER_CL.sni");
+        Require(File.ReadAllText(printerPath) == "Imprimante d’été", "Local printer profile lost Unicode identity.");
+        WorkstationPrinterDialog.SavePrinter(printerDirectory, "0");
+        var invalidPrinterDenied = false;
+        try { WorkstationPrinterDialog.SavePrinter(printerDirectory, "forged\nprinter"); }
+        catch (ArgumentException) { invalidPrinterDenied = true; }
+        Require(invalidPrinterDenied && File.ReadAllText(printerPath) == "0" && Directory.GetFiles(printerDirectory).Length == 1,
+            "Invalid printer replaced the saved choice or left an incomplete profile.");
+        var changedPassword = new MySqlConnectionStringBuilder(settings.ConnectionString) { Password = "different-test-password" };
+        Require(WorkstationPrinterProfile.ProfileDirectory(settings, "01") == WorkstationPrinterProfile.ProfileDirectory(settings with { ConnectionString = changedPassword.ConnectionString }, "01") &&
+            WorkstationPrinterProfile.ProfileDirectory(settings, "01") != WorkstationPrinterProfile.ProfileDirectory(settings, "02"),
+            "Printer profile was coupled to a password or shared across different registers.");
         WorkstationConfiguration.CheckConnection(reviewed);
         WorkstationConfiguration.Save(path, reviewed);
         var loaded = WorkstationConfiguration.Load(path);
@@ -57,7 +71,8 @@ internal static partial class DisposableCashSaleAcceptance
             "Actual setup dialog did not persist/reload settings or modified financial data.");
         File.WriteAllText(Path.Combine(EvidenceDirectory, "w2-workstation-configuration.json"), JsonSerializer.Serialize(new {
             EncryptedCurrentUser = true, ReloadWithoutEnvironment = true, InvalidConfigurationPreservesPrevious = true,
-            DamagedCiphertextRejected = true, ActualSetupDialog = true, NoFinancialWrites = true
+            DamagedCiphertextRejected = true, ActualSetupDialog = true, NoFinancialWrites = true,
+            PersistentUnicodePrinterProfile = true, InvalidPrinterPreservesPrevious = true, PrinterSeparatedByRegister = true
         }));
     }
 }

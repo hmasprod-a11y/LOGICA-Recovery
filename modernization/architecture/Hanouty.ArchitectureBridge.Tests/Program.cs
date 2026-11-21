@@ -621,6 +621,20 @@ Assert(InvalidW2(cardRefundEnvelope with { ExternalCardRefundConfirmed = false }
     InvalidW2(creditEnvelope with { ExternalCardRefundConfirmed = true }) &&
     InvalidW2(cardRefundEnvelope with { Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Card, 20m), new CheckoutPayment(CheckoutPaymentKind.Cash, 5m) } }),
     "CARTE refund requires explicit external confirmation and exactly one reimbursement mode, never a split refund.");
+var partialSnapshot = new CheckoutOriginalReturnLineSnapshot("article-1", "Original", 2m, 25m, 0m, 50m, 0m, 0m);
+var mutablePartialSelections = new[] { new CheckoutPartialReturnSelection(partialSnapshot, 1) };
+var partialEnvelope = W2() with { IsReturn = true, OriginalTicketId = "partial-original",
+    PartialCashReturn = new CheckoutPartialCashReturnReview(mutablePartialSelections) };
+partialEnvelope.Validate();
+Assert(InvalidW2(partialEnvelope with { IsReturn = false, OriginalTicketId = null }) &&
+    InvalidW2(partialEnvelope with { Payments = new[] { new CheckoutPayment(CheckoutPaymentKind.Credit, 25m) }, Customer = creditIdentity }) &&
+    InvalidW2(partialEnvelope with { PartialCashReturn = new CheckoutPartialCashReturnReview(new[] { new CheckoutPartialReturnSelection(partialSnapshot, 2) }) }),
+    "Partial cash return requires matching reviewed selected quantities and cannot cross into a sale/credit envelope.");
+var partialJournal = new CompositionJournal { Outcome = CheckoutOperationOutcome.Absent };
+var partialPort = new RecordingFinancialPort { OnCommit = () => { mutablePartialSelections[0] = new CheckoutPartialReturnSelection(partialSnapshot, 2); partialJournal.Outcome = CheckoutOperationOutcome.Persisted; } };
+new AuthorizedCheckoutCommitGate(partialPort, partialJournal).Commit(partialEnvelope);
+Assert(partialPort.LastRequest!.PartialCashReturn!.Selections.Single().Quantity == 1,
+    "Financial gate freezes caller-owned partial-return selections before any callback can mutate the review.");
 Assert(InvalidW2(creditEnvelope with { Customer = null }) &&
     InvalidW2(creditEnvelope with { Customer = creditIdentity with { Id = "0" } }) &&
     InvalidW2(creditEnvelope with { Customer = creditIdentity with { Id = " client-1" } }) &&

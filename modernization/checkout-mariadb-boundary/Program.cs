@@ -274,6 +274,7 @@ namespace LOGICA.Infrastructure.Checkout
             VerifyRealCashPreparation();
             VerifyCreditReturns();
             VerifyCardReturns();
+            VerifyPartialCashReturns();
             Console.WriteLine("PASS production C# stock sale/return, movement, missing article and rollback.");
             Console.WriteLine("PASS production C# MariaDB boundary: commit, replay, rollback, invalid ID and unknown reconciliation.");
         }

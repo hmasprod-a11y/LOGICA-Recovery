@@ -163,12 +163,23 @@ returnList.SelectedItem = returnCandidate;
 Check(wpfReturnWindow.SelectOriginalSale(returnCandidate),
     "WPF must explicitly select the exact persisted original ticket");
 var wpfReturnVm = (CatalogueViewModel)wpfReturnWindow.DataContext;
+var returnPrintCalls = 0;
+wpfReturnVm.PrintCommittedSale = (operation, payment) =>
+{
+    Check(wpfReturnJournal.Persisted.Contains(operation) && wpfReturnVm.PendingOperationId is null &&
+        payment == wpfReturnContext, "return printing must use the committed operation and consumed original context");
+    returnPrintCalls++;
+    throw new InvalidOperationException("printer offline");
+};
 var wpfReturnConfirmed = wpfReturnWindow.ConfirmReturnDraft();
 Check(wpfReturnConfirmed,
     "WPF full-ticket confirm must submit through Checkout: " +
     wpfReturnVm.CommitFeedback + "; draft=" + wpfReturnWindow.ReturnDraftStatus.Text);
 Check(wpfReturnPort.Writes == 1 && wpfReturnJournal.Persisted.Count == 1,
     "WPF full-ticket confirm must write exactly once and persist its stable operation");
+Check(returnPrintCalls == 1 && !wpfReturnVm.CheckoutUncertain && wpfReturnVm.PaymentContext is null &&
+    wpfReturnVm.CommitFeedback.Contains("Retour enregistré"),
+    "failed return printing must preserve the acknowledged refund without reopening or repeating money posting");
 Check(wpfReturnWindow.FindName("ReturnQuantity") is null,
     "WPF return UI must not expose unsupported partial quantities");
 wpfReturnWindow.Close();
