@@ -16,7 +16,7 @@
     <EmbeddedResource Include="../../input/migrations/*.sql" LogicalName="Hanouty.Migrations.%(Filename)%(Extension)" />
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="QRCoder" Version="1.9.0" />
-    <PackageReference Include="MySql.Data" Version="9.5.0" />
+    <PackageReference Include="MySql.Data" Version="9.5.0" Condition="'$(CheckoutProductionProject)' != ''" />
     <ProjectReference Include="../Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj"/>
     <ProjectReference Include="../architecture/Hanouty.WpfContractAdapter/Hanouty.WpfContractAdapter.csproj"/>
     <ProjectReference Include="../inventory/Hanouty.Inventory.MariaDb/Hanouty.Inventory.MariaDb.csproj"/>
