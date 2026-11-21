@@ -1,0 +1,657 @@
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Globalization;
+using System.Linq;
+using Hanouty.ArchitectureBridge;
+using Hanouty.Checkout.MariaDb;
+using LOGICA.ApplicationLayer.Checkout;
+using LOGICA.Domain;
+using LOGICA.Infrastructure.Compatibility;
+using MySql.Data.MySqlClient;
+
+namespace LOGICA.Infrastructure.Checkout
+{
+    // First production cash slice: authenticates the existing local PIN store,
+    // validates an existing workstation basket against locked authoritative rows,
+    // and reuses the established posting writers. No schema mutation or default
+    // credential, no UI price, no privilege inferred from a supplied UserId.
+    // Catalogue promotion and quantity tiers reuse the characterized domain rules.
+    // Arbitrary UI prices or manual-discount grants are never inferred.
+    internal sealed class MariaDbCashCheckoutPreparation : ITrustedCheckoutPostingPreparation
+    {
+        private readonly string workstation;
+        private readonly Func<string> readPin;
+        private readonly Func<string?>? readWaitingSale;
+        private readonly Func<ApprovedManualDiscount?>? readManualDiscount;
+        private readonly string creditConfigurationDirectory;
+
+        internal MariaDbCashCheckoutPreparation(string workstation, Func<string> readPin, Func<string?>? readWaitingSale = null,
+            Func<ApprovedManualDiscount?>? readManualDiscount = null, string creditConfigurationDirectory = null)
+        {
+            if (workstation == null || workstation.Length != 2 ||
+                workstation.Any(c => c < '0' || c > '9'))
+                throw new ArgumentException("An explicit two-digit workstation is required.", nameof(workstation));
+            this.workstation = workstation;
+            this.readWaitingSale = readWaitingSale;
+            this.readManualDiscount = readManualDiscount;
+            this.creditConfigurationDirectory = creditConfigurationDirectory;
+            this.readPin = readPin ?? throw new ArgumentNullException(nameof(readPin));
+        }
+
+        public CheckoutPostingInput Prepare(AuthorizedCheckoutRequest request,
+            MySqlConnection connection, MySqlTransaction transaction)
+        {
+            if (request == null) throw new ArgumentNullException(nameof(request));
+            request.Validate();
+            // Freeze the envelope even when called without the outer gate.
+            request = request with { Lines = request.Lines.ToArray(), Payments = request.Payments.ToArray(),
+                PartialCashReturn = request.PartialCashReturn is { } partialReview ? partialReview with { Selections = partialReview.Selections.ToArray() } : null };
+            request.Validate();
+            if (connection == null || connection.State != ConnectionState.Open ||
+                transaction == null || !ReferenceEquals(transaction.Connection, connection))
+                throw new InvalidOperationException("Trusted preparation requires the active checkout transaction.");
+            if (request.Currency != "MAD" || request.Payments.Count is < 1 or > 2 ||
+                request.Payments.Any(payment => payment.Kind is not (CheckoutPaymentKind.Cash or CheckoutPaymentKind.Card or CheckoutPaymentKind.Credit)) ||
+                request.Payments.Select(payment => payment.Kind).Distinct().Count() != request.Payments.Count ||
+                request.OperationId.Length > 64)
+                throw new NotSupportedException("Only cash/card MAD sale allocations are accepted.");
+            var credit = request.Payments.Count == 1 && request.Payments[0].Kind == CheckoutPaymentKind.Credit;
+            if (credit && !MariaDbCashCheckoutServices.IsCreditSaleEnabled(creditConfigurationDirectory))
+                throw new InvalidOperationException("La gestion du crédit est désactivée dans la configuration LOGICA.");
+            var card = request.Payments.Any(payment => payment.Kind == CheckoutPaymentKind.Card);
+            var mixed = request.Payments.Count == 2;
+
+            // Refuse nontransactional legacy tables instead of silently claiming
+            // that stock, receipt and operation rollback is atomic.
+            foreach (var table in new[] { "TABLE_PASS", "TABLE_NUM", "TABLE_ARTICLES",
+                "TABLE_MOUVEMENTS_STOCK", "TABLE_" + workstation, "TABLE_VENTES_ENTETE",
+                "TABLE_VENTES_JOURNAL", "TABLE_VENTES_REGLEMENTS", "hanouty_checkout_operations" })
+            {
+                var engines = Read(connection, transaction,
+                    "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@table",
+                    ("@table", table));
+                if (engines.Rows.Count != 1 || Convert.ToString(engines.Rows[0][0]) != "InnoDB")
+                    throw new InvalidOperationException("Cash posting requires existing transactional tables.");
+            }
+
+            // A refund also writes the durable original-ticket consumption claim.
+            // It must participate in the SAME InnoDB transaction as stock,
+            // signed receipt, payment and operation journal. A nontransactional
+            // claim table could survive a failed posting and permanently consume
+            // a sale without refunding the customer.
+            if (request.IsReturn)
+            {
+                var claimEngine = Read(connection, transaction,
+                    "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@table",
+                    ("@table", "hanouty_cash_return_consumption"));
+                if (claimEngine.Rows.Count != 1 ||
+                    Convert.ToString(claimEngine.Rows[0][0]) != "InnoDB")
+                    throw new InvalidOperationException("Cash refund requires a transactional original-ticket claim table.");
+            }
+
+            var manualDiscount = request.IsReturn ? null : readManualDiscount?.Invoke();
+            string cashier = AuthenticateCashier(request.CashierId, connection, transaction, readPin);
+            MariaDbCashCheckoutServices.ValidateManualDiscountForPosting(manualDiscount, cashier,
+                workstation, request.Lines, connection, transaction);
+            if (card) RequireCardMode(connection, transaction);
+            var customer = credit && !request.IsReturn ? MariaDbCashCheckoutServices.ReadCreditCustomer(connection, transaction, request.Customer.Id)
+                : new CreditCustomer("0", "0", "", "");
+            if (credit && !request.IsReturn && (customer.Id != request.Customer.Id || customer.Code != request.Customer.Code || customer.Name != request.Customer.Name))
+                throw new InvalidOperationException("Le client a changé. Revoyez la vente à crédit.");
+
+            // Lock the same original sequence and basket used by the writers.
+            // Reject an unsupported sequence layout rather than advance other counters.
+            var sequence = Read(connection, transaction, "SELECT ID, CL FROM TABLE_NUM FOR UPDATE");
+            if (sequence.Rows.Count != 1 || Number(sequence.Rows[0], "ID") != 0m)
+                throw new InvalidOperationException("Unsupported ticket sequence layout.");
+            decimal next = Number(sequence.Rows[0], "CL");
+            if (next < 0 || next != decimal.Truncate(next) || next >= 999999)
+                throw new InvalidOperationException("Invalid ticket sequence.");
+            string ticket = next.ToString("000000", CultureInfo.InvariantCulture);
+            // W2 bridge: a request from the in-memory checkout session must not
+            // depend on an independently preseeded V1 workstation basket.
+            // The TABLE_NUM row above serializes participating checkouts; refuse
+            // any existing workstation rows rather than deleting another cashier's
+            // work. Completion may clear only rows created in this transaction.
+            var occupied = Read(connection, transaction,
+                "SELECT ID_ARTICLE FROM TABLE_" + workstation + " FOR UPDATE");
+            if (occupied.Rows.Count != 0)
+                throw new InvalidOperationException(
+                    "Workstation basket is occupied; refusing to replace another cashier's sale.");
+            if (request.IsReturn)
+                return PrepareFullOriginalReturn(request, connection, transaction, cashier, ticket, credit, card);
+            var waitingId = readWaitingSale?.Invoke();
+            var waiting = waitingId is null ? null : ReadWaitingSale(connection, transaction, request, waitingId);
+            foreach (var line in request.Lines)
+            {
+                var authoritative = Read(connection, transaction,
+                    "SELECT * FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE",
+                    ("@id", line.ArticleId));
+                if (authoritative.Rows.Count != 1)
+                    throw new InvalidOperationException("Requested article is unavailable.");
+                var article = authoritative.Rows[0];
+                var pricing = ReadSaleLinePrice(article, line.Quantity, manualDiscount?.PercentageFor(line.ArticleId));
+                decimal unit = pricing.UnitPrice;
+                decimal net = pricing.Amount;
+                if (waiting is not null && (waiting[line.ArticleId].Price != unit || waiting[line.ArticleId].Net != net ||
+                    waiting[line.ArticleId].Discount != pricing.DiscountPercent))
+                    throw new InvalidOperationException("Le prix du panier en attente a changé.");
+                using (var write = connection.CreateCommand())
+                {
+                    write.Transaction = transaction;
+                    write.CommandText = "INSERT INTO TABLE_" + workstation +
+                        " (ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté,Remise,TOTAL_NET,TAUX_TVA,GROUPE)" +
+                        " VALUES (@id,@code,@article,@family,@cost,@mean,@price,@quantity,@discount,@net,@tax,@group)";
+                    write.Parameters.AddWithValue("@id", line.ArticleId);
+                    write.Parameters.AddWithValue("@code", article["Code"]);
+                    write.Parameters.AddWithValue("@article", article["Article"]);
+                    write.Parameters.AddWithValue("@family", article["Famille"]);
+                    write.Parameters.AddWithValue("@cost", article["PRIX_A"]);
+                    write.Parameters.AddWithValue("@mean", article["PRIX_MP"]);
+                    write.Parameters.AddWithValue("@price", unit);
+                    write.Parameters.AddWithValue("@quantity", line.Quantity);
+                    write.Parameters.AddWithValue("@discount", pricing.DiscountPercent);
+                    write.Parameters.AddWithValue("@net", net);
+                    write.Parameters.AddWithValue("@tax", article["TAUX_TVA"]);
+                    write.Parameters.AddWithValue("@group", article["GROUPE"]);
+                    if (write.ExecuteNonQuery() != 1)
+                        throw new InvalidOperationException("Unable to stage authoritative basket line.");
+                }
+            }
+            var basket = Read(connection, transaction,
+                "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté AS trusted_quantity,Remise,TOTAL_NET,TAUX_TVA,GROUPE FROM TABLE_" +
+                workstation + " ORDER BY ID_ARTICLE FOR UPDATE");
+            if (basket.Rows.Count != request.Lines.Count)
+                throw new InvalidOperationException("Authoritative basket changed.");
+            var requested = request.Lines.ToDictionary(x => x.ArticleId, x => x.Quantity, StringComparer.Ordinal);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var stock = new List<CheckoutStockLine>();
+            decimal total = 0m;
+            foreach (DataRow row in basket.Rows)
+            {
+                string id = Convert.ToString(row["ID_ARTICLE"], CultureInfo.InvariantCulture);
+                if (string.IsNullOrWhiteSpace(id) || !seen.Add(id) || !requested.TryGetValue(id, out var quantity) ||
+                    Number(row, "trusted_quantity") != quantity)
+                    throw new InvalidOperationException("Authoritative basket identity or quantity changed.");
+                var articles = Read(connection, transaction,
+                    "SELECT * FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE", ("@id", id));
+                if (articles.Rows.Count != 1)
+                    throw new InvalidOperationException("Article identity is no longer unique.");
+                var article = articles.Rows[0];
+                var pricing = ReadSaleLinePrice(article, quantity, manualDiscount?.PercentageFor(id));
+                if (Number(row, "Remise") != pricing.DiscountPercent)
+                    throw new InvalidOperationException("Authoritative catalogue discount changed.");
+                decimal price = pricing.UnitPrice;
+                if (price < 0m || Number(row, "PRIX_V") != price ||
+                    Number(row, "TAUX_TVA") != Number(article, "TAUX_TVA"))
+                    throw new InvalidOperationException("Authoritative article price or tax changed.");
+                // The existing domain rule supplies the decimal operation order.
+                // The standard legacy basket stores each line to two decimals.
+                decimal net = pricing.Amount;
+                if (Number(row, "TOTAL_NET") != net)
+                    throw new InvalidOperationException("Authoritative line total changed.");
+                foreach (var field in new[] { "Code", "Article", "Famille", "GROUPE" })
+                    if (!Equals(Convert.ToString(row[field]), Convert.ToString(article[field])))
+                        throw new InvalidOperationException("Authoritative article details changed.");
+                if (Number(row, "PRIX_A") != Number(article, "PRIX_A") ||
+                    Number(row, "PRIX_MP") != Number(article, "PRIX_MP"))
+                    throw new InvalidOperationException("Authoritative article cost changed.");
+                total = checked(total + net);
+                stock.Add(new CheckoutStockLine { TicketNumber = ticket, ArticleId = id,
+                    ArticleCode = row["Code"], ArticleName = row["Article"], BasketQuantity = (decimal)quantity });
+            }
+            decimal cashPaid = request.Payments.Where(payment => payment.Kind == CheckoutPaymentKind.Cash).Sum(payment => payment.Amount);
+            decimal cardPaid = request.Payments.Where(payment => payment.Kind == CheckoutPaymentKind.Card).Sum(payment => payment.Amount);
+            decimal tendered = credit ? request.Payments[0].Amount : checked(cashPaid + cardPaid);
+            if (request.Payments.Any(payment => decimal.Round(payment.Amount, 2) != payment.Amount))
+                throw new InvalidOperationException("Payment components require whole cents.");
+            if (mixed && cardPaid >= total)
+                throw new InvalidOperationException("Mixed card component must be below the authoritative total.");
+            if (card && !mixed && tendered != total)
+                throw new InvalidOperationException("Card amount must equal the authoritative total.");
+            if (credit && tendered != total)
+                throw new InvalidOperationException("Le crédit doit correspondre exactement au net du ticket.");
+            if (total <= 0m || request.ExpectedTotal != total || tendered < total ||
+                decimal.Round(tendered, 2, MidpointRounding.AwayFromZero) != tendered)
+                throw new InvalidOperationException("Cash tender must cover the authoritative total in whole cents.");
+            // V1 FormDialog_calc: FLOUSS(total - paid), persisted as a negative
+            // ESPECES change row. Never store both net cash and gross tender.
+            decimal change = decimal.Round(checked(total - tendered), 2, MidpointRounding.AwayFromZero);
+            manualDiscount?.BindOperation(request.OperationId);
+
+            var date = DateTime.Now;
+            var idTicket = request.OperationId;
+            var amount = total.ToString(CultureInfo.CurrentCulture);
+            // CREDIT is the original deferred-sale operation: stock and ticket,
+            // but no payment row and no cash entering the drawer.
+            var operation = credit ? "CREDIT" : "VENTE";
+            var paymentContext = new TicketPaymentContext { TicketId = idTicket, TicketNumber = ticket,
+                SaleDate = date, Cashier = cashier, ClientId = customer.Id, ClientCode = customer.Code, ClientName = customer.Name,
+                Workstation = workstation, Operation = operation, Remark = "" };
+            return new CheckoutPostingInput
+            {
+                ReadStock = () => stock,
+                ReadHeader = () => new TicketHeaderRecord { TicketId = idTicket, TicketNumber = ticket,
+                    SaleDate = date, Cashier = cashier, ClientId = customer.Id, ClientCode = customer.Code, ClientName = customer.Name,
+                    Workstation = workstation, TotalText = amount, Operation = operation },
+                ReadJournal = () => new TicketJournalRecord { TicketId = idTicket, TicketNumber = ticket,
+                    SaleDate = date, Cashier = cashier, Seller = "", ClientId = customer.Id, ClientCode = customer.Code, ClientName = customer.Name,
+                    Workstation = workstation, Operation = operation, PriceType = "PRIX 1", PaymentModes = credit ? "" : mixed ? "ESPECES;CARTE" : card ? "CARTE" : "ESPECES" },
+                // Reuse LOGICA's streaming multi-mode payment projection, including cash change.
+                ReadPayments = () => credit ? Array.Empty<TicketPaymentWrite>() : card
+                    ? CheckoutPaymentReadService.Read(() => "VENTE", () => paymentContext, () => true,
+                        () => request.Payments.Count, index => request.Payments[index].Amount,
+                        index => request.Payments[index].Kind == CheckoutPaymentKind.Cash ? "ESPECES" : "CARTE",
+                        () => amount, () => change.ToString(CultureInfo.CurrentCulture),
+                        new PreparedPaymentSemantics(change))
+                    : change == 0m
+                    ? new[] { new TicketPaymentWrite {
+                        Kind = TicketPaymentKind.Cash, Context = paymentContext, AmountText = amount } }
+                    : new[] {
+                        new TicketPaymentWrite { Kind = TicketPaymentKind.Tendered,
+                            Context = paymentContext, Amount = tendered, Mode = "ESPECES" },
+                        new TicketPaymentWrite { Kind = TicketPaymentKind.Change,
+                            Context = paymentContext, AmountText = change.ToString(CultureInfo.CurrentCulture) }
+                    },
+                // Stage a verifiable persisted receipt within this transaction.
+                // Physical printing is a separate post-commit/peripheral gate.
+                Print = () => {
+                    if (credit && !MariaDbCashCheckoutServices.IsCreditSaleEnabled(creditConfigurationDirectory))
+                        throw new InvalidOperationException("La configuration crédit a changé avant l’enregistrement.");
+                    var receipt = Read(connection, transaction,
+                        "SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET=@id", ("@id", idTicket));
+                    var payments = Read(connection, transaction,
+                        "SELECT MONTANT FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id", ("@id", idTicket));
+                    var detail = Read(connection, transaction,
+                        "SELECT ID_ARTICLE FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET=@id", ("@id", idTicket));
+                    if (receipt.Rows.Count != 1 || Number(receipt.Rows[0], "Total_NET") != total ||
+                        payments.Rows.Count != (credit ? 0 : request.Payments.Count + (change < 0m ? 1 : 0)) ||
+                        payments.Rows.Cast<DataRow>().Sum(row => Number(row, "MONTANT")) != (credit ? 0m : total) ||
+                        (change < 0m && (!payments.Rows.Cast<DataRow>().Any(row => Number(row, "MONTANT") == cashPaid) ||
+                            !payments.Rows.Cast<DataRow>().Any(row => Number(row, "MONTANT") == change))) ||
+                        detail.Rows.Count != stock.Count)
+                        throw new InvalidOperationException("Persisted receipt staging failed.");
+                },
+                ReadCompletion = () => new CheckoutCompletionRecord { Workstation = workstation, TicketNumber = ticket }
+            };
+        }
+
+        // Full-ticket cash or named credit-debt return. Every original line is locked, matched,
+        // and posted through the same transaction and production writers as sales.
+        private CheckoutPostingInput PrepareFullOriginalReturn(AuthorizedCheckoutRequest request,
+            MySqlConnection connection, MySqlTransaction transaction, string cashier, string ticket, bool credit, bool card)
+        {
+            if (request.Lines.Count == 0 || string.IsNullOrWhiteSpace(request.OriginalTicketId))
+                throw new InvalidOperationException("A complete original ticket and line set are required.");
+            var originalOperation = credit ? "CREDIT" : "VENTE";
+            var returnOperation = credit ? "RETOUR CREDIT" : "RETOUR REMBOURSEMENT";
+            var customer = credit ? request.Customer : new CheckoutCustomerIdentity("0", "0", "");
+            var partial = request.PartialCashReturn is not null;
+            decimal amount = partial ? PartialCashReturnEvidence.VerifyAndClaim(connection, transaction, request)
+                : credit ? CreditReturnOriginalSaleEvidence.VerifyAndClaim(connection, transaction, request)
+                : card ? CardReturnOriginalSaleEvidence.VerifyAndClaim(connection, transaction, request) : CashReturnConsumptionClaim.VerifyAndClaimFullOriginal(
+                connection, transaction, request.OriginalTicketId, request.OperationId,
+                request.Lines.Select(line => new CashReturnConsumptionClaim.RequestedLine(
+                    line.ArticleId, line.Quantity)).ToArray());
+            if (request.ExpectedTotal != amount || request.Payments.Count != 1 ||
+                request.Payments[0].Amount != amount ||
+                request.Payments[0].Kind != (credit ? CheckoutPaymentKind.Credit : card ? CheckoutPaymentKind.Card : CheckoutPaymentKind.Cash))
+                throw new InvalidOperationException("Refund must equal the persisted original exact-cash settlement.");
+
+            // Re-read all original detail fields under the same transaction lock.
+            // They are copied into the signed return journal without using current
+            // prices or mutable UI data.
+            var original = Read(connection, transaction,
+                "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté AS quantity," +
+                "Total_NET AS line_amount,TAUX_TVA,GROUPE,OPERATION FROM TABLE_VENTES_JOURNAL " +
+                "WHERE BINARY ID_TICKET=BINARY @original AND BINARY OPERATION=BINARY @originalOperation " +
+                "ORDER BY BINARY ID_ARTICLE FOR UPDATE",
+                ("@original", request.OriginalTicketId), ("@originalOperation", originalOperation));
+            if (partial)
+            {
+                // Select from the locked original rows, never from display prices.
+                var selected = request.PartialCashReturn.Selections.ToDictionary(item => item.Original.ArticleId, StringComparer.Ordinal);
+                var filtered = original.Clone();
+                foreach (DataRow source in original.Rows)
+                {
+                    CheckoutPartialReturnSelection selection;
+                    if (!selected.TryGetValue(Convert.ToString(source["ID_ARTICLE"]), out selection)) continue;
+                    var row = filtered.NewRow(); row.ItemArray = (object[])source.ItemArray.Clone();
+                    row["quantity"] = selection.Quantity;
+                    row["line_amount"] = PartialCashReturnEvidence.UnitNet(selection.Original) * selection.Quantity;
+                    filtered.Rows.Add(row);
+                }
+                original = filtered;
+            }
+            if (original.Rows.Count != request.Lines.Count)
+                throw new InvalidOperationException("Original sale line set changed during refund preparation.");
+
+            var originalById = new Dictionary<string, DataRow>(StringComparer.Ordinal);
+            decimal originalTotal = 0m;
+            var stock = new List<CheckoutStockLine>(original.Rows.Count);
+            foreach (DataRow row in original.Rows)
+            {
+                string id = Convert.ToString(row["ID_ARTICLE"], CultureInfo.InvariantCulture);
+                if (string.IsNullOrWhiteSpace(id) || originalById.ContainsKey(id))
+                    throw new InvalidOperationException("Original sale contains ambiguous article identity.");
+                originalById.Add(id, row);
+                decimal quantity = Number(row, "quantity");
+                decimal lineAmount = Number(row, "line_amount");
+                if (quantity <= 0m || lineAmount < 0m || Number(row, "Remise") < 0m || Number(row, "Remise") > 100m)
+                    throw new InvalidOperationException("Original line is outside the full exact-cash return policy.");
+                var article = Read(connection, transaction,
+                    "SELECT ID_ARTICLE FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE",
+                    ("@id", id));
+                if (article.Rows.Count != 1)
+                    throw new InvalidOperationException("Original return article is no longer uniquely stocked.");
+                originalTotal = checked(originalTotal + lineAmount);
+            }
+            if (originalTotal != amount)
+                throw new InvalidOperationException("Original journal line total changed after verification.");
+
+            if (partial)
+            {
+                foreach (DataRow row in original.Rows)
+                using (var command = connection.CreateCommand())
+                {
+                    command.Transaction = transaction;
+                    command.CommandText = "INSERT INTO TABLE_" + workstation +
+                        " (ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté,Remise,TOTAL_NET,TAUX_TVA,GROUPE) " +
+                        "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,-@quantity,Remise,-@amount,TAUX_TVA,GROUPE " +
+                        "FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @original AND BINARY ID_ARTICLE=BINARY @article AND BINARY OPERATION=BINARY 'VENTE'";
+                    command.Parameters.AddWithValue("@original", request.OriginalTicketId);
+                    command.Parameters.AddWithValue("@article", row["ID_ARTICLE"]);
+                    command.Parameters.AddWithValue("@quantity", Number(row, "quantity")); command.Parameters.AddWithValue("@amount", Number(row, "line_amount"));
+                    if (command.ExecuteNonQuery() != 1) throw new InvalidOperationException("Could not stage the selected original partial-return line.");
+                }
+            }
+            else using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "INSERT INTO TABLE_" + workstation +
+                    " (ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Qté,Remise,TOTAL_NET,TAUX_TVA,GROUPE) " +
+                    "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,-Qté,Remise,-Total_NET,TAUX_TVA,GROUPE " +
+                    "FROM TABLE_VENTES_JOURNAL WHERE BINARY ID_TICKET=BINARY @original " +
+                    "AND BINARY OPERATION=BINARY @originalOperation ORDER BY BINARY ID_ARTICLE";
+                command.Parameters.AddWithValue("@original", request.OriginalTicketId);
+                command.Parameters.AddWithValue("@originalOperation", originalOperation);
+                if (command.ExecuteNonQuery() != original.Rows.Count)
+                    throw new InvalidOperationException("Could not stage every signed original return line.");
+            }
+
+            var staged = Read(connection, transaction,
+                "SELECT ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V,Remise,Qté AS quantity," +
+                "TOTAL_NET AS line_amount,TAUX_TVA,GROUPE FROM TABLE_" + workstation +
+                " ORDER BY BINARY ID_ARTICLE FOR UPDATE");
+            if (staged.Rows.Count != original.Rows.Count)
+                throw new InvalidOperationException("Signed return staging does not contain every original line.");
+
+            foreach (DataRow row in staged.Rows)
+            {
+                string id = Convert.ToString(row["ID_ARTICLE"], CultureInfo.InvariantCulture);
+                DataRow source;
+                if (!originalById.TryGetValue(id, out source) ||
+                    Convert.ToDecimal(row["quantity"], CultureInfo.CurrentCulture) != -Number(source, "quantity") ||
+                    Convert.ToDecimal(row["line_amount"], CultureInfo.CurrentCulture) != -Number(source, "line_amount"))
+                    throw new InvalidOperationException("Signed return staging differs from the original line set.");
+                foreach (string field in new[] { "Code", "Article", "Famille", "GROUPE" })
+                    if (!string.Equals(Convert.ToString(row[field], CultureInfo.InvariantCulture),
+                        Convert.ToString(source[field], CultureInfo.InvariantCulture), StringComparison.Ordinal))
+                        throw new InvalidOperationException("Signed return article details differ from the original.");
+                foreach (string field in new[] { "PRIX_A", "PRIX_MP", "PRIX_V", "Remise", "TAUX_TVA" })
+                    if (Convert.ToDecimal(row[field], CultureInfo.CurrentCulture) !=
+                        Convert.ToDecimal(source[field], CultureInfo.CurrentCulture))
+                        throw new InvalidOperationException("Signed return price or tax differs from the original.");
+                stock.Add(new CheckoutStockLine { TicketNumber = ticket, ArticleId = id,
+                    ArticleCode = row["Code"], ArticleName = row["Article"],
+                    BasketQuantity = -Number(source, "quantity") });
+            }
+
+            var date = DateTime.Now;
+            string idTicket = request.OperationId;
+            string negativeAmount = (-amount).ToString(CultureInfo.CurrentCulture);
+            var context = new TicketPaymentContext { TicketId = idTicket, TicketNumber = ticket,
+                SaleDate = date, Cashier = cashier, ClientId = customer.Id, ClientCode = customer.Code, ClientName = customer.Name,
+                Workstation = workstation, Operation = returnOperation, Remark = request.OriginalTicketId + (card ? " | CARTE confirmé extérieurement" : "") };
+            return new CheckoutPostingInput
+            {
+                ReadStock = () => stock,
+                ReadHeader = () => new TicketHeaderRecord { TicketId = idTicket, TicketNumber = ticket,
+                    SaleDate = date, Cashier = cashier, ClientId = customer.Id, ClientCode = customer.Code, ClientName = customer.Name,
+                    Workstation = workstation, TotalText = negativeAmount, Operation = returnOperation },
+                ReadJournal = () => new TicketJournalRecord { TicketId = idTicket, TicketNumber = ticket,
+                    SaleDate = date, Cashier = cashier, Seller = "", ClientId = customer.Id, ClientCode = customer.Code,
+                    ClientName = customer.Name, Workstation = workstation, Operation = returnOperation,
+                    PriceType = "PRIX 1", PaymentModes = credit ? "CREDIT" : card ? "CARTE" : "ESPECES" },
+                ReadPayments = () => credit ? Array.Empty<TicketPaymentWrite>() : card ? new[] { new TicketPaymentWrite { Kind = TicketPaymentKind.Tendered,
+                    Context = context, Amount = -amount, Mode = "CARTE" } } : new[] { new TicketPaymentWrite { Kind = TicketPaymentKind.Cash,
+                    Context = context, AmountText = negativeAmount } },
+                Print = () => {
+                    var receipt = Read(connection, transaction,
+                        "SELECT Total_NET,OPERATION,ID_CLIENT,CODE_CLIENT,CLIENT FROM TABLE_VENTES_ENTETE WHERE BINARY ID_TICKET=BINARY @id",
+                        ("@id", idTicket));
+                    var payment = Read(connection, transaction,
+                        "SELECT MONTANT,OPERATION,MODE_P FROM TABLE_VENTES_REGLEMENTS WHERE BINARY ID_TICKET=BINARY @id",
+                        ("@id", idTicket));
+                    var detail = Read(connection, transaction,
+                        "SELECT ID_ARTICLE,Code,Article,Famille,GROUPE,PRIX_A,PRIX_MP,PRIX_V,Remise," +
+                        "Qté AS quantity,Total_NET AS line_amount,TAUX_TVA,OPERATION,ID_CLIENT,CODE_CLIENT,CLIENT FROM TABLE_VENTES_JOURNAL " +
+                        "WHERE BINARY ID_TICKET=BINARY @id ORDER BY BINARY ID_ARTICLE",
+                        ("@id", idTicket));
+                    if (receipt.Rows.Count != 1 || payment.Rows.Count != (credit ? 0 : 1) ||
+                        detail.Rows.Count != original.Rows.Count ||
+                        Number(receipt.Rows[0], "Total_NET") != -amount ||
+                        Convert.ToString(receipt.Rows[0]["OPERATION"]) != returnOperation ||
+                        (!credit && (Number(payment.Rows[0], "MONTANT") != -amount ||
+                        Convert.ToString(payment.Rows[0]["OPERATION"]) != returnOperation ||
+                        !string.Equals(Convert.ToString(payment.Rows[0]["MODE_P"], CultureInfo.InvariantCulture),
+                            card ? "CARTE" : "ESPECES", StringComparison.Ordinal))))
+                        throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
+
+                    if (credit && (Convert.ToString(receipt.Rows[0]["ID_CLIENT"]) != customer.Id ||
+                        Convert.ToString(receipt.Rows[0]["CODE_CLIENT"]) != customer.Code || Convert.ToString(receipt.Rows[0]["CLIENT"]) != customer.Name))
+                        throw new InvalidOperationException("Credit-return receipt changed the original customer.");
+
+                    decimal signedTotal = 0m;
+                    var returned = new HashSet<string>(StringComparer.Ordinal);
+                    foreach (DataRow row in detail.Rows)
+                    {
+                        string id = Convert.ToString(row["ID_ARTICLE"], CultureInfo.InvariantCulture);
+                        DataRow source;
+                        if (!returned.Add(id) || !originalById.TryGetValue(id, out source) ||
+                            Number(row, "quantity") != -Number(source, "quantity") ||
+                            Number(row, "line_amount") != -Number(source, "line_amount") ||
+                            Convert.ToString(row["OPERATION"]) != returnOperation)
+                            throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
+                        if (credit && (Convert.ToString(row["ID_CLIENT"]) != customer.Id || Convert.ToString(row["CODE_CLIENT"]) != customer.Code ||
+                            Convert.ToString(row["CLIENT"]) != customer.Name))
+                            throw new InvalidOperationException("Credit-return journal changed the original customer.");
+                        foreach (string field in new[] { "Code", "Article", "Famille", "GROUPE" })
+                            if (!string.Equals(Convert.ToString(row[field], CultureInfo.InvariantCulture),
+                                Convert.ToString(source[field], CultureInfo.InvariantCulture), StringComparison.Ordinal))
+                                throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
+                        foreach (string field in new[] { "PRIX_A", "PRIX_MP", "PRIX_V", "Remise", "TAUX_TVA" })
+                            if (Number(row, field) != Number(source, field))
+                                throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
+                        signedTotal = checked(signedTotal + Number(row, "line_amount"));
+                    }
+                    if (returned.Count != original.Rows.Count || signedTotal != -amount)
+                        throw new InvalidOperationException("Signed refund receipt, payment or journal failed verification.");
+                },
+                ReadCompletion = () => new CheckoutCompletionRecord { Workstation = workstation, TicketNumber = ticket }
+            };
+        }
+
+        // Shared by posting preparation and explicit cashier reauthorization.
+        // A caller-owned transaction and real TABLE_PASS remain authoritative.
+        private sealed class PreparedPaymentSemantics : ILegacyCheckoutPaymentReadSemantics
+        {
+            private readonly decimal change;
+            internal PreparedPaymentSemantics(decimal change) { this.change = change; }
+            public int CompareOperation(string actual, string expected) => string.Compare(actual, expected, StringComparison.Ordinal);
+            // Prepared amounts are decimals; do not reparse French text with VB Val.
+            public bool IsNegativeChange(string ignored) => change < 0m;
+        }
+
+        internal static void RequireCardMode(MySqlConnection connection, MySqlTransaction transaction)
+        {
+            foreach (var table in new[] { "TABLE_PARAMETRES", "TABLE_MODE_P" })
+            {
+                var engines = Read(connection, transaction,
+                    "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@table",
+                    ("@table", table));
+                if (engines.Rows.Count != 1 || Convert.ToString(engines.Rows[0][0]) != "InnoDB")
+                    throw new InvalidOperationException("Card mode configuration must be transactional.");
+            }
+            // Form_3_VENTE.Check_ACCES_MODEP comes from FENETRE_MODE_P.
+            // When disabled LOGICA exposes ESPECES only.
+            var configuration = Read(connection, transaction,
+                "SELECT VALEUR FROM TABLE_PARAMETRES WHERE BINARY OBJET=BINARY 'FENETRE_MODE_P' FOR UPDATE");
+            if (configuration.Rows.Count != 1 ||
+                !bool.TryParse(Convert.ToString(configuration.Rows[0][0]), out var enabled) || !enabled)
+                throw new UnauthorizedAccessException("Les modes de paiement sont désactivés.");
+            var modes = Read(connection, transaction,
+                "SELECT MODE_P FROM TABLE_MODE_P WHERE BINARY MODE_P=BINARY 'CARTE' FOR UPDATE");
+            if (modes.Rows.Count != 1)
+                throw new InvalidOperationException("Le mode CARTE est absent ou ambigu.");
+        }
+
+        internal static string AuthenticateCashier(string cashierId,
+            MySqlConnection connection, MySqlTransaction transaction, Func<string> readPin)
+        {
+            if (string.IsNullOrWhiteSpace(cashierId) || readPin == null)
+                throw new UnauthorizedAccessException("Cashier authentication failed.");
+            string pin = readPin();
+            if (string.IsNullOrWhiteSpace(pin) || pin.Length > 256)
+                throw new UnauthorizedAccessException("Cashier authentication failed.");
+            var users = Read(connection, transaction,
+                "SELECT ListUser AS trusted_cashier, Catégorie AS trusted_role FROM TABLE_PASS WHERE BINARY ListPass=BINARY @pin AND BINARY ListUser=BINARY @cashier FOR UPDATE",
+                ("@pin", pin.Trim()), ("@cashier", cashierId));
+            pin = null; // Never retain or log a credential in the posting input.
+            if (users.Rows.Count != 1 ||
+                Convert.ToString(users.Rows[0]["trusted_cashier"]) != cashierId ||
+                !new[] { "ADMIN", "MANAGER", "UTILISATEUR" }.Contains(Convert.ToString(users.Rows[0]["trusted_role"])))
+                throw new UnauthorizedAccessException("Cashier authentication failed.");
+            return Convert.ToString(users.Rows[0]["trusted_cashier"]);
+
+        }
+
+        // The price preview and actual staging share THIS policy and operation
+        // order. Preview never stages/claims/posts and is revalidated at Commit.
+        internal static decimal ReadCashSaleTotal(IReadOnlyList<CheckoutBatchLine> lines,
+            MySqlConnection connection, MySqlTransaction transaction) =>
+            ReadCashSaleLines(lines, connection, transaction).Sum(line => line.Amount);
+
+        internal sealed record CashSaleLine(string ArticleId, string ArticleName, int Quantity, decimal UnitPrice, decimal Amount, decimal DiscountPercent);
+
+        internal static IReadOnlyList<CashSaleLine> ReadCashSaleLines(IReadOnlyList<CheckoutBatchLine> lines,
+            MySqlConnection connection, MySqlTransaction transaction, ApprovedManualDiscount approval = null)
+        {
+            if (lines == null || lines.Any(x => x == null ||
+                string.IsNullOrWhiteSpace(x.ArticleId) || x.Quantity <= 0) ||
+                lines.GroupBy(x => x.ArticleId, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
+                throw new InvalidOperationException("Valid aggregated checkout lines are required for price preview.");
+            var result = new List<CashSaleLine>(lines.Count);
+            foreach (var line in lines)
+            {
+                var article = Read(connection, transaction,
+                    "SELECT * FROM TABLE_ARTICLES WHERE BINARY ID_ARTICLE=BINARY @id FOR UPDATE",
+                    ("@id", line.ArticleId));
+                if (article.Rows.Count != 1)
+                    throw new InvalidOperationException("Requested article is unavailable.");
+                var row = article.Rows[0];
+                var pricing = ReadSaleLinePrice(row, line.Quantity, approval?.PercentageFor(line.ArticleId));
+                result.Add(new CashSaleLine(line.ArticleId, Convert.ToString(row["Article"]) ?? line.ArticleId,
+                    line.Quantity, pricing.UnitPrice, pricing.Amount, pricing.DiscountPercent));
+            }
+            return result.AsReadOnly();
+        }
+
+        private sealed record SaleLinePrice(decimal UnitPrice, decimal DiscountPercent, decimal Amount);
+
+        // Form_3_VENTE quantity editing reuses these exact LOGICA domain rules.
+        // Catalogue promotion is a percentage, not a new promotion/date engine.
+        private static SaleLinePrice ReadSaleLinePrice(DataRow article, int quantity, decimal? manualPercentage = null)
+        {
+            decimal standard = Number(article, "PRIX_V_1");
+            decimal tier = OptionalNumber(article, "PRIX_QTE");
+            decimal discount = manualPercentage ?? OptionalNumber(article, "PROMOTION");
+            if (standard < 0m || quantity <= 0 || discount < 0m || discount > 100m)
+                throw new InvalidOperationException("Authoritative price, quantity or promotion is invalid.");
+            var legacy = VisualBasicCheckoutSemantics.Instance;
+            decimal minimum = legacy.Val(tier) > 0.0 ? Number(article, "PRIX_QTE_MIN") : 0m;
+            if (minimum < 0m)
+                throw new InvalidOperationException("Authoritative quantity-price threshold is invalid.");
+            decimal unit = SalesLinePricing.SelectQuantityPrice(quantity, minimum, tier, standard, legacy) ?? standard;
+            if (unit < 0m) throw new InvalidOperationException("Authoritative selected price is invalid.");
+            decimal net = Math.Round(SalesLinePricing.CalculateNetAmount(unit, quantity, discount),
+                2, MidpointRounding.ToEven);
+            if (net < 0m) throw new InvalidOperationException("Authoritative net amount is invalid.");
+            return new SaleLinePrice(unit, discount, net);
+        }
+
+        private static Dictionary<string, (decimal Price, decimal Net, decimal Discount)> ReadWaitingSale(
+            MySqlConnection connection, MySqlTransaction transaction, AuthorizedCheckoutRequest request, string id)
+        {
+            var engine = Read(connection, transaction,
+                "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='TABLE_ATTENTE'");
+            if (engine.Rows.Count != 1 || Convert.ToString(engine.Rows[0][0]) != "InnoDB")
+                throw new InvalidOperationException("Les ventes en attente exigent une table transactionnelle.");
+
+            var rows = Read(connection, transaction,
+                "SELECT ID_ARTICLE, Qté AS waiting_quantity, PRIX_V, TOTAL_NET, Remise, ID_CLIENT FROM TABLE_ATTENTE WHERE V=@id FOR UPDATE",
+                ("@id", id));
+            if (rows.Rows.Count != request.Lines.Count)
+                throw new InvalidOperationException("La vente en attente est indisponible ou a changé.");
+            var result = new Dictionary<string, (decimal Price, decimal Net, decimal Discount)>(StringComparer.Ordinal);
+            foreach (DataRow row in rows.Rows)
+            {
+                var article = Convert.ToString(row["ID_ARTICLE"]);
+                var line = request.Lines.SingleOrDefault(x => x.ArticleId == article);
+                var customer = Convert.ToString(row["ID_CLIENT"]);
+                if (line is null || Number(row, "waiting_quantity") != line.Quantity || (Number(row, "Remise") < 0m || Number(row, "Remise") > 100m) ||
+                    (customer != "0" && !string.IsNullOrEmpty(customer)) ||
+                    !result.TryAdd(line.ArticleId, (Number(row, "PRIX_V"), Number(row, "TOTAL_NET"), Number(row, "Remise"))))
+                    throw new InvalidOperationException("La vente en attente ne correspond plus au panier.");
+            }
+
+            using var consume = new MySqlCommand("DELETE FROM TABLE_ATTENTE WHERE V=@id", connection, transaction);
+            consume.Parameters.AddWithValue("@id", id);
+            if (consume.ExecuteNonQuery() != rows.Rows.Count)
+                throw new InvalidOperationException("La vente en attente a déjà été reprise.");
+            return result;
+        }
+
+        private static decimal Number(DataRow row, string column)
+        {
+            bool present = row.Table.Columns.Contains(column);
+            bool isNull = present && row.IsNull(column);
+            if (!present || isNull)
+                throw new InvalidOperationException(
+                    "Required authoritative numeric field is unavailable: " + column +
+                    " (present=" + present + ", databaseNull=" + isNull + ", queryColumns=" +
+                    string.Join(",", row.Table.Columns.Cast<DataColumn>().Select(item => item.ColumnName)) + ").");
+            return Convert.ToDecimal(row[column], CultureInfo.CurrentCulture);
+        }
+        private static decimal OptionalNumber(DataRow row, string column) =>
+            !row.Table.Columns.Contains(column) || row.IsNull(column) ? 0m : Number(row, column);
+
+        private static DataTable Read(MySqlConnection connection, MySqlTransaction transaction,
+            string sql, params (string Name, object Value)[] parameters)
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = sql;
+                foreach (var parameter in parameters) command.Parameters.AddWithValue(parameter.Name, parameter.Value);
+                using (var reader = command.ExecuteReader())
+                {
+                    var result = new DataTable();
+                    result.Load(reader);
+                    return result;
+                }
+            }
+        }
+    }
+}

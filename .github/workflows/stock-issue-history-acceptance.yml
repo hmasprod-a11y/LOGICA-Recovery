@@ -1,0 +1,42 @@
+name: Stock issue history acceptance on disposable MariaDB
+on:
+  push:
+    branches: [dev/inventory-stock-issue-movement-20261117, integration/hanouty-qa-desktop-inventory-20261102]
+    paths:
+      - 'modernization/Hanouty.Desktop.Bootstrap/StockIssue*.cs'
+      - 'modernization/inventory/stock-issue-history-acceptance/**'
+      - 'input/migrations/20261117-stock-issue-history.sql'
+      - '.github/workflows/stock-issue-history-acceptance.yml'
+  pull_request:
+    paths:
+      - 'modernization/Hanouty.Desktop.Bootstrap/StockIssue*.cs'
+      - 'modernization/inventory/stock-issue-history-acceptance/**'
+      - 'input/migrations/20261117-stock-issue-history.sql'
+      - '.github/workflows/stock-issue-history-acceptance.yml'
+permissions:
+  contents: read
+jobs:
+  stock-issue-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root-ci-only
+          MARIADB_DATABASE: stock_issue_history_ci
+          MARIADB_USER: stock_issue_ci
+          MARIADB_PASSWORD: stock-issue-ci-only
+        ports: ['3307:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --configuration Release --project modernization/inventory/stock-issue-history-acceptance/StockIssueHistoryAcceptance.csproj

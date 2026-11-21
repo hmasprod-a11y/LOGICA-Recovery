@@ -1,0 +1,22 @@
+HANOUTY — INSTALLATION WINDOWS
+
+1. Décompressez complètement ce dossier dans un emplacement de votre choix.
+2. Double-cliquez sur Install-Hanouty.cmd avec votre compte Windows habituel.
+3. Ouvrez « HANOUTY ». À la première ouverture, renseignez la base LOGICA
+   locale et son dossier de données avec les paramètres de votre installateur.
+   Si la base doit être préparée, fermez LOGICA et suivez l’assistant de copie
+   protégée. La sauvegarde et la nouvelle base restent séparées de l’original.
+   Cette préparation concerne le poste01 et les bases InnoDB compatibles.
+4. Entrez votre code caissier d’origine au pavé. Scannez les articles puis
+   appuyez sur ENCAISSER ; les billets, pièces et le pavé servent à saisir
+   le montant reçu. Stock, Journal, Statistiques et Paramètres sont accessibles
+   selon vos droits LOGICA. Choisissez votre imprimante dans Paramètres.
+
+Pour une mise à jour, suivez les mêmes étapes. La configuration du poste
+reste conservée ; l’installation garde la version précédente.
+
+Après la préparation, enregistrez les nouvelles opérations dans HANOUTY.
+Le LOGICA d’origine conserve l’état antérieur à la copie.
+
+Avant l’utilisation en magasin, faites vérifier la sauvegarde de votre base,
+les droits de connexion et une vente avec votre imprimante par le responsable.

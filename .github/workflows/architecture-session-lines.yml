@@ -1,0 +1,30 @@
+name: Architecture integrated-source regressions
+on:
+  push:
+    branches: [integration/hanouty-qa-desktop-inventory-20261102]
+    paths: ['modernization/architecture/**', '.github/workflows/architecture-session-lines.yml']
+  pull_request:
+    paths: ['modernization/architecture/**', '.github/workflows/architecture-session-lines.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  actual-session:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify production shared-source boundaries
+        run: python modernization/architecture/test_verify_core_boundaries.py
+      - name: Verify boundary manifest
+        run: python modernization/architecture/verify_core_boundaries.py
+      - name: Execute actual Architecture session and financial gate regressions
+        run: dotnet run --project modernization/architecture/Hanouty.ArchitectureBridge.Tests/Hanouty.ArchitectureBridge.Tests.csproj -c Release

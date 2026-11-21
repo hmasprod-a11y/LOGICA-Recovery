@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+    <StartupObject>Hanouty.Desktop.Bootstrap.Program</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hanouty.ProtectedCopy.Gui.Acceptance" />
+    <Compile Include="../../recovered-source/LOGICA/Application/Checkout/LogicaFrenchThreeColumn.cs" Link="LogicaFrenchThreeColumn.cs" />
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+    <Compile Include="../../recovered-source/LOGICA/Application/Checkout/ReceiptPrintRoute.cs" Link="ReceiptPrintRoute.cs" />
+    <EmbeddedResource Include="Assets/LogicaReceiptLogo.jpg" LogicalName="LogicaReceiptLogo.jpg" />
+    <EmbeddedResource Include="../../input/migrations/20261120-customer-file-operations.sql" LogicalName="Hanouty.CustomerFilesMigration" />
+    <EmbeddedResource Include="../../input/migrations/20261120-stock-issue-create-operations.sql" LogicalName="Hanouty.StockIssueCreateMigration" />
+    <EmbeddedResource Include="../../input/migrations/20261120-partial-cash-return-consumption.sql" LogicalName="Hanouty.PartialCashReturnMigration" />
+    <EmbeddedResource Include="../../input/migrations/*.sql" LogicalName="Hanouty.Migrations.%(Filename)%(Extension)" />
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
+    <PackageReference Include="QRCoder" Version="1.9.0" />
+    <PackageReference Include="MySql.Data" Version="9.5.0" Condition="'$(CheckoutProductionProject)' != ''" />
+    <ProjectReference Include="../Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj"/>
+    <ProjectReference Include="../architecture/Hanouty.WpfContractAdapter/Hanouty.WpfContractAdapter.csproj"/>
+    <ProjectReference Include="../inventory/Hanouty.Inventory.MariaDb/Hanouty.Inventory.MariaDb.csproj"/>
+  </ItemGroup>
+  <PropertyGroup Condition="'$(CheckoutProductionProject)' != ''"><DefineConstants>$(DefineConstants);HANOUTY_FINANCIAL</DefineConstants></PropertyGroup>
+  <ItemGroup Condition="'$(CheckoutProductionProject)' != ''">
+    <ProjectReference Include="$(CheckoutProductionProject)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(CheckoutProductionProject)' == ''">
+    <Compile Remove="CatalogueHost.Financial.cs" />
+    <Compile Remove="CashDrawerClosing.cs" />
+    <Compile Remove="LogicaWaitingSale.cs" />
+    <Compile Remove="CataloguePriceDialog.cs" />
+    <Compile Remove="PurchaseReceiptDialog.cs" />
+    <Compile Remove="DisposableCashSaleAcceptance.cs" />
+  </ItemGroup>
+</Project>
+

@@ -463,7 +463,7 @@ public class FormDialog_ALERT_ERREUR : Form
 	private void TextBox1_DoubleClick(object sender, EventArgs e)
 	{
 		TextBox1.Text = "";
-		TextBox1.Text = File.ReadAllText(Application.StartupPath + "\\log_erreur.sni");
+		TextBox1.Text = File.ReadAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni");
 	}
 
 	private void TextBox1_TextChanged(object sender, EventArgs e)
@@ -476,7 +476,7 @@ public class FormDialog_ALERT_ERREUR : Form
 		//IL_0015: Invalid comparison between Unknown and I4
 		if ((int)MessageBox.Show("Voulez-vous vraiment Vider le LOG ??", "Attention", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
 		{
-			File.WriteAllText(Application.StartupPath + "\\log_erreur.sni", "");
+			File.WriteAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", "");
 			((Form)this).Close();
 		}
 	}

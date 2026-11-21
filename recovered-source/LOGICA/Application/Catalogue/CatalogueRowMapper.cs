@@ -1,3 +1,4 @@
+#nullable enable annotations
 using System.Data;
 using LOGICA.Domain;
 
@@ -17,6 +18,72 @@ namespace LOGICA.ApplicationLayer.Catalogue
             row["ID"] = input.Id;
             row["ID_ARTICLE"] = input.ArticleId;
             PopulateFields(row, input, false, semantics);
+        }
+
+        // The article identifier is editable in LOGICA. On Save, the immutable
+        // database row ID selects the original record; ID_ARTICLE is validated
+        // separately by the existing duplicate lookup before it is changed.
+        #if NET10_0_OR_GREATER
+        internal static DataRow? ResolveUniqueByDatabaseId(DataTable? table, string? id)
+#else
+        internal static DataRow ResolveUniqueByDatabaseId(DataTable table, string id)
+#endif
+        {
+            if (table == null || string.IsNullOrWhiteSpace(id) ||
+                !table.Columns.Contains("ID") || !table.Columns.Contains("ID_ARTICLE"))
+                return null;
+#if NET10_0_OR_GREATER
+            DataRow? match = null;
+#else
+            DataRow match = null;
+#endif
+
+            foreach (DataRow row in table.Rows)
+            {
+                if (row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached)
+                    continue;
+                if (!string.Equals(System.Convert.ToString(row["ID"]), id, System.StringComparison.Ordinal))
+                    continue;
+                if (match != null)
+                    return null;
+                match = row;
+            }
+            return match;
+        }
+
+        // The WinForms grid can be sorted or filtered independently of DataTable.Rows.
+        // Never identify an edited/deleted product by a displayed row index.
+        #if NET10_0_OR_GREATER
+        internal static DataRow? ResolveUniqueExistingRow(DataTable? table, string? id, string? articleId)
+#else
+        internal static DataRow ResolveUniqueExistingRow(DataTable table, string id, string articleId)
+#endif
+        {
+            if (table == null || string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(articleId) ||
+                !table.Columns.Contains("ID") || !table.Columns.Contains("ID_ARTICLE"))
+                return null;
+
+#if NET10_0_OR_GREATER
+            DataRow? match = null;
+#else
+            DataRow match = null;
+#endif
+
+            foreach (DataRow row in table.Rows)
+            {
+                if (row.RowState == DataRowState.Deleted || row.RowState == DataRowState.Detached)
+                    continue;
+                bool sameId = string.Equals(System.Convert.ToString(row["ID"]), id, System.StringComparison.Ordinal);
+                bool sameArticleId = string.Equals(System.Convert.ToString(row["ID_ARTICLE"]), articleId, System.StringComparison.Ordinal);
+                if (!sameId && !sameArticleId)
+                    continue;
+                // A duplicate or partially mismatched identity is unsafe, even if
+                // the grid hides the conflicting row with a filter.
+                if (!sameId || !sameArticleId || match != null)
+                    return null;
+                match = row;
+            }
+            return match;
         }
 
         private static void PopulateFields(DataRow row, ICatalogueRowInput input, bool creating, ILegacyCatalogueSemantics semantics)

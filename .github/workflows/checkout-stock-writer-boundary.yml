@@ -1,0 +1,33 @@
+name: Checkout stock writer transaction binding
+on:
+  pull_request:
+    paths:
+      - 'recovered-source/LOGICA/Infrastructure/Checkout/CheckoutStockWriter.cs'
+      - 'modernization/checkout-stock-writer-boundary/**'
+      - '.github/workflows/checkout-stock-writer-boundary.yml'
+  workflow_dispatch:
+jobs:
+  stock-writer:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root-test-only
+          MARIADB_DATABASE: stock_writer_disposable
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run production CheckoutStockWriter against disposable InnoDB
+        env:
+          STOCK_WRITER_TEST_CONNECTION: Server=127.0.0.1;Port=3306;Database=stock_writer_disposable;Uid=root;Pwd=root-test-only;SslMode=Disabled;
+        run: dotnet run --project modernization/checkout-stock-writer-boundary/CheckoutStockWriterBoundary.csproj --configuration Release

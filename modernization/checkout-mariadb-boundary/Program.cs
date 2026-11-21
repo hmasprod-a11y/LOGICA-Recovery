@@ -1,0 +1,1771 @@
+using System;
+using System.Linq;
+using LOGICA.ApplicationLayer.Checkout;
+using LOGICA.Infrastructure.Checkout;
+using MySql.Data.MySqlClient;
+
+namespace LOGICA.Infrastructure.Checkout
+{
+    internal static partial class Program
+    {
+        private static void Require(bool condition, string message)
+        {
+            if (!condition) throw new InvalidOperationException(message);
+        }
+
+        private static MySqlConnection NewConnection()
+        {
+            return new MySqlConnection(Environment.GetEnvironmentVariable("CHECKOUT_TEST_CONNECTION"));
+        }
+
+        private static void Main()
+        {
+            Require(!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CHECKOUT_TEST_CONNECTION")),
+                "Disposable CHECKOUT_TEST_CONNECTION is required.");
+            var settings = new MySqlConnectionStringBuilder(Environment.GetEnvironmentVariable("CHECKOUT_TEST_CONNECTION"));
+            Require(settings.Database == "checkout_disposable" &&
+                (settings.Server == "127.0.0.1" || settings.Server == "localhost"),
+                "Acceptance is restricted to the disposable loopback schema.");
+            // QA production code correctly refuses to create a missing ledger.
+            // Provision only this verified disposable test schema; never change a shop schema.
+            Sql("CREATE TABLE IF NOT EXISTS hanouty_checkout_operations (operation_id VARCHAR(128) NOT NULL PRIMARY KEY) ENGINE=InnoDB");
+            Require(typeof(AuthorizedCheckoutMariaDbPort).GetInterface("IAuthorizedCheckoutPort") != null,
+                "Actual authorized financial port must compile against Architecture.");
+            string key = "csharp-boundary-" + Guid.NewGuid().ToString("N");
+            using (MySqlConnection connection = NewConnection())
+            {
+                MySqlCheckoutAtomicPostingBoundary boundary = new MySqlCheckoutAtomicPostingBoundary(connection);
+                boundary.Open();
+                boundary.BeginAndBind();
+                Require(boundary.TryClaimOperation(key), "First claim must succeed.");
+                boundary.Commit();
+                boundary.Close();
+            }
+            MySqlCheckoutOperationJournal journal = new MySqlCheckoutOperationJournal(NewConnection);
+            Require(journal.IsPersisted(key), "Committed C# operation must be durable.");
+            using (MySqlConnection connection = NewConnection())
+            {
+                MySqlCheckoutAtomicPostingBoundary boundary = new MySqlCheckoutAtomicPostingBoundary(connection);
+                boundary.Open();
+                boundary.BeginAndBind();
+                Require(!boundary.TryClaimOperation(key), "Duplicate C# operation must be rejected.");
+                boundary.Rollback();
+                boundary.Close();
+            }
+            string rolledBack = key + "-rollback";
+            using (MySqlConnection connection = NewConnection())
+            {
+                MySqlCheckoutAtomicPostingBoundary boundary = new MySqlCheckoutAtomicPostingBoundary(connection);
+                boundary.Open();
+                boundary.BeginAndBind();
+                Require(boundary.TryClaimOperation(rolledBack), "Rollback claim should begin.");
+                boundary.Rollback();
+                boundary.Close();
+            }
+            Require(!journal.IsPersisted(rolledBack), "Rolled back C# operation must not persist.");
+            using (MySqlConnection connection = NewConnection())
+            {
+                MySqlCheckoutAtomicPostingBoundary boundary = new MySqlCheckoutAtomicPostingBoundary(connection);
+                boundary.Open();
+                boundary.BeginAndBind();
+                Require(boundary.TryClaimOperation(rolledBack), "Retry after verified rollback must succeed.");
+                boundary.Commit();
+                boundary.Close();
+            }
+            Require(journal.IsPersisted(rolledBack), "Retry must be durable.");
+            // A lost acknowledgement after COMMIT is not permission to repost.
+            // The second connection must see the committed claim, and a third
+            // connection must still reject it after the first was closed.
+            using (MySqlConnection connection = NewConnection())
+            {
+                MySqlCheckoutAtomicPostingBoundary boundary = new MySqlCheckoutAtomicPostingBoundary(connection);
+                boundary.Open();
+                boundary.BeginAndBind();
+                Require(!boundary.TryClaimOperation(key), "Lost-ack replay must not claim committed ID.");
+                boundary.Rollback();
+                boundary.Close();
+            }
+            Require(journal.IsPersisted(key), "Reconciliation must survive duplicate replay.");
+            Require(Scalar("SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id = '" + key + "'") == 1m,
+                "Lost-ack replay must preserve exactly one durable operation claim.");
+            Require(Scalar("SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id = '" + rolledBack + "'") == 1m,
+                "Rollback retry must persist exactly one operation claim.");
+
+            // A competing transaction must not create a second durable claim.
+            // This is an actual two-connection InnoDB contention test, not a mock.
+            string contested = key + "-contended";
+            using (MySqlConnection first = NewConnection())
+            using (MySqlConnection second = NewConnection())
+            {
+                var winner = new MySqlCheckoutAtomicPostingBoundary(first);
+                winner.Open();
+                winner.BeginAndBind();
+                Require(winner.TryClaimOperation(contested), "First concurrent claim failed.");
+                var loser = new MySqlCheckoutAtomicPostingBoundary(second);
+                loser.Open();
+                loser.BeginAndBind();
+                using (var wait = new System.Threading.ManualResetEventSlim(false))
+                {
+                    bool duplicate = false;
+                    Exception failure = null;
+                    var contender = new System.Threading.Thread(() =>
+                    {
+                        try { duplicate = !loser.TryClaimOperation(contested); }
+                        catch (Exception ex) { failure = ex; }
+                        finally { wait.Set(); }
+                    });
+                    contender.IsBackground = true;
+                    contender.Start();
+                    Require(!wait.Wait(150), "Uncommitted claim was not isolated from concurrent cashier.");
+                    winner.Commit();
+                    winner.Close();
+                    Require(wait.Wait(10000), "Concurrent claim did not settle after commit.");
+                    if (failure != null) throw new InvalidOperationException("Concurrent claim failed.", failure);
+                    Require(duplicate, "Second cashier acquired duplicate durable operation.");
+                }
+                loser.Rollback();
+                loser.Close();
+            }
+            Require(journal.IsPersisted(contested), "Concurrent winning operation not durable.");
+            Require(Scalar("SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id = '" + contested + "'") == 1m,
+                "Concurrent committed claim must leave exactly one durable operation row.");
+
+            // If the first cashier rolls back, a waiting cashier must be
+            // allowed to claim the ID exactly once. This proves rollback
+            // releases the InnoDB unique-key lock rather than poisoning retries.
+            string rolledBackContested = key + "-contended-rollback";
+            using (MySqlConnection first = NewConnection())
+            using (MySqlConnection second = NewConnection())
+            {
+                var aborted = new MySqlCheckoutAtomicPostingBoundary(first);
+                aborted.Open();
+                aborted.BeginAndBind();
+                Require(aborted.TryClaimOperation(rolledBackContested), "Initial rollback contender failed.");
+                var successor = new MySqlCheckoutAtomicPostingBoundary(second);
+                successor.Open();
+                successor.BeginAndBind();
+                using (var wait = new System.Threading.ManualResetEventSlim(false))
+                {
+                    bool claimed = false;
+                    Exception failure = null;
+                    var contender = new System.Threading.Thread(() =>
+                    {
+                        try { claimed = successor.TryClaimOperation(rolledBackContested); }
+                        catch (Exception ex) { failure = ex; }
+                        finally { wait.Set(); }
+                    });
+                    contender.IsBackground = true;
+                    contender.Start();
+                    Require(!wait.Wait(150), "Uncommitted rollback contender was not isolated.");
+                    aborted.Rollback();
+                    aborted.Close();
+                    Require(wait.Wait(10000), "Successor did not settle after rollback.");
+                    if (failure != null) throw new InvalidOperationException("Rollback contender failed.", failure);
+                    Require(claimed, "Rollback did not release durable operation ID.");
+                }
+                successor.Commit();
+                successor.Close();
+            }
+            Require(journal.IsPersisted(rolledBackContested),
+                "Successor claim after rollback must be durable.");
+            using (MySqlConnection connection = NewConnection())
+            {
+                var duplicate = new MySqlCheckoutAtomicPostingBoundary(connection);
+                duplicate.Open();
+                duplicate.BeginAndBind();
+                Require(!duplicate.TryClaimOperation(rolledBackContested),
+                    "Rollback successor must not be posted twice.");
+                duplicate.Rollback();
+                duplicate.Close();
+            }
+
+            // A malformed ID must never be inserted, even when the caller
+            // has already begun a transaction.
+            using (MySqlConnection connection = NewConnection())
+            {
+                MySqlCheckoutAtomicPostingBoundary boundary = new MySqlCheckoutAtomicPostingBoundary(connection);
+                boundary.Open();
+                boundary.BeginAndBind();
+                bool rejected = false;
+                try { boundary.TryClaimOperation(" invalid "); }
+                catch (ArgumentException) { rejected = true; }
+                Require(rejected, "Whitespace-surrounded operation ID must be rejected.");
+                boundary.Rollback();
+                boundary.Close();
+            }
+
+            // The durable journal must not mistake a missing operation for
+            // an unknown database result; an actual connection error must
+            // propagate instead of authorizing a retry.
+            Require(!journal.IsPersisted("not-present-" + Guid.NewGuid().ToString("N")),
+                "A never-submitted operation must be absent.");
+            var unreachable = new MySqlCheckoutOperationJournal(() =>
+                new MySqlConnection("Server=127.0.0.1;Port=1;Database=checkout_disposable;Uid=checkout_test;Pwd=checkout-test-only;SslMode=Disabled;Connection Timeout=1;"));
+            bool connectionFailed = false;
+            try { unreachable.IsPersisted(key); }
+            catch (MySqlException) { connectionFailed = true; }
+            Require(connectionFailed, "Unavailable journal must propagate unknown outcome.");
+
+            // Real production stock/movement writers, with signed V1 sale/return.
+            using (MySqlConnection db = NewConnection())
+            {
+                db.Open();
+                using (MySqlCommand setup = db.CreateCommand())
+                {
+                    setup.CommandText = "CREATE TABLE TABLE_ARTICLES (ID_ARTICLE VARCHAR(64) PRIMARY KEY, STOCK DECIMAL(16,3) NOT NULL) ENGINE=InnoDB";
+                    setup.ExecuteNonQuery();
+                    setup.CommandText = "CREATE TABLE TABLE_MOUVEMENTS_STOCK (DATES VARCHAR(16), HEURE VARCHAR(16), LIBELLE VARCHAR(128), ID_ARTICLE VARCHAR(64), CODE_ARTICLE VARCHAR(64), ARTICLE VARCHAR(128), QUANTITE DECIMAL(16,3)) ENGINE=InnoDB";
+                    setup.ExecuteNonQuery();
+                    setup.CommandText = "INSERT INTO TABLE_ARTICLES VALUES ('CSharp-Stock',10)";
+                    setup.ExecuteNonQuery();
+                }
+                using (MySqlTransaction tx = db.BeginTransaction())
+                using (MySqlCommand cmd = db.CreateCommand())
+                {
+                    cmd.Transaction = tx;
+                    bool rejectedSelfReturn = false;
+                    try
+                    {
+                        CashReturnConsumptionClaim.ClaimFullOriginal(
+                            db, tx, "self-refund", "self-refund", 1m);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        rejectedSelfReturn = true;
+                    }
+                    Require(rejectedSelfReturn,
+                        "Direct durable return claim must reject self-referential operation identity.");
+                    CheckoutStockWriter.Apply(cmd, db, "SALE-1", "CSharp-Stock", "CODE", "Article", 2m);
+                    CheckoutStockWriter.Apply(cmd, db, "RETURN-1", "CSharp-Stock", "CODE", "Article", -1m);
+                    tx.Commit();
+                }
+                using (MySqlCommand check = db.CreateCommand())
+                {
+                    check.CommandText = "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'";
+                    Require(Convert.ToDecimal(check.ExecuteScalar()) == 9m, "Sale/return stock parity failed.");
+                    check.CommandText = "SELECT SUM(QUANTITE) FROM TABLE_MOUVEMENTS_STOCK WHERE ID_ARTICLE='CSharp-Stock'";
+                    Require(Convert.ToDecimal(check.ExecuteScalar()) == -1m, "Signed movement parity failed.");
+                }
+                using (MySqlTransaction tx = db.BeginTransaction())
+                using (MySqlCommand cmd = db.CreateCommand())
+                {
+                    cmd.Transaction = tx;
+                    bool missingRejected = false;
+                    try { CheckoutStockWriter.Apply(cmd, db, "BAD", "missing", "CODE", "Article", 3m); }
+                    catch (InvalidOperationException) { missingRejected = true; }
+                    Require(missingRejected, "Missing article must fail closed.");
+                    CheckoutStockWriter.Apply(cmd, db, "ROLLBACK", "CSharp-Stock", "CODE", "Article", 4m);
+                    tx.Rollback();
+                }
+                using (MySqlCommand check = db.CreateCommand())
+                {
+                    check.CommandText = "SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'";
+                    Require(Convert.ToDecimal(check.ExecuteScalar()) == 9m, "Rollback changed stock.");
+                    check.CommandText = "SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE='TICKET | ROLLBACK'";
+                    Require(Convert.ToInt64(check.ExecuteScalar()) == 0, "Rollback left movement.");
+                    bool noTxRejected = false;
+                    try { CheckoutStockWriter.Apply(check, db, "NO-TX", "CSharp-Stock", "CODE", "Article", 1m); }
+                    catch (InvalidOperationException) { noTxRejected = true; }
+                    Require(noTxRejected, "Writer accepted no transaction.");
+                }
+            }
+            VerifyProductionPosting();
+            VerifyAuthorizedPortTransaction();
+            VerifyRealCashPreparation();
+            VerifyCreditReturns();
+            VerifyCardReturns();
+            VerifyPartialCashReturns();
+            Console.WriteLine("PASS production C# stock sale/return, movement, missing article and rollback.");
+            Console.WriteLine("PASS production C# MariaDB boundary: commit, replay, rollback, invalid ID and unknown reconciliation.");
+        }
+        private static void Sql(string sql)
+        {
+            using (var db = NewConnection())
+            {
+                db.Open();
+                using (var cmd = db.CreateCommand()) { cmd.CommandText = sql; cmd.ExecuteNonQuery(); }
+            }
+        }
+
+        private static decimal Scalar(string sql)
+        {
+            using (var db = NewConnection())
+            {
+                db.Open();
+                using (var cmd = db.CreateCommand()) { cmd.CommandText = sql; return Convert.ToDecimal(cmd.ExecuteScalar()); }
+            }
+        }
+
+        private static CheckoutPostingInput Input(string id, bool injectFailure)
+        {
+            var date = new DateTime(2026, 1, 1, 12, 0, 0);
+            return new CheckoutPostingInput
+            {
+                ReadStock = () => new[] { new CheckoutStockLine { TicketNumber = "1", ArticleId = "CSharp-Stock", ArticleCode = "CODE", ArticleName = "Article", BasketQuantity = 2m } },
+                ReadHeader = () => new TicketHeaderRecord { TicketId = id, TicketNumber = "1", SaleDate = date, Cashier = "fixture-cashier", ClientId = "0", ClientCode = "0", ClientName = "Fixture", Workstation = "01", TotalText = "10", Operation = "VENTE" },
+                ReadJournal = () => new TicketJournalRecord { TicketId = id, TicketNumber = "1", SaleDate = date, Workstation = "01", Cashier = "fixture-cashier", Seller = "fixture", ClientId = "0", ClientCode = "0", ClientName = "Fixture", Operation = "VENTE", PriceType = "DETAIL", PaymentModes = "ESPECES" },
+                ReadPayments = () => new[] { new TicketPaymentWrite { Kind = TicketPaymentKind.Cash, AmountText = "10", Context = new TicketPaymentContext { TicketId = id, TicketNumber = "1", SaleDate = date, Cashier = "fixture-cashier", ClientId = "0", ClientCode = "0", ClientName = "Fixture", Workstation = "01", Operation = "VENTE", Remark = "" } } },
+                // Fault after stock, header, journal AND payment have executed.
+                // No physical printer side effect is allowed before Commit.
+                Print = () => { if (injectFailure) throw new InvalidOperationException("injected-after-payment"); },
+                ReadCompletion = () => new CheckoutCompletionRecord { Workstation = "01", TicketNumber = "1" }
+            };
+        }
+
+        private static void Post(string operation, string ticket, bool fail)
+        {
+            using (var db = NewConnection())
+            {
+                CheckoutAtomicPostingService.Execute(new MySqlCheckoutAtomicPostingBoundary(db),
+                    Input(ticket, fail), operation, new CheckoutCommitProgress());
+            }
+        }
+
+        private static void SeedBasket()
+        {
+            Sql("INSERT INTO TABLE_01 VALUES ('CSharp-Stock','CODE','Article','Food',1,1,5,2,0,10,0,'G')");
+        }
+
+        private static void VerifyProductionPosting()
+        {
+            // These disposable tables reproduce the columns consumed by the
+            // actual legacy writers; no replacement posting store is compiled.
+            Sql("CREATE TABLE TABLE_VENTES_ENTETE (ID_TICKET VARCHAR(64) PRIMARY KEY,TICKET TEXT,DATES TEXT,CAISSIER TEXT,ID_CLIENT TEXT,CODE_CLIENT TEXT,CLIENT TEXT,POSTE TEXT,Total_NET DECIMAL(16,3),OPERATION TEXT) ENGINE=InnoDB");
+            Sql("CREATE TABLE TABLE_01 (ID_ARTICLE VARCHAR(64),Code TEXT,Article TEXT,Famille TEXT,PRIX_A DECIMAL(16,3),PRIX_MP DECIMAL(16,3),PRIX_V DECIMAL(16,3),Qté DECIMAL(16,3),Remise DECIMAL(16,3),TOTAL_NET DECIMAL(16,3),TAUX_TVA DECIMAL(16,3),GROUPE TEXT) ENGINE=InnoDB");
+            Sql("CREATE TABLE TABLE_VENTES_JOURNAL (ID_TICKET VARCHAR(64),Ticket TEXT,Dates TEXT,Heure TEXT,ID_ARTICLE VARCHAR(64),Code TEXT,Article TEXT,Famille TEXT,PRIX_A DECIMAL(16,3),PRIX_MP DECIMAL(16,3),PRIX_V DECIMAL(16,3),Qté DECIMAL(16,3),Remise DECIMAL(16,3),Total_NET DECIMAL(16,3),TAUX_TVA DECIMAL(16,3),GROUPE TEXT,Caissier TEXT,Vendeur TEXT,ID_CLIENT TEXT,CODE_CLIENT TEXT,CLIENT TEXT,POSTE TEXT,OPERATION TEXT,NOTES TEXT,NOTES_TYPE_PRIX TEXT,NOTES_MODE_P TEXT) ENGINE=InnoDB");
+            Sql("CREATE TABLE TABLE_VENTES_REGLEMENTS (ID_TICKET VARCHAR(64),TICKET TEXT,DATES TEXT,CAISSIER TEXT,ID_CLIENT TEXT,CODE_CLIENT TEXT,CLIENT TEXT,POSTE TEXT,MONTANT DECIMAL(16,3),MODE_P TEXT,OPERATION TEXT,NOTES_REMARQUE TEXT) ENGINE=InnoDB");
+            Sql("CREATE TABLE TABLE_NUM (CL INT NOT NULL) ENGINE=InnoDB");
+            Sql("INSERT INTO TABLE_NUM VALUES (1)");
+            SeedBasket();
+            Post("production-sale", "production-ticket", false);
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='production-ticket' AND Total_NET=10") == 1, "Actual ticket header not persisted.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='production-ticket' AND Qté=2 AND Total_NET=10") == 1, "Actual sale journal not persisted.");
+            Require(Scalar("SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='production-ticket'") == 10, "Actual cash payment not persisted.");
+            Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 7, "Sale stock must decrement exactly once.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_01") == 0 && Scalar("SELECT CL FROM TABLE_NUM") == 2, "Completion did not clear basket/advance sequence.");
+            Require(new MySqlCheckoutOperationJournal(NewConnection).IsPersisted("production-sale"), "Financial operation claim missing.");
+
+            SeedBasket();
+            Post("production-sale", "must-not-post", false);
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == 1 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 7 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_01") == 1, "Duplicate replay changed sale, stock or basket.");
+
+            var movements = Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK");
+            bool failed = false;
+            try { Post("production-rollback", "rolledback-ticket", true); }
+            catch (InvalidOperationException ex) when (ex.Message == "injected-after-payment") { failed = true; }
+            Require(failed, "Fault injection did not execute after actual payment writer.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == 1, "Rollback retained financial rows.");
+            Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 7 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movements &&
+                Scalar("SELECT COUNT(*) FROM TABLE_01") == 1 && Scalar("SELECT CL FROM TABLE_NUM") == 2,
+                "Rollback changed stock, movement, basket or sequence.");
+            Require(!new MySqlCheckoutOperationJournal(NewConnection).IsPersisted("production-rollback"), "Rolled back financial claim survived.");
+            Post("production-rollback", "retried-ticket", false);
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == 2 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == 2 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 5,
+                "Retry after verified rollback failed financial persistence.");
+            Console.WriteLine("PASS actual production posting: ticket/payment/journal/stock/completion, durable duplicate and rollback after payment. Trusted authorization and WPF W2 acceptance remain pending.");
+        }
+
+        private sealed class PreparationFixture : ITrustedCheckoutPostingPreparation
+        {
+            internal Func<Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest, MySqlConnection, MySqlTransaction, CheckoutPostingInput> Callback;
+            public CheckoutPostingInput Prepare(Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest request,
+                MySqlConnection connection, MySqlTransaction transaction) => Callback(request, connection, transaction);
+        }
+
+        private static Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest Request(string operation)
+        {
+            return new Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest(operation,
+                "fixture-cashier", "MAD", false,
+                new[] { new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2) },
+                new[] { new Hanouty.ArchitectureBridge.CheckoutPayment(Hanouty.ArchitectureBridge.CheckoutPaymentKind.Cash, 10m) },
+                10m);
+        }
+
+        private static void VerifyAuthorizedPortTransaction()
+        {
+            var calls = 0;
+            var preparation = new PreparationFixture
+            {
+                Callback = (request, connection, transaction) =>
+                {
+                    calls++;
+                    Require(connection.State == System.Data.ConnectionState.Open &&
+                        transaction != null && ReferenceEquals(transaction.Connection, connection),
+                        "Trusted preparation must receive the active posting connection/transaction.");
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.Transaction = transaction;
+                        command.CommandText = "SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id=@id";
+                        command.Parameters.AddWithValue("@id", request.OperationId);
+                        Require(Convert.ToInt32(command.ExecuteScalar()) == 1,
+                            "Preparation must see the operation claim in its transaction.");
+                    }
+                    Require(Scalar("SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id='port-sale'") == 0,
+                        "Operation must not be committed before trusted preparation.");
+                    return Input("port-ticket", false);
+                }
+            };
+            var port = new AuthorizedCheckoutMariaDbPort(NewConnection, preparation);
+            SeedBasket();
+            port.Commit(Request("port-sale"));
+            Require(calls == 1 && Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == 3 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == 3 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 3,
+                "Actual authorized port failed production financial persistence.");
+            port.Commit(Request("port-sale"));
+            Require(calls == 1 && Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == 3 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 3,
+                "Duplicate authorized operation must skip preparation and writers.");
+
+            var denied = new AuthorizedCheckoutMariaDbPort(NewConnection, new PreparationFixture
+            {
+                Callback = (request, connection, transaction) => throw new UnauthorizedAccessException("fixture-denied")
+            });
+            SeedBasket();
+            bool rejected = false;
+            try { denied.Commit(Request("port-denied")); }
+            catch (UnauthorizedAccessException ex) when (ex.Message == "fixture-denied") { rejected = true; }
+            Require(rejected && !new MySqlCheckoutOperationJournal(NewConnection).IsPersisted("port-denied") &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == 3 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == 3 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_01") == 1 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == 3,
+                "Denied preparation must roll back the claim and preserve all business state.");
+            Console.WriteLine("PASS actual authorized port transaction, uncommitted claim isolation, duplicate preparation suppression and denied-preparation rollback; preparation is a TEST fixture, not production authentication.");
+        }
+
+        private static Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest TrustedRequest(string operation,
+            string cashier = "O'Neil", decimal amount = 10.50m)
+        {
+            return new Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest(operation, cashier, "MAD", false,
+                new[] { new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2) },
+                new[] { new Hanouty.ArchitectureBridge.CheckoutPayment(Hanouty.ArchitectureBridge.CheckoutPaymentKind.Cash, amount) },
+                10.50m);
+        }
+
+        private static void SeedTrustedBasket()
+        {
+            Sql("DELETE FROM TABLE_01");
+            Sql("INSERT INTO TABLE_01 VALUES ('CSharp-Stock','CODE''1','Lait d''été','Food',1,1,5.25,2,0,10.50,20,'G')");
+        }
+
+        private static void VerifyRealCashPreparation()
+        {
+            // Existing schema, actual credentials and actual prices in a disposable DB;
+            // the production preparation implementation is used, not a test double.
+            Sql("CREATE TABLE TABLE_PASS (ListUser VARCHAR(128), ListPass VARCHAR(256), Catégorie VARCHAR(64)) ENGINE=InnoDB");
+            Sql("INSERT INTO TABLE_PASS VALUES ('O''Neil','1234','UTILISATEUR')");
+            Sql("ALTER TABLE TABLE_NUM ADD ID INT NOT NULL DEFAULT 0");
+            Sql("ALTER TABLE TABLE_ARTICLES ADD Code VARCHAR(64), ADD Article VARCHAR(128), ADD Famille VARCHAR(64), ADD PRIX_A DECIMAL(16,3), ADD PRIX_MP DECIMAL(16,3), ADD PRIX_V_1 DECIMAL(16,3), ADD TAUX_TVA DECIMAL(16,3), ADD GROUPE VARCHAR(64), ADD PROMOTION DECIMAL(16,3) DEFAULT 0, ADD PRIX_QTE DECIMAL(16,3) DEFAULT 0");
+            Sql("UPDATE TABLE_ARTICLES SET STOCK=100,Code='CODE''1',Article='Lait d''été',Famille='Food',PRIX_A=1,PRIX_MP=1,PRIX_V_1=5.25,TAUX_TVA=20,GROUPE='G' WHERE ID_ARTICLE='CSharp-Stock'");
+            Sql("INSERT INTO TABLE_ARTICLES (ID_ARTICLE,STOCK,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V_1,TAUX_TVA,GROUPE,PROMOTION,PRIX_QTE) VALUES ('CSharp-Other',100,'CODE-2','Other item','Food',2,2,3,20,'G2',0,0)");
+            Sql("DELETE FROM TABLE_01");
+            var headers = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE");
+            var payments = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS");
+            var stock = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            var journal = new MySqlCheckoutOperationJournal(NewConnection);
+            var detailCount = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL");
+            var movementCount = Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK");
+            var sequenceValue = Scalar("SELECT CL FROM TABLE_NUM");
+
+            var expectedBasketRows = 0;
+            Action<string, Action> rejected = (operation, action) =>
+            {
+                bool denied = false;
+                try { action(); }
+                catch (UnauthorizedAccessException) { denied = true; }
+                catch (InvalidOperationException) { denied = true; }
+                catch (NotSupportedException) { denied = true; }
+                // Input guards reject malformed baskets before MariaDB with ArgumentException.
+                // The shared rejection assertion must still verify zero financial side effects.
+                catch (ArgumentException) { denied = true; }
+                Require(denied && !journal.IsPersisted(operation) &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == headers &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == payments &&
+                    Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stock &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_01") == expectedBasketRows &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL") == detailCount &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movementCount &&
+                    Scalar("SELECT CL FROM TABLE_NUM") == sequenceValue,
+                    "Rejected trusted preparation changed financial/basket/claim state.");
+            };
+            var correct = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(NewConnection, "01", () => "1234");
+            // Preserve an unrelated existing cashier basket, including its values.
+            SeedTrustedBasket();
+            expectedBasketRows = 1;
+            rejected("trusted-occupied", () => correct.Commit(TrustedRequest("trusted-occupied")));
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_01 WHERE ID_ARTICLE='CSharp-Stock' AND Qté=2 AND TOTAL_NET=10.50") == 1,
+                "Occupied basket content was modified.");
+            Sql("DELETE FROM TABLE_01");
+            expectedBasketRows = 0;
+            // Fail after staging a valid line; the staged row must roll back too.
+            rejected("trusted-missing-article", () => correct.Commit(
+                TrustedRequest("trusted-missing-article") with { Lines = new[] {
+                    new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2),
+                    new Hanouty.ArchitectureBridge.CheckoutBatchLine("missing-article", 1) } }));
+            var reviewPinReads = 0;
+            Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.VerifyCashierSession(
+                NewConnection, "O'Neil", () => { reviewPinReads++; return "1234"; });
+            Require(reviewPinReads == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_01") == 0 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == headers &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == payments &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stock &&
+                Scalar("SELECT CL FROM TABLE_NUM") == sequenceValue,
+                "Real cashier reauthorization must consume PIN once and perform no business writes.");
+            rejected("review-wrong-pin", () =>
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.VerifyCashierSession(
+                    NewConnection, "O'Neil", () => "incorrect"));
+            rejected("review-wrong-identity", () =>
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.VerifyCashierSession(
+                    NewConnection, "other-cashier", () => "1234"));
+            // Session reauthorization must reject control characters before
+            // opening MariaDB or reading the transient cashier PIN.
+            foreach (var invalidCashier in new[] { "O\nNeil", "O\tNeil", "O\0Neil" })
+            {
+                bool connectionOpened = false;
+                bool pinRead = false;
+                bool invalidRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.VerifyCashierSession(
+                        () => { connectionOpened = true; return NewConnection(); },
+                        invalidCashier, () => { pinRead = true; return "1234"; });
+                }
+                catch (ArgumentException) { invalidRejected = true; }
+                Require(invalidRejected && !connectionOpened && !pinRead,
+                    "Malformed cashier identity must fail before DB/PIN access.");
+            }
+            // The real WPF basket preview must fail closed before even asking
+            // for a connection when a scan supplies an invalid line identity/quantity.
+            foreach (var invalidLine in new[]
+            {
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine(" CSharp-Stock", 1),
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 0),
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", -1),
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine(new string('x', 65), 1),
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-\nStock", 1),
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-\tStock", 1),
+                new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-\0Stock", 1)
+            })
+            {
+                bool opened = false;
+                bool invalidRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleBasket(
+                        () => { opened = true; return NewConnection(); },
+                        new[] { invalidLine });
+                }
+                catch (ArgumentException) { invalidRejected = true; }
+                Require(invalidRejected && !opened,
+                    "Invalid basket preview must reject before opening MariaDB.");
+            }
+            // Opening the cashier before scanning needs a valid empty preview,
+            // without requesting a database connection or authorizing a payment.
+            bool emptyOpened = false;
+            var emptyPreview = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleBasket(
+                () => { emptyOpened = true; return NewConnection(); },
+                Array.Empty<Hanouty.ArchitectureBridge.CheckoutBatchLine>());
+            Require(emptyPreview.Count == 0 && !emptyOpened,
+                "Empty basket preview must remain available for cashier login without opening MariaDB.");
+            // Case-variant duplicates may resolve to one stock row under the legacy
+            // MariaDB collation; preview must reject them before any SQL access.
+            bool caseVariantOpened = false;
+            bool caseVariantRejected = false;
+            try
+            {
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleBasket(
+                    () => { caseVariantOpened = true; return NewConnection(); },
+                    new[] {
+                        new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 1),
+                        new Hanouty.ArchitectureBridge.CheckoutBatchLine("csharp-stock", 2)
+                    });
+            }
+            catch (ArgumentException) { caseVariantRejected = true; }
+            Require(caseVariantRejected && !caseVariantOpened,
+                "Case-variant duplicate article identities must reject before MariaDB.");
+            // Duplicate article identities must fail before acquiring a DB connection,
+            // including case-exact duplicates in an otherwise valid basket.
+            bool duplicateOpened = false;
+            bool duplicateRejected = false;
+            try
+            {
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleBasket(
+                    () => { duplicateOpened = true; return NewConnection(); },
+                    new[] {
+                        new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 1),
+                        new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2)
+                    });
+            }
+            catch (ArgumentException) { duplicateRejected = true; }
+            Require(duplicateRejected && !duplicateOpened,
+                "Duplicate basket article identities must reject before opening MariaDB.");
+            Func<decimal> preview = () =>
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
+                    NewConnection, TrustedRequest("preview-only").Lines);
+            Require(preview() == 10.50m &&
+                Scalar("SELECT COUNT(*) FROM TABLE_01") == 0 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == headers &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == payments &&
+                Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movementCount &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stock &&
+                Scalar("SELECT CL FROM TABLE_NUM") == sequenceValue &&
+                !journal.IsPersisted("preview-only"),
+                "Read-only authoritative preview staged, claimed or wrote financial/stock state.");
+            rejected("preview-duplicate-lines", () =>
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
+                    NewConnection, new[] {
+                        new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 1),
+                        new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 1) }));
+            rejected("preview-missing-article", () =>
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.ReadCashSaleTotal(
+                    NewConnection, new[] { new Hanouty.ArchitectureBridge.CheckoutBatchLine("not-present", 1) }));
+            var badPin = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(NewConnection, "01", () => "x' OR 1=1 --");
+            rejected("trusted-bad-pin", () => badPin.Commit(TrustedRequest("trusted-bad-pin")));
+            rejected("trusted-wrong-user", () => correct.Commit(TrustedRequest("trusted-wrong-user", "different")));
+            Sql("UPDATE TABLE_PASS SET Catégorie='DISABLED'");
+            rejected("review-disabled-category", () =>
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.VerifyCashierSession(
+                    NewConnection, "O'Neil", () => "1234"));
+            rejected("trusted-denied-category", () => correct.Commit(TrustedRequest("trusted-denied-category")));
+            Sql("UPDATE TABLE_PASS SET Catégorie='UTILISATEUR'");
+            Sql("UPDATE TABLE_ARTICLES SET PRIX_V_1=6 WHERE ID_ARTICLE='CSharp-Stock'");
+            Require(preview() == 12m, "Price preview must read current authoritative DB prices, not the UI expectation.");
+            rejected("trusted-stale-price", () => correct.Commit(TrustedRequest("trusted-stale-price")));
+            Sql("UPDATE TABLE_ARTICLES SET PRIX_V_1=5.25 WHERE ID_ARTICLE='CSharp-Stock'");
+            rejected("trusted-underpaid", () => correct.Commit(TrustedRequest("trusted-underpaid", amount:10m)));
+            Sql("UPDATE TABLE_ARTICLES SET PROMOTION=10 WHERE ID_ARTICLE='CSharp-Stock'");
+            Require(preview() == 9.45m, "Catalogue promotion must be priced by the existing LOGICA domain rule.");
+            rejected("trusted-stale-promotion-total", () => correct.Commit(TrustedRequest("trusted-stale-promotion-total")));
+            Sql("UPDATE TABLE_ARTICLES SET PROMOTION=0 WHERE ID_ARTICLE='CSharp-Stock'");
+
+            var remote = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreatePostingPort(
+                () => new MySqlConnection("Server=192.0.2.1;Database=checkout_disposable;Uid=fixture;Pwd=fixture;"),
+                "01", () => "1234");
+            rejected("trusted-remote", () => remote.Commit(TrustedRequest("trusted-remote")));
+            Sql("ALTER TABLE TABLE_PASS ENGINE=MyISAM");
+            rejected("trusted-nontransactional", () => correct.Commit(TrustedRequest("trusted-nontransactional")));
+            Sql("ALTER TABLE TABLE_PASS ENGINE=InnoDB");
+            Sql("CREATE TRIGGER trusted_payment_failure AFTER INSERT ON TABLE_VENTES_REGLEMENTS FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected-after-real-payment'");
+            bool paymentFailed = false;
+            try { correct.Commit(TrustedRequest("trusted-payment-failure")); }
+            catch (MySqlException ex) when (ex.Number == 1644) { paymentFailed = true; }
+            finally { Sql("DROP TRIGGER trusted_payment_failure"); }
+            Require(paymentFailed && !journal.IsPersisted("trusted-payment-failure") &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE") == headers &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS") == payments &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL") == detailCount &&
+                Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK") == movementCount &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stock &&
+                Scalar("SELECT COUNT(*) FROM TABLE_01") == expectedBasketRows && Scalar("SELECT CL FROM TABLE_NUM") == sequenceValue,
+                "Actual trusted cash payment failure did not roll back the complete transaction.");
+
+            var previousCulture = System.Globalization.CultureInfo.CurrentCulture;
+            try
+            {
+                foreach (string culture in new[] { "fr-FR", "en-US" })
+                {
+                    System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo(culture);
+                    Sql("DELETE FROM TABLE_01");
+                    Require(Scalar("SELECT COUNT(*) FROM TABLE_01") == 0, "Cash acceptance must begin with an empty basket.");
+                    string operation = "trusted-" + culture;
+                    correct.Commit(TrustedRequest(operation));
+                    Require(Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreateOperationJournal(NewConnection).Lookup(operation) ==
+                        Hanouty.ArchitectureBridge.CheckoutOperationOutcome.Persisted && journal.IsPersisted(operation) &&
+                        Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='" + operation + "' AND Total_NET=10.50") == 1 &&
+                        Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='" + operation + "' AND MONTANT=10.50 AND CAISSIER='O''Neil'") == 1 &&
+                        Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='" + operation + "' AND Caissier='O''Neil' AND Article='Lait d''été'") == 1 &&
+                        Scalar("SELECT COUNT(*) FROM TABLE_01") == 0,
+                        "Real authenticated cash sale failed culture or quoted-identity persistence.");
+                    // Verify original-sale evidence using real persisted SQL rows
+                    // and the same transaction; do not authorize a refund yet.
+                    using (var evidenceDb = NewConnection())
+                    {
+                        evidenceDb.Open();
+                        using (var evidenceTx = evidenceDb.BeginTransaction())
+                        {
+                            Require(CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                evidenceDb, evidenceTx, operation) == 10.50m,
+                                "Original sale exact-cash evidence differs from persisted payment.");
+                            Require(CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
+                                evidenceDb, evidenceTx, operation, "CSharp-Stock", 2m) == 10.50m,
+                                "Original full-quantity line must use persisted paid price.");
+                            // Real LOGICA received/change rows refund only the net paid total.
+                            using (var received = evidenceDb.CreateCommand())
+                            {
+                                received.Transaction = evidenceTx;
+                                received.CommandText = "UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=20 WHERE ID_TICKET=@id";
+                                received.Parameters.AddWithValue("@id", operation);
+                                received.ExecuteNonQuery();
+                            }
+                            using (var change = evidenceDb.CreateCommand())
+                            {
+                                change.Transaction = evidenceTx;
+                                change.CommandText = "INSERT INTO TABLE_VENTES_REGLEMENTS (ID_TICKET,MONTANT,MODE_P,OPERATION) VALUES (@id,-9.50,'ESPECES','VENTE')";
+                                change.Parameters.AddWithValue("@id", operation);
+                                change.ExecuteNonQuery();
+                            }
+                            Require(CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                evidenceDb, evidenceTx, operation) == 10.50m,
+                                "Cash received minus change must prove only the net refundable amount.");
+                            foreach (string mutation in new[] {
+                                "UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=-9.49 WHERE ID_TICKET=@id AND MONTANT<0",
+                                "UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=-9.501 WHERE ID_TICKET=@id AND MONTANT<0",
+                                "UPDATE TABLE_VENTES_REGLEMENTS SET MODE_P='CARTE' WHERE ID_TICKET=@id AND MONTANT<0"
+                            })
+                            {
+                                using (var corrupt = evidenceDb.CreateCommand())
+                                {
+                                    corrupt.Transaction = evidenceTx; corrupt.CommandText = mutation;
+                                    corrupt.Parameters.AddWithValue("@id", operation); corrupt.ExecuteNonQuery();
+                                }
+                                bool corruptChangeRejected = false;
+                                try { CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(evidenceDb, evidenceTx, operation); }
+                                catch (InvalidOperationException) { corruptChangeRejected = true; }
+                                Require(corruptChangeRejected, "Corrupt change row qualified for a cash refund: " + mutation);
+                                using (var restore = evidenceDb.CreateCommand())
+                                {
+                                    restore.Transaction = evidenceTx;
+                                    restore.CommandText = "UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=-9.50,MODE_P='ESPECES' WHERE ID_TICKET=@id AND MONTANT<0";
+                                    restore.Parameters.AddWithValue("@id", operation); restore.ExecuteNonQuery();
+                                }
+                            }
+                            using (var duplicate = evidenceDb.CreateCommand())
+                            {
+                                duplicate.Transaction = evidenceTx;
+                                duplicate.CommandText = "INSERT INTO TABLE_VENTES_REGLEMENTS (ID_TICKET,MONTANT,MODE_P,OPERATION) VALUES (@id,1,'ESPECES','VENTE'),(@id,-1,'ESPECES','VENTE')";
+                                duplicate.Parameters.AddWithValue("@id", operation); duplicate.ExecuteNonQuery();
+                            }
+                            bool duplicateCashRejected = false;
+                            try { CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(evidenceDb, evidenceTx, operation); }
+                            catch (InvalidOperationException) { duplicateCashRejected = true; }
+                            Require(duplicateCashRejected, "Extra offsetting cash rows must not qualify even when their net matches.");
+                            using (var cleanup = evidenceDb.CreateCommand())
+                            {
+                                cleanup.Transaction = evidenceTx;
+                                cleanup.CommandText = "DELETE FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MONTANT IN (1,-1)";
+                                cleanup.Parameters.AddWithValue("@id", operation); cleanup.ExecuteNonQuery();
+                            }
+                            using (var restore = evidenceDb.CreateCommand())
+                            {
+                                restore.Transaction = evidenceTx;
+                                restore.CommandText = "DELETE FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET=@id AND MONTANT<0; UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=10.50 WHERE ID_TICKET=@id";
+                                restore.Parameters.AddWithValue("@id", operation); restore.ExecuteNonQuery();
+                            }
+                            // Price integrity must come from the persisted
+                            // original journal, not from the current catalogue.
+                            using (var originalPriceTamper = evidenceDb.CreateCommand())
+                            {
+                                originalPriceTamper.Transaction = evidenceTx;
+                                originalPriceTamper.CommandText =
+                                    "UPDATE TABLE_VENTES_JOURNAL SET PRIX_V=PRIX_V+0.01 " +
+                                    "WHERE ID_TICKET=@id AND ID_ARTICLE='CSharp-Stock'";
+                                originalPriceTamper.Parameters.AddWithValue("@id", operation);
+                                Require(originalPriceTamper.ExecuteNonQuery() == 1,
+                                    "Expected one original journal price to tamper.");
+                            }
+                            bool mismatchedOriginalPriceRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
+                                    evidenceDb, evidenceTx, operation, "CSharp-Stock", 2m);
+                            }
+                            catch (InvalidOperationException) { mismatchedOriginalPriceRejected = true; }
+                            Require(mismatchedOriginalPriceRejected,
+                                "Original unit-price mismatch must reject cash refund evidence.");
+                            using (var restoreOriginalPrice = evidenceDb.CreateCommand())
+                            {
+                                restoreOriginalPrice.Transaction = evidenceTx;
+                                restoreOriginalPrice.CommandText =
+                                    "UPDATE TABLE_VENTES_JOURNAL SET PRIX_V=PRIX_V-0.01 " +
+                                    "WHERE ID_TICKET=@id AND ID_ARTICLE='CSharp-Stock'";
+                                restoreOriginalPrice.Parameters.AddWithValue("@id", operation);
+                                Require(restoreOriginalPrice.ExecuteNonQuery() == 1,
+                                    "Expected original journal price restoration.");
+                            }
+                            bool zeroQuantityRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
+                                    evidenceDb, evidenceTx, operation, "CSharp-Stock", 0m);
+                            }
+                            catch (InvalidOperationException) { zeroQuantityRejected = true; }
+                            Require(zeroQuantityRejected,
+                                "Zero-quantity original line cannot authorize a refund.");
+                            bool overReturnRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
+                                    evidenceDb, evidenceTx, operation, "CSharp-Stock", 3m);
+                            }
+                            catch (InvalidOperationException) { overReturnRejected = true; }
+                            Require(overReturnRejected, "Over-return must fail before posting.");
+                            bool missingLineRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
+                                    evidenceDb, evidenceTx, operation, "missing-article", 2m);
+                            }
+                            catch (InvalidOperationException) { missingLineRejected = true; }
+                            Require(missingLineRejected, "Missing original line must fail before posting.");
+                            // A changed discount without its matching persisted net is corrupt.
+                            // The refundable amount still comes from paid original evidence.
+                            using (var discountTamper = evidenceDb.CreateCommand())
+                            {
+                                discountTamper.Transaction = evidenceTx;
+                                discountTamper.CommandText =
+                                    "UPDATE TABLE_VENTES_JOURNAL SET Remise=1 " +
+                                    "WHERE ID_TICKET=@id AND ID_ARTICLE='CSharp-Stock'";
+                                discountTamper.Parameters.AddWithValue("@id", operation);
+                                Require(discountTamper.ExecuteNonQuery() == 1,
+                                    "Expected exactly one original journal line.");
+                            }
+                            bool discountedOriginalRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadOriginalFullQuantityLineAmount(
+                                    evidenceDb, evidenceTx, operation, "CSharp-Stock", 2m);
+                            }
+                            catch (InvalidOperationException) { discountedOriginalRejected = true; }
+                            Require(discountedOriginalRejected,
+                                "A changed original discount without a matching net must be rejected.");
+                            using (var discountRestore = evidenceDb.CreateCommand())
+                            {
+                                discountRestore.Transaction = evidenceTx;
+                                discountRestore.CommandText =
+                                    "UPDATE TABLE_VENTES_JOURNAL SET Remise=0 " +
+                                    "WHERE ID_TICKET=@id AND ID_ARTICLE='CSharp-Stock'";
+                                discountRestore.Parameters.AddWithValue("@id", operation);
+                                Require(discountRestore.ExecuteNonQuery() == 1,
+                                    "Expected exactly one original journal line to restore.");
+                            }
+                            foreach (var invalidOriginal in new[] { " " + operation, operation + " ", operation + "\n" })
+                            {
+                                bool invalidReferenceRejected = false;
+                                try {
+                                    CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                        evidenceDb, evidenceTx, invalidOriginal);
+                                }
+                                catch (InvalidOperationException) { invalidReferenceRejected = true; }
+                                Require(invalidReferenceRejected,
+                                    "Ambiguous original ticket reference must be rejected before refund.");
+                            }
+                            Require(decimal.Round(
+                                CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                    evidenceDb, evidenceTx, operation), 2,
+                                MidpointRounding.AwayFromZero) == 10.50m,
+                                "Original cash refund evidence must be whole-cent MAD.");
+                            // Negative/corrupted original header must never qualify
+                            // as a refundable sale even if the payment is intact.
+                            using (var corruptHeader = evidenceDb.CreateCommand())
+                            {
+                                corruptHeader.Transaction = evidenceTx;
+                                corruptHeader.CommandText =
+                                    "UPDATE TABLE_VENTES_ENTETE SET Total_NET=-10.50 WHERE ID_TICKET=@id";
+                                corruptHeader.Parameters.AddWithValue("@id", operation);
+                                Require(corruptHeader.ExecuteNonQuery() == 1,
+                                    "Expected one disposable original header to corrupt.");
+                            }
+                            bool invalidHeaderRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                    evidenceDb, evidenceTx, operation);
+                            }
+                            catch (InvalidOperationException) { invalidHeaderRejected = true; }
+                            Require(invalidHeaderRejected,
+                                "Negative original header must not qualify for cash refund.");
+                            using (var restoreHeader = evidenceDb.CreateCommand())
+                            {
+                                restoreHeader.Transaction = evidenceTx;
+                                restoreHeader.CommandText =
+                                    "UPDATE TABLE_VENTES_ENTETE SET Total_NET=10.50 WHERE ID_TICKET=@id";
+                                restoreHeader.Parameters.AddWithValue("@id", operation);
+                                Require(restoreHeader.ExecuteNonQuery() == 1,
+                                    "Expected one disposable original header to restore.");
+                            }
+                            bool missingOriginalRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                    evidenceDb, evidenceTx, operation + "-missing");
+                            }
+                            catch (InvalidOperationException) { missingOriginalRejected = true; }
+                            Require(missingOriginalRejected,
+                                "Missing original sale must not qualify for cash refund.");
+                            // A wrong settlement must fail closed even when its
+                            // header is valid. Mutate only inside the disposable
+                            // transaction and roll it back before the next case.
+                            using (var tamper = evidenceDb.CreateCommand())
+                            {
+                                tamper.Transaction = evidenceTx;
+                                tamper.CommandText =
+                                    "UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=MONTANT-0.01 " +
+                                    "WHERE ID_TICKET=@id";
+                                tamper.Parameters.AddWithValue("@id", operation);
+                                Require(tamper.ExecuteNonQuery() == 1,
+                                    "Expected exactly one original cash payment.");
+                            }
+                            bool mismatchedSettlementRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                    evidenceDb, evidenceTx, operation);
+                            }
+                            catch (InvalidOperationException) { mismatchedSettlementRejected = true; }
+                            Require(mismatchedSettlementRejected,
+                                "Original header/payment mismatch must reject refund evidence.");
+                            // A mixed/unsupported payment mode must never be
+                            // accepted as an exact-cash original sale.
+                            using (var tamperMode = evidenceDb.CreateCommand())
+                            {
+                                tamperMode.Transaction = evidenceTx;
+                                tamperMode.CommandText =
+                                    "UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=MONTANT+0.01, MODE_P='CARTE' " +
+                                    "WHERE ID_TICKET=@id";
+                                tamperMode.Parameters.AddWithValue("@id", operation);
+                                Require(tamperMode.ExecuteNonQuery() == 1,
+                                    "Expected one original payment to change its mode.");
+                            }
+                            bool nonCashOriginalRejected = false;
+                            try {
+                                CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                    evidenceDb, evidenceTx, operation);
+                            }
+                            catch (InvalidOperationException) { nonCashOriginalRejected = true; }
+                            Require(nonCashOriginalRejected,
+                                "Non-cash original settlement must reject cash return evidence.");
+                            evidenceTx.Rollback();
+                        }
+                    }
+                    stock -= 2;
+                    Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stock,
+                        "Real trusted sale did not update stock exactly once.");
+                    correct.Commit(TrustedRequest(operation));
+                    Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stock,
+                        "Real trusted duplicate changed stock.");
+                }
+            }
+            finally { System.Globalization.CultureInfo.CurrentCulture = previousCulture; }
+            // Real return path: same posting port, existing signed V1 writers,
+            // persisted original sale, durable unique consumption, one InnoDB transaction.
+            Sql("CREATE TABLE IF NOT EXISTS hanouty_cash_return_consumption (original_ticket_id VARCHAR(64) NOT NULL,return_operation_id VARCHAR(64) NOT NULL,consumed_quantity DECIMAL(16,3) NOT NULL,UNIQUE KEY uq_original (original_ticket_id),UNIQUE KEY uq_return (return_operation_id)) ENGINE=InnoDB");
+            var refund = new Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest(
+                "refund-fr", "O'Neil", "MAD", true,
+                new[] { new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2) },
+                new[] { new Hanouty.ArchitectureBridge.CheckoutPayment(Hanouty.ArchitectureBridge.CheckoutPaymentKind.Cash, 10.50m) },
+                10.50m, "trusted-fr-FR");
+            Sql("UPDATE TABLE_ARTICLES SET PRIX_V_1=99 WHERE ID_ARTICLE='CSharp-Stock'");
+            decimal stockBeforeRefund = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            // A trigger that silently alters the durable claim must abort the
+            // entire refund before any signed stock/payment/journal is committed.
+            Sql("CREATE TRIGGER refund_claim_mutation BEFORE INSERT ON hanouty_cash_return_consumption " +
+                "FOR EACH ROW SET NEW.consumed_quantity=NEW.consumed_quantity+1");
+            bool mutatedClaimRejected = false;
+            try { correct.Commit(refund); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Persisted cash return consumption claim changed."))
+            { mutatedClaimRejected = true; }
+            finally { Sql("DROP TRIGGER refund_claim_mutation"); }
+            Require(mutatedClaimRejected && !journal.IsPersisted("refund-fr") &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-fr-FR'") == 0 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='refund-fr'") == 0,
+                "Mutated durable return claim did not roll back refund and stock.");
+            // A corrupted return-operation identity is equally dangerous: the
+            // original ticket would be consumed under an unrelated operation.
+            // The posting transaction must reject it without touching stock.
+            Sql("CREATE TRIGGER refund_claim_identity_mutation BEFORE INSERT ON hanouty_cash_return_consumption " +
+                "FOR EACH ROW SET NEW.return_operation_id='corrupted-refund-operation'");
+            bool mutatedIdentityRejected = false;
+            try { correct.Commit(refund); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Persisted cash return consumption claim changed."))
+            { mutatedIdentityRejected = true; }
+            finally { Sql("DROP TRIGGER refund_claim_identity_mutation"); }
+            Require(mutatedIdentityRejected && !journal.IsPersisted("refund-fr") &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-fr-FR'") == 0 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='refund-fr'") == 0,
+                "Mutated return operation identity did not roll back refund and stock.");
+            // A journal trigger that rewrites the article ID must not produce
+            // a financially valid-looking refund for a different stock item.
+            Sql("CREATE TRIGGER refund_journal_identity_mutation BEFORE INSERT ON TABLE_VENTES_JOURNAL " +
+                "FOR EACH ROW SET NEW.ID_ARTICLE='wrong-refund-article'");
+            bool wrongRefundArticleRejected = false;
+            try { correct.Commit(refund); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Signed refund receipt, payment or journal failed verification."))
+            { wrongRefundArticleRejected = true; }
+            finally { Sql("DROP TRIGGER refund_journal_identity_mutation"); }
+            Require(wrongRefundArticleRejected && !journal.IsPersisted("refund-fr") &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-fr-FR'") == 0 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='refund-fr'") == 0 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='refund-fr'") == 0,
+                "Mutated refund journal article identity did not roll back stock, claim and receipt.");
+            // Persisted refund tax must match the locked original sale even when
+            // a journal trigger preserves the refund quantity and amount.
+            Sql("CREATE TRIGGER refund_journal_tax_mutation BEFORE INSERT ON TABLE_VENTES_JOURNAL " +
+                "FOR EACH ROW SET NEW.TAUX_TVA=NEW.TAUX_TVA+1");
+            bool wrongRefundTaxRejected = false;
+            try { correct.Commit(refund); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Signed refund receipt, payment or journal failed verification."))
+            { wrongRefundTaxRejected = true; }
+            finally { Sql("DROP TRIGGER refund_journal_tax_mutation"); }
+            Require(wrongRefundTaxRejected && !journal.IsPersisted("refund-fr") &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-fr-FR'") == 0 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='refund-fr'") == 0 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='refund-fr'") == 0,
+                "Mutated refund VAT did not roll back stock, payment, journal and claim.");
+            // A trigger must not alter the signed refund quantity while preserving
+            // its cash amount: the original sale is the only quantity authority.
+            Sql("CREATE TRIGGER refund_journal_quantity_mutation BEFORE INSERT ON TABLE_VENTES_JOURNAL " +
+                "FOR EACH ROW SET NEW.`Qté`=NEW.`Qté`-1");
+            bool wrongRefundQuantityRejected = false;
+            try { correct.Commit(refund); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Signed refund receipt, payment or journal failed verification."))
+            { wrongRefundQuantityRejected = true; }
+            finally { Sql("DROP TRIGGER refund_journal_quantity_mutation"); }
+            Require(wrongRefundQuantityRejected && !journal.IsPersisted("refund-fr") &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-fr-FR'") == 0 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='refund-fr'") == 0 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='refund-fr'") == 0,
+                "Mutated refund quantity did not atomically roll back stock, payment, journal and claim.");
+            correct.Commit(refund);
+            Require(journal.IsPersisted("refund-fr") &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 2m &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-fr-FR' AND return_operation_id='refund-fr' AND consumed_quantity=2") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='refund-fr' AND Total_NET=-10.50 AND OPERATION='RETOUR REMBOURSEMENT'") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='refund-fr' AND MONTANT=-10.50 AND MODE_P='ESPECES'") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='refund-fr' AND Qté=-2 AND Total_NET=-10.50") == 1,
+                "Real cash return did not atomically persist signed header, payment, journal, stock and consumption.");
+            correct.Commit(refund); // identical operation ID must be exactly once.
+            Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 2m,
+                "Duplicate refund operation changed stock.");
+            // Rebase the rejection snapshot after the intentionally committed refund.
+            // Otherwise a correct rejected return is compared to pre-refund sale totals.
+            headers = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE");
+            payments = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS");
+            stock = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            detailCount = Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL");
+            movementCount = Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK");
+            sequenceValue = Scalar("SELECT CL FROM TABLE_NUM");
+            var secondRefund = refund with { OperationId = "refund-different" };
+            rejected("refund-same-original-new-operation", () => correct.Commit(secondRefund));
+            rejected("refund-over-quantity", () => correct.Commit(refund with { OperationId = "refund-over", Lines = new[] { new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 3) }, OriginalTicketId = "trusted-en-US" }));
+            rejected("refund-missing-original", () => correct.Commit(refund with { OperationId = "refund-missing", OriginalTicketId = "missing-ticket" }));
+            Require(!journal.IsPersisted("refund-different") && !journal.IsPersisted("refund-over") &&
+                !journal.IsPersisted("refund-missing"), "Rejected refund left durable operation claim.");
+            // A trigger changing a cash refund to another tender must abort the
+            // same transaction before stock, receipt or the original claim commit.
+            Sql("CREATE TRIGGER refund_payment_mode_mutation BEFORE INSERT ON TABLE_VENTES_REGLEMENTS " +
+                "FOR EACH ROW SET NEW.MODE_P='CREDIT'");
+            bool wrongRefundTenderRejected = false;
+            try { correct.Commit(refund with { OperationId = "refund-wrong-tender", OriginalTicketId = "trusted-en-US" }); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Signed refund receipt, payment or journal failed verification."))
+            { wrongRefundTenderRejected = true; }
+            finally { Sql("DROP TRIGGER refund_payment_mode_mutation"); }
+            Require(wrongRefundTenderRejected && !journal.IsPersisted("refund-wrong-tender") &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-en-US'") == 0 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 2m &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='refund-wrong-tender'") == 0 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='refund-wrong-tender'") == 0,
+                "Mutated refund tender was not rejected with full transactional rollback.");
+            // An InnoDB trigger may corrupt the persisted consumption quantity even
+            // though INSERT reports one affected row. Verification must reject it
+            // before signed stock, payment and ticket can commit.
+            Sql("CREATE TRIGGER refund_claim_quantity_mutation BEFORE INSERT ON hanouty_cash_return_consumption " +
+                "FOR EACH ROW SET NEW.consumed_quantity=NEW.consumed_quantity+1");
+            bool mutatedQuantityClaimRejected = false;
+            try { correct.Commit(refund with { OperationId = "refund-mutated-claim", OriginalTicketId = "trusted-en-US" }); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Persisted cash return consumption claim changed."))
+            { mutatedQuantityClaimRejected = true; }
+            finally { Sql("DROP TRIGGER refund_claim_quantity_mutation"); }
+            Require(mutatedQuantityClaimRejected && !journal.IsPersisted("refund-mutated-claim") &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-en-US'") == 0 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 2m &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='refund-mutated-claim'") == 0 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='refund-mutated-claim'") == 0,
+                "Mutated original-sale consumption claim was not atomically rolled back.");
+            Sql("CREATE TRIGGER refund_payment_failure AFTER INSERT ON TABLE_VENTES_REGLEMENTS FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='refund-payment-rollback'");
+            bool refundFailed = false;
+            try { correct.Commit(refund with { OperationId = "refund-rollback", OriginalTicketId = "trusted-en-US" }); }
+            catch (MySqlException ex) when (ex.Number == 1644) { refundFailed = true; }
+            finally { Sql("DROP TRIGGER refund_payment_failure"); }
+            Require(refundFailed && !journal.IsPersisted("refund-rollback") &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='trusted-en-US'") == 0 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 2m &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='refund-rollback'") == 0 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='refund-rollback'") == 0,
+                "Injected refund payment failure did not roll back claim, stock and receipt.");
+            correct.Commit(refund with { OperationId = "refund-restart", OriginalTicketId = "trusted-en-US" });
+            Require(journal.IsPersisted("refund-restart") &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == stockBeforeRefund + 4m,
+                "Refund after failed transaction did not recover correctly.");
+            Console.WriteLine("PASS real full-ticket cash refund, signed SQL, stock restoration, durable exact-once, duplicate, missing, over-return, rollback and restart.");
+            // A nontransactional ledger must be rejected BEFORE a durable claim,
+            // and must never be reported Persisted by the production journal.
+            Sql("ALTER TABLE hanouty_checkout_operations ENGINE=MyISAM");
+            try
+            {
+                bool refusedLedger = false;
+                try { correct.Commit(TrustedRequest("trusted-invalid-ledger")); }
+                catch (InvalidOperationException) { refusedLedger = true; }
+                Require(refusedLedger &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_checkout_operations WHERE operation_id='trusted-invalid-ledger'") == 0 &&
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.CreateOperationJournal(NewConnection).Lookup("trusted-fr-FR") ==
+                        Hanouty.ArchitectureBridge.CheckoutOperationOutcome.Unknown,
+                    "Nontransactional ledger was written or falsely reported committed.");
+            }
+            finally { Sql("ALTER TABLE hanouty_checkout_operations ENGINE=InnoDB"); }
+            Require(!journal.IsPersisted("trusted-invalid-ledger"), "Rejected ledger left a durable claim.");
+            VerifyMultiLineCashReturn(correct, journal);
+            Console.WriteLine("PASS read-only authoritative price preview, shared posting rounding and no basket/claim/stock mutation.");
+            Console.WriteLine("PASS REAL TABLE_PASS authentication + authoritative empty-basket staging; occupied basket preserved; denied PIN/category/stale price/underpayment roll back; quoted cashier/article and fr-FR/en-US exact cash persist once. WPF registration and broader V1 policy remain pending.");
+        }
+
+        private static Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest MultiLineRequest(
+            string operation, bool isReturn, string originalTicketId = null)
+        {
+            Hanouty.ArchitectureBridge.CheckoutBatchLine[] lines = isReturn
+                ? new[] {
+                    new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Other", 1),
+                    new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2) }
+                : new[] {
+                    new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2),
+                    new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Other", 1) };
+            // Use the same authoritative DB price policy as real preparation.
+            // The separate SQL assertions below still pin expected signed values.
+            decimal amount = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                .ReadCashSaleTotal(NewConnection, lines);
+            return new Hanouty.ArchitectureBridge.AuthorizedCheckoutRequest(
+                operation, "O'Neil", "MAD", isReturn, lines,
+                new[] { new Hanouty.ArchitectureBridge.CheckoutPayment(
+                    Hanouty.ArchitectureBridge.CheckoutPaymentKind.Cash, amount) },
+                amount, originalTicketId);
+        }
+
+        private static void VerifyMultiLineCashReturn(Hanouty.ArchitectureBridge.IAuthorizedCheckoutPort correct,
+            MySqlCheckoutOperationJournal journal)
+        {
+            // Earlier authorization/preview cases intentionally mutate prices.
+            // Restore this disposable fixture explicitly so the multi-line
+            // acceptance starts from its asserted 5.25 + 3.00 price state.
+            Sql("UPDATE TABLE_ARTICLES SET PRIX_V_1=5.25,PROMOTION=0,PRIX_QTE=0 WHERE ID_ARTICLE='CSharp-Stock'");
+            Sql("UPDATE TABLE_ARTICLES SET PRIX_V_1=3.00,PROMOTION=0,PRIX_QTE=0 WHERE ID_ARTICLE='CSharp-Other'");
+            decimal originalStockA = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            decimal originalStockB = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'");
+            correct.Commit(MultiLineRequest("multi-original", false));
+            decimal soldStockA = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            decimal soldStockB = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'");
+            decimal originalSaleTotal = Scalar("SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-original'");
+            Require(originalSaleTotal == 13.50m,
+                "Multi-line fixture sale total must remain 13.50 MAD; actual " + originalSaleTotal + ".");
+            var candidates = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                .FindFullCashReturnCandidates(NewConnection, "multi-original");
+            Require(candidates.Count == 1 && candidates[0].SaleId == "multi-original" &&
+                candidates[0].PaidMad == 13.50m,
+                "Host lookup must expose only the exact persisted full cash ticket and amount.");
+            // Case-folded aliases of a real ticket are not exact persisted identities.
+            // Neither candidate discovery nor refund preparation may treat them as
+            // a different refundable sale, even on case-insensitive legacy schemas.
+            foreach (var alias in new[] { "MULTI-ORIGINAL", "Multi-Original" })
+            {
+                bool aliasCandidateRejected = false;
+                try
+                {
+                    var aliasCandidates = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .FindFullCashReturnCandidates(NewConnection, alias);
+                    aliasCandidateRejected = aliasCandidates.Count == 0;
+                }
+                catch (InvalidOperationException) { aliasCandidateRejected = true; }
+                Require(aliasCandidateRejected,
+                    "Case-folded original ticket alias must not be offered as a refundable candidate.");
+                bool aliasPreparationRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                        NewConnection, "case-alias-refund", "O'Neil", "MAD", alias);
+                }
+                catch (InvalidOperationException) { aliasPreparationRejected = true; }
+                Require(aliasPreparationRejected &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='case-alias-refund'") == 0,
+                    "Case-folded ticket alias must not create a refund header.");
+            }
+            // Control characters in a pasted receipt must never reach SQL lookup.
+            // Even parameterized SQL must not expose a misleading return candidate.
+            foreach (var invalidReceipt in new[] { "multi-original\n", "multi\toriginal", "multi-original\0" })
+            {
+                bool connectionOpened = false;
+                var invalidCandidates = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                    .FindFullCashReturnCandidates(
+                        () => { connectionOpened = true; return NewConnection(); }, invalidReceipt);
+                Require(invalidCandidates.Count == 0 && !connectionOpened,
+                    "Control-character receipt identity must be rejected before MariaDB lookup.");
+            }
+            // Malformed operation and cashier IDs must be rejected by return
+            // preparation before any database connection is requested. This
+            // guards pasted control characters and ambiguous padded identities.
+            foreach (var invalidIdentity in new[] { " return-prep", "return-prep ", "return\nprep", new string('x', 65) })
+            {
+                bool connectionOpened = false;
+                bool rejectedBeforeConnection = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .PrepareFullCashReturnRequest(
+                            () => { connectionOpened = true; return NewConnection(); },
+                            invalidIdentity, "O'Neil", "MAD", "multi-original");
+                }
+                catch (ArgumentException) { rejectedBeforeConnection = true; }
+                Require(rejectedBeforeConnection && !connectionOpened,
+                    "Invalid refund operation identity must fail before opening MariaDB.");
+            }
+            foreach (var invalidCashier in new[] { " O'Neil", "O'Neil ", "O\tNeil", new string('x', 65) })
+            {
+                bool connectionOpened = false;
+                bool rejectedBeforeConnection = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .PrepareFullCashReturnRequest(
+                            () => { connectionOpened = true; return NewConnection(); },
+                            "return-invalid-cashier", invalidCashier, "MAD", "multi-original");
+                }
+                catch (ArgumentException) { rejectedBeforeConnection = true; }
+                Require(rejectedBeforeConnection && !connectionOpened,
+                    "Invalid refund cashier identity must fail before opening MariaDB.");
+            }
+            // The original ticket identity is an independent trust boundary:
+            // neither a pasted malformed ID nor a self-referencing operation
+            // may open MariaDB, even if the cashier and operation are valid.
+            // Legacy ticket indexes may use a case-insensitive collation. A refund
+            // operation must not reuse the original sale key with different casing.
+            foreach (var collidingOperation in new[] { "MULTI-ORIGINAL", "Multi-Original" })
+            {
+                bool connectionOpened = false;
+                bool rejectedBeforeConnection = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .PrepareFullCashReturnRequest(
+                            () => { connectionOpened = true; return NewConnection(); },
+                            collidingOperation, "O'Neil", "MAD", "multi-original");
+                }
+                catch (ArgumentException) { rejectedBeforeConnection = true; }
+                Require(rejectedBeforeConnection && !connectionOpened,
+                    "Case-only refund ticket collision must fail before MariaDB and any financial posting.");
+            }
+            foreach (var invalidOriginal in new[] { " multi-original", "multi-original ", "multi\noriginal", "multi\toriginal", "multi\0original", new string('x', 65) })
+            {
+                bool connectionOpened = false;
+                bool rejectedBeforeConnection = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .PrepareFullCashReturnRequest(
+                            () => { connectionOpened = true; return NewConnection(); },
+                            "return-invalid-original", "O'Neil", "MAD", invalidOriginal);
+                }
+                catch (ArgumentException) { rejectedBeforeConnection = true; }
+                Require(rejectedBeforeConnection && !connectionOpened,
+                    "Malformed original ticket identity must fail before opening MariaDB.");
+            }
+            {
+                bool connectionOpened = false;
+                bool rejectedBeforeConnection = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .PrepareFullCashReturnRequest(
+                            () => { connectionOpened = true; return NewConnection(); },
+                            "multi-original", "O'Neil", "MAD", "multi-original");
+                }
+                catch (ArgumentException) { rejectedBeforeConnection = true; }
+                Require(rejectedBeforeConnection && !connectionOpened,
+                    "A return operation cannot reuse its original sale identity.");
+            }
+            Require(Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0,
+                "Rejected refund preparation must not consume original sale.");
+            // A header with no journal lines is not a refundable sale. Preserve
+            // the disposable fixture and prove both lookup and preparation fail
+            // without claiming the original ticket.
+            Sql("CREATE TABLE hanouty_empty_return_lines_backup LIKE TABLE_VENTES_JOURNAL");
+            try
+            {
+                Sql("INSERT INTO hanouty_empty_return_lines_backup SELECT * FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-original'");
+                Require(Scalar("SELECT COUNT(*) FROM hanouty_empty_return_lines_backup") == 2,
+                    "Expected two disposable original lines before empty-journal regression.");
+                Sql("DELETE FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-original'");
+                bool emptyLookupRejected = false;
+                bool emptyPreparationRejected = false;
+                try
+                {
+                    var emptyCandidates = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .FindFullCashReturnCandidates(NewConnection, "multi-original");
+                    emptyLookupRejected = emptyCandidates.Count == 0;
+                }
+                catch (InvalidOperationException) { emptyLookupRejected = true; }
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .PrepareFullCashReturnRequest(NewConnection, "return-empty-lines", "O'Neil",
+                            "MAD", "multi-original");
+                }
+                catch (InvalidOperationException) { emptyPreparationRejected = true; }
+                Require(emptyLookupRejected && emptyPreparationRejected &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0 &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='return-empty-lines'") == 0,
+                    "Header without original journal lines must not be refundable or consumed.");
+            }
+            finally
+            {
+                Sql("DELETE FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-original'");
+                Sql("INSERT INTO TABLE_VENTES_JOURNAL SELECT * FROM hanouty_empty_return_lines_backup");
+                Sql("DROP TABLE hanouty_empty_return_lines_backup");
+            }
+            // A damaged persisted zero-quantity line must never be offered
+            // for a full return, nor consume the original ticket.
+            Sql("UPDATE TABLE_VENTES_JOURNAL SET Qté=0 WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
+            try
+            {
+                bool invalidQuantityRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .FindFullCashReturnCandidates(NewConnection, "multi-original");
+                }
+                catch (InvalidOperationException) { invalidQuantityRejected = true; }
+                Require(invalidQuantityRejected &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0,
+                    "Zero-quantity persisted sale must not be offered for a full return.");
+            }
+            finally
+            {
+                Sql("UPDATE TABLE_VENTES_JOURNAL SET Qté=2 WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
+            }
+            // A persisted article ID with trailing whitespace must not be silently
+            // normalized into a different stock identity during refund preparation.
+            Sql("UPDATE TABLE_VENTES_JOURNAL SET ID_ARTICLE='CSharp-Stock ' WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
+            try
+            {
+                bool malformedCandidateRejected = false;
+                bool malformedPreparationRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .FindFullCashReturnCandidates(NewConnection, "multi-original");
+                }
+                catch (InvalidOperationException) { malformedCandidateRejected = true; }
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .PrepareFullCashReturnRequest(NewConnection, "return-malformed-article", "O'Neil",
+                            "MAD", "multi-original");
+                }
+                catch (InvalidOperationException) { malformedPreparationRejected = true; }
+                Require(malformedCandidateRejected && malformedPreparationRejected &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0,
+                    "Noncanonical persisted article identity must not be offered or prepared for refund.");
+            }
+            finally
+            {
+                Sql("UPDATE TABLE_VENTES_JOURNAL SET ID_ARTICLE='CSharp-Stock' WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock '");
+            }
+            // A legacy journal can contain distinct spellings of the same article.
+            // A full return must not restore that stock twice under a case-insensitive
+            // article key, even when the two journal rows were historically accepted.
+            Sql("UPDATE TABLE_VENTES_JOURNAL SET ID_ARTICLE='csharp-stock' WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Other'");
+            try
+            {
+                bool duplicateCandidateRejected = false;
+                bool duplicatePreparationRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .FindFullCashReturnCandidates(NewConnection, "multi-original");
+                }
+                catch (InvalidOperationException) { duplicateCandidateRejected = true; }
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .PrepareFullCashReturnRequest(NewConnection, "return-case-collision", "O'Neil",
+                            "MAD", "multi-original");
+                }
+                catch (InvalidOperationException) { duplicatePreparationRejected = true; }
+                Require(duplicateCandidateRejected && duplicatePreparationRejected &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0 &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='return-case-collision'") == 0,
+                    "Case-colliding original article lines must not create a refund or consume the sale.");
+            }
+            finally
+            {
+                Sql("UPDATE TABLE_VENTES_JOURNAL SET ID_ARTICLE='CSharp-Other' WHERE ID_TICKET='multi-original' AND BINARY ID_ARTICLE='csharp-stock'");
+            }
+            // Legacy fractional journal quantities cannot be posted through the
+            // whole-unit WPF return contract. Do not advertise such a ticket.
+            Sql("UPDATE TABLE_VENTES_JOURNAL SET Qté=1.5 WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
+            try
+            {
+                bool fractionalCandidateRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .FindFullCashReturnCandidates(NewConnection, "multi-original");
+                }
+                catch (InvalidOperationException) { fractionalCandidateRejected = true; }
+                Require(fractionalCandidateRejected &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0,
+                    "Fractional legacy ticket must not be offered as a WPF full-cash-return candidate.");
+            }
+            finally
+            {
+                Sql("UPDATE TABLE_VENTES_JOURNAL SET Qté=2 WHERE ID_TICKET='multi-original' AND ID_ARTICLE='CSharp-Stock'");
+            }
+            // Pasted control characters in any return identity must fail before
+            // opening MariaDB or consuming the original sale.
+            foreach (var invalid in new[] {
+                (Operation: "return\n", Cashier: "O'Neil", Original: "multi-original"),
+                (Operation: "return\0", Cashier: "O'Neil", Original: "multi-original"),
+                (Operation: "return-control", Cashier: "O'\tNeil", Original: "multi-original"),
+                (Operation: "return-control", Cashier: "O'Neil", Original: "multi-\toriginal")
+            })
+            {
+                bool connectionOpened = false;
+                bool denied = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                        () => { connectionOpened = true; return NewConnection(); },
+                        invalid.Operation, invalid.Cashier, "MAD", invalid.Original);
+                }
+                catch (ArgumentException) { denied = true; }
+                Require(denied && !connectionOpened,
+                    "Control-character return identity must fail before database access.");
+            }
+            var hostPrepared = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                .PrepareFullCashReturnRequest(NewConnection, "wpf-preview-return", "O'Neil",
+                    "MAD", "multi-original");
+            // The WPF return entry point must reject an operation that reuses its
+            // original sale identity, or a padded ticket, before any database write.
+            foreach (var invalid in new[] {
+                (Operation: "multi-original", Original: "multi-original"),
+                (Operation: "padded-return", Original: " multi-original "),
+                (Operation: " padded-return ", Original: "multi-original"),
+                (Operation: new string('x', 65), Original: "multi-original")
+            })
+            {
+                bool rejectedInvalidIdentity = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                        NewConnection, invalid.Operation, "O'Neil", "MAD", invalid.Original);
+                }
+                catch (ArgumentException) { rejectedInvalidIdentity = true; }
+                Require(rejectedInvalidIdentity &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0 &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='padded-return'") == 0,
+                    "Invalid WPF return identities must fail closed without consuming the original.");
+            }
+            // The authenticated cashier identity must be canonical before any
+            // financial evidence lookup; a padded or oversized identity fails closed.
+            foreach (var invalidCashier in new[] { " O'Neil ", new string('c', 65) })
+            {
+                bool rejectedCashier = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                        NewConnection, "invalid-cashier-return", invalidCashier, "MAD", "multi-original");
+                }
+                catch (ArgumentException) { rejectedCashier = true; }
+                Require(rejectedCashier &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0 &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='invalid-cashier-return'") == 0,
+                    "Invalid WPF cashier identity must not consume or return the original ticket.");
+            }
+            // Session reset must reject a noncanonical cashier before opening
+            // MariaDB or reading a transient PIN (no credential side effects).
+            foreach (var invalidSessionCashier in new[] { "", " O'Neil ", new string('c', 65) })
+            {
+                bool rejectedSessionCashier = false;
+                bool connectionOpened = false;
+                bool pinRead = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.VerifyCashierSession(
+                        () => { connectionOpened = true; return NewConnection(); },
+                        invalidSessionCashier,
+                        () => { pinRead = true; return "not-a-real-pin"; });
+                }
+                catch (ArgumentException) { rejectedSessionCashier = true; }
+                Require(rejectedSessionCashier && !connectionOpened && !pinRead &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0,
+                    "Noncanonical cashier reset must fail before DB/PIN and preserve return claim.");
+            }
+            Require(hostPrepared.IsReturn && hostPrepared.Lines.Count == 2 &&
+                hostPrepared.Lines.Any(line => line.ArticleId == "CSharp-Stock" && line.Quantity == 2m) &&
+                hostPrepared.Lines.Any(line => line.ArticleId == "CSharp-Other" && line.Quantity == 1m) &&
+                hostPrepared.ExpectedTotal == 13.50m &&
+                hostPrepared.Payments.Count == 1 &&
+                hostPrepared.Payments[0].Kind == Hanouty.ArchitectureBridge.CheckoutPaymentKind.Cash,
+                "Read-only Host preparation must return the complete original line set and exact cash amount.");
+            Require(soldStockA == originalStockA - 2m && soldStockB == originalStockB - 1m &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-original' AND OPERATION='VENTE'") == 2m,
+                "Multi-line original sale must persist two exact lines and decrement each stock once.");
+
+            var refund = MultiLineRequest("multi-refund", true, "multi-original");
+            var partial = refund with
+            {
+                OperationId = "multi-partial",
+                Lines = new[] { new Hanouty.ArchitectureBridge.CheckoutBatchLine("CSharp-Stock", 2) }
+            };
+            bool partialRejected = false;
+            try { correct.Commit(partial); }
+            catch (InvalidOperationException) { partialRejected = true; }
+            Require(partialRejected && !journal.IsPersisted("multi-partial") &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == soldStockA &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == soldStockB &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == 0,
+                "Partial line set must be rejected without claim, receipt, or stock mutation.");
+
+            correct.Commit(refund);
+            Require(journal.IsPersisted("multi-refund"), "Multi-line refund operation was not durably claimed.");
+            Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == originalStockA &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == originalStockB,
+                "Multi-line refund did not restore each article's stock exactly once.");
+            Require(Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original' AND return_operation_id='multi-refund' AND consumed_quantity=3") == 1,
+                "Multi-line refund consumption claim did not preserve the full aggregate quantity.");
+            Require(Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                .FindFullCashReturnCandidates(NewConnection, "multi-original").Count == 0,
+                "A consumed original ticket must disappear from WPF return lookup.");
+            // Legacy claim columns may use a binary collation. A case-variant
+            // consumed identity must still block candidate lookup and preparation.
+            Sql("UPDATE hanouty_cash_return_consumption SET original_ticket_id='MULTI-ORIGINAL' WHERE return_operation_id='multi-refund'");
+            try
+            {
+                Require(Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                    .FindFullCashReturnCandidates(NewConnection, "multi-original").Count == 0,
+                    "Case-variant consumed original must not reappear in return candidates.");
+                bool caseVariantReplayRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                        NewConnection, "wpf-case-variant-replay", "O'Neil", "MAD", "multi-original");
+                }
+                catch (InvalidOperationException) { caseVariantReplayRejected = true; }
+                Require(caseVariantReplayRejected &&
+                    !journal.IsPersisted("wpf-case-variant-replay") &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='wpf-case-variant-replay'") == 0,
+                    "Case-variant consumed claim allowed a duplicate financial return.");
+            }
+            finally
+            {
+                Sql("UPDATE hanouty_cash_return_consumption SET original_ticket_id='multi-original' WHERE return_operation_id='multi-refund'");
+            }
+            // A consumed ticket remains hidden even if its old payment evidence
+            // is damaged after refund. The UI must check the claim first.
+            Sql("UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=MONTANT+1 WHERE ID_TICKET='multi-original'");
+            try
+            {
+                Require(Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                    .FindFullCashReturnCandidates(NewConnection, "multi-original").Count == 0,
+                    "Consumed original must stay hidden despite corrupt legacy payment evidence.");
+            }
+            finally
+            {
+                Sql("UPDATE TABLE_VENTES_REGLEMENTS SET MONTANT=MONTANT-1 WHERE ID_TICKET='multi-original'");
+            }
+            bool consumedPreparationRejected = false;
+            try
+            {
+                Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                    NewConnection, "wpf-preview-replay", "O'Neil", "MAD", "multi-original");
+            }
+            catch (InvalidOperationException) { consumedPreparationRejected = true; }
+            Require(consumedPreparationRejected,
+                "Host preparation must refuse a ticket whose original return claim is already consumed.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund'") == 1,
+                "Multi-line refund header identity is missing.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund' AND Total_NET=-13.50") == 1,
+                "Multi-line refund header amount is incorrect; original total was " + originalSaleTotal +
+                " and refund total was " + Scalar("SELECT Total_NET FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund'") + ".");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-refund' AND OPERATION='RETOUR REMBOURSEMENT'") == 1,
+                "Multi-line refund header operation is incorrect.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='multi-refund' AND MONTANT=-13.50 AND MODE_P='ESPECES'") == 1,
+                "Multi-line refund payment amount or cash mode is incorrect.");
+            Require(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-refund' AND OPERATION='RETOUR REMBOURSEMENT'") == 2 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-refund' AND ((ID_ARTICLE='CSharp-Stock' AND Qté=-2 AND Total_NET=-10.50) OR (ID_ARTICLE='CSharp-Other' AND Qté=-1 AND Total_NET=-3.00))") == 2,
+                "Multi-line refund journal is missing an exact signed original line.");
+            correct.Commit(refund);
+            Require(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == originalStockA &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == originalStockB,
+                "Replay of the same multi-line refund operation must be exactly once.");
+
+            bool secondOperationRejected = false;
+            try { correct.Commit(refund with { OperationId = "multi-refund-again" }); }
+            catch (InvalidOperationException) { secondOperationRejected = true; }
+            Require(secondOperationRejected && !journal.IsPersisted("multi-refund-again") &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == originalStockA &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == originalStockB,
+                "A second operation cannot consume the original ticket again.");
+
+            decimal beforeRollbackA = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            decimal beforeRollbackB = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'");
+            correct.Commit(MultiLineRequest("multi-rollback-original", false));
+            decimal afterRollbackSaleA = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            decimal afterRollbackSaleB = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'");
+            Sql("CREATE TRIGGER multi_refund_payment_failure AFTER INSERT ON TABLE_VENTES_REGLEMENTS FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected-multi-refund-payment'");
+            bool paymentFailed = false;
+            try { correct.Commit(MultiLineRequest("multi-rollback-refund", true, "multi-rollback-original")); }
+            catch (MySqlException ex) when (ex.Number == 1644) { paymentFailed = true; }
+            finally { Sql("DROP TRIGGER multi_refund_payment_failure"); }
+            Require(paymentFailed && !journal.IsPersisted("multi-rollback-refund") &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-rollback-original'") == 0 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == afterRollbackSaleA &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == afterRollbackSaleB &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-rollback-refund'") == 0 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='multi-rollback-refund'") == 0,
+                "Failure after both stock writes must roll back every multi-line return side effect.");
+            correct.Commit(MultiLineRequest("multi-rollback-refund", true, "multi-rollback-original"));
+            Require(journal.IsPersisted("multi-rollback-refund") &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == beforeRollbackA &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == beforeRollbackB,
+                "Same refund operation must succeed after a verified full rollback.");
+
+            decimal beforeConcurrentA = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'");
+            decimal beforeConcurrentB = Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'");
+            correct.Commit(MultiLineRequest("multi-concurrent-original", false));
+            int successes = 0, rejected = 0;
+            Exception unexpected = null;
+            using (var start = new System.Threading.ManualResetEventSlim(false))
+            {
+                Action<string> contender = operation =>
+                {
+                    start.Wait();
+                    try
+                    {
+                        correct.Commit(MultiLineRequest(operation, true, "multi-concurrent-original"));
+                        System.Threading.Interlocked.Increment(ref successes);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        System.Threading.Interlocked.Increment(ref rejected);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Threading.Interlocked.CompareExchange(ref unexpected, ex, null);
+                    }
+                };
+                var first = new System.Threading.Thread(() => contender("multi-concurrent-refund-a"));
+                var second = new System.Threading.Thread(() => contender("multi-concurrent-refund-b"));
+                first.IsBackground = true;
+                second.IsBackground = true;
+                first.Start();
+                second.Start();
+                start.Set();
+                Require(first.Join(30000) && second.Join(30000), "Concurrent return transactions did not settle.");
+            }
+            Require(unexpected == null && successes == 1 && rejected == 1 &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Stock'") == beforeConcurrentA &&
+                Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='CSharp-Other'") == beforeConcurrentB &&
+                Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-concurrent-original'") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE OPERATION='RETOUR REMBOURSEMENT' AND ID_TICKET IN ('multi-concurrent-refund-a','multi-concurrent-refund-b')") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET IN ('multi-concurrent-refund-a','multi-concurrent-refund-b')") == 1 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET IN ('multi-concurrent-refund-a','multi-concurrent-refund-b')") == 2 &&
+                Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET IN ('multi-concurrent-refund-a','multi-concurrent-refund-b') AND Total_NET < 0") == 1,
+                "Two concurrent refund operations must have one winner and one complete loser.");
+            // The real shop schema may lack the fixture's unique ticket key. Emulate
+            // that legacy corruption only on disposable MariaDB and verify the
+            // WPF entry point refuses it before touching any financial state.
+            Sql("ALTER TABLE TABLE_VENTES_ENTETE DROP PRIMARY KEY");
+            try
+            {
+                Sql("INSERT INTO TABLE_VENTES_ENTETE SELECT 'ambiguous-original',TICKET,DATES,CAISSIER,ID_CLIENT,CODE_CLIENT,CLIENT,POSTE,Total_NET,OPERATION FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-original'");
+                Sql("INSERT INTO TABLE_VENTES_ENTETE SELECT 'ambiguous-original',TICKET,DATES,CAISSIER,ID_CLIENT,CODE_CLIENT,CLIENT,POSTE,Total_NET,OPERATION FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='multi-original'");
+                // The cashier's candidate search must fail closed too: an ambiguous
+                // persisted original must never be offered as a refundable sale.
+                var ambiguousCandidates = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                    .FindFullCashReturnCandidates(NewConnection, "ambiguous-original");
+                Require(!ambiguousCandidates.Any(candidate => candidate.SaleId == "ambiguous-original"),
+                    "Duplicate original headers must not be offered by WPF return lookup.");
+                bool ambiguousRejected = false;
+                try
+                {
+                    Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                        NewConnection, "ambiguous-return-attempt", "O'Neil", "MAD", "ambiguous-original");
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("ambiguous"))
+                {
+                    ambiguousRejected = true;
+                }
+                Require(ambiguousRejected &&
+                    Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='ambiguous-original'") == 0 &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='ambiguous-return-attempt'") == 0 &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL WHERE ID_TICKET='ambiguous-return-attempt'") == 0 &&
+                    Scalar("SELECT COUNT(*) FROM TABLE_VENTES_REGLEMENTS WHERE ID_TICKET='ambiguous-return-attempt'") == 0,
+                    "Duplicate original headers must leave no return header, journal, payment or claim.");
+            }
+            finally
+            {
+                Sql("DELETE FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='ambiguous-original'");
+                Sql("ALTER TABLE TABLE_VENTES_ENTETE ADD PRIMARY KEY (ID_TICKET)");
+            }
+            // Nonpositive persisted totals are corrupted legacy sales, not refundable money.
+            // The disposable fixture is restored even when an assertion fails.
+            foreach (decimal invalidTotal in new[] { 0m, -13.50m })
+            {
+                decimal priorClaims = Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'");
+                Sql("UPDATE TABLE_VENTES_ENTETE SET Total_NET=" +
+                    invalidTotal.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                    " WHERE ID_TICKET='multi-original'");
+                try
+                {
+                    // This ticket already has a consumed return claim. Candidate/preparation
+                    // rejection alone would pass even if the invalid-total guard regressed.
+                    // Exercise the underlying persisted-sale evidence independently.
+                    using (var evidenceDb = NewConnection())
+                    {
+                        evidenceDb.Open();
+                        using (var evidenceTx = evidenceDb.BeginTransaction())
+                        {
+                            bool invalidEvidenceRejected = false;
+                            try
+                            {
+                                CashReturnOriginalSaleEvidence.ReadExactCashTenderAmount(
+                                    evidenceDb, evidenceTx, "multi-original");
+                            }
+                            catch (InvalidOperationException) { invalidEvidenceRejected = true; }
+                            Require(invalidEvidenceRejected,
+                                "Nonpositive original total must fail evidence validation independently of a consumed return claim.");
+                            evidenceTx.Rollback();
+                        }
+                    }
+                    var invalidCandidates = Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices
+                        .FindFullCashReturnCandidates(NewConnection, "multi-original");
+                    Require(!invalidCandidates.Any(candidate => candidate.SaleId == "multi-original"),
+                        "Nonpositive original sale total must not appear in refundable candidates.");
+                    bool invalidRejected = false;
+                    try
+                    {
+                        Hanouty.Checkout.MariaDb.MariaDbCashCheckoutServices.PrepareFullCashReturnRequest(
+                            NewConnection, "invalid-total-refund", "O'Neil", "MAD", "multi-original");
+                    }
+                    catch (InvalidOperationException) { invalidRejected = true; }
+                    Require(invalidRejected &&
+                        Scalar("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE original_ticket_id='multi-original'") == priorClaims &&
+                        Scalar("SELECT COUNT(*) FROM TABLE_VENTES_ENTETE WHERE ID_TICKET='invalid-total-refund'") == 0,
+                        "Nonpositive original sale total must reject return without financial side effects.");
+                }
+                finally
+                {
+                    Sql("UPDATE TABLE_VENTES_ENTETE SET Total_NET=" +
+                        originalSaleTotal.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                        " WHERE ID_TICKET='multi-original'");
+                }
+            }
+            Console.WriteLine("PASS full multi-line refund: exact line set, atomic signed stock/payment/journal/claim, duplicate, rollback/retry, concurrency and ambiguous original rejection.");
+        }
+
+
+    }
+}

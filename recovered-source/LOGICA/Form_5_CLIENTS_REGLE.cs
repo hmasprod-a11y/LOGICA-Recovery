@@ -261,6 +261,7 @@ public class Form_5_CLIENTS_REGLE : Form
 	private Point newpoint;
 
 	private decimal _total_credit;
+	private bool _postingSettlement;
 
 	private object _sql;
 
@@ -2973,20 +2974,12 @@ public class Form_5_CLIENTS_REGLE : Form
 		((Control)this).ResumeLayout(false);
 	}
 
+	private static bool CanDeleteSettlement =>
+		string.Equals(Module1._USERCATEGORIE, "ADMIN", StringComparison.Ordinal);
+
 	public void FUN_CAT_ACCES()
 	{
-		if (Operators.CompareString(Module1._USERCATEGORIE, "ADMIN", TextCompare: false) == 0)
-		{
-			DataGridView1.Columns["supp"].Visible = true;
-		}
-		else if (Operators.CompareString(Module1._USERCATEGORIE, "MANAGER", TextCompare: false) == 0)
-		{
-			DataGridView1.Columns["supp"].Visible = false;
-		}
-		else if (Operators.CompareString(Module1._USERCATEGORIE, "UTILISATEUR", TextCompare: false) == 0)
-		{
-			DataGridView1.Columns["supp"].Visible = false;
-		}
+		DataGridView1.Columns["supp"].Visible = CanDeleteSettlement;
 	}
 
 	private void Label_TOP_MouseDown(object sender, MouseEventArgs e)
@@ -3010,7 +3003,7 @@ public class Form_5_CLIENTS_REGLE : Form
 				newpoint.X -= x;
 				newpoint.Y -= y;
 				((Control)Panel_INFO).Location = newpoint;
-				Application.DoEvents();
+				global::System.Windows.Forms.Application.DoEvents();
 			}
 		}
 	}
@@ -3151,10 +3144,10 @@ public class Form_5_CLIENTS_REGLE : Form
 					Bitmap val2 = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 					Graphics val3 = Graphics.FromImage((Image)(object)val2);
 					val3.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-					((Image)val2).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+					((Image)val2).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 					val2 = null;
 					string right = "ERROR | ";
-					File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+					File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 				}
 				catch (Exception ex3)
 				{
@@ -3163,6 +3156,10 @@ public class Form_5_CLIENTS_REGLE : Form
 					ProjectData.ClearProjectError();
 				}
 				ProjectData.ClearProjectError();
+			}
+			finally
+			{
+				_postingSettlement = false;
 			}
 		}
 	}
@@ -3206,10 +3203,10 @@ public class Form_5_CLIENTS_REGLE : Form
 				Bitmap val = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 				Graphics val2 = Graphics.FromImage((Image)(object)val);
 				val2.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-				((Image)val).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+				((Image)val).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 				val = null;
 				string right = "ERROR | ";
-				File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+				File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 			}
 			catch (Exception ex3)
 			{
@@ -3239,16 +3236,34 @@ public class Form_5_CLIENTS_REGLE : Form
 		//IL_0235: Expected Obj, but got Unknown
 		try
 		{
-			if (Operators.ConditionalCompareObjectEqual(e.ColumnIndex, Operators.SubtractObject(NewLateBinding.LateGet(sender, null, "ColumnCount", new object[0], null, null, null), 2), TextCompare: false) && (int)MessageBox.Show("Voulez-vous vraiment supprimer ??", "Suppression", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
+			if (e.RowIndex >= 0 && e.RowIndex < DataGridView1.Rows.Count &&
+				e.ColumnIndex == DataGridView1.Columns["supp"].Index && CanDeleteSettlement &&
+				DataGridView1.Rows[e.RowIndex].DataBoundItem is DataRowView clickedSettlement && (int)MessageBox.Show("Voulez-vous vraiment supprimer ??", "Suppression", (MessageBoxButtons)1, (MessageBoxIcon)32, (MessageBoxDefaultButton)0) == 1)
 			{
-				string right = Conversions.ToString(Operators.ConcatenateObject("SUPPRESION | ", DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells[2].Value));
-				File.AppendAllText(Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
-				int position = ((ContainerControl)this).BindingContext[(object)DT].Position;
-				DT.Rows[position].Delete();
-				MySqlCommandBuilder val = new MySqlCommandBuilder(DA);
-				((DbDataAdapter)(object)DA).Update(DT);
-				DT.AcceptChanges();
-				((ContainerControl)this).BindingContext[(object)DT].Position = position;
+				DataRow row = clickedSettlement.Row;
+				if (!CanDeleteSettlement || row.RowState != DataRowState.Unchanged || row.Table != DT)
+				{
+					return;
+				}
+				string right = Conversions.ToString(Operators.ConcatenateObject("SUPPRESION | ", row["ID_REGLE"]));
+				File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(Strings.Format(DateTime.Now, "ddMMyy HHmmss fff") + MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text, " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), "\r\n")), Encoding.UTF8);
+				row.Delete();
+				try
+				{
+					using var builder = new MySqlCommandBuilder(DA);
+					if (((DbDataAdapter)(object)DA).Update(new[] { row }) != 1)
+					{
+						throw new InvalidOperationException("Le règlement client n’a pas été supprimé.");
+					}
+				}
+				catch
+				{
+					if (row.RowState == DataRowState.Deleted)
+					{
+						row.RejectChanges();
+					}
+					throw;
+				}
 			}
 			if (Operators.ConditionalCompareObjectEqual(e.ColumnIndex, Operators.SubtractObject(NewLateBinding.LateGet(sender, null, "ColumnCount", new object[0], null, null, null), 1), TextCompare: false))
 			{
@@ -3279,10 +3294,10 @@ public class Form_5_CLIENTS_REGLE : Form
 				Bitmap val2 = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 				Graphics val3 = Graphics.FromImage((Image)(object)val2);
 				val3.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-				((Image)val2).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+				((Image)val2).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 				val2 = null;
 				string right2 = "ERROR | ";
-				File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right2), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+				File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right2), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 			}
 			catch (Exception ex3)
 			{
@@ -3296,68 +3311,57 @@ public class Form_5_CLIENTS_REGLE : Form
 
 	public void _credit()
 	{
-		//IL_00a3: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00aa: Expected Obj, but got Unknown
-		string text = Conversions.ToString(DataGridView1.Rows[((DataGridViewBand)DataGridView1.CurrentRow).Index].Cells["ID_CLIENT"].Value);
-		string text2 = "SELECT SUM(TOTAL_NET)  AS N   FROM TABLE_VENTES_JOURNAL WHERE        ID_CLIENT = '" + text + "'      AND OPERATION = 'CREDIT'   ";
-		string text3 = "SELECT SUM(TOTAL_NET)  AS N   FROM TABLE_VENTES_JOURNAL WHERE        ID_CLIENT = '" + text + "'      AND OPERATION = 'RETOUR CREDIT'    ";
-		string text4 = "SELECT CREDIT_INITIAL  AS N   FROM TABLE_CLIENTS        WHERE        ID_CLIENT = '" + text + "'         ";
-		string text5 = "SELECT SUM(MONTANT)    AS N   FROM TABLE_CLIENTS_REGLE  WHERE        ID_CLIENT = '" + text + "'           ";
+		_total_credit = 0m;
+		DataGridViewRow selectedRow = DataGridView1.CurrentRow;
+		if (selectedRow == null)
+		{
+			return;
+		}
+		string clientId = Conversions.ToString(selectedRow.Cells["ID_CLIENT"].Value);
 		try
 		{
 			if (Module1.cn_SQL.State != ConnectionState.Open)
 			{
 				Module1.cn_SQL.Open();
 			}
-			MySqlCommand val = new MySqlCommand();
-			val.Connection = Module1.cn_SQL;
-			MySqlCommand val2 = val;
-			try
+			using (MySqlCommand command = CreateClientCreditCommand(clientId))
+			using (MySqlDataReader reader = command.ExecuteReader())
 			{
-				val2.CommandText = " ( " + text2 + " )       UNION ALL         ( " + text3 + " )        UNION ALL     ( " + text4 + " )      UNION ALL     ( " + text5 + " )         ";
-				MySqlDataReader val3 = val2.ExecuteReader();
-				try
+				if (reader.Read())
 				{
-					List<string> list = new List<string>();
-					while (val3.Read())
-					{
-						list.Add(Information.IsDBNull(RuntimeHelpers.GetObjectValue(val3[0])) ? "0" : val3[0].ToString());
-					}
-					if (list.Count >= 4)
-					{
-						decimal d = Conversions.ToDecimal(list[0]);
-						decimal d2 = Conversions.ToDecimal(list[1]);
-						decimal d3 = Conversions.ToDecimal(list[2]);
-						decimal d4 = Conversions.ToDecimal(list[3]);
-						_total_credit = LOGICA.Domain.ClientCreditBalance.Calculate(d, d2, d3, d4);
-					}
-					else
-					{
-						_total_credit = 0m;
-					}
+					_total_credit = LOGICA.Domain.ClientCreditBalance.Calculate(
+						ReadCreditAmount(reader, 0), ReadCreditAmount(reader, 1),
+						ReadCreditAmount(reader, 2), ReadCreditAmount(reader, 3));
 				}
-				finally
-				{
-					((IDisposable)val3)?.Dispose();
-				}
-				val2.Parameters.Clear();
-			}
-			finally
-			{
-				((IDisposable)val2)?.Dispose();
 			}
 		}
 		catch (Exception ex)
 		{
-			ProjectData.SetProjectError(ex);
-			Exception ex2 = ex;
-			Interaction.MsgBox("Erreur : " + ex2.Message);
-			ProjectData.ClearProjectError();
+			Interaction.MsgBox("Erreur : " + ex.Message);
 		}
 		finally
 		{
 			Module1.cn_SQL.Close();
 		}
+	}
+
+	private static MySqlCommand CreateClientCreditCommand(string clientId)
+	{
+		var command = new MySqlCommand(@"
+			SELECT
+				(SELECT SUM(TOTAL_NET) FROM TABLE_VENTES_JOURNAL WHERE ID_CLIENT = @client AND OPERATION = 'CREDIT'),
+				(SELECT SUM(TOTAL_NET) FROM TABLE_VENTES_JOURNAL WHERE ID_CLIENT = @client AND OPERATION = 'RETOUR CREDIT'),
+				CREDIT_INITIAL,
+				(SELECT SUM(MONTANT) FROM TABLE_CLIENTS_REGLE WHERE ID_CLIENT = @client)
+			FROM TABLE_CLIENTS
+			WHERE ID_CLIENT = @client", Module1.cn_SQL);
+		command.Parameters.AddWithValue("@client", clientId);
+		return command;
+	}
+
+	private static decimal ReadCreditAmount(MySqlDataReader reader, int index)
+	{
+		return reader.IsDBNull(index) ? 0m : Conversions.ToDecimal(reader.GetValue(index));
 	}
 
 	private void Button24_Click(object sender, EventArgs e)
@@ -3390,10 +3394,10 @@ public class Form_5_CLIENTS_REGLE : Form
 				Bitmap val = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 				Graphics val2 = Graphics.FromImage((Image)(object)val);
 				val2.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-				((Image)val).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+				((Image)val).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 				val = null;
 				string right = "ERROR | ";
-				File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+				File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 			}
 			catch (Exception ex3)
 			{
@@ -3451,6 +3455,11 @@ public class Form_5_CLIENTS_REGLE : Form
 		//IL_03c1: Unknown result type (might be due to invalid IL or missing references)
 		//IL_03c7: Expected Obj, but got Unknown
 		//IL_03f3: Unknown result type (might be due to invalid IL or missing references)
+		if (_postingSettlement || Label_TOP.Text != "NOUVEAU")
+		{
+			return;
+		}
+		_postingSettlement = true;
 		checked
 		{
 			try
@@ -3461,26 +3470,46 @@ public class Form_5_CLIENTS_REGLE : Form
 					MessageBox.Show(warning, "Attention", (MessageBoxButtons)0, (MessageBoxIcon)48);
 					return;
 				}
-				if (Operators.CompareString(Label_TOP.Text, "NOUVEAU", TextCompare: false) == 0)
+				int settlementId;
+				using (var sequence = new MySqlCommand("SELECT MAX(ID) FROM TABLE_CLIENTS_REGLE", Module1.cn_SQL))
 				{
-					MySqlCommand val = new MySqlCommand();
-					val.CommandText = "SELECT MAX(ID) From TABLE_CLIENTS_REGLE ";
-					val.Connection = Module1.cn_SQL;
-					val.CommandType = CommandType.Text;
-					if (Module1.cn_SQL.State != ConnectionState.Open)
+					try
 					{
-						Module1.cn_SQL.Open();
+						if (Module1.cn_SQL.State != ConnectionState.Open)
+						{
+							Module1.cn_SQL.Open();
+						}
+						settlementId = LOGICA.Domain.ClientSettlementSequence.NextId(
+							() => sequence.ExecuteScalar(), LOGICA.Infrastructure.Compatibility.VisualBasicSettlementSemantics.Instance);
 					}
-					int num = LOGICA.Domain.ClientSettlementSequence.NextId(() => val.ExecuteScalar(), LOGICA.Infrastructure.Compatibility.VisualBasicSettlementSemantics.Instance);
-					Module1.cn_SQL.Close();
-					DT.Rows.Add();
-					int index = DT.Rows.Count - 1;
-					LOGICA.ApplicationLayer.Clients.ClientSettlementRowWriter.Populate(new SettlementRowContext(this, DT.Rows[index], num));
-					MySqlCommandBuilder val2 = new MySqlCommandBuilder(DA);
-					((DbDataAdapter)(object)DA).Update(DT);
-					DT.AcceptChanges();
-					MessageBox.Show("Enregistré avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
+					finally
+					{
+						Module1.cn_SQL.Close();
+					}
 				}
+				DataRow row = DT.NewRow();
+				LOGICA.ApplicationLayer.Clients.ClientSettlementRowWriter.Populate(new SettlementRowContext(this, row, settlementId));
+				DT.Rows.Add(row);
+				try
+				{
+					using (var builder = new MySqlCommandBuilder(DA))
+					{
+						if (((DbDataAdapter)(object)DA).Update(new[] { row }) != 1)
+						{
+							throw new InvalidOperationException("Le règlement client n’a pas été enregistré.");
+						}
+					}
+				}
+				catch
+				{
+					if (row.RowState == DataRowState.Added)
+					{
+						DT.Rows.Remove(row);
+					}
+					throw;
+				}
+				Label_TOP.Text = "-";
+				MessageBox.Show("Enregistré avec succès", "ok", (MessageBoxButtons)0, (MessageBoxIcon)64, (MessageBoxDefaultButton)0);
 				((Control)Panel_INFO).Hide();
 			}
 			catch (Exception ex)
@@ -3497,10 +3526,10 @@ public class Form_5_CLIENTS_REGLE : Form
 					Bitmap val3 = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 					Graphics val4 = Graphics.FromImage((Image)(object)val3);
 					val4.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-					((Image)val3).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+					((Image)val3).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 					val3 = null;
 					string right = "ERROR | ";
-					File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+					File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 				}
 				catch (Exception ex3)
 				{
@@ -3509,6 +3538,11 @@ public class Form_5_CLIENTS_REGLE : Form
 					ProjectData.ClearProjectError();
 				}
 				ProjectData.ClearProjectError();
+			}
+			finally
+			{
+				// Allow a retry after validation failure or a rolled-back database insert.
+				_postingSettlement = false;
 			}
 		}
 	}
@@ -3533,7 +3567,7 @@ public class Form_5_CLIENTS_REGLE : Form
 			{
 				NewLateBinding.LateSet(sender, null, "enabled", new object[1] { false }, null, null);
 				((Control)MyProject.Forms.FormDialog_PATIENTER).Show();
-				Application.DoEvents();
+				global::System.Windows.Forms.Application.DoEvents();
 				((Form)MyProject.Forms.FormDialog_PATIENTER).Close();
 				int num = 90;
 				int num2 = 300;
@@ -3561,10 +3595,10 @@ public class Form_5_CLIENTS_REGLE : Form
 					Bitmap val2 = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 					Graphics val3 = Graphics.FromImage((Image)(object)val2);
 					val3.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-					((Image)val2).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+					((Image)val2).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 					val2 = null;
 					string right = "ERROR | ";
-					File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+					File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 				}
 				catch (Exception ex3)
 				{
@@ -3660,10 +3694,10 @@ public class Form_5_CLIENTS_REGLE : Form
 				Bitmap val = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 				Graphics val2 = Graphics.FromImage((Image)(object)val);
 				val2.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-				((Image)val).Save(Application.StartupPath + "\\tchak\\" + text2 + ".snidb", ImageFormat.Jpeg);
+				((Image)val).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text2 + ".snidb", ImageFormat.Jpeg);
 				val = null;
 				string right = "ERROR | ";
-				File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text2 + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+				File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text2 + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 			}
 			catch (Exception ex3)
 			{
@@ -3704,34 +3738,44 @@ public class Form_5_CLIENTS_REGLE : Form
 		((Form)MyProject.Forms.Form_5_CLIENTS_LISTE).ShowDialog();
 		if (Operators.CompareString(Button_CLIENT._ID_Button, "", TextCompare: false) != 0)
 		{
-			DataTable dataTable = new DataTable();
-			MySqlDataAdapter val = new MySqlDataAdapter();
-			dataTable.Clear();
-			val = new MySqlDataAdapter("SELECT    SUM(TOTAL_NET)      as N          FROM   TABLE_VENTES_JOURNAL     WHERE          ID_CLIENT  =  '" + Button_CLIENT._ID_Button + "'        AND      OPERATION  =  'CREDIT'          ", Module1.cn_SQL);
-			((DbDataAdapter)(object)val).Fill(dataTable);
-			decimal num = 0m;
-			num = ((dataTable.Rows[0]["N"] != DBNull.Value) ? Conversions.ToDecimal(Strings.FormatNumber(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"]))) : Conversions.ToDecimal(Strings.FormatNumber(0)));
-			Label_CREDIT.Text = Conversions.ToString(num);
-			dataTable.Clear();
-			val = new MySqlDataAdapter("SELECT    SUM(TOTAL_NET)      as N          FROM   TABLE_VENTES_JOURNAL     WHERE          ID_CLIENT  =  '" + Button_CLIENT._ID_Button + "'       AND    OPERATION  =  'RETOUR CREDIT'        ", Module1.cn_SQL);
-			((DbDataAdapter)(object)val).Fill(dataTable);
-			decimal num2 = 0m;
-			num2 = ((dataTable.Rows[0]["N"] != DBNull.Value) ? Conversions.ToDecimal(Strings.FormatNumber(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"]))) : Conversions.ToDecimal(Strings.FormatNumber(0)));
-			Label_RETOUR_CREDIT.Text = Conversions.ToString(num2);
-			dataTable.Clear();
-			val = new MySqlDataAdapter("SELECT    CREDIT_INITIAL     as N          FROM   TABLE_CLIENTS     WHERE          ID_CLIENT  =  '" + Button_CLIENT._ID_Button + "'             ", Module1.cn_SQL);
-			((DbDataAdapter)(object)val).Fill(dataTable);
-			decimal num3 = 0m;
-			num3 = ((dataTable.Rows[0]["N"] != DBNull.Value) ? Conversions.ToDecimal(Strings.FormatNumber(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"]))) : Conversions.ToDecimal(Strings.FormatNumber(0)));
-			Label_CREDIT_INITIAL.Text = Conversions.ToString(num3);
-			dataTable.Clear();
-			val = new MySqlDataAdapter("select    SUM(MONTANT)      as N           from   TABLE_CLIENTS_REGLE       WHERE         ID_CLIENT  =  '" + Button_CLIENT._ID_Button + "'                 ", Module1.cn_SQL);
-			((DbDataAdapter)(object)val).Fill(dataTable);
-			decimal num4 = 0m;
-			num4 = ((dataTable.Rows[0]["N"] != DBNull.Value) ? Conversions.ToDecimal(Strings.FormatNumber(RuntimeHelpers.GetObjectValue(dataTable.Rows[0]["N"]))) : Conversions.ToDecimal(Strings.FormatNumber(0)));
-			Label_REGLE_CLIENT.Text = Conversions.ToString(num4);
-			Text_CREDIT.Text = Conversions.ToString(LOGICA.Domain.ClientCreditBalance.Calculate(num, num2, num3, num4)) + " DH";
+			RefreshDisplayedClientBalance(Button_CLIENT._ID_Button);
 		}
+	}
+
+	private void RefreshDisplayedClientBalance(string clientId)
+	{
+		using (MySqlCommand command = CreateClientCreditCommand(clientId))
+		using (var adapter = new MySqlDataAdapter(command))
+		using (var balances = new DataTable())
+		{
+			adapter.Fill(balances);
+			if (balances.Rows.Count == 0)
+			{
+				Label_CREDIT.Text = "";
+				Label_RETOUR_CREDIT.Text = "";
+				Label_CREDIT_INITIAL.Text = "";
+				Label_REGLE_CLIENT.Text = "";
+				Text_CREDIT.Text = "";
+				return;
+			}
+
+			DataRow balance = balances.Rows[0];
+			decimal credit = ReadDisplayedCreditAmount(balance, 0);
+			decimal returns = ReadDisplayedCreditAmount(balance, 1);
+			decimal opening = ReadDisplayedCreditAmount(balance, 2);
+			decimal payments = ReadDisplayedCreditAmount(balance, 3);
+			Label_CREDIT.Text = Conversions.ToString(credit);
+			Label_RETOUR_CREDIT.Text = Conversions.ToString(returns);
+			Label_CREDIT_INITIAL.Text = Conversions.ToString(opening);
+			Label_REGLE_CLIENT.Text = Conversions.ToString(payments);
+			Text_CREDIT.Text = Conversions.ToString(
+				LOGICA.Domain.ClientCreditBalance.Calculate(credit, returns, opening, payments)) + " DH";
+		}
+	}
+
+	private static decimal ReadDisplayedCreditAmount(DataRow row, int index)
+	{
+		return Conversions.ToDecimal(Strings.FormatNumber(row.IsNull(index) ? 0 : row[index]));
 	}
 
 	private void Text_FIND_TextChanged(object sender, EventArgs e)
@@ -3811,10 +3855,10 @@ public class Form_5_CLIENTS_REGLE : Form
 				Bitmap val = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 				Graphics val2 = Graphics.FromImage((Image)(object)val);
 				val2.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-				((Image)val).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+				((Image)val).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 				val = null;
 				string right = "ERROR | ";
-				File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+				File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 			}
 			catch (Exception ex3)
 			{
@@ -3864,10 +3908,10 @@ public class Form_5_CLIENTS_REGLE : Form
 				Bitmap val = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 				Graphics val2 = Graphics.FromImage((Image)(object)val);
 				val2.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-				((Image)val).Save(Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
+				((Image)val).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text + ".snidb", ImageFormat.Jpeg);
 				val = null;
 				string right = "ERROR | ";
-				File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+				File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 			}
 			catch (Exception ex3)
 			{
@@ -3944,7 +3988,7 @@ public class Form_5_CLIENTS_REGLE : Form
 	{
 		try
 		{
-			Interaction.Shell(Application.StartupPath + "\\CLAVIER.exe");
+			Interaction.Shell(global::System.Windows.Forms.Application.StartupPath + "\\CLAVIER.exe");
 		}
 		catch (Exception ex)
 		{
@@ -4040,10 +4084,10 @@ public class Form_5_CLIENTS_REGLE : Form
 				Bitmap val = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height, (PixelFormat)2498570);
 				Graphics val2 = Graphics.FromImage((Image)(object)val);
 				val2.CopyFromScreen(Screen.PrimaryScreen.Bounds.X, Screen.PrimaryScreen.Bounds.Y, 0, 0, Screen.PrimaryScreen.Bounds.Size, (CopyPixelOperation)13369376);
-				((Image)val).Save(Application.StartupPath + "\\tchak\\" + text2 + ".snidb", ImageFormat.Jpeg);
+				((Image)val).Save(global::System.Windows.Forms.Application.StartupPath + "\\tchak\\" + text2 + ".snidb", ImageFormat.Jpeg);
 				val = null;
 				string right = "ERROR | ";
-				File.AppendAllText(Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text2 + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
+				File.AppendAllText(global::System.Windows.Forms.Application.StartupPath + "\\log_erreur.sni", Conversions.ToString(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(Operators.ConcatenateObject(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(string.Concat(text2 + " | ", MyProject.Forms.Form_0_TEMPLATE.Label_POSTE.Text), " | "), Module1._USERNAME), " | "), ((Control)this).Name), " | "), NewLateBinding.LateGet(sender, null, "name", new object[0], null, null, null)), " | "), right), " | "), ex2.ToString()), "\r\n"), "Ligne : "), fileLineNumber), "\r\n"), "\r\n"), "##########################################################################################################"), "\r\n")), Encoding.UTF8);
 			}
 			catch (Exception ex3)
 			{

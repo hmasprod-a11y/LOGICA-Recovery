@@ -1,0 +1,292 @@
+param([switch]$VerifyOnly)
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+Set-StrictMode -Version Latest
+
+$bundle = $PSScriptRoot
+$appZip = Join-Path $bundle 'HANOUTY-WPF-net10-FINANCIAL-ACCEPTED-win-x64.zip'
+$acceptancePath = Join-Path $bundle 'financial-package-acceptance.json'
+$appDir = Join-Path $bundle 'hanouty-app'
+$exe = Join-Path $appDir 'Hanouty.Desktop.Bootstrap.exe'
+$evidenceRoot = Join-Path $env:LOCALAPPDATA 'HANOUTY-Test\evidence'
+$runtimeRoot = Join-Path $env:LOCALAPPDATA 'HANOUTY-Test\mariadb-10.11.14'
+$sessionRoot = Join-Path $env:TEMP ('HANOUTY-Test-' + [guid]::NewGuid().ToString('N'))
+$port = 0
+$dbPassword = [guid]::NewGuid().ToString('N')
+$dbProcess = $null
+$dbBin = $null
+$dbData = Join-Path $sessionRoot 'data'
+$evidence = Join-Path $evidenceRoot ([guid]::NewGuid().ToString('N'))
+$completed = $false
+
+function Stop-HanoutyTestDatabase {
+    if ($null -eq $script:dbProcess) { return }
+    if (-not $script:dbProcess.HasExited -and $script:dbBin) {
+        & (Join-Path $script:dbBin 'mariadb-admin.exe') --host=127.0.0.1 "--port=$script:port" --user=root "--password=$script:dbPassword" shutdown 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { $script:dbProcess.WaitForExit(15000) }
+    }
+    if ($script:dbProcess.HasExited) {
+        $resolvedSession = [IO.Path]::GetFullPath($script:sessionRoot)
+        $tempPrefix = [IO.Path]::GetFullPath($env:TEMP).TrimEnd([char[]]@('/', '\')) + [IO.Path]::DirectorySeparatorChar
+        if ($resolvedSession.StartsWith($tempPrefix + 'HANOUTY-Test-', [StringComparison]::OrdinalIgnoreCase)) {
+            Remove-Item -LiteralPath $resolvedSession -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    } else {
+        Write-Warning "The temporary test database is still stopping; its files were kept at $script:sessionRoot"
+    }
+}
+
+function Assert-HanoutyExtraction {
+    param([string]$Directory, $Acceptance)
+
+    $launcher = Join-Path $Directory 'Hanouty.Desktop.Bootstrap.exe'
+    $manifestPath = Join-Path $Directory 'HANOUTY-MANIFEST.json'
+    if (-not (Test-Path -LiteralPath $launcher -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        throw 'The extracted financial package is missing its executable or manifest.'
+    }
+    if ((Get-FileHash -LiteralPath $launcher -Algorithm SHA256).Hash -ine $Acceptance.ExtractedExeSha256) {
+        throw 'The extracted executable does not match the accepted package.'
+    }
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    if ($manifest.mode -ne 'financial' -or $manifest.financialAcceptance -ne $true -or
+        $manifest.acceptanceSha -cne $Acceptance.SourceSha) {
+        throw 'The extracted package does not match the financial acceptance record.'
+    }
+    foreach ($file in $manifest.files) {
+        $path = Join-Path $Directory ([string]$file.file)
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ine [string]$file.sha256) {
+            throw "Package integrity check failed for $($file.file)."
+        }
+    }
+}
+
+function Test-HanoutyBackupRestore {
+    $dump = Join-Path $sessionRoot 'logica-ci-backup.sql'
+    $connection = @('--host=127.0.0.1', "--port=$port", '--user=root', "--password=$dbPassword")
+    $client = Join-Path $dbBin 'mariadb.exe'
+    & (Join-Path $dbBin 'mariadb-dump.exe') @connection --single-transaction --default-character-set=utf8mb4 "--result-file=$dump" logica_ci
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $dump -PathType Leaf) -or
+        (Get-Item -LiteralPath $dump).Length -eq 0) {
+        throw 'Could not back up the disposable Hanouty database.'
+    }
+
+    # The launcher owns this temporary server. Restore into a fresh schema on it.
+    & $client @connection '--execute=CREATE DATABASE hanouty_restore_ci CHARACTER SET utf8mb4'
+    if ($LASTEXITCODE -ne 0) { throw 'Could not create the fresh restore schema.' }
+    $restore = Start-Process -FilePath $client -ArgumentList ($connection + @('--default-character-set=utf8mb4', 'hanouty_restore_ci')) `
+        -RedirectStandardInput $dump -WindowStyle Hidden -Wait -PassThru
+    if ($restore.ExitCode -ne 0) { throw "Could not restore the isolated backup (exit $($restore.ExitCode))." }
+
+    $probeSql = @'
+SELECT COUNT(*), COALESCE(SUM(TOTAL_NET),0), COUNT(CLOTURE_GLOBALE) FROM TABLE_VENTES_ENTETE;
+SELECT MODE_P, COUNT(*), COALESCE(SUM(MONTANT),0), COUNT(CLOTURE_GLOBALE)
+FROM TABLE_VENTES_REGLEMENTS GROUP BY MODE_P ORDER BY MODE_P;
+SELECT COUNT(*), COALESCE(SUM(STOCK),0) FROM TABLE_ARTICLES;
+SELECT ID_ARTICLE, HEX(ARTICLE), STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='W2-Article';
+SELECT OBJET, VALEUR FROM TABLE_PARAMETRES WHERE OBJET='FONDS_CAISSE';
+SELECT COUNT(*) FROM hanouty_checkout_operations;
+SELECT ID, ID_CLIENT, HEX(CODE_CLIENT), HEX(CLIENT), DATES, HEX(ICE), HEX(ADRESSE), HEX(VILLE), HEX(PAYS), HEX(TELEPHONE), HEX(NOTES), HEX(VENDEUR), HEX(ETAT), COALESCE(CREDIT_INITIAL,0)
+FROM TABLE_CLIENTS ORDER BY BINARY ID_CLIENT, BINARY CODE_CLIENT, BINARY CLIENT;
+SELECT ID, DATES, HEURE, HEX(UTILISATEUR), ID_CLIENT, HEX(CLIENT), VALEUR_ANCIENNE, VALEUR_NOUVELLE
+FROM TABLE_CLIENTS_HISTORIQUE_CREDIT_INITIAL ORDER BY ID;
+SELECT OPERATION_ID, HEX(ACTOR), KIND, CUSTOMER_ID, HEX(PAYLOAD), HEX(RESULT), CREATED_UTC
+FROM hanouty_customer_file_operations ORDER BY OPERATION_ID;
+SELECT ID_CLIENT, OPERATION, COUNT(*), COALESCE(SUM(TOTAL_NET),0)
+FROM TABLE_VENTES_JOURNAL WHERE OPERATION IN ('CREDIT','RETOUR CREDIT') GROUP BY ID_CLIENT, OPERATION ORDER BY ID_CLIENT, OPERATION;
+SELECT ID_CLIENT, MODE_P, COUNT(*), COALESCE(SUM(MONTANT),0), COUNT(CLOTURE_GLOBALE)
+FROM TABLE_CLIENTS_REGLE GROUP BY ID_CLIENT, MODE_P ORDER BY ID_CLIENT, MODE_P;
+SELECT COUNT(*) FROM hanouty_client_settlement_operations;
+SELECT OPERATION_ID, HEX(ACTOR), ISSUE_ID, HEX(PAYLOAD), CREATED_UTC
+FROM hanouty_stock_issue_create_operations ORDER BY OPERATION_ID;
+SELECT 'DEVIS',COUNT(*),COALESCE(SUM(TOTAL_HT_DOC),0),COALESCE(SUM(TOTAL_TVA_DOC),0),COALESCE(SUM(TOTAL_TTC_DOC),0) FROM TABLE_DEVIS_ENTETE;
+SELECT 'BL',COUNT(*),COALESCE(SUM(TOTAL_HT_DOC),0),COALESCE(SUM(TOTAL_TVA_DOC),0),COALESCE(SUM(TOTAL_TTC_DOC),0) FROM TABLE_BL_ENTETE;
+SELECT 'FACTURE',COUNT(*),COALESCE(SUM(TOTAL_HT_DOC),0),COALESCE(SUM(TOTAL_TVA_DOC),0),COALESCE(SUM(TOTAL_TTC_DOC),0) FROM TABLE_FACTURE_ENTETE;
+'@
+    $original = & $client @connection --batch --skip-column-names logica_ci "--execute=$probeSql"
+    if ($LASTEXITCODE -ne 0 -or -not $original) { throw 'Could not read the original backup verification totals.' }
+    $restored = & $client @connection --batch --skip-column-names hanouty_restore_ci "--execute=$probeSql"
+    if ($LASTEXITCODE -ne 0 -or ($restored -join "`n") -cne ($original -join "`n")) {
+        throw 'Restored sales, payments, stock, drawer or checkout journal differ from the source.'
+    }
+    [ordered]@{
+        RestoreVerified = $true
+        CreditDemoEnabled = ((Get-Content -LiteralPath (Join-Path $appDir 'gestion_credit.sni') -Raw).Trim() -ceq 'True')
+        BackupSha256 = (Get-FileHash -LiteralPath $dump -Algorithm SHA256).Hash
+        Compared = @('sales and closing counts', 'payments by mode', 'stock and article text', 'opening amount', 'checkout journal', 'full customer metadata and opening history', 'customer file operation journal', 'customer credit debt', 'customer settlements and operation journal')
+    } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'backup-restore.json') -Encoding UTF8
+    Write-Host 'PASS: disposable backup restored into a fresh schema with matching financial and stock checks.' -ForegroundColor Green
+}
+
+try {
+    if (-not [Environment]::Is64BitOperatingSystem) { throw 'This test bundle requires 64-bit Windows.' }
+    if (-not (Test-Path -LiteralPath $appZip -PathType Leaf)) { throw 'The accepted WPF package ZIP is missing beside this launcher.' }
+    if (-not (Test-Path -LiteralPath $acceptancePath -PathType Leaf)) { throw 'The package acceptance record is missing beside this launcher.' }
+    $acceptedPackage = Get-Content -LiteralPath $acceptancePath -Raw | ConvertFrom-Json
+    if ($acceptedPackage.FinancialAcceptance -ne $true) { throw 'The supplied package has no successful financial acceptance record.' }
+    $expectedAppZipHash = ([string]$acceptedPackage.FinalPackageSha256).ToLowerInvariant()
+    if ($expectedAppZipHash -notmatch '^[0-9a-f]{64}$') { throw 'The package acceptance record has no valid SHA-256.' }
+    if ((Get-FileHash -LiteralPath $appZip -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expectedAppZipHash) {
+        throw 'The WPF package ZIP hash does not match the accepted package.'
+    }
+
+    if (Test-Path -LiteralPath $appDir) {
+        $ownedMarker = Join-Path $appDir '.hanouty-test-package'
+        if (-not (Test-Path -LiteralPath $ownedMarker -PathType Leaf)) {
+            throw "The existing extraction folder is not owned by this test bundle: $appDir"
+        }
+        Assert-HanoutyExtraction -Directory $appDir -Acceptance $acceptedPackage
+    } else {
+        # Publish the application directory only after extraction and integrity checks succeed.
+        $staging = Join-Path $bundle ('.hanouty-extract-' + [Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $staging | Out-Null
+        try {
+            Expand-Archive -LiteralPath $appZip -DestinationPath $staging
+            Assert-HanoutyExtraction -Directory $staging -Acceptance $acceptedPackage
+            Set-Content -LiteralPath (Join-Path $staging '.hanouty-test-package') -Value 'This folder is extracted by the bundled test launcher.' -Encoding UTF8
+            [IO.Directory]::Move($staging, $appDir)
+        } finally {
+            if ((Split-Path -Parent ([IO.Path]::GetFullPath($staging))) -eq [IO.Path]::GetFullPath($bundle) -and
+                (Test-Path -LiteralPath $staging -PathType Container)) {
+                Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    New-Item -ItemType Directory -Path $evidence -Force | Out-Null
+    New-Item -ItemType Directory -Path $runtimeRoot -Force | Out-Null
+    $mariaZip = Join-Path $bundle 'mariadb-10.11.14-winx64.zip'
+    $serverDir = Join-Path $runtimeRoot 'server'
+    $runtimeChecksums = Join-Path $bundle 'mariadb-sha256sums.txt'
+    if (-not (Test-Path -LiteralPath $mariaZip -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $runtimeChecksums -PathType Leaf)) {
+        throw 'The bundled MariaDB runtime or checksum is missing. Extract the complete test bundle again.'
+    }
+    # The complete bundle contains the official archive and checksum verified by CI.
+    # Startup, including a fresh Windows profile, never downloads executable bytes.
+    $checksums = Get-Content -LiteralPath $runtimeChecksums -Raw
+    $checksumMatches = @()
+    foreach ($line in ($checksums -split '\r?\n')) {
+        if ($line -match '^([0-9a-fA-F]{64})[ \t]+\*?(?:\./)?([^/\\]+)[ \t]*$' -and $Matches[2] -ceq 'mariadb-10.11.14-winx64.zip') {
+            $checksumMatches += $Matches[1].ToLowerInvariant()
+        }
+    }
+    if ($checksumMatches.Count -ne 1) { throw 'Could not verify the official MariaDB download checksum.' }
+    $expectedMariaHash = $checksumMatches[0]
+    if ((Get-FileHash -LiteralPath $mariaZip -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expectedMariaHash) {
+        throw 'Bundled MariaDB runtime integrity verification failed.'
+    }
+    $installer = Get-ChildItem -LiteralPath $serverDir -Recurse -Filter 'mariadb-install-db.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+    $cachedServer = Get-ChildItem -LiteralPath $serverDir -Recurse -Filter 'mariadbd.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $installer -or $null -eq $cachedServer) {
+        Remove-Item -LiteralPath $serverDir -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Path $serverDir -Force | Out-Null
+        Expand-Archive -LiteralPath $mariaZip -DestinationPath $serverDir
+        $installer = Get-ChildItem -LiteralPath $serverDir -Recurse -Filter 'mariadb-install-db.exe' | Select-Object -First 1
+    }
+    if ($null -eq $installer) { throw 'Verified MariaDB package did not contain its database initializer.' }
+    $dbBin = $installer.Directory.FullName
+
+    $probe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $port)
+    try {
+        $probe.Start()
+        $port = ([Net.IPEndPoint]$probe.LocalEndpoint).Port
+    } finally { $probe.Stop() }
+
+    New-Item -ItemType Directory -Path $sessionRoot -Force | Out-Null
+    & $installer.FullName "--datadir=$dbData" "--password=$dbPassword" "--port=$port" *> (Join-Path $sessionRoot 'database-setup.log')
+    if ($LASTEXITCODE -ne 0) { throw 'Could not initialize the isolated test database.' }
+    $defaultsArg = '--defaults-file="' + (Join-Path $dbData 'my.ini') + '"'
+    $dbProcess = Start-Process -FilePath (Join-Path $dbBin 'mariadbd.exe') -ArgumentList @($defaultsArg, '--bind-address=127.0.0.1', "--port=$port") -WindowStyle Hidden -PassThru
+    $ready = $false
+    for ($i = 0; $i -lt 40; $i++) {
+        Start-Sleep -Milliseconds 750
+        & (Join-Path $dbBin 'mariadb-admin.exe') --host=127.0.0.1 "--port=$port" --user=root "--password=$dbPassword" ping 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0 -and -not $dbProcess.HasExited) {
+            $reportedData = & (Join-Path $dbBin 'mariadb.exe') --host=127.0.0.1 "--port=$port" --user=root "--password=$dbPassword" --batch --skip-column-names --execute='SELECT @@datadir' 2>$null
+            if ($LASTEXITCODE -eq 0 -and $reportedData -and
+                [IO.Path]::GetFullPath(([string]$reportedData).Trim()).TrimEnd([char[]]@('/', '\')) -eq
+                [IO.Path]::GetFullPath($dbData).TrimEnd([char[]]@('/', '\'))) {
+                $ready = $true
+                break
+            }
+        }
+        if ($dbProcess.HasExited) { throw 'The isolated MariaDB server stopped during startup.' }
+    }
+    if (-not $ready) { throw 'The isolated MariaDB server did not become ready.' }
+
+    $sql = @'
+CREATE DATABASE logica_ci CHARACTER SET utf8mb4;
+CREATE USER 'w2_test'@'localhost' IDENTIFIED BY 'w2-disposable-only';
+CREATE USER 'w2_test'@'127.0.0.1' IDENTIFIED BY 'w2-disposable-only';
+GRANT ALL PRIVILEGES ON logica_ci.* TO 'w2_test'@'localhost';
+GRANT ALL PRIVILEGES ON logica_ci.* TO 'w2_test'@'127.0.0.1';
+'@
+    $sql | & (Join-Path $dbBin 'mariadb.exe') --host=127.0.0.1 "--port=$port" --user=root "--password=$dbPassword"
+    if ($LASTEXITCODE -ne 0) { throw 'Could not create the isolated Hanouty test database.' }
+
+    $dataDirectory = Join-Path $sessionRoot 'app-data'
+    New-Item -ItemType Directory -Path $dataDirectory -Force | Out-Null
+    $env:HANOUTY_CATALOGUE_CONNECTION = "Server=127.0.0.1;Port=$port;Database=logica_ci;Uid=w2_test;Pwd=w2-disposable-only;SslMode=Disabled;"
+    $env:HANOUTY_W2_DISPOSABLE_PORT = [string]$port
+    $env:HANOUTY_DATA_DIRECTORY = $dataDirectory
+    $env:HANOUTY_WORKSTATION = '01'
+    $env:HANOUTY_W2_DISPOSABLE_MARKER = 'I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY'
+    $env:HANOUTY_W2_TEST_PIN = '1234'
+    Write-Host 'Preparing a fresh, temporary MariaDB test database and running the WPF financial acceptance...' -ForegroundColor Cyan
+    $acceptanceRun = Start-Process -FilePath $exe -ArgumentList @('--verify-disposable-cash-sale', ('"' + $evidence + '"')) -Wait -PassThru
+    if ($acceptanceRun.ExitCode -ne 0) { throw "Financial acceptance failed with exit code $($acceptanceRun.ExitCode). Evidence: $evidence" }
+    $reportPath = Join-Path $evidence 'w2-cash-sale.json'
+    if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+        $failurePath = Join-Path $evidence 'w2-failure.txt'
+        if (Test-Path -LiteralPath $failurePath -PathType Leaf) {
+            throw "Financial acceptance failed: $(Get-Content -LiteralPath $failurePath -Raw)"
+        }
+        throw "Acceptance evidence is missing. Evidence: $evidence"
+    }
+    $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+    if ($report.W2Accepted -ne $true -or $report.FullCashReturnThroughWpfUi -ne $true) {
+        throw "Financial acceptance did not report a successful cash sale and return. Evidence: $evidence"
+    }
+    $creditReport = Get-Content -LiteralPath (Join-Path $evidence 'w2-credit-sales.json') -Raw | ConvertFrom-Json
+    foreach ($field in @('AtomicDebtStockNoPayment','CashUnchangedAtCredit','NewDebtPartialAndFullSettlement','LostAcknowledgementReview','ClosingAndStockReconciled')) {
+        if ($creditReport.$field -ne $true) { throw "Credit acceptance proof missing: $field" }
+    }
+    # This directory is the fingerprint-verified, bundle-owned disposable app
+    # extraction. Enable LOGICA's original switch only for the test cashier.
+    $customerReport = Get-Content -LiteralPath (Join-Path $evidence 'w2-customer-files.json') -Raw | ConvertFrom-Json
+    foreach ($field in @('FourDecimalSignedTouch','OpeningHistoryAtomic','JournalRollback','RecoveryAfterRestart','ExistingCreditAndStatementLinked')) {
+        if ($customerReport.$field -ne $true) { throw "Customer file acceptance proof missing: $field" }
+    }
+    $returnsReport = Get-Content -LiteralPath (Join-Path $evidence 'w2-full-return-modes.json') -Raw | ConvertFrom-Json
+    foreach ($field in @('CreditReturnUi','CardReturnUi','FreshCashierPin','CashUnchanged','DebtAndCardReconciled','OriginalStockRestored')) {
+        if ($returnsReport.$field -ne $true) { throw "Full return acceptance proof missing: $field" }
+    }
+    Set-Content -LiteralPath (Join-Path $appDir 'gestion_credit.sni') -Value 'True' -Encoding UTF8
+    $env:HANOUTY_W2_DISPOSABLE_MARKER = $null
+    $env:HANOUTY_W2_TEST_PIN = $null
+    $env:HANOUTY_W2_DISPOSABLE_PORT = $null
+    Write-Host 'PASS: cash/card sales, credit/customer settlement, full-ticket return, rollback and reconciliation verified on disposable data.' -ForegroundColor Green
+    if ($VerifyOnly) {
+        Test-HanoutyBackupRestore
+    } else {
+        Write-Host "Opening the test cashier. Login: O'Neil | PIN: 1234. All records in this session are disposable." -ForegroundColor Cyan
+        $cashier = Start-Process -FilePath $exe -WorkingDirectory $appDir -Wait -PassThru
+        if ($cashier.ExitCode -ne 0) { throw "Cashier exited with code $($cashier.ExitCode). Evidence: $evidence" }
+    }
+    $completed = $true
+    Write-Host "Evidence saved in: $evidence" -ForegroundColor Green
+} catch {
+    Write-Host "TEST SETUP FAILED: $($_.Exception.Message)" -ForegroundColor Red
+    if (Test-Path -LiteralPath $evidence) {
+        Set-Content -LiteralPath (Join-Path $evidence 'setup-failure.txt') -Value $_.Exception.Message -Encoding UTF8 -ErrorAction SilentlyContinue
+        Write-Host "Evidence folder: $evidence"
+    }
+    exit 1
+} finally {
+    Stop-HanoutyTestDatabase
+    if (-not $completed -and $dbProcess -and -not $dbProcess.HasExited) {
+        Write-Warning 'The disposable test database was not removed because MariaDB did not stop cleanly.'
+    }
+}

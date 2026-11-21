@@ -1,0 +1,44 @@
+name: QA WPF Windows STA on integration HEAD
+
+on:
+  push:
+    branches:
+      - integration/hanouty-qa-desktop-inventory-20261102
+  pull_request:
+    paths:
+      - 'modernization/Hanouty.Desktop.Wpf/**'
+      - 'modernization/Hanouty.Desktop.Wpf.Tests/**'
+      - '.github/workflows/qa-wpf-windows-sta-integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qa-wpf-sta-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actual-wpf-sta:
+    name: Actual WPF STA tests (Windows .NET 10)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Print exact source SHA
+        shell: pwsh
+        run: |
+          Write-Host "HEAD: $(git rev-parse HEAD)"
+          Write-Host "Event SHA: ${{ github.sha }}"
+      - name: Restore WPF STA tests
+        shell: pwsh
+        run: dotnet restore modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj
+      - name: Compile actual WPF STA tests
+        shell: pwsh
+        run: dotnet build modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj --configuration Release --no-restore
+      - name: Execute actual WPF STA test runner
+        shell: pwsh
+        run: dotnet run --project modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj --configuration Release --no-build
