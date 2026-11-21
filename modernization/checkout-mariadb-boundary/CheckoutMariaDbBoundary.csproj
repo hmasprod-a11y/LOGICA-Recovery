@@ -11,5 +11,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="CreditReturnAcceptance.cs" />
     <Compile Include="CardReturnAcceptance.cs" />
+    <Compile Include="PartialCashReturnAcceptance.cs" />
+    <EmbeddedResource Include="../../input/migrations/20261120-partial-cash-return-consumption.sql" LogicalName="PartialCashReturnMigration" />
   </ItemGroup>
 </Project>

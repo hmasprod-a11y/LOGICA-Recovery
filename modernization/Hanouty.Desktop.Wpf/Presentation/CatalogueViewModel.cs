@@ -552,10 +552,18 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
                 : ((IContextualWpfCashReturnSubmission)_submission!).SubmitFullCashReturn(_pendingOperationId, originalTicketId, PaymentContext);
             if (result == CheckoutSubmissionResult.Committed)
             {
+                var printedOperation = _pendingOperationId;
+                var printedContext = PaymentContext;
                 CommitFeedback = general ? "Retour du ticket enregistré" : "Full-ticket cash return committed";
                 _pendingOperationId = null;
                 OnPropertyChanged(nameof(PendingOperationId));
                 ClearConsumedPaymentContext();
+                if (PrintCommittedSale is { } print)
+                {
+                    try { print(printedOperation, printedContext); }
+                    catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+                    { CommitFeedback = "Retour enregistré. Impression impossible : " + ex.Message; }
+                }
                 return true;
             }
             if (result == CheckoutSubmissionResult.Invalidated)

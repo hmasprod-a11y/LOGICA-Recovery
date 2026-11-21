@@ -10,6 +10,19 @@ namespace LOGICA.Infrastructure.Checkout
     // No schema creation or migration occurs on a shop database.
     internal static class CashReturnConsumptionClaim
     {
+        // The additive partial ledger is optional until explicitly migrated.
+        // Once it exists, any partial consumption excludes a stale full return.
+        internal static bool HasPartialConsumption(MySqlConnection connection, MySqlTransaction transaction, string original, bool locked = false)
+        {
+            using (var command = new MySqlCommand("SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='hanouty_return_line_consumption'", connection, transaction))
+            {
+                var engine = command.ExecuteScalar();
+                if (engine == null || engine == DBNull.Value) return false;
+                if (Convert.ToString(engine) != "InnoDB") throw new InvalidOperationException("Partial-return consumption must be transactional.");
+            }
+            using (var command = new MySqlCommand("SELECT COUNT(*) FROM hanouty_return_line_consumption WHERE UPPER(original_ticket_id)=UPPER(@id)" + (locked ? " FOR UPDATE" : ""), connection, transaction))
+            { command.Parameters.AddWithValue("@id", original); return Convert.ToInt64(command.ExecuteScalar()) != 0; }
+        }
         // Infrastructure remains compatible with the legacy .NET Framework build.
         internal sealed class RequestedLine
         {
@@ -101,6 +114,8 @@ namespace LOGICA.Infrastructure.Checkout
             foreach (char c in originalTicketId + returnOperationId)
                 if (char.IsControl(c))
                     throw new InvalidOperationException("Return identifier contains a control character.");
+            if (HasPartialConsumption(connection, transaction, originalTicketId, true))
+                throw new InvalidOperationException("The original ticket already has partial returns; review its remaining lines instead.");
 
             // Fail closed when the dedicated ledger is absent or nontransactional.
             using (var engine = connection.CreateCommand())

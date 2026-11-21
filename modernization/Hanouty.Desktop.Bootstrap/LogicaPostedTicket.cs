@@ -36,6 +36,7 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
 
     internal IReadOnlyList<string> FormatFrenchThreeColumnPayment(Func<decimal, string> formatAmount)
     {
+        if (Operation is "RETOUR REMBOURSEMENT" or "RETOUR CREDIT") return Array.Empty<string>();
         if (Operation == "CREDIT")
         {
             if (Payments.Count != 0) throw new InvalidOperationException("Un crédit ne doit pas contenir d’encaissement.");
@@ -88,7 +89,7 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
             SELECT TICKET, DATES, CAISSIER, POSTE, OPERATION, Total_NET, ID_CLIENT, CODE_CLIENT, CLIENT
             FROM TABLE_VENTES_ENTETE
             WHERE BINARY ID_TICKET = BINARY @id AND BINARY CAISSIER = BINARY @cashier
-              AND BINARY POSTE = BINARY @register AND BINARY OPERATION IN ('VENTE','CREDIT')
+              AND BINARY POSTE = BINARY @register AND BINARY OPERATION IN ('VENTE','CREDIT','RETOUR REMBOURSEMENT','RETOUR CREDIT')
             """;
         string number, date, operation;
         string customerId, customerCode, customerName;
@@ -117,7 +118,7 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
         {
             while (reader.Read())
             {
-                if (operation == "CREDIT" && (reader.IsDBNull(6) || reader.IsDBNull(7) || reader.IsDBNull(8) || reader.IsDBNull(9) ||
+                if ((operation is "CREDIT" or "RETOUR CREDIT") && (reader.IsDBNull(6) || reader.IsDBNull(7) || reader.IsDBNull(8) || reader.IsDBNull(9) ||
                     reader.GetString(6) != operation || Convert.ToString(reader.GetValue(7)) != customerId ||
                     Convert.ToString(reader.GetValue(8)) != customerCode || reader.GetString(9) != customerName)) return null;
                 var rowSeller = reader.IsDBNull(5) ? "" : reader.GetString(5);
@@ -136,10 +137,13 @@ internal sealed record LogicaPostedTicket(string Number, string Date, string Cas
             while (reader.Read())
                 payments.Add(new LogicaTicketPayment(reader.GetString(0), reader.GetDecimal(1)));
 
-        if (lines.Count == 0 || total <= 0m || lines.Sum(line => line.Net) != total ||
-            (operation == "CREDIT" ? payments.Count != 0 || customerId == "0" || string.IsNullOrWhiteSpace(customerName)
+        var isReturn = operation is "RETOUR REMBOURSEMENT" or "RETOUR CREDIT";
+        if (lines.Count == 0 || (isReturn ? total >= 0m : total <= 0m) || lines.Sum(line => line.Net) != total ||
+            lines.Any(line => isReturn ? line.Quantity >= 0m || line.Net > 0m : line.Quantity <= 0m || line.Net < 0m) ||
+            (operation is "CREDIT" or "RETOUR CREDIT" ? payments.Count != 0 || customerId == "0" || string.IsNullOrWhiteSpace(customerName)
                 : payments.Count == 0 || payments.Sum(payment => payment.Amount) != total))
             return null;
+        if (operation == "RETOUR REMBOURSEMENT" && (payments.Count != 1 || payments[0].Mode is not ("ESPECES" or "CARTE") || payments[0].Amount >= 0m)) return null;
 
         transaction.Commit();
         return new LogicaPostedTicket(number, date, cashier, register, operation, seller ?? "", total,

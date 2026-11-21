@@ -54,7 +54,26 @@ internal static class Program
             LogicaReceiptRenderer.Draw(graphics, discounted.FormatFrenchThreeColumnLines(n => n.ToString("0.###"), Amount).ToArray(), Amount(discounted.Total), tail);
             bitmap.Save(png, ImageFormat.Png);
         }
-        File.WriteAllText(Path.Combine(output,"result.txt"), $"PASS {assertions} assertions. Production renderer PNG generated. Synthetic persisted-ticket-shaped data; no database write, spooler or physical printer tested.\n");
+        var returned = new LogicaPostedTicket("000043", "2026-11-18", "TEST", "01", "RETOUR REMBOURSEMENT", "", -18m,
+            [new("Cafe", -2m, 10m, 10m, -18m)], [new("ESPECES", -18m)]);
+        Check(returned.FormatFrenchThreeColumnPayment(Amount).Count == 0, "return receipt omits sale tender and change");
+        using (var qr = LogicaReceiptQr.Create("d30b8f0644a34849a138e8ab37bf8c68"))
+        using (var bitmap = new Bitmap(304, 750))
+        using (var graphics = Graphics.FromImage(bitmap))
+        {
+            Check(qr.Width > 0 && qr.Width < 260 && qr.Width == qr.Height, "canonical operation QR fits original receipt width");
+            graphics.Clear(Color.White);
+            LogicaReceiptRenderer.Draw(graphics, returned.FormatFrenchThreeColumnLines(n => n.ToString("0.###"), Amount).ToArray(),
+                Amount(returned.Total), LogicaReceiptSummary.Format(returned) + string.Join("\r\n", returned.FormatFrenchThreeColumnIdentity(true)), qr, returned.Operation);
+            bitmap.Save(Path.Combine(output, "receipt-return-qr.png"), ImageFormat.Png);
+            Check(bitmap.GetPixel(1, 1).ToArgb() == Color.Black.ToArgb(), "return operation uses original black header");
+        }
+        foreach (var invalid in new[] { "", "\nforged", new string('x', 65) })
+        {
+            try { using var unexpected = LogicaReceiptQr.Create(invalid); throw new Exception("Expected invalid QR identity rejection"); }
+            catch (InvalidOperationException) { assertions++; }
+        }
+        File.WriteAllText(Path.Combine(output,"result.txt"), $"PASS {assertions} assertions. Production sale and return renderer PNGs generated. Synthetic persisted-ticket-shaped data; no database write, spooler or physical printer tested.\n");
         Console.WriteLine($"PASS {assertions} assertions; {png}");
         if (args.Contains("--show"))
         {

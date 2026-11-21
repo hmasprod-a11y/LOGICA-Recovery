@@ -277,6 +277,13 @@ public sealed partial record CatalogueHost
                 : $"Ticket {printedNumber} : remboursement CARTE de {request.ExpectedTotal:N2} MAD.\nConfirmez que le remboursement a été effectué sur le terminal externe. Aucun remboursement espèces.",
             request.Payments[0].Kind == CheckoutPaymentKind.Credit ? "Confirmer le retour crédit" : "Confirmer le remboursement CARTE");
         };
+        returnHost.SelectPartial = (candidate, operation, cashier) =>
+        {
+            var dialog = new PartialCashReturnDialog(candidate.TicketNumber, candidate.Lines,
+                MariaDbCashCheckoutServices.IsPartialCashReturnLineSupported,
+                selections => MariaDbCashCheckoutServices.PreparePartialCashReturnRequest(connections, operation, cashier, "MAD", candidate.SaleId, selections).ExpectedTotal) { Owner = window };
+            return dialog.ShowDialog() == true ? dialog.Selections : null;
+        };
         window.ConfigureOriginalSaleLookup(returnHost, () =>
         {
             if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is null ||
@@ -284,7 +291,7 @@ public sealed partial record CatalogueHost
             // A return uses persisted original amounts, never a consumed sale tender.
             contextConsumed = true;
             manualDiscount = null;
-            context = new CashierPaymentContext(activeCashierId, twoDigitWorkstation, "MAD", returnHost.Mode, 0m);
+            context = new CashierPaymentContext(activeCashierId, twoDigitWorkstation, "MAD", returnHost.Mode == "PartialCash" ? "Cash" : returnHost.Mode, 0m);
             vm.PaymentContext = context;
             return true;
         });
@@ -748,6 +755,55 @@ public sealed partial record CatalogueHost
                     "Règlement fournisseur", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
             }
         });
+        window.ConfigureWorkstationSettings(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } actor || binding.Session.PendingCount != 0) return;
+            businessDocumentsOpen = true;
+            var settingsContext = context;
+            try
+            {
+                var reader = new SalesJournalReader(settings.ConnectionString);
+                // LOGICA FUN_CAT_ACCES grants PARAMETRES to ADMIN only.
+                var access = reader.Authorize(actor, () => window.PromptCashierPin(actor), statistics: true);
+                void Authorize()
+                {
+                    if (!businessDocumentsOpen || !vm.FinancialSessionActive || activeCashierId != actor ||
+                        !ReferenceEquals(context, settingsContext) || vm.CheckoutBusy || vm.CheckoutUncertain ||
+                        vm.PendingOperationId is not null || binding.Session.PendingCount != 0 || binding.Session.State != CheckoutCommitState.Ready)
+                        throw new UnauthorizedAccessException("La session des paramètres a changé.");
+                    reader.Options(access); // Recheck exact current ADMIN role without retaining the PIN.
+                }
+                Authorize();
+                new WorkstationPrinterDialog(settings, twoDigitWorkstation, Authorize) { Owner = window }.ShowDialog();
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+            { System.Windows.MessageBox.Show(window, ex is UnauthorizedAccessException or InvalidOperationException ? ex.Message : "Paramètres indisponibles.", "Paramètres du poste"); }
+            finally { businessDocumentsOpen = false; }
+        });
+        window.ConfigureSalesJournal(statistics =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } actor || binding.Session.PendingCount != 0) return;
+            businessDocumentsOpen = true;
+            var journalContext = context;
+            try
+            {
+                bool Active() => businessDocumentsOpen && vm.FinancialSessionActive && activeCashierId == actor &&
+                    ReferenceEquals(context, journalContext) && !vm.CheckoutBusy && !vm.CheckoutUncertain &&
+                    vm.PendingOperationId is null && binding.Session.PendingCount == 0 && binding.Session.State == CheckoutCommitState.Ready;
+                var reader = new SalesJournalReader(settings.ConnectionString);
+                var access = reader.Authorize(actor, () => window.PromptCashierPin(actor), statistics);
+                if (!Active()) throw new InvalidOperationException("La session du journal a changé.");
+                var workflow = new SalesJournalWorkflow(reader, access, Active, selected =>
+                {
+                    using var db = connections(); db.Open();
+                    LogicaCashReceiptPrinter.Print(db, WorkstationPrinterProfile.DirectoryFor(settings, twoDigitWorkstation), selected.Id, selected.Cashier, selected.Register);
+                });
+                new SalesJournalDialog(workflow) { Owner = window }.ShowDialog();
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+            { System.Windows.MessageBox.Show(window, ex is UnauthorizedAccessException or InvalidOperationException ? ex.Message : "Journal indisponible.", statistics ? "Statistiques" : "Journal des ventes"); }
+            finally { businessDocumentsOpen = false; }
+        });
         window.ConfigureBusinessDocuments(() =>
         {
             if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } actor || binding.Session.PendingCount != 0) return;
@@ -866,13 +922,15 @@ public sealed partial record CatalogueHost
         });
         vm.PrintCommittedSale = (operation, payment) =>
         {
-            var directory = AppContext.BaseDirectory;
+            var directory = WorkstationPrinterProfile.DirectoryFor(settings, twoDigitWorkstation);
             using var connection = connections();
             if (connection.State != System.Data.ConnectionState.Open) connection.Open();
             var ticket = LogicaPostedTicket.Read(connection, operation, payment.CashierId, payment.RegisterId)
                 ?? throw new InvalidOperationException("Le ticket enregistré est introuvable.");
             var change = -ticket.Payments.Where(row => row.Mode == "ESPECES" && row.Amount < 0m).Sum(row => row.Amount);
-            window.SetLastSaleSummary(ticket.Operation == "CREDIT"
+            window.SetLastSaleSummary(ticket.Operation.StartsWith("RETOUR", StringComparison.Ordinal)
+                ? $"{ticket.Operation} {ticket.Number} · {ticket.Total:F2} MAD"
+                : ticket.Operation == "CREDIT"
                 ? $"Crédit {ticket.Number} · {ticket.CustomerName} · {ticket.Total:F2} MAD"
                 : $"Dernier ticket {ticket.Number} · À rendre {change:F2} MAD");
             if (!System.IO.File.Exists(System.IO.Path.Combine(directory, "PRINTER_CL.sni"))) return;
@@ -986,8 +1044,11 @@ public sealed partial record CatalogueHost
     {
         public string Mode { get; set; } = "Cash";
         public Func<AuthorizedCheckoutRequest, bool>? Confirm { get; set; }
+        public Func<MariaDbCashCheckoutServices.PartialCashReturnCandidate, string, string, IReadOnlyList<CheckoutPartialReturnSelection>?>? SelectPartial { get; set; }
         public IReadOnlyList<OriginalSaleCandidate> FindPersistedSales(string receiptSearch) =>
-            Mode == "Credit" ? MariaDbCashCheckoutServices.FindFullCreditReturnCandidatesByReceipt(connections, receiptSearch)
+            Mode == "PartialCash" ? MariaDbCashCheckoutServices.FindPartialCashReturnCandidatesByReceipt(connections, receiptSearch)
+                .Select(sale => new OriginalSaleCandidate(sale.SaleId, $"Ticket {sale.TicketNumber} — solde à reprendre {sale.RemainingNetMad:N2} MAD", sale.RemainingNetMad)).ToArray()
+            : Mode == "Credit" ? MariaDbCashCheckoutServices.FindFullCreditReturnCandidatesByReceipt(connections, receiptSearch)
                 .Select(sale => new OriginalSaleCandidate(sale.SaleId, $"Ticket {sale.TicketNumber} · {sale.Customer.Name} — dette {sale.CreditMad:N2} MAD", sale.CreditMad)).ToArray()
             : Mode == "Card" ? MariaDbCashCheckoutServices.FindFullCardReturnCandidatesByReceipt(connections, receiptSearch)
                 .Select(sale => new OriginalSaleCandidate(sale.SaleId, $"Ticket {sale.TicketNumber} — CARTE {sale.RefundMad:N2} MAD", sale.RefundMad)).ToArray()
@@ -998,9 +1059,15 @@ public sealed partial record CatalogueHost
 
         public AuthorizedCheckoutRequest PrepareFullTicketReturn(string operationId, string originalId, CashierPaymentContext context)
         {
-            if (context?.IsWellFormed != true || context.TenderCode != Mode || context.RegisterId != workstation || context.CurrencyCode != "MAD")
+            if (context?.IsWellFormed != true || context.TenderCode != (Mode == "PartialCash" ? "Cash" : Mode) || context.RegisterId != workstation || context.CurrencyCode != "MAD")
                 throw new InvalidOperationException("La session du retour a changé.");
             if (Mode == "Cash") return PrepareFullCashReturn(operationId, originalId, context);
+            if (Mode == "PartialCash")
+            {
+                var candidate = MariaDbCashCheckoutServices.FindPartialCashReturnCandidatesByReceipt(connections, originalId).Single(row => row.SaleId == originalId);
+                var selections = SelectPartial?.Invoke(candidate, operationId, context.CashierId) ?? throw new InvalidOperationException("Retour partiel annulé.");
+                return MariaDbCashCheckoutServices.PreparePartialCashReturnRequest(connections, operationId, context.CashierId, "MAD", originalId, selections);
+            }
             var request = Mode == "Credit" ? MariaDbCashCheckoutServices.PrepareFullCreditReturnRequest(connections, operationId, context.CashierId, "MAD", originalId)
                 : Mode == "Card" ? MariaDbCashCheckoutServices.PrepareFullCardReturnRequest(connections, operationId, context.CashierId, "MAD", originalId, externalRefundConfirmed: true)
                 : throw new InvalidOperationException("Mode de retour invalide.");

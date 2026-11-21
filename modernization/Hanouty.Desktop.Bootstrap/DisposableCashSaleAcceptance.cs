@@ -920,6 +920,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyCreditSales(settings, pin);
         VerifyCustomerFiles(settings, pin);
         VerifyFullReturnModes(settings, pin);
+        VerifyPartialCashReturnUi(settings, pin);
         VerifyWorkstationConfiguration(settings);
         VerifyBusinessDocuments(settings, pin);
         VerifyUnicodeSettlementReplay(settings, pin);

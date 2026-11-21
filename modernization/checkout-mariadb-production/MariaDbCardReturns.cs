@@ -88,7 +88,7 @@ namespace Hanouty.Checkout.MariaDb
                 try
                 {
                     using var claim = new MySqlCommand("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE UPPER(original_ticket_id)=UPPER(@id)", db, tx);
-                    claim.Parameters.AddWithValue("@id", header.Id); if (Convert.ToInt64(claim.ExecuteScalar()) != 0) continue;
+                    claim.Parameters.AddWithValue("@id", header.Id); if (Convert.ToInt64(claim.ExecuteScalar()) != 0 || CashReturnConsumptionClaim.HasPartialConsumption(db, tx, header.Id)) continue;
                     var proof = CardReturnOriginalSaleEvidence.Read(db, tx, header.Id);
                     ValidateOriginalReturnLines(proof.Lines.Select(line => (line.ArticleId, line.Quantity)).ToArray());
                     result.Add(new PersistedCardReturnCandidate(header.Id, header.Ticket, header.Date, header.Register, proof.Amount, proof.OriginalCash, proof.OriginalCard));
@@ -108,7 +108,7 @@ namespace Hanouty.Checkout.MariaDb
             foreach (var table in new[] { "TABLE_VENTES_ENTETE", "TABLE_VENTES_JOURNAL", "TABLE_VENTES_REGLEMENTS", "hanouty_cash_return_consumption" }) RequireInnoDb(db, tx, table);
             var proof = CardReturnOriginalSaleEvidence.Read(db, tx, originalTicketId);
             using (var command = new MySqlCommand("SELECT COUNT(*) FROM hanouty_cash_return_consumption WHERE UPPER(original_ticket_id)=UPPER(@id)", db, tx))
-            { command.Parameters.AddWithValue("@id", originalTicketId); if (Convert.ToInt64(command.ExecuteScalar()) != 0) throw new InvalidOperationException("Original paid ticket was already returned."); }
+            { command.Parameters.AddWithValue("@id", originalTicketId); if (Convert.ToInt64(command.ExecuteScalar()) != 0 || CashReturnConsumptionClaim.HasPartialConsumption(db, tx, originalTicketId)) throw new InvalidOperationException("Original paid ticket was already returned."); }
             ValidateOriginalReturnLines(proof.Lines.Select(line => (line.ArticleId, line.Quantity)).ToArray());
             var request = new AuthorizedCheckoutRequest(operationId, cashierId, currency, true,
                 proof.Lines.Select(line => new CheckoutBatchLine(line.ArticleId, checked((int)line.Quantity))).ToArray(),

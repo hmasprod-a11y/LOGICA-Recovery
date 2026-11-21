@@ -10,6 +10,10 @@ namespace Hanouty.ArchitectureBridge;
 public enum CheckoutPaymentKind { Cash, Card, BankTransfer, Credit }
 
 public sealed record CheckoutPayment(CheckoutPaymentKind Kind, decimal Amount);
+public sealed record CheckoutOriginalReturnLineSnapshot(string ArticleId, string ArticleName, decimal OriginalQuantity,
+    decimal OriginalUnitPrice, decimal OriginalDiscountPercent, decimal OriginalNet, decimal ReturnedQuantity, decimal ReturnedNet);
+public sealed record CheckoutPartialReturnSelection(CheckoutOriginalReturnLineSnapshot Original, int Quantity);
+public sealed record CheckoutPartialCashReturnReview(IReadOnlyList<CheckoutPartialReturnSelection> Selections);
 public sealed record CheckoutCustomerIdentity(string Id, string Code, string Name)
 {
     public void Validate()
@@ -33,7 +37,8 @@ public sealed record AuthorizedCheckoutRequest(
     decimal ExpectedTotal,
     string? OriginalTicketId = null,
     CheckoutCustomerIdentity? Customer = null,
-    bool ExternalCardRefundConfirmed = false)
+    bool ExternalCardRefundConfirmed = false,
+    CheckoutPartialCashReturnReview? PartialCashReturn = null)
 {
     public void Validate()
     {
@@ -66,6 +71,11 @@ public sealed record AuthorizedCheckoutRequest(
         if (credit) Customer!.Validate();
         if (!credit && Customer is not null)
             throw new ArgumentException("Named paid-sale metadata requires its own accepted flow.", nameof(Customer));
+        if (PartialCashReturn is { } partial && (!IsReturn || Payments.Count != 1 || Payments[0].Kind != CheckoutPaymentKind.Cash ||
+            partial.Selections is null || partial.Selections.Count != Lines.Count || partial.Selections.Any(item => item is null || item.Original is null || item.Quantity <= 0) ||
+            partial.Selections.Select(item => item.Original.ArticleId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != Lines.Count ||
+            partial.Selections.Any(item => Lines.Count(line => line.ArticleId == item.Original.ArticleId && line.Quantity == item.Quantity) != 1)))
+            throw new ArgumentException("A reviewed original snapshot and selected positive quantities are required for a cash partial return.", nameof(PartialCashReturn));
         // Never compare totals here: legacy checkout owns rounding, discounts,
         // credit settlement and cash change; the financial port verifies them.
     }

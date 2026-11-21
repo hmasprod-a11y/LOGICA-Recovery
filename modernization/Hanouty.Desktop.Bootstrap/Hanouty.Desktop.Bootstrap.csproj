@@ -11,7 +11,9 @@
     <EmbeddedResource Include="Assets/LogicaReceiptLogo.jpg" LogicalName="LogicaReceiptLogo.jpg" />
     <EmbeddedResource Include="../../input/migrations/20261120-customer-file-operations.sql" LogicalName="Hanouty.CustomerFilesMigration" />
     <EmbeddedResource Include="../../input/migrations/20261120-stock-issue-create-operations.sql" LogicalName="Hanouty.StockIssueCreateMigration" />
+    <EmbeddedResource Include="../../input/migrations/20261120-partial-cash-return-consumption.sql" LogicalName="Hanouty.PartialCashReturnMigration" />
     <PackageReference Include="ClosedXML" Version="0.105.0" />
+    <PackageReference Include="QRCoder" Version="1.9.0" />
     <ProjectReference Include="../Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj"/>
     <ProjectReference Include="../architecture/Hanouty.WpfContractAdapter/Hanouty.WpfContractAdapter.csproj"/>
     <ProjectReference Include="../inventory/Hanouty.Inventory.MariaDb/Hanouty.Inventory.MariaDb.csproj"/>
