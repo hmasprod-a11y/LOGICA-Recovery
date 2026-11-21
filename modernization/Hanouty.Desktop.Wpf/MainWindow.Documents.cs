@@ -15,7 +15,7 @@ public partial class MainWindow
             _openBusinessDocuments is null) return false;
         _businessDocumentsOpen = true;
         try { _openBusinessDocuments(); return true; }
-        finally { _businessDocumentsOpen = false; }
+        finally { _businessDocumentsOpen = false; RefreshTrustedBasketTotal(); }
     }
     private void OpenBusinessDocuments_Click(object sender, RoutedEventArgs args) => ShowBusinessDocuments();
 }

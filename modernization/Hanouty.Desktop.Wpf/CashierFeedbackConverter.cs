@@ -9,6 +9,9 @@ public sealed class CashierFeedbackConverter : IValueConverter
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => (value as string) switch
     {
         "Selection accepted" => "Article ajouté.",
+        "Catalogue ready" => "Catalogue prêt.",
+        "No products loaded" => "Aucun article dans le catalogue.",
+        "Persisted sale reviewed — select products for a new checkout" => "Prêt pour le prochain client.",
         "Product not found" => "Article introuvable.",
         "Ambiguous barcode" => "Choisissez la variante de cet article.",
         "Empty barcode" => "Scannez un article.",

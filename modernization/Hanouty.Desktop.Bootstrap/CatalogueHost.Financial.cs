@@ -169,7 +169,8 @@ public sealed partial record CatalogueHost
         var contextConsumed = false;
         string? waitingSaleId = null;
         ApprovedManualDiscount? manualDiscount = null;
-        Func<MySqlConnection> connections = () => new MySqlConnection(settings.ConnectionString);
+        var utf8Connection = new MySqlConnectionStringBuilder(settings.ConnectionString) { CharacterSet = "utf8mb4" }.ConnectionString;
+        Func<MySqlConnection> connections = () => new MySqlConnection(utf8Connection);
         var posting = MariaDbCashCheckoutServices.CreatePostingPort(
             connections, twoDigitWorkstation, transientPinProvider, () => waitingSaleId, () => manualDiscount, AppContext.BaseDirectory);
         posting = new AcknowledgementFaultPort(posting, () => {
@@ -211,7 +212,11 @@ public sealed partial record CatalogueHost
         var reviewing = false;
         var customerFilesOpen = false;
         var businessDocumentsOpen = false;
-        bool CanChangeContext() => !businessDocumentsOpen && !customerFilesOpen && !reviewing && !vm.CheckoutBusy &&
+        var dailyStockOpen = false;
+        var dailyStockChild = false;
+        bool CanChangeContext() => !dailyStockOpen && ReadyContext();
+        bool CanChangeStockContext() => (!dailyStockOpen || dailyStockChild) && ReadyContext();
+        bool ReadyContext() => !businessDocumentsOpen && !customerFilesOpen && !reviewing && !vm.CheckoutBusy &&
             !vm.CheckoutUncertain && vm.PendingOperationId is null &&
             binding.Session.OperationId is null && binding.Session.State == CheckoutCommitState.Ready;
         window.ConfigureManualDiscounts(() =>
@@ -385,6 +390,25 @@ public sealed partial record CatalogueHost
             contextConsumed = true;
             context = new CashierPaymentContext(activeCashierId, twoDigitWorkstation, "MAD", "Cash", 0m);
             vm.PaymentContext = context;
+            return true;
+        });
+        window.ConfigurePinLogin(pin =>
+        {
+            if (!CanChangeContext() || binding.Session.PendingCount != 0 || ReadTrustedTotal() != 0m) return false;
+            string cashier;
+            reviewing = true;
+            try
+            {
+                cashier = LogicaPinLogin.Resolve(connections, pin);
+                MariaDbCashCheckoutServices.VerifyCashierSession(connections, cashier, () => pin);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+            { window.SetLoginFeedback("Code d’accès incorrect ou utilisateur indisponible."); return false; }
+            finally { reviewing = false; }
+            if (!CanChangeContext() || binding.Session.PendingCount != 0 || ReadTrustedTotal() != 0m) return false;
+            activeCashierId = cashier; captured = null; contextConsumed = true; manualDiscount = null; waitingSaleId = null;
+            context = new CashierPaymentContext(cashier, twoDigitWorkstation, "MAD", "Cash", 0m);
+            vm.PaymentContext = context; vm.FinancialSessionActive = true;
             return true;
         });
         window.ConfigureCashierEntry((cashier, register, tender) => {
@@ -634,12 +658,12 @@ public sealed partial record CatalogueHost
         });
         window.ConfigureInventory(() =>
         {
-            if (!CanChangeContext() || !vm.FinancialSessionActive ||
+            if (!CanChangeStockContext() || !vm.FinancialSessionActive ||
                 activeCashierId is not { } actor || binding.Session.PendingCount != 0)
                 return null;
             return new InventoryCountWorkflow(settings.ConnectionString, actor, () =>
             {
-                if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                if (!CanChangeStockContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
                     binding.Session.PendingCount != 0) return "";
                 reviewing = true;
                 try { return window.PromptCashierPin(actor); }
@@ -648,11 +672,11 @@ public sealed partial record CatalogueHost
         });
         window.ConfigureStockIssues(() =>
         {
-            if (!CanChangeContext() || activeCashierId is not { } actor || binding.Session.PendingCount != 0)
+            if (!CanChangeStockContext() || activeCashierId is not { } actor || binding.Session.PendingCount != 0)
                 return;
             var dialog = new StockIssueDialog(new StockIssueValidation(settings.ConnectionString), actor, () =>
             {
-                if (!CanChangeContext() || activeCashierId != actor || binding.Session.PendingCount != 0) return "";
+                if (!CanChangeStockContext() || activeCashierId != actor || binding.Session.PendingCount != 0) return "";
                 reviewing = true;
                 try { return window.PromptCashierPin(actor); }
                 finally { reviewing = false; }
@@ -661,12 +685,12 @@ public sealed partial record CatalogueHost
         });
         window.ConfigurePurchaseReceipt(() =>
         {
-            if (!CanChangeContext() || activeCashierId is not { } actor || binding.Session.PendingCount != 0)
+            if (!CanChangeStockContext() || activeCashierId is not { } actor || binding.Session.PendingCount != 0)
                 return;
             var receipt = new PurchaseReceiptValidation(settings.ConnectionString);
             var dialog = new PurchaseReceiptDialog(receipt, reviewed =>
             {
-                if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                if (!CanChangeStockContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
                     binding.Session.PendingCount != 0) return false;
                 reviewing = true;
                 try
@@ -679,7 +703,7 @@ public sealed partial record CatalogueHost
                 finally { reviewing = false; }
             }, (order, lines) =>
             {
-                if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                if (!CanChangeStockContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
                     binding.Session.PendingCount != 0) return null;
                 reviewing = true;
                 try
@@ -691,7 +715,7 @@ public sealed partial record CatalogueHost
                 finally { reviewing = false; }
             }, reviewed =>
             {
-                if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                if (!CanChangeStockContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
                     binding.Session.PendingCount != 0) return false;
                 reviewing = true;
                 try
@@ -706,7 +730,7 @@ public sealed partial record CatalogueHost
                 finally { reviewing = false; }
             }, (supplier, lines) =>
             {
-                if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                if (!CanChangeStockContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
                     binding.Session.PendingCount != 0) return null;
                 reviewing = true;
                 try
@@ -755,6 +779,36 @@ public sealed partial record CatalogueHost
                     "Règlement fournisseur", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
             }
         });
+        window.ConfigureDailyStock(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } actor || binding.Session.PendingCount != 0) return;
+            dailyStockOpen = true;
+            var stockContext = context;
+            try
+            {
+                bool Active() => dailyStockOpen && vm.FinancialSessionActive && activeCashierId == actor &&
+                    ReferenceEquals(context, stockContext) && !vm.CheckoutBusy && !vm.CheckoutUncertain &&
+                    vm.PendingOperationId is null && binding.Session.PendingCount == 0 && binding.Session.State == CheckoutCommitState.Ready;
+                void Child(Action action)
+                {
+                    if (!Active() || dailyStockChild) throw new InvalidOperationException("La session du stock a changé.");
+                    dailyStockChild = true;
+                    try { action(); }
+                    finally { dailyStockChild = false; }
+                }
+                var reader = new DailyStockReader(settings.ConnectionString);
+                var access = reader.Authorize(actor, role => Active() ? window.PromptCashDrawerApproval(role) : "");
+                if (!Active()) throw new InvalidOperationException("La session du stock a changé.");
+                new DailyStockDialog(reader, access, new DailyStockHooks(
+                    OpenInventory: () => Child(window.ShowInventoryFromStock),
+                    OpenReceipts: () => Child(window.ShowReceiptsFromStock),
+                    OpenStockIssues: () => Child(window.ShowStockIssuesFromStock),
+                    OpenCatalogue: () => Child(window.ShowCatalogueFromStock))) { Owner = window }.ShowDialog();
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
+            { System.Windows.MessageBox.Show(window, ex is UnauthorizedAccessException or InvalidOperationException ? ex.Message : "Stock indisponible.", "Articles et stock"); }
+            finally { dailyStockChild = false; dailyStockOpen = false; vm.ReloadCatalogue(); }
+        });
         window.ConfigureWorkstationSettings(() =>
         {
             if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId is not { } actor || binding.Session.PendingCount != 0) return;
@@ -762,19 +816,30 @@ public sealed partial record CatalogueHost
             var settingsContext = context;
             try
             {
-                var reader = new SalesJournalReader(settings.ConnectionString);
+                var settingsStore = new DailyLogicaSettingsStore(settings.ConnectionString);
                 // LOGICA FUN_CAT_ACCES grants PARAMETRES to ADMIN only.
-                var access = reader.Authorize(actor, () => window.PromptCashierPin(actor), statistics: true);
+                var access = settingsStore.Authorize(actor, () => window.PromptCashierPin(actor));
                 void Authorize()
                 {
                     if (!businessDocumentsOpen || !vm.FinancialSessionActive || activeCashierId != actor ||
                         !ReferenceEquals(context, settingsContext) || vm.CheckoutBusy || vm.CheckoutUncertain ||
                         vm.PendingOperationId is not null || binding.Session.PendingCount != 0 || binding.Session.State != CheckoutCommitState.Ready)
                         throw new UnauthorizedAccessException("La session des paramètres a changé.");
-                    reader.Options(access); // Recheck exact current ADMIN role without retaining the PIN.
+                    settingsStore.Read(access); // Recheck exact current ADMIN role without retaining the PIN.
                 }
                 Authorize();
-                new WorkstationPrinterDialog(settings, twoDigitWorkstation, Authorize) { Owner = window }.ShowDialog();
+                new WorkstationSettingsMenu(
+                    () =>
+                    {
+                        Authorize();
+                        var workflow = new DailyLogicaSettingsWorkflow(settingsStore, access, () =>
+                            businessDocumentsOpen && vm.FinancialSessionActive && activeCashierId == actor && ReferenceEquals(context, settingsContext) &&
+                            !vm.CheckoutBusy && !vm.CheckoutUncertain && vm.PendingOperationId is null && binding.Session.PendingCount == 0 && binding.Session.State == CheckoutCommitState.Ready,
+                            () => window.PromptCashierPin(actor));
+                        new DailyLogicaSettingsDialog(workflow) { Owner = window }.ShowDialog();
+                    },
+                    () => { Authorize(); new WorkstationPrinterDialog(settings, twoDigitWorkstation, Authorize) { Owner = window }.ShowDialog(); })
+                    { Owner = window }.ShowDialog();
             }
             catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
             { System.Windows.MessageBox.Show(window, ex is UnauthorizedAccessException or InvalidOperationException ? ex.Message : "Paramètres indisponibles.", "Paramètres du poste"); }
@@ -864,12 +929,12 @@ public sealed partial record CatalogueHost
 
         window.ConfigureCataloguePrices(() =>
         {
-            if (!CanChangeContext() || activeCashierId is not { } actor || binding.Session.PendingCount != 0)
+            if (!CanChangeStockContext() || activeCashierId is not { } actor || binding.Session.PendingCount != 0)
                 return;
             var editor = new CataloguePriceEditor(settings.ConnectionString);
             var dialog = new CataloguePriceDialog(editor, (reviewed, price) =>
             {
-                if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                if (!CanChangeStockContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
                     binding.Session.PendingCount != 0) return false;
                 reviewing = true;
                 try
@@ -882,7 +947,7 @@ public sealed partial record CatalogueHost
                 finally { reviewing = false; }
             }, (name, barcode, family, price, variantOf) =>
             {
-                if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                if (!CanChangeStockContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
                     binding.Session.PendingCount != 0) return null;
                 reviewing = true;
                 try
@@ -894,7 +959,7 @@ public sealed partial record CatalogueHost
                 finally { reviewing = false; }
             }, (card, name, barcode, family, details) =>
             {
-                if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                if (!CanChangeStockContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
                     binding.Session.PendingCount != 0) return false;
                 reviewing = true;
                 try
@@ -907,7 +972,7 @@ public sealed partial record CatalogueHost
                 finally { reviewing = false; }
             }, lines =>
             {
-                if (!CanChangeContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
+                if (!CanChangeStockContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
                     binding.Session.PendingCount != 0) return null;
                 reviewing = true;
                 try

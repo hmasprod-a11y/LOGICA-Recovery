@@ -572,7 +572,8 @@ public partial class MainWindow : Window
 
     private void EnterTender_Click(object sender, RoutedEventArgs e) => ShowCashierEntry(forPayment: true);
 
-    private bool ShowCashierEntry(bool forPayment)
+    public bool ShowPinLogin() => ShowCashierEntry(forPayment: false, pinOnly: true);
+    private bool ShowCashierEntry(bool forPayment, bool pinOnly = false)
     {
         if (_businessDocumentsOpen || _customerFilesOpen || _manualDiscountOpen || _alternatePaymentOpen || _cashierEntryOpen || _reviewOpen || _logoutOpen || _pinOpen || _trustedTotalReadBusy || _originalSaleLookupBusy || DataContext is not CatalogueViewModel vm ||
             vm.CheckoutBusy || vm.CheckoutUncertain || vm.PendingOperationId is not null ||
@@ -584,6 +585,12 @@ public partial class MainWindow : Window
         {
             var total = _readTrustedCashTotal();
             if (total is null || total < 0m) return false;
+            if (pinOnly && _pinLogin is not null)
+            {
+                if (total != 0m || (_readBasketIdentity is not null &&
+                    DataContext is CatalogueViewModel { BasketLines.Count: > 0 })) return false;
+                return SignInWithPin();
+            }
             var identity = _readBasketIdentity?.Invoke();
             // Session identity is not a reusable payment authorization.
             // When the Host supplies this reader, null revokes entry even if the VM has stale data.
@@ -669,7 +676,7 @@ public partial class MainWindow : Window
         return System.Windows.LogicalTreeHelper.GetParent(node);
     }
 
-    private void CashierEntry_Click(object sender, RoutedEventArgs e) => ShowCashierEntry();
+    private void CashierEntry_Click(object sender, RoutedEventArgs e) => ShowPinLogin();
 
     private Func<string, CheckoutResolution, Func<string>, bool>? _review;
     public void ConfigureReviewedCheckout(Func<string, CheckoutResolution, Func<string>, bool> review)
@@ -728,8 +735,8 @@ public partial class MainWindow : Window
                   authorizedSession?.IsWellFormed != true ||
                   !string.Equals(authorizedSession.CashierId, cashier, StringComparison.Ordinal)))
             return "";
-        return ReadPin(cashierEntryPin ? "Authorize cashier session" : "Authorize checkout",
-            $"Cashier: {cashier}\nConfirm this cashier session for the displayed payment.",
+        return ReadPin(cashierEntryPin ? "Autoriser la session de caisse" : "Autoriser l’opération",
+            $"Caissier : {cashier}\nSaisissez votre code pour confirmer l’opération affichée.",
             cashierEntryPin ? cashier : null);
     }
 
@@ -757,10 +764,10 @@ public partial class MainWindow : Window
         };
         System.Windows.Automation.AutomationProperties.SetName(pin, "Cashier review PIN");
         var confirm = new System.Windows.Controls.Button {
-            Content = "Confirm", IsDefault = true, MinHeight = 40
+            Content = "Confirmer", IsDefault = true, MinHeight = 40
         };
         var cancel = new System.Windows.Controls.Button {
-            Content = "Cancel", IsCancel = true, MinHeight = 40
+            Content = "Annuler", IsCancel = true, MinHeight = 40
         };
         var panel = new System.Windows.Controls.StackPanel { Margin = new Thickness(20) };
         panel.Children.Add(new System.Windows.Controls.TextBlock {

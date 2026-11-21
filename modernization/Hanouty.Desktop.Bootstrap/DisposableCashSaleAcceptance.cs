@@ -223,7 +223,7 @@ INSERT INTO TABLE_NUM VALUES (0,1);
                     Require(modal is Hanouty.Desktop.Wpf.CashierEntryDialog,
                         "Actual cashier entry dialog did not render.");
                     Require(Children(modal!).OfType<System.Windows.Controls.TextBlock>().Any(t =>
-                        t.Text.Contains("Application total (MAD): " + expectedTotal.ToString("F2", CultureInfo.InvariantCulture))),
+                        t.Text.Contains("Total à régler : " + expectedTotal.ToString("F2", CultureInfo.InvariantCulture) + " MAD")),
                         "Dialog displayed a stale/UI-derived total.");
                     System.Windows.Controls.TextBox Field(string name) =>
                         Children(modal!).OfType<System.Windows.Controls.TextBox>().Single(t =>
@@ -921,9 +921,11 @@ INSERT INTO TABLE_NUM VALUES (0,1);
         VerifyCustomerFiles(settings, pin);
         VerifyFullReturnModes(settings, pin);
         VerifyPartialCashReturnUi(settings, pin);
+        VerifyPinOnlyLogin(settings);
         VerifyWorkstationConfiguration(settings);
         VerifyBusinessDocuments(settings, pin);
         VerifyUnicodeSettlementReplay(settings, pin);
+        VerifyDailySections(settings);
         using (var stream = typeof(DisposableCashSaleAcceptance).Assembly.GetManifestResourceStream("Hanouty.StockIssueCreateMigration"))
         using (var reader = new StreamReader(stream ?? throw new InvalidOperationException("Stock issue creation migration is missing."))) Sql(settings, reader.ReadToEnd());
 

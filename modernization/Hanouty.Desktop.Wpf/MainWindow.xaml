@@ -6,8 +6,8 @@
         MinHeight="480" MinWidth="760" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" SnapsToDevicePixels="True"
         TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
     <Window.Resources><BooleanToVisibilityConverter x:Key="BoolVisibility"/><local:CashierFeedbackConverter x:Key="CashierFeedback"/></Window.Resources>
-    <DockPanel Margin="12" FlowDirection="{Binding LayoutDirection}">
-        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+    <DockPanel Margin="8" FlowDirection="{Binding LayoutDirection}">
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,6">
             <DockPanel>
                 <WrapPanel DockPanel.Dock="Right">
                     <Button Content="Fond de caisse" Click="SetOpeningCash_Click" MinHeight="36" Padding="12,4"
@@ -20,23 +20,25 @@
                 </WrapPanel>
                 <StackPanel><TextBlock Text="Hanouty POS" FontSize="24" FontWeight="SemiBold"/><TextBlock x:Name="CashierSessionLabel" Text="Session fermée" FontSize="12" TextTrimming="CharacterEllipsis"/></StackPanel>
             </DockPanel>
-            <DockPanel Margin="0,6,0,0" AutomationProperties.Name="Sections HANOUTY">
-                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Top">
+            <StackPanel Margin="0,6,0,0" AutomationProperties.Name="Sections HANOUTY">
+                <WrapPanel VerticalAlignment="Top">
                 <RadioButton x:Name="SalesSection" GroupName="HanoutySection" Content="Vente" IsChecked="True"
                              MinHeight="36" Padding="12,4" Margin="0,0,8,0"/>
                 <RadioButton x:Name="ReturnsSection" GroupName="HanoutySection" Content="Retours"
                              MinHeight="36" Padding="12,4" Margin="0,0,8,0"/>
-                    <Button Content="Attentes" Click="RestoreWaitingSale_Click" MinHeight="36" Padding="9,4" Margin="0,0,6,0" IsEnabled="{Binding FinancialSessionActive}"/>
-                    <Button Content="Mettre en attente" Click="ParkSale_Click" MinHeight="36" Padding="9,4" Margin="0,0,8,0" IsEnabled="{Binding FinancialSessionActive}"/>
-                </StackPanel>
-                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly">
-                <StackPanel Orientation="Horizontal">
+                <Button Content="Stock" Click="OpenDailyStock_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
+                        IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Ouvrir les articles et le stock"/>
                 <Button Content="Paramètres" Click="OpenWorkstationSettings_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
                         IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Paramètres du poste"/>
                 <Button Content="Journal" Click="OpenSalesJournal_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
                         IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Ouvrir le journal des ventes"/>
                 <Button Content="Statistiques" Click="OpenSalesStatistics_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
                         IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Ouvrir les statistiques des ventes"/>
+                    <Button Content="Attentes" Click="RestoreWaitingSale_Click" MinHeight="36" Padding="9,4" Margin="0,0,6,0" IsEnabled="{Binding FinancialSessionActive}"/>
+                    <Button Content="Mettre en attente" Click="ParkSale_Click" MinHeight="36" Padding="9,4" Margin="0,0,8,0" IsEnabled="{Binding FinancialSessionActive}"/>
+                </WrapPanel>
+                <Expander Header="Fonctions" Margin="0,4,0,0" AutomationProperties.Name="Fonctions de caisse et gestion">
+                <WrapPanel>
                 <Button Content="Fichiers clients" Click="OpenCustomerFiles_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
                         IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Gérer les fichiers clients"/>
                 <Button Content="Devis · BL · Factures" Click="OpenBusinessDocuments_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
@@ -60,9 +62,9 @@
                         AutomationProperties.Name="Open catalogue prices"/>
                     <Menu Background="Transparent"><MenuItem Header="Affichage" Padding="10,8"><MenuItem Header="Lecture de droite à gauche"
                         IsCheckable="True" IsChecked="{Binding IsRightToLeft, Mode=TwoWay}" AutomationProperties.Name="Right-to-left layout"/></MenuItem></Menu>
-                </StackPanel>
-                </ScrollViewer>
-            </DockPanel>
+                </WrapPanel>
+                </Expander>
+            </StackPanel>
 
         </StackPanel>
         <Grid>
@@ -98,7 +100,7 @@
                     </StackPanel>
             </ScrollViewer>
             <Grid Visibility="{Binding IsChecked, ElementName=SalesSection, Converter={StaticResource BoolVisibility}}">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="3*"/></Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="2*" MinWidth="430"/><ColumnDefinition Width="3*"/></Grid.ColumnDefinitions>
                 <DockPanel Grid.Column="1" Margin="18,0,0,0">
                     <StackPanel DockPanel.Dock="Top">
                         <StackPanel Orientation="Horizontal">
@@ -201,16 +203,17 @@
                         </GroupBox.Header>
                         <DataGrid x:Name="CashierBasket" Margin="4" SelectionMode="Single" SelectionUnit="FullRow"
                                   ItemsSource="{Binding BasketLines}" AutoGenerateColumns="False" IsReadOnly="True"
-                                  CanUserAddRows="False" EnableRowVirtualization="True" RowHeight="40" HeadersVisibility="Column"
+                                  CanUserAddRows="False" EnableRowVirtualization="True" RowHeight="44" HeadersVisibility="Column"
                                   ColumnHeaderHeight="26" ScrollViewer.VerticalScrollBarVisibility="Auto"
                                   AutomationProperties.Name="Basket article quantity price">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Article" Binding="{Binding ArticleName}" Width="*">
+                                <DataGridTextColumn Header="Article" Binding="{Binding ArticleName}" Width="*" MinWidth="110">
                                     <DataGridTextColumn.ElementStyle>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
                                             <Setter Property="VerticalAlignment" Value="Center"/>
                                             <Setter Property="ToolTip" Value="{Binding ArticleName}"/>
+                                            <Setter Property="TextWrapping" Value="Wrap"/>
                                         </Style>
                                     </DataGridTextColumn.ElementStyle>
                                 </DataGridTextColumn>
@@ -225,8 +228,14 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTextColumn Header="Prix MAD" Binding="{Binding UnitPriceMad, StringFormat={}{0:F2}}" Width="70"/>
-                                <DataGridTextColumn Header="Remise %" Binding="{Binding DiscountPercent, StringFormat={}{0:0.##}}" Width="60"/>
+                                <DataGridTemplateColumn Header="Prix MAD" Width="70">
+                                    <DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding UnitPriceMad, StringFormat={}{0:F2}}"/>
+                                        <TextBlock Text="{Binding DiscountPercent, StringFormat='Remise {0:0.##}%'}" FontSize="10">
+                                            <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding DiscountPercent}" Value="0"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                                 <DataGridTextColumn Header="Net MAD" Binding="{Binding NetAmountMad, StringFormat={}{0:F2}}" Width="80"/>
                                 <DataGridTemplateColumn Header="" Width="32">
                                     <DataGridTemplateColumn.CellTemplate>
