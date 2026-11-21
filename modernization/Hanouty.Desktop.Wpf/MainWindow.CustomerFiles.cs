@@ -14,7 +14,7 @@ public partial class MainWindow
             _openCustomerFiles is null) return false;
         _customerFilesOpen = true;
         try { _openCustomerFiles(); return true; }
-        finally { _customerFilesOpen = false; }
+        finally { _customerFilesOpen = false; RefreshTrustedBasketTotal(); }
     }
     private void OpenCustomerFiles_Click(object sender, RoutedEventArgs args) => ShowCustomerFiles();
     public string PromptCustomerFilesApproval(string role)

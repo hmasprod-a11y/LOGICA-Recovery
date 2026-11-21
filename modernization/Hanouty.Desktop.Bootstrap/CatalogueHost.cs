@@ -30,7 +30,10 @@ public sealed record CatalogueSettings(string ConnectionString, string DataDirec
             throw new InvalidOperationException("Local data directory is missing.");
         if (!System.Text.RegularExpressions.Regex.IsMatch(workstation, "^[0-9]{2}$"))
             throw new InvalidOperationException("Le numéro du poste doit contenir deux chiffres.");
-        return new CatalogueSettings(connection, Path.GetFullPath(directory)) { WorkstationId = workstation };
+        // Exact actor/article identity queries must encode Arabic and accents
+        // in the same UTF-8 character set as the original LOGICA tables.
+        builder.CharacterSet = "utf8mb4";
+        return new CatalogueSettings(builder.ConnectionString, Path.GetFullPath(directory)) { WorkstationId = workstation };
     }
 }
 

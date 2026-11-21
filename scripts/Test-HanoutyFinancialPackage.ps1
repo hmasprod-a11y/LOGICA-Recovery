@@ -52,7 +52,38 @@ while([DateTime]::UtcNow -lt $until) {
 if($handle -eq [IntPtr]::Zero) { Stop-Process -Id $launch.Id -Force -ErrorAction SilentlyContinue; throw 'Double-click did not open cashier window.' }
 $title=$launch.MainWindowTitle
 if($title -notmatch '(?i)hanouty|caisse|cashier') { Stop-Process -Id $launch.Id -Force -ErrorAction SilentlyContinue; throw "Unexpected cashier window title: $title" }
-if(-not $launch.CloseMainWindow() -or -not $launch.WaitForExit(10000)) { Stop-Process -Id $launch.Id -Force -ErrorAction SilentlyContinue; throw 'Cashier window did not close cleanly.' }
+# Normal startup opens the original PIN-only login. Cancel only modal windows
+# owned by this exact started cashier, then close its still-locked main window.
+if (-not ('HanoutyStartupWindows' -as [type])) {
+    Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class HanoutyStartupWindows {
+    private delegate bool Visitor(IntPtr window, IntPtr ignored);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(Visitor visitor, IntPtr data);
+    [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr window, uint relation);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+    public static void CancelOwned(IntPtr owner, uint process) {
+        EnumWindows((window, ignored) => {
+            uint actual; GetWindowThreadProcessId(window, out actual);
+            if (actual == process && GetWindow(window, 4) == owner)
+                SendMessage(window, 0x0010, IntPtr.Zero, IntPtr.Zero);
+            return true;
+        }, IntPtr.Zero);
+    }
+}
+'@
+}
+$closeUntil = [DateTime]::UtcNow.AddSeconds(10)
+$closeRequested = $false
+do {
+    [HanoutyStartupWindows]::CancelOwned($handle, [uint32]$launch.Id)
+    $launch.Refresh()
+    $closeRequested = $launch.HasExited -or $launch.CloseMainWindow()
+    if (-not $closeRequested) { Start-Sleep -Milliseconds 100 }
+} while (-not $closeRequested -and [DateTime]::UtcNow -lt $closeUntil)
+if(-not $closeRequested -or -not $launch.WaitForExit(10000)) { Stop-Process -Id $launch.Id -Force -ErrorAction SilentlyContinue; throw 'Cashier window did not close cleanly.' }
 if($launch.ExitCode -ne 0) { throw "Cashier startup exit code: $($launch.ExitCode)" }
 $status='Financial package acceptance passed on exact source SHA ' + $actualSha + '; engineering candidate only.'
 Set-Content (Join-Path $publish 'HANOUTY-CANDIDATE-STATUS.txt') $status -Encoding UTF8

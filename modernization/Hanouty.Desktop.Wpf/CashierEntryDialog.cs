@@ -23,7 +23,7 @@ public sealed class CashierEntryDialog : Window
     // Fresh tender is required on every dialog invocation, including a second operation.
     public CashierEntryDialog(decimal? authoritativeTotalMad = null, CashierPaymentContext? context = null)
     {
-        Title = context is null ? "Cashier session and cash tender" : "Paiement en espèces";
+        Title = context is null ? "Session de caisse" : "Paiement en espèces";
         if (context is not null)
         {
             _cashier.Text = context.CashierId;
@@ -40,12 +40,12 @@ public sealed class CashierEntryDialog : Window
         var panel = new StackPanel { Margin = new Thickness(20) };
         if (authoritativeTotalMad is decimal total)
             panel.Children.Add(new TextBlock {
-                Text = $"Application total (MAD): {total.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}",
+                Text = $"Total à régler : {total.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)} MAD",
                 FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap
             });
-        AddField(panel, "Cashier identity", _cashier);
-        AddField(panel, "Register identity", _register);
-        AddField(panel, "Cash MAD (decimal, no thousands separator)", _tender);
+        AddField(panel, "Caissier", _cashier, "Cashier identity");
+        AddField(panel, "Poste de caisse", _register, "Register identity");
+        AddField(panel, "Montant reçu — billets, pièces ou pavé numérique", _tender, "Cash MAD (decimal, no thousands separator)");
         if (context is not null && authoritativeTotalMad is decimal paymentTotal)
         {
             var change = new TextBlock { FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 0) };
@@ -143,8 +143,8 @@ public sealed class CashierEntryDialog : Window
         }
         panel.Children.Add(_error);
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
-        var confirm = new Button { Content = "Review cash tender", MinHeight = 40, MinWidth = 160, IsDefault = true };
-        var cancel = new Button { Content = "Cancel", MinHeight = 40, MinWidth = 90, IsCancel = true, Margin = new Thickness(8, 0, 0, 0) };
+        var confirm = new Button { Content = "Valider le montant reçu", MinHeight = 40, MinWidth = 160, IsDefault = true };
+        var cancel = new Button { Content = "Annuler", MinHeight = 40, MinWidth = 90, IsCancel = true, Margin = new Thickness(8, 0, 0, 0) };
         confirm.Click += (_, _) => TryConfirm();
         _tender.TextChanged += (_, _) => _error.Text = "";
         _cashier.TextChanged += (_, _) => _error.Text = "";
@@ -194,10 +194,10 @@ public sealed class CashierEntryDialog : Window
             _numericDraft.Text = next;
     }
 
-    private static void AddField(Panel panel, string label, TextBox field)
+    private static void AddField(Panel panel, string label, TextBox field, string automationName)
     {
         panel.Children.Add(new TextBlock { Text = label, Margin = new Thickness(0, 8, 0, 4) });
-        System.Windows.Automation.AutomationProperties.SetName(field, label);
+        System.Windows.Automation.AutomationProperties.SetName(field, automationName);
         panel.Children.Add(field);
     }
 
@@ -206,7 +206,7 @@ public sealed class CashierEntryDialog : Window
         if (!CashierEntryDraft.TryParse(_cashier.Text, _register.Text, _tender.Text,
             out var cashier, out var register, out var tender))
         {
-            _error.Text = "Enter cashier and register identities and a non-negative MAD amount with at most two decimal places.";
+            _error.Text = "Vérifiez le caissier, le poste et le montant reçu en dirhams.";
             return;
         }
         Draft = (cashier, register, tender);

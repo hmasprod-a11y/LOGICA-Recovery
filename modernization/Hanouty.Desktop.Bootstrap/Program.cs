@@ -32,6 +32,7 @@ public static class Program
                 var application = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
                 var workstation = CatalogueHost.CreateCashierWorkstation(settings, settings.WorkstationId);
                 application.MainWindow = workstation.Window;
+                workstation.Window.Loaded += (_, _) => workstation.Window.ShowPinLogin();
                 application.Run(workstation.Window);
                 return 0;
             }

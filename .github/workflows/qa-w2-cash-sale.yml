@@ -240,6 +240,14 @@ jobs:
           foreach ($field in @('ActualHost','OriginalTicketSelection','TouchQuantityKeypad','ExplicitReview','FreshPinEachReturn','TwoCumulativeReturns','OriginalStockAndCashRestored','FullyConsumedOriginalExcluded','ExactCentWholeQuantityScope')) {
             if ($partial.$field -ne $true) { throw "Missing partial-return proof: $field" }
           }
+          $pinLogin = Get-Content evidence/w2/w2-pin-login.json -Raw | ConvertFrom-Json
+          foreach ($field in @('OriginalPinIdentityLookup','ActualNumericKeypad','NoTypedIdentityOrRegister','FixedRegister','ArabicAndAccentIdentity','WrongCanceledAndSharedPinDenied','NestedSessionChangesDenied','MaskedControlCleared','NoFinancialAuthorityOrWrites')) {
+            if ($pinLogin.$field -ne $true) { throw "Missing original PIN login proof: $field" }
+          }
+          $daily = Get-Content evidence/w2/w2-daily-sections.json -Raw | ConvertFrom-Json
+          foreach ($field in @('ActualStockNavigation','ExistingArticlesRead','ExistingCatalogueWorkflowLinked','SessionAndSectionsFrozen','ActualAdminSettingsPortal','OriginalSettingsDialogLinked','SameDatabaseAndCashier','NoFinancialWrites','PrimarySectionsVisible')) {
+            if ($daily.$field -ne $true) { throw "Missing connected daily section proof: $field" }
+          }
           $documents = Get-Content evidence/w2/w2-business-documents.json -Raw | ConvertFrom-Json
           foreach ($field in @('OriginalThreeKinds','PersistedTaxTotals','LiteralSearchAndLastDay','CustomerAndLines','UserValidationDenied','FreshManagerPin','StaleSnapshotDenied','AtomicValidationRollback','ValidatedReadback','MismatchDenied','PrintData','ActualDirectoryUi','NoCashStockEffects')) {
             if ($documents.$field -ne $true) { throw "Missing business-document proof: $field" }
@@ -257,9 +265,44 @@ jobs:
           foreach ($field in @('ActualStockIssueEntry','SignedTouchPrice','VisibleReviewedTotal','FreshPin','PersistedDocument','StockUnchangedBeforeValidation','SharedStatementSign','PartialExactAndAdvanceSettlement','SettlementRollback')) {
             if ($proof.$field -ne $true) { throw "Missing supplier AVOIR UI proof: $field" }
           }
+      - name: Verify original daily stock filters and workflow hooks independently
+        shell: pwsh
+        run: |
+          ./scripts/Test-HanoutyDailyStock.ps1 -MariaDbBin $env:HANOUTY_W2_MARIADB_BIN -EvidenceDirectory ./evidence/daily-stock -Port 33081
+          $proof = Get-Content ./evidence/daily-stock/daily-stock-acceptance.json -Raw | ConvertFrom-Json
+          if (@($proof.PSObject.Properties).Count -ne 13) { throw 'Incomplete daily stock evidence' }
+          foreach ($property in $proof.PSObject.Properties) {
+            if ($property.Value -ne $true) { throw "Missing daily stock proof: $($property.Name)" }
+          }
+      - name: Verify original settings atomic save, rollback and uncertain acknowledgement
+        shell: pwsh
+        run: |
+          "CREATE DATABASE settings_disposable CHARACTER SET utf8mb4; GRANT ALL ON settings_disposable.* TO 'w2_test'@'localhost';" | & "$env:HANOUTY_W2_MARIADB_BIN/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only
+          if ($LASTEXITCODE -ne 0) { throw 'Disposable settings schema creation failed' }
+          $env:HANOUTY_SETTINGS_TEST_CONNECTION = $env:HANOUTY_CATALOGUE_CONNECTION.Replace('Database=logica_ci;', 'Database=settings_disposable;')
+          dotnet run --project modernization/daily-settings-acceptance/DailySettingsAcceptance.csproj -c Release -- ./evidence/daily-settings
+          if ($LASTEXITCODE -ne 0) { throw 'Daily original settings acceptance failed' }
+          $proof = Get-Content ./evidence/daily-settings/daily-logica-settings-acceptance.json -Raw | ConvertFrom-Json
+          if (@($proof.PSObject.Properties).Count -ne 19) { throw 'Incomplete original settings evidence' }
+          foreach ($property in $proof.PSObject.Properties) {
+            if ($property.Value -ne $true) { throw "Missing original settings proof: $($property.Name)" }
+          }
       - name: Verify Windows installation preserves the previous version and refuses a changed package
         shell: pwsh
         run: ./scripts/Test-HanoutyInstallation.ps1 -PackageDirectory ./evidence -EvidenceDirectory ./evidence
+      - name: Build verified customer installation without disposable test launchers
+        shell: pwsh
+        run: |
+          $customer = ./scripts/Build-HanoutyCustomerDelivery.ps1 -FinancialZip ./evidence/HANOUTY-WPF-net10-FINANCIAL-ACCEPTED-win-x64.zip -AcceptanceFile ./evidence/financial-package-acceptance.json -SourceSha $env:GITHUB_SHA -OutputDirectory (Join-Path $env:RUNNER_TEMP 'HANOUTY-INSTALLATION')
+          $customer | ConvertTo-Json | Set-Content ./evidence/customer-delivery.json -Encoding UTF8
+          "HANOUTY_CUSTOMER_DELIVERY_ZIP=$($customer.Zip)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Upload verified customer Windows installation
+        uses: actions/upload-artifact@v4
+        with:
+          name: HANOUTY-INSTALLATION-WINDOWS
+          path: ${{ env.HANOUTY_CUSTOMER_DELIVERY_ZIP }}
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload full W2 source and SQL evidence
         if: always()
         uses: actions/upload-artifact@v4
