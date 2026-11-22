@@ -599,6 +599,7 @@ public partial class MainWindow : Window
         // Lock BEFORE calling Host-provided delegates: those may pump the WPF
         // dispatcher and otherwise reenter login, logout or financial review.
         _cashierEntryOpen = true;
+        var pinSignedIn = false;
         try
         {
             var total = _readTrustedCashTotal();
@@ -607,7 +608,7 @@ public partial class MainWindow : Window
             {
                 if (total != 0m || (_readBasketIdentity is not null &&
                     DataContext is CatalogueViewModel { BasketLines.Count: > 0 })) return false;
-                return SignInWithPin();
+                return pinSignedIn = SignInWithPin();
             }
             var identity = _readBasketIdentity?.Invoke();
             // Session identity is not a reusable payment authorization.
@@ -632,7 +633,15 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
         { return false; }
-        finally { _cashierEntryOpen = false; }
+        finally
+        {
+            _cashierEntryOpen = false;
+            // A queued total refresh can run while the PIN modal is closing.
+            // Read again after the entry guard is released, so a successful
+            // login shows the authoritative total immediately.
+            if (pinSignedIn && vm.FinancialSessionActive && !vm.CheckoutUncertain && vm.PendingOperationId is null)
+                RefreshTrustedBasketTotal();
+        }
     }
 
     internal static bool IsAuthorizedEntry(CatalogueViewModel vm, string cashier, decimal tender)

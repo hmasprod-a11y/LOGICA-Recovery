@@ -40,7 +40,16 @@ public sealed class MariaDbCatalogueReader : ICatalogueReader
 
     private IReadOnlyList<ProductSummary> Read(string? filter, string? value)
     {
-        const string columns = "SELECT ID_ARTICLE, Code, Article, Images FROM TABLE_ARTICLES";
+        using var connection = new MySqlConnection(_connectionString);
+        connection.Open();
+        // Original LOGICA tiles display Famille and PRIX_V_1. Older diagnostic
+        // catalogues may omit them; they are presentation data, never a quote.
+        var fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var metadata = new MySqlCommand("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='TABLE_ARTICLES'", connection))
+        using (var rows = metadata.ExecuteReader()) while (rows.Read()) fields.Add(rows.GetString(0));
+        string columns = "SELECT ID_ARTICLE, Code, Article, Images," +
+            (fields.Contains("Famille") ? "Famille" : "NULL") + "," +
+            (fields.Contains("PRIX_V_1") ? "PRIX_V_1" : "NULL") + " FROM TABLE_ARTICLES";
         string sql = filter switch
         {
             "barcode" => columns + " WHERE BINARY Code = BINARY @value",
@@ -49,8 +58,6 @@ public sealed class MariaDbCatalogueReader : ICatalogueReader
         };
         var result = new List<ProductSummary>();
         var identities = new HashSet<string>(StringComparer.Ordinal);
-        using var connection = new MySqlConnection(_connectionString);
-        connection.Open();
         using var command = new MySqlCommand(sql, connection);
         command.CommandType = CommandType.Text;
         if (filter != null) command.Parameters.AddWithValue("@value", value);
@@ -63,7 +70,9 @@ public sealed class MariaDbCatalogueReader : ICatalogueReader
             string barcode = reader.IsDBNull(1) ? "" : Convert.ToString(reader.GetValue(1)) ?? "";
             string name = reader.IsDBNull(2) ? "" : Convert.ToString(reader.GetValue(2)) ?? "";
             string? photo = reader.IsDBNull(3) ? null : AvailableImage(Convert.ToString(reader.GetValue(3)));
-            result.Add(new ProductSummary(id, barcode, name, photo));
+            var family = reader.IsDBNull(4) ? "" : reader.GetString(4);
+            decimal? price = reader.IsDBNull(5) ? null : Convert.ToDecimal(reader.GetValue(5));
+            result.Add(new ProductSummary(id, barcode, name, photo, Family: family, DisplayUnitPriceMad: price));
         }
         return result;
     }

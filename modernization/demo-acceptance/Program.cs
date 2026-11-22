@@ -14,6 +14,8 @@ internal static class Program
     static void Require(bool value,string message){if(!value)throw new InvalidOperationException(message);}
     static IEnumerable<T> Controls<T>(DependencyObject parent) where T:DependencyObject
     {foreach(var child in LogicalTreeHelper.GetChildren(parent).OfType<DependencyObject>()){if(child is T match)yield return match;foreach(var nested in Controls<T>(child))yield return nested;}}
+    static IEnumerable<T> Visuals<T>(DependencyObject parent) where T:DependencyObject
+    {for(var i=0;i<VisualTreeHelper.GetChildrenCount(parent);i++){var child=VisualTreeHelper.GetChild(parent,i);if(child is T match)yield return match;foreach(var nested in Visuals<T>(child))yield return nested;}}
     static void Capture(Window window,string path){window.UpdateLayout();var bitmap=new RenderTargetBitmap((int)Math.Ceiling(window.ActualWidth),(int)Math.Ceiling(window.ActualHeight),96,96,PixelFormats.Pbgra32);bitmap.Render(window);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using var file=File.Create(path);encoder.Save(file);}
     [STAThread] static int Main(string[] args)
     {
@@ -32,15 +34,22 @@ internal static class Program
                 Require(WorkstationReadiness.IsReady(settings),"Demo database is not ready.");
                 Require(Convert.ToInt32(Scalar("SELECT COUNT(*) FROM TABLE_ARTICLES"))==12,"Demo catalogue missing.");
                 QueuePin(true);Require(host.Window.ShowPinLogin(),"Demo PIN rejected.");if(failure is not null)throw failure;
+                Require(host.ViewModel.VisibleProducts.Single(p=>p.Id=="DEMO-1").DisplayUnitPriceMad==6m,"Original catalogue price not displayed.");
+                host.ViewModel.SelectedFamily="Boissons";Require(host.ViewModel.VisibleProducts.Count==2,"Family selection did not filter original catalogue.");
+                host.ViewModel.SelectedFamily="Toutes les familles";host.Window.UpdateLayout();
+                Require(host.Window.RefreshTrustedBasketTotal(),"Signed-in empty basket total unavailable.");
                 Capture(host.Window,Path.Combine(evidence,"demo-catalogue.png"));
-                host.ViewModel.ScannerText="1001";host.ViewModel.ScanCommand.Execute(null);Require(host.Session.PendingCount==1,"Barcode 1001 did not add milk.");
-                host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{var payment=app.Windows.OfType<CashierEntryDialog>().SingleOrDefault();try{Require(payment is not null,"Fixed pay button did not open cash calculator.");Capture(payment!,Path.Combine(evidence,"demo-cash.png"));foreach(var coin in new[]{"5 MAD","1 MAD"})Controls<Button>(payment!).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)==coin).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));QueuePin();Controls<Button>(payment!).Single(b=>b.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));}catch(Exception ex){failure=ex;payment?.Close();}}));
+                var tile=Visuals<Button>((ItemsControl)host.Window.FindName("TouchProductTiles")).Single(b=>b.DataContext is Hanouty.Desktop.Wpf.Presentation.ProductSummary { Id:"DEMO-1" });
+                Require(tile.IsEnabled&&tile.Command is not null&&tile.Command.CanExecute(tile.CommandParameter),"Milk touch tile is not bound to selection.");
+                tile.Command!.Execute(tile.CommandParameter);Require(host.Session.PendingCount==1,"Touch tile did not add milk.");
+                host.ViewModel.ScannerText="1002";host.ViewModel.ScanCommand.Execute(null);Require(host.Session.PendingCount==2,"Barcode 1002 did not add water.");
+                host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{var payment=app.Windows.OfType<CashierEntryDialog>().SingleOrDefault();try{Require(payment is not null,"Fixed pay button did not open cash calculator.");Capture(payment!,Path.Combine(evidence,"demo-cash.png"));foreach(var coin in new[]{"10 MAD","1 MAD"})Controls<Button>(payment!).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)==coin).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));QueuePin();Controls<Button>(payment!).Single(b=>b.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));}catch(Exception ex){failure=ex;payment?.Close();}}));
                 var pay=(Button)host.Window.FindName("CompleteCheckoutButton");Require(pay.IsEnabled,"Payment action disabled before receiving cash.");pay.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));if(failure is not null)throw failure;
                 Require(host.Session.PendingCount==0&&!host.ViewModel.CheckoutUncertain,"Demo sale failed.");
                 Require(Convert.ToDecimal(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='DEMO-1'"))==beforeStock-1&&Convert.ToInt32(Scalar("SELECT CL FROM TABLE_NUM WHERE ID=0"))==beforeCounter+1,"Stock and counter not posted.");
                 Require(((TextBlock)host.Window.FindName("TrustedBasketTotal")).Text=="0.00","Next-customer total not reset.");
                 Capture(host.Window,Path.Combine(evidence,"demo-sale.png"));
-                File.WriteAllText(Path.Combine(evidence,"demo-ui.json"),JsonSerializer.Serialize(new{NoLogicaConfiguration=true,TwelveProducts=true,Pin1234=true,Scanner1001=true,FixedPayButton=true,CoinsAndFreshPin=true,StockAndCounter=true,NextCustomerTotal=true,PreviousCounter=beforeCounter,CurrentCounter=beforeCounter+1}));result=0;
+                File.WriteAllText(Path.Combine(evidence,"demo-ui.json"),JsonSerializer.Serialize(new{NoLogicaConfiguration=true,TwelveProducts=true,Pin1234=true,TouchSelection=true,OriginalPriceVisible=true,FamilyFilter=true,Scanner1002=true,FixedPayButton=true,CoinsAndFreshPin=true,StockAndCounter=true,NextCustomerTotal=true,PreviousCounter=beforeCounter,CurrentCounter=beforeCounter+1}));result=0;
             }catch(Exception ex){Console.Error.WriteLine(ex);}finally{host.Window.Close();app.Shutdown();}
         }));
         app.Run(host.Window);return result;

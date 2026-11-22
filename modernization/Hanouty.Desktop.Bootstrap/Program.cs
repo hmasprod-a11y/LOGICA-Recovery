@@ -31,6 +31,7 @@ public static class Program
                 if (settings is null) return 0;
                 var application = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
                 var workstation = CatalogueHost.CreateCashierWorkstation(settings, settings.WorkstationId);
+                workstation.Window.WindowState = WindowState.Maximized;
                 application.MainWindow = workstation.Window;
                 workstation.Window.Loaded += (_, _) => workstation.Window.ShowPinLogin();
                 application.Run(workstation.Window);
