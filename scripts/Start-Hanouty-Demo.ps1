@@ -3,6 +3,11 @@ $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 $OutputEncoding=[Text.UTF8Encoding]::new($false)
 Set-StrictMode -Version Latest
+# Start-Process from PowerShell 7 can inherit Core module paths. Load the
+# Windows PowerShell modules belonging to this process, including Get-FileHash.
+$nativeModules=Join-Path $PSHOME 'Modules'
+$env:PSModulePath=$nativeModules+';'+[Environment]::GetEnvironmentVariable('PSModulePath','Machine')+';'+[Environment]::GetEnvironmentVariable('PSModulePath','User')
+foreach($module in @('Microsoft.PowerShell.Utility','Microsoft.PowerShell.Management','Microsoft.PowerShell.Archive')){Import-Module (Join-Path $nativeModules $module) -Force -ErrorAction Stop}
 Add-Type -AssemblyName System.Security
 Add-Type -AssemblyName System.Windows.Forms
 $root=[IO.Path]::GetFullPath($DemoRoot)

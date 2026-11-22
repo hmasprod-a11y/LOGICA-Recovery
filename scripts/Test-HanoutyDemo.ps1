@@ -6,8 +6,8 @@ $evidence=[IO.Path]::GetFullPath($EvidenceDirectory)
 New-Item -ItemType Directory -Force -Path $evidence | Out-Null
 $root=Join-Path $evidence ('fresh-'+[Guid]::NewGuid().ToString('N'))
 $launcher=Join-Path $BundleDirectory 'Start-Hanouty-Demo.ps1'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $launcher -DemoRoot $root -PrepareOnly
-if($LASTEXITCODE -ne 0){throw 'Fresh offline demo preparation failed.'}
+$preparation=Start-Process -FilePath (Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe') -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"'+$launcher+'"'),'-DemoRoot',('"'+$root+'"'),'-PrepareOnly') -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput (Join-Path $evidence 'prepare-output.txt') -RedirectStandardError (Join-Path $evidence 'prepare-error.txt')
+if($preparation.ExitCode -ne 0){throw 'Fresh offline demo preparation through the actual hidden shortcut process failed.'}
 $keyBefore=(Get-FileHash -LiteralPath (Join-Path $root 'local-key.bin')).Hash
 $seedBefore=(Get-FileHash -LiteralPath (Join-Path $root 'ready.json')).Hash
 $previous=@{};foreach($name in @('HANOUTY_CATALOGUE_CONNECTION','HANOUTY_DATA_DIRECTORY','HANOUTY_WORKSTATION')){$previous[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
