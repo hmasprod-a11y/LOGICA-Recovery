@@ -23,7 +23,7 @@ public sealed class ProductionWpfCatalogueReader : Wpf.ICatalogueReader
             source.GroupBy(p => p.ArticleId, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
             throw new InvalidOperationException("Catalogue contains invalid or duplicate WPF article identities.");
         return source.Select(p => new Wpf.ProductSummary(
-            p.ArticleId, p.DisplayName, p.Barcode, p.ImagePath)).ToArray();
+            p.ArticleId, p.DisplayName, p.Barcode, p.ImagePath, p.Family, p.DisplayUnitPriceMad)).ToArray();
     }
 }
 

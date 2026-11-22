@@ -8,7 +8,7 @@ namespace Hanouty.ArchitectureBridge;
 // infrastructure, not by a ViewModel or a second SQL implementation here.
 public sealed record ProductSummary(
     string ArticleId, string Barcode, string DisplayName,
-    string? ImagePath, string? VariantId = null)
+    string? ImagePath, string? VariantId = null, string Family = "", decimal? DisplayUnitPriceMad = null)
 {
     public bool HasImage => !string.IsNullOrWhiteSpace(ImagePath);
 }

@@ -3,10 +3,25 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:Hanouty.Desktop.Wpf"
         Title="HANOUTY POS — Caisse" Height="760" Width="1280"
-        MinHeight="480" MinWidth="760" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" SnapsToDevicePixels="True"
+        MinHeight="600" MinWidth="760" WindowStartupLocation="CenterScreen" Background="#EDF2F7" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True"
         TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
-    <Window.Resources><BooleanToVisibilityConverter x:Key="BoolVisibility"/><local:CashierFeedbackConverter x:Key="CashierFeedback"/></Window.Resources>
-    <DockPanel Margin="8" FlowDirection="{Binding LayoutDirection}">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolVisibility"/><local:CashierFeedbackConverter x:Key="CashierFeedback"/>
+        <Style x:Key="TouchButton" TargetType="Button">
+            <Setter Property="MinHeight" Value="44"/><Setter Property="Padding" Value="14,8"/><Setter Property="FontSize" Value="14"/>
+            <Setter Property="Background" Value="White"/><Setter Property="Foreground" Value="#173D64"/><Setter Property="BorderBrush" Value="#BBCBDC"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="#166AEE"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.7"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.45"/></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderThickness" Value="2"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="Button" BasedOn="{StaticResource TouchButton}"/>
+        <Style TargetType="TextBox"><Setter Property="FontSize" Value="16"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="BorderBrush" Value="#BBCBDC"/></Style>
+        <Style TargetType="DataGrid"><Setter Property="Background" Value="White"/><Setter Property="BorderBrush" Value="#D5DFE9"/><Setter Property="GridLinesVisibility" Value="Horizontal"/><Setter Property="HorizontalGridLinesBrush" Value="#E7EDF4"/><Setter Property="HeadersVisibility" Value="Column"/><Setter Property="AlternatingRowBackground" Value="#F5F8FC"/></Style>
+        <Style TargetType="DataGridColumnHeader"><Setter Property="Background" Value="#E6EEF7"/><Setter Property="Foreground" Value="#173D64"/><Setter Property="Padding" Value="8,3"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+        <Style TargetType="DataGridCell"><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="6,2"/></Style>
+        <Style TargetType="TabItem"><Setter Property="Padding" Value="14,10"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+        <Style TargetType="RadioButton"><Setter Property="Background" Value="White"/><Setter Property="Foreground" Value="#173D64"/><Setter Property="MinHeight" Value="44"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton"><Border x:Name="Tab" Background="{TemplateBinding Background}" CornerRadius="8" Padding="16,10"><ContentPresenter VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="Tab" Property="Background" Value="#173D64"/><Setter Property="Foreground" Value="White"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
+    </Window.Resources>
+    <Grid>
+    <DockPanel Margin="14" FlowDirection="{Binding LayoutDirection}">
         <StackPanel DockPanel.Dock="Top" Margin="0,0,0,6">
             <DockPanel>
                 <WrapPanel DockPanel.Dock="Right">
@@ -145,7 +160,31 @@
                                 AutomationProperties.Name="Choose barcode variant" IsEnabled="{Binding CanSelectProduct}"/>
                     </StackPanel>
                     <TabControl>
+                        <TabItem Header="Articles · toucher pour ajouter">
+                            <DockPanel Background="White">
+                                <ComboBox DockPanel.Dock="Top" ItemsSource="{Binding Families}" SelectedItem="{Binding SelectedFamily}" MinHeight="44" Margin="10" Padding="10" AutomationProperties.Name="Famille des articles"/>
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl x:Name="TouchProductTiles" ItemsSource="{Binding VisibleProducts}" Margin="6">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate><DataTemplate>
+                                            <Button Width="150" Height="132" Margin="4" Padding="10" BorderThickness="2"
+                                                    Command="{Binding DataContext.SelectCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Click="TouchProduct_Click"
+                                                    IsEnabled="{Binding DataContext.CanSelectProduct, RelativeSource={RelativeSource AncestorType=Window}}" AutomationProperties.Name="{Binding Name}">
+                                                <StackPanel Width="122">
+                                                    <Image Source="{Binding ImagePath}" Height="48" Stretch="Uniform"><Image.Style><Style TargetType="Image"><Style.Triggers><DataTrigger Binding="{Binding ImagePath}" Value="{x:Null}"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></Image.Style></Image>
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" MaxHeight="42" Foreground="#172B42"/>
+                                                    <TextBlock Text="{Binding DisplayUnitPriceMad, StringFormat={}{0:0.00} MAD}" FontSize="19" FontWeight="Bold" Foreground="#173D64" TextAlignment="Center" Margin="0,5,0,0"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate></ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </DockPanel>
+                        </TabItem>
                         <TabItem Header="Liste des articles">
+                          <DockPanel>
+                            <Button DockPanel.Dock="Bottom" Content="Ajouter l’article sélectionné au panier" Click="TouchProduct_Click" Command="{Binding SelectCommand}" IsEnabled="{Binding CanSelectProduct}" Margin="4" AutomationProperties.Name="Ajouter la sélection au panier"/>
+
                             <DataGrid ItemsSource="{Binding VisibleProducts}" AutoGenerateColumns="False" EnableRowVirtualization="True"
                                       ScrollViewer.VerticalScrollBarVisibility="Auto"
                                       IsReadOnly="True" SelectionMode="Single" SelectionUnit="FullRow" RowHeight="36" ColumnHeaderHeight="28"
@@ -153,9 +192,11 @@
                                       AutomationProperties.Name="Product list" MouseDoubleClick="ProductList_MouseDoubleClick">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="Article" Binding="{Binding Name}" Width="*"/>
-                                    <DataGridTextColumn Header="Code-barres" Binding="{Binding Barcode}" Width="*"/>
+                                    <DataGridTextColumn Header="Code-barres" Binding="{Binding Barcode}" Width="130"/>
+                                    <DataGridTextColumn Header="Prix MAD" Binding="{Binding DisplayUnitPriceMad, StringFormat={}{0:F2}}" Width="100"/>
                                 </DataGrid.Columns>
                             </DataGrid>
+                          </DockPanel>
                         </TabItem>
                         <TabItem Header="Articles avec photo">
                             <ScrollViewer VerticalScrollBarVisibility="Auto"
@@ -221,9 +262,9 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions>
-                                                <Button Grid.Column="0" Content="−" Click="DecreaseBasketQuantity_Click" MinHeight="36" FontSize="18" AutomationProperties.Name="Diminuer la quantité"/>
+                                                <Button Grid.Column="0" Content="−" Padding="0" Click="DecreaseBasketQuantity_Click" MinHeight="36" FontSize="18" AutomationProperties.Name="Diminuer la quantité"/>
                                                 <TextBlock Grid.Column="1" Text="{Binding Quantity}" TextAlignment="Center" VerticalAlignment="Center"/>
-                                                <Button Grid.Column="2" Content="+" Click="IncreaseBasketQuantity_Click" MinHeight="36" FontSize="18" AutomationProperties.Name="Augmenter la quantité"/>
+                                                <Button Grid.Column="2" Content="+" Padding="0" Click="IncreaseBasketQuantity_Click" MinHeight="36" FontSize="18" AutomationProperties.Name="Augmenter la quantité"/>
                                             </Grid>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -239,7 +280,7 @@
                                 <DataGridTextColumn Header="Net MAD" Binding="{Binding NetAmountMad, StringFormat={}{0:F2}}" Width="80"/>
                                 <DataGridTemplateColumn Header="" Width="32">
                                     <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate><Button Content="×" Click="RemoveBasketLine_Click" MinHeight="36" FontSize="18" ToolTip="Retirer cet article" AutomationProperties.Name="Retirer cet article"/></DataTemplate>
+                                        <DataTemplate><Button Content="×" Padding="0" Foreground="#B42318" Click="RemoveBasketLine_Click" MinHeight="36" FontSize="18" ToolTip="Retirer cet article" AutomationProperties.Name="Retirer cet article"/></DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
                             </DataGrid.Columns>
@@ -303,7 +344,7 @@
                             </Grid>
                             <Button x:Name="CompleteCheckoutButton" Content="ENCAISSER" Click="CompleteCheckout_Click" IsEnabled="{Binding CanBeginCheckout}"
                                     MinHeight="50" FontSize="18" FontWeight="Bold" Margin="0,6,0,0">
-                                <Button.Style><Style TargetType="Button"><Setter Property="Background" Value="#166AEE"/><Setter Property="Foreground" Value="White"/><Style.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#D9E0E6"/><Setter Property="Foreground" Value="#647280"/></Trigger></Style.Triggers></Style></Button.Style>
+                                <Button.Style><Style TargetType="Button" BasedOn="{StaticResource TouchButton}"><Setter Property="Background" Value="#166AEE"/><Setter Property="Foreground" Value="White"/><Style.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#D9E0E6"/><Setter Property="Foreground" Value="#647280"/></Trigger></Style.Triggers></Style></Button.Style>
                                 <AutomationProperties.Name>Complete checkout</AutomationProperties.Name>
                             </Button>
                         </StackPanel>
@@ -312,4 +353,14 @@
             </Grid>
         </Grid>
     </DockPanel>
+    <Border Background="#F4F7FB" Panel.ZIndex="5">
+        <Border.Style><Style TargetType="Border"><Setter Property="Visibility" Value="Visible"/><Style.Triggers><DataTrigger Binding="{Binding FinancialSessionActive}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></Border.Style>
+        <Border Background="White" BorderBrush="#D5DFE9" BorderThickness="1" CornerRadius="12" Padding="36" MaxWidth="520" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <StackPanel><TextBlock Text="HANOUTY" FontSize="32" FontWeight="Bold" Foreground="#173D64"/><TextBlock Text="Ouvrir la caisse" FontSize="24" Margin="0,12,0,8"/><TextBlock Text="Entrez votre code d’accès sur le pavé pour commencer." TextWrapping="Wrap" Foreground="#536578" Margin="0,0,0,20"/>
+                <Button Content="Saisir mon code" Click="CashierEntry_Click" Background="#173D64" Foreground="White" FontSize="20" MinHeight="64" AutomationProperties.Name="Ouvrir la caisse avec mon code"/>
+                <TextBlock Text="{Binding Text, ElementName=CashierSessionLabel}" TextWrapping="Wrap" Margin="0,16,0,0" Foreground="#536578"/>
+            </StackPanel>
+        </Border>
+    </Border>
+    </Grid>
 </Window>

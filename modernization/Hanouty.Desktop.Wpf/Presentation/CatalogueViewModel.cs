@@ -4,7 +4,7 @@ using System.Runtime.CompilerServices;
 
 namespace Hanouty.Desktop.Wpf.Presentation;
 
-public sealed record ProductSummary(string Id, string Name, string Barcode, string? ImagePath = null);
+public sealed record ProductSummary(string Id, string Name, string Barcode, string? ImagePath = null, string Family = "", decimal? DisplayUnitPriceMad = null);
 
 // Read-only projection of the EXISTING Host basket, never a WPF-owned basket.
 // The production composition root must implement this using its active cashier session.
@@ -264,6 +264,8 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
             return;
         }
         _all = valid;
+        OnPropertyChanged(nameof(Families));
+        if (!Families.Contains(_selectedFamily)) { _selectedFamily = AllFamilies; OnPropertyChanged(nameof(SelectedFamily)); }
         CatalogueAvailable = true;
         SelectedProduct = null;
         ScannerText = pendingScannerText;
@@ -595,6 +597,14 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
         }
     }
 
+    private const string AllFamilies = "Toutes les familles";
+    private string _selectedFamily = AllFamilies;
+    public IReadOnlyList<string> Families => new[] { AllFamilies }.Concat(_all.Select(p => p.Family).Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.Ordinal).OrderBy(f => f, StringComparer.CurrentCulture)).ToArray();
+    public string SelectedFamily
+    {
+        get => _selectedFamily;
+        set { if (_selectionInFlight || CheckoutUncertain || _selectedFamily == value || !Families.Contains(value)) return; _selectedFamily = value; OnPropertyChanged(); Refresh(); }
+    }
     public string SearchText
     {
         get => _searchText;
@@ -624,8 +634,9 @@ public sealed class CatalogueViewModel : INotifyPropertyChanged
     private void Refresh()
     {
         var term = SearchText ?? "";
-        var matches = _all.Where(p => (p.Name ?? "").Contains(term, StringComparison.OrdinalIgnoreCase)
-            || (p.Barcode ?? "").Contains(term, StringComparison.OrdinalIgnoreCase)).ToArray();
+        var matches = _all.Where(p => (_selectedFamily == AllFamilies || p.Family == _selectedFamily) &&
+            ((p.Name ?? "").Contains(term, StringComparison.OrdinalIgnoreCase)
+            || (p.Barcode ?? "").Contains(term, StringComparison.OrdinalIgnoreCase))).ToArray();
         VisibleProducts.Clear();
         foreach (var product in matches) VisibleProducts.Add(product);
         PhotoProducts.Clear();

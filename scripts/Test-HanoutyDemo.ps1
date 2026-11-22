@@ -10,6 +10,17 @@ $preparation=Start-Process -FilePath (Join-Path $env:WINDIR 'System32/WindowsPow
 if($preparation.ExitCode -ne 0){throw 'Fresh offline demo preparation through the actual hidden shortcut process failed.'}
 $keyBefore=(Get-FileHash -LiteralPath (Join-Path $root 'local-key.bin')).Hash
 $seedBefore=(Get-FileHash -LiteralPath (Join-Path $root 'ready.json')).Hash
+$repo=Split-Path $PSScriptRoot
+$runner=Join-Path $evidence 'verifier'
+& $Dotnet build (Join-Path $repo 'modernization/demo-acceptance/DemoAcceptance.csproj') -c Release -p:CheckoutProductionProject=../checkout-mariadb-production/CheckoutMariaDbProduction.csproj -o $runner -v:q
+if($LASTEXITCODE -ne 0){throw 'Demo UI verifier did not build.'}
+# Exercise the DLLs extracted from the delivered archive, not the locally
+# rebuilt application. Only the verifier executable remains from this build.
+$application=@(Get-ChildItem -LiteralPath $root -Directory | Where-Object Name -like 'application-*')
+if($application.Count -ne 1){throw 'Expected one extracted demonstration application.'}
+Copy-Item -Path (Join-Path $application[0].FullName '*') -Destination $runner -Recurse -Force
+$runtimeManifest=Get-Content -LiteralPath (Join-Path $application[0].FullName 'HANOUTY-MANIFEST.json') -Raw | ConvertFrom-Json
+foreach($file in $runtimeManifest.files){if((Get-FileHash -LiteralPath (Join-Path $runner $file.file)).Hash -ine $file.sha256){throw 'UI verifier is not using the delivered application bytes.'}}
 $previous=@{};foreach($name in @('HANOUTY_CATALOGUE_CONNECTION','HANOUTY_DATA_DIRECTORY','HANOUTY_WORKSTATION')){$previous[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
 try{
     foreach($pass in 1..2){
@@ -30,14 +41,14 @@ try{
             if(-not $ready){throw 'Owned demo verification database did not start.'}
             $env:HANOUTY_CATALOGUE_CONNECTION="Server=127.0.0.1;Port=$port;Database=hanouty_demo;Uid=root;Pwd=$password;SslMode=Disabled;"
             $env:HANOUTY_DATA_DIRECTORY=Join-Path $root 'catalogue';$env:HANOUTY_WORKSTATION='01'
-            $repo=Split-Path $PSScriptRoot
-            & $Dotnet run --project (Join-Path $repo 'modernization/demo-acceptance/DemoAcceptance.csproj') -c Release -p:CheckoutProductionProject=../checkout-mariadb-production/CheckoutMariaDbProduction.csproj -- (Join-Path $evidence "pass-$pass")
+            & $Dotnet (Join-Path $runner 'Hanouty.ProtectedCopy.Gui.Acceptance.dll') (Join-Path $evidence "pass-$pass")
             if($LASTEXITCODE -ne 0){throw "Demo PIN/scanner/coin payment verification failed on pass$pass."}
         }finally{if($server -and -not $server.HasExited){& (Join-Path $bin 'mariadb-admin.exe') --host=127.0.0.1 --port=$port --user=root --password=$password shutdown 2>$null | Out-Null;$server.WaitForExit(15000)}}
     }
     $first=Get-Content -LiteralPath (Join-Path $evidence 'pass-1/demo-ui.json') -Raw | ConvertFrom-Json
     $second=Get-Content -LiteralPath (Join-Path $evidence 'pass-2/demo-ui.json') -Raw | ConvertFrom-Json
     if($first.PreviousCounter -ne 0 -or $second.PreviousCounter -ne $first.CurrentCounter -or $second.CurrentCounter -ne 2){throw 'Sales did not persist across restart.'}
-    @{OfflineFreshStart=$true;NoLogicaConfiguration=$true;Pin1234=$true;ActualWpfSales=$true;StockPosted=$true;RestartPreservesSales=$true;TwoSales=$true} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'demo-acceptance.json') -Encoding UTF8
+    foreach($proof in @($first,$second)){foreach($field in @('StockSectionOpens','JournalSectionOpens','StatisticsSectionOpens','SettingsSectionOpens')){if($proof.$field -ne $true){throw "Section did not open: $field"}}}
+    @{OfflineFreshStart=$true;NoLogicaConfiguration=$true;Pin1234=$true;ActualWpfSales=$true;StockPosted=$true;RestartPreservesSales=$true;TwoSales=$true;DeliveredApplicationBytes=$true;StockSectionOpens=$true;JournalSectionOpens=$true;StatisticsSectionOpens=$true;SettingsSectionOpens=$true;ApplicationSource=$runtimeManifest.acceptanceSha} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'demo-acceptance.json') -Encoding UTF8
     Write-Host 'PASS offline demonstration, PIN, scanner, cash keypad, stock and restart persistence.'
 }finally{foreach($name in $previous.Keys){[Environment]::SetEnvironmentVariable($name,$previous[$name],'Process')}}
