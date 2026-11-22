@@ -262,9 +262,9 @@
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions>
-                                                <Button Grid.Column="0" Content="−" Click="DecreaseBasketQuantity_Click" MinHeight="36" FontSize="18" AutomationProperties.Name="Diminuer la quantité"/>
+                                                <Button Grid.Column="0" Content="−" Padding="0" Click="DecreaseBasketQuantity_Click" MinHeight="36" FontSize="18" AutomationProperties.Name="Diminuer la quantité"/>
                                                 <TextBlock Grid.Column="1" Text="{Binding Quantity}" TextAlignment="Center" VerticalAlignment="Center"/>
-                                                <Button Grid.Column="2" Content="+" Click="IncreaseBasketQuantity_Click" MinHeight="36" FontSize="18" AutomationProperties.Name="Augmenter la quantité"/>
+                                                <Button Grid.Column="2" Content="+" Padding="0" Click="IncreaseBasketQuantity_Click" MinHeight="36" FontSize="18" AutomationProperties.Name="Augmenter la quantité"/>
                                             </Grid>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
@@ -280,7 +280,7 @@
                                 <DataGridTextColumn Header="Net MAD" Binding="{Binding NetAmountMad, StringFormat={}{0:F2}}" Width="80"/>
                                 <DataGridTemplateColumn Header="" Width="32">
                                     <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate><Button Content="×" Click="RemoveBasketLine_Click" MinHeight="36" FontSize="18" ToolTip="Retirer cet article" AutomationProperties.Name="Retirer cet article"/></DataTemplate>
+                                        <DataTemplate><Button Content="×" Padding="0" Foreground="#B42318" Click="RemoveBasketLine_Click" MinHeight="36" FontSize="18" ToolTip="Retirer cet article" AutomationProperties.Name="Retirer cet article"/></DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
                             </DataGrid.Columns>

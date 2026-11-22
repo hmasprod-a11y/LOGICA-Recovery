@@ -29,6 +29,21 @@ internal static class Program
         var beforeCounter=Convert.ToInt32(Scalar("SELECT CL FROM TABLE_NUM WHERE ID=0"));
         var host=CatalogueHost.CreateCashierWorkstation(settings,"01");Exception? failure=null;
         void QueuePin(bool capture=false){host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{var prompt=app.Windows.Cast<Window>().SingleOrDefault(w=>w.Owner==host.Window&&Controls<PasswordBox>(w).Any());try{Require(prompt is not null,"PIN keypad did not open.");if(capture)Capture(prompt!,Path.Combine(evidence,"demo-pin.png"));Controls<PasswordBox>(prompt!).Single().Password="1234";Controls<Button>(prompt!).Single(b=>b.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));}catch(Exception ex){failure=ex;prompt?.Close();}}));}
+        void VisitSection(string buttonName,string expectedType,string image)
+        {
+            var opened=false;var expires=DateTime.UtcNow.AddSeconds(20);
+            var timer=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(100)};
+            timer.Tick+=(_,_)=>{
+                if(DateTime.UtcNow>expires){Console.Error.WriteLine("Section did not open: "+buttonName);Environment.Exit(1);}
+                foreach(var modal in app.Windows.Cast<Window>().Where(w=>w.Owner==host.Window&&w.IsVisible).ToArray())
+                {
+                    if(Controls<PasswordBox>(modal).FirstOrDefault() is { } pin){pin.Password="1234";Controls<Button>(modal).Single(b=>b.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));return;}
+                    if(modal.GetType().Name==expectedType){Capture(modal,Path.Combine(evidence,image));opened=true;modal.Close();return;}
+                }
+            };
+            timer.Start();try{var button=Controls<Button>(host.Window).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)==buttonName);Require(button.IsEnabled,"Section disabled: "+buttonName);button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));}finally{timer.Stop();}
+            Require(opened,"Section ignored its click: "+buttonName);
+        }
         host.Window.Loaded+=(_,_)=>host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{
             try{
                 Require(WorkstationReadiness.IsReady(settings),"Demo database is not ready.");
@@ -44,6 +59,9 @@ internal static class Program
                 tile.Command!.Execute(tile.CommandParameter);Require(host.Session.PendingCount==1,"Touch tile did not add milk.");
                 host.ViewModel.ScannerText="1002";host.ViewModel.ScanCommand.Execute(null);Require(host.Session.PendingCount==2,"Barcode 1002 did not add water.");
                 Require(host.Window.RefreshTrustedBasketTotal()&&((TextBlock)host.Window.FindName("TrustedBasketTotal")).Text=="11.00","Touch and scanner basket did not show the trusted 11 MAD total.");
+                host.Window.UpdateLayout();
+                var basketButtons=Visuals<Button>((DataGrid)host.Window.FindName("CashierBasket")).Where(b=>b.Content is string glyph&&glyph is "+" or "−" or "×").ToArray();
+                Require(basketButtons.Length>=6&&basketButtons.All(b=>b.ActualWidth-b.Padding.Left-b.Padding.Right>=18),"Quantity or remove glyph is clipped inside its basket button.");
                 Capture(host.Window,Path.Combine(evidence,"demo-basket.png"));
                 host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{var payment=app.Windows.OfType<CashierEntryDialog>().SingleOrDefault();try{Require(payment is not null,"Fixed pay button did not open cash calculator.");Capture(payment!,Path.Combine(evidence,"demo-cash.png"));foreach(var coin in new[]{"10 MAD","1 MAD"})Controls<Button>(payment!).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)==coin).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));QueuePin();Controls<Button>(payment!).Single(b=>b.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));}catch(Exception ex){failure=ex;payment?.Close();}}));
                 var pay=(Button)host.Window.FindName("CompleteCheckoutButton");Require(pay.IsEnabled,"Payment action disabled before receiving cash.");pay.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));if(failure is not null)throw failure;
@@ -52,7 +70,11 @@ internal static class Program
                 Require(Convert.ToDecimal(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='DEMO-2'"))==beforeStock-1&&Convert.ToInt32(Scalar("SELECT COUNT(*) FROM TABLE_VENTES_JOURNAL"))==(beforeCounter+1)*2&&Convert.ToDecimal(Scalar("SELECT SUM(MONTANT) FROM TABLE_VENTES_REGLEMENTS"))==(beforeCounter+1)*11m,"Two-article sale lost a line or posted an incorrect cash amount.");
                 Require(((TextBlock)host.Window.FindName("TrustedBasketTotal")).Text=="0.00","Next-customer total not reset.");
                 Capture(host.Window,Path.Combine(evidence,"demo-sale.png"));
-                File.WriteAllText(Path.Combine(evidence,"demo-ui.json"),JsonSerializer.Serialize(new{NoLogicaConfiguration=true,TwelveProducts=true,Pin1234=true,TouchSelection=true,OriginalPriceVisible=true,FamilyFilter=true,Scanner1002=true,FixedPayButton=true,CoinsAndFreshPin=true,StockAndCounter=true,NextCustomerTotal=true,PreviousCounter=beforeCounter,CurrentCounter=beforeCounter+1}));result=0;
+                VisitSection("Ouvrir les articles et le stock","DailyStockDialog","demo-stock.png");
+                VisitSection("Ouvrir le journal des ventes","SalesJournalDialog","demo-journal.png");
+                VisitSection("Ouvrir les statistiques des ventes","SalesJournalDialog","demo-statistics.png");
+                VisitSection("Paramètres du poste","WorkstationSettingsMenu","demo-settings.png");
+                File.WriteAllText(Path.Combine(evidence,"demo-ui.json"),JsonSerializer.Serialize(new{NoLogicaConfiguration=true,TwelveProducts=true,Pin1234=true,TouchSelection=true,OriginalPriceVisible=true,FamilyFilter=true,Scanner1002=true,FixedPayButton=true,CoinsAndFreshPin=true,StockAndCounter=true,NextCustomerTotal=true,StockSectionOpens=true,JournalSectionOpens=true,StatisticsSectionOpens=true,SettingsSectionOpens=true,PreviousCounter=beforeCounter,CurrentCounter=beforeCounter+1}));result=0;
             }catch(Exception ex){Console.Error.WriteLine(ex);}finally{host.Window.Close();app.Shutdown();}
         }));
         app.Run(host.Window);return result;
