@@ -317,6 +317,25 @@ jobs:
           path: ${{ env.HANOUTY_CUSTOMER_DELIVERY_ZIP }}
           if-no-files-found: error
           retention-days: 14
+      - name: Build and verify offline PIN-only demonstration with persistent trials
+        shell: pwsh
+        run: |
+          $runtime = Join-Path $env:RUNNER_TEMP 'hanouty-w2-cash-mariadb'
+          $demo = Join-Path $env:RUNNER_TEMP 'HANOUTY-DEMO'
+          ./scripts/Build-HanoutyDemo.ps1 -AcceptedPackageDirectory ./evidence -MariaDbArchive (Join-Path $runtime 'server.zip') -MariaDbChecksums (Join-Path $runtime 'sha256sums.txt') -OutputDirectory $demo
+          ./scripts/Test-HanoutyDemo.ps1 -BundleDirectory $demo -EvidenceDirectory ./evidence/demo
+          $proof = Get-Content ./evidence/demo/demo-acceptance.json -Raw | ConvertFrom-Json
+          foreach ($field in @('OfflineFreshStart','NoLogicaConfiguration','Pin1234','ActualWpfSales','StockPosted','RestartPreservesSales','TwoSales')) {
+            if ($proof.$field -ne $true) { throw "Missing independent demonstration proof: $field" }
+          }
+          "HANOUTY_DEMO_ZIP=$demo.zip" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Upload verified offline PIN-only demonstration
+        uses: actions/upload-artifact@v4
+        with:
+          name: HANOUTY-DEMO-PIN-1234
+          path: ${{ env.HANOUTY_DEMO_ZIP }}
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload full W2 source and SQL evidence
         if: always()
         uses: actions/upload-artifact@v4
