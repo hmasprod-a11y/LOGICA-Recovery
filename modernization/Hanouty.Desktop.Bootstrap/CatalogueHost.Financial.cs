@@ -1161,7 +1161,16 @@ public sealed partial record CatalogueHost
         public void Commit(AuthorizedCheckoutRequest request)
         {
             try { actualPosting.Commit(request); }
-            catch (Exception ex) { diagnostic?.Invoke(ex); throw; }
+            catch (Exception ex)
+            {
+                // Diagnostics are best-effort: a failing observer must never
+                // replace the original posting failure used for reconciliation.
+                try { diagnostic?.Invoke(ex); }
+                catch (Exception diagnosticError) when (diagnosticError is not OutOfMemoryException and not StackOverflowException)
+                {
+                }
+                throw;
+            }
             afterCommit?.Invoke();
         }
     }

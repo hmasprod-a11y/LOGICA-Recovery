@@ -1896,6 +1896,26 @@ Check(!returnDraft.Confirmed && returnDraft.OriginalSaleId is null &&
     returnDraft.Quantity == 0m, "cashier transition revokes confirmed return draft");
 
 Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selection and fail-closed regression");
+
+    // WP1 ported guard: reject incomplete customer before creating settlement draft
+    try
+    {
+        _ = new Hanouty.Desktop.Wpf.CustomerSettlementDialog(
+            new Hanouty.Desktop.Wpf.CustomerCreditStatementRow("", "Client Sans Id", 10m),
+            new[] { "ESPECE" },
+            _ => true);
+        throw new Exception("Expected ArgumentException for empty CustomerId.");
+    }
+    catch (ArgumentException) { }
+    try
+    {
+        _ = new Hanouty.Desktop.Wpf.CustomerSettlementDialog(
+            new Hanouty.Desktop.Wpf.CustomerCreditStatementRow("C-1", "", 10m),
+            new[] { "ESPECE" },
+            _ => true);
+        throw new Exception("Expected ArgumentException for empty Customer name.");
+    }
+    catch (ArgumentException) { }
 }
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader

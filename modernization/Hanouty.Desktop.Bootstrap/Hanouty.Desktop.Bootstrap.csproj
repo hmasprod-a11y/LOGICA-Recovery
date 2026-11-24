@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Hanouty.ProtectedCopy.Gui.Acceptance" />
+    <InternalsVisibleTo Include="Hanouty.Desktop.Acceptance" />
     <Compile Include="../../recovered-source/LOGICA/Application/Checkout/LogicaFrenchThreeColumn.cs" Link="LogicaFrenchThreeColumn.cs" />
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
     <Compile Include="../../recovered-source/LOGICA/Application/Checkout/ReceiptPrintRoute.cs" Link="ReceiptPrintRoute.cs" />
@@ -22,6 +23,10 @@
     <ProjectReference Include="../inventory/Hanouty.Inventory.MariaDb/Hanouty.Inventory.MariaDb.csproj"/>
   </ItemGroup>
   <PropertyGroup Condition="'$(CheckoutProductionProject)' != ''"><DefineConstants>$(DefineConstants);HANOUTY_FINANCIAL</DefineConstants></PropertyGroup>
+  <PropertyGroup Condition="'$(IncludeAcceptanceTests)' == 'true'"><DefineConstants>$(DefineConstants);HANOUTY_ACCEPTANCE</DefineConstants></PropertyGroup>
+  <ItemGroup Condition="'$(IncludeAcceptanceTests)' != 'true'">
+    <Compile Remove="Disposable*Acceptance.cs" />
+  </ItemGroup>
   <ItemGroup Condition="'$(CheckoutProductionProject)' != ''">
     <ProjectReference Include="$(CheckoutProductionProject)" />
   </ItemGroup>
