@@ -1,4 +1,3 @@
-#Requires -Version 7.0
 param(
     [ValidateSet('win-x64', 'win-x86')][string]$Runtime = 'win-x64',
     [string]$OutputRoot = './dist',

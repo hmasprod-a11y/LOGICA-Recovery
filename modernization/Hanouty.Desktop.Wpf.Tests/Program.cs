@@ -2226,6 +2226,6 @@ sealed class RecordingCashierDialogService : ICashierDialogService
         Func<Hanouty.Desktop.Wpf.CustomerSettlementRequest, bool>? submitSettlement) => StatementCalls++;
     public void ShowInventoryCount(Hanouty.Desktop.Wpf.IInventoryCountWorkflow workflow) => InventoryCalls++;
     public void ShowCashDrawerCount(
-        Func<Hanouty.Desktop.Wpf.CashDrawerClosingRequest, Hanouty.Desktop.Wpf.CashDrawerClosingResult>? closeDrawer,
+        Func<decimal, bool, bool>? closeDrawer,
         Func<decimal, bool>? setOpeningCash) => CashDrawerCalls++;
 }

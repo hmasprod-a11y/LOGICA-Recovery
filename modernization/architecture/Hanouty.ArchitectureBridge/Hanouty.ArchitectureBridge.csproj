@@ -9,6 +9,6 @@
   <Import Project="CoreSources.ArchitectureBridge.props" />
   <ItemGroup>
     <Compile Include="../CashboxLifecycle.cs" Link="CashboxLifecycle.cs" />
-    <Compile Include="../CashboxJournalReplay.cs" Link="CashboxJournalReplay.cs" /><Compile Include="CashDrawerCount.cs" /></ItemGroup>
+    <Compile Include="../CashboxJournalReplay.cs" Link="CashboxJournalReplay.cs" /><Compile Include="CashDrawerCount.cs" /><Compile Include="UserRoleMatrix.cs" /></ItemGroup>
   <ItemGroup><Compile Include="CheckoutSelectionGateway.cs" /><Compile Include="CheckoutSelectionWorkflow.cs" /><Compile Include="CheckoutSelectionController.cs" /><Compile Include="CheckoutBatchController.cs" /><Compile Include="CheckoutComposition.cs" /><Compile Include="CheckoutSession.cs" /><Compile Include="AuthorizedCheckoutContract.cs" /><Compile Include="AuthorizedCheckoutCommitGate.cs" /><Compile Include="AuthorizedCheckoutBatchAdapter.cs" /><Compile Include="FinancialAndStockAuthorizationBoundaries.cs" /></ItemGroup>
 </Project>

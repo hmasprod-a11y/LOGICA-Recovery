@@ -14,7 +14,7 @@ public interface ICashierDialogService
     void ShowInventoryCount(IInventoryCountWorkflow workflow);
 
     void ShowCashDrawerCount(
-        Func<CashDrawerClosingRequest, CashDrawerClosingResult>? closeDrawer,
+        Func<decimal, bool, bool>? closeCashDrawer,
         Func<decimal, bool>? setOpeningCash);
 }
 
@@ -30,7 +30,7 @@ internal sealed class WpfCashierDialogService(Window owner) : ICashierDialogServ
         new InventoryCountWindow(workflow) { Owner = owner }.ShowDialog();
 
     public void ShowCashDrawerCount(
-        Func<CashDrawerClosingRequest, CashDrawerClosingResult>? closeDrawer,
+        Func<decimal, bool, bool>? closeCashDrawer,
         Func<decimal, bool>? setOpeningCash) =>
-        new CashDrawerCountDialog(closeDrawer, setOpeningCash) { Owner = owner }.ShowDialog();
+        new CashDrawerCountDialog(closeCashDrawer, setOpeningCash) { Owner = owner }.ShowDialog();
 }
