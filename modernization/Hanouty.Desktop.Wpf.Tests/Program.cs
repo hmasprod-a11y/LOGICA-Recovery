@@ -1916,6 +1916,19 @@ Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selectio
         throw new Exception("Expected ArgumentException for empty Customer name.");
     }
     catch (ArgumentException) { }
+
+    // WP2: verify ICashierDialogService injection on MainWindow
+    {
+        var mw = new Hanouty.Desktop.Wpf.MainWindow();
+        var fakeDialogs = new RecordingCashierDialogService();
+        mw.ConfigureDialogService(fakeDialogs);
+        try
+        {
+            mw.ConfigureDialogService(null!);
+            throw new Exception("Expected ArgumentNullException for null dialog service.");
+        }
+        catch (ArgumentNullException) { }
+    }
 }
 
 sealed class Reader(IReadOnlyList<ProductSummary> products) : ICatalogueReader
@@ -2200,4 +2213,19 @@ sealed class CallbackBasketReader(Action callback) : ICurrentBasketReader
         callback();
         return new[] { new BasketDisplayLine("test", "Test", 1m, 3m) };
     }
+}
+
+sealed class RecordingCashierDialogService : ICashierDialogService
+{
+    public int StatementCalls { get; private set; }
+    public int InventoryCalls { get; private set; }
+    public int CashDrawerCalls { get; private set; }
+    public void ShowCustomerCreditStatement(
+        Func<string?, DateTime, DateTime, IReadOnlyList<Hanouty.Desktop.Wpf.CustomerCreditStatementRow>> readStatement,
+        IReadOnlyList<string>? paymentModes,
+        Func<Hanouty.Desktop.Wpf.CustomerSettlementRequest, bool>? submitSettlement) => StatementCalls++;
+    public void ShowInventoryCount(Hanouty.Desktop.Wpf.IInventoryCountWorkflow workflow) => InventoryCalls++;
+    public void ShowCashDrawerCount(
+        Func<Hanouty.Desktop.Wpf.CashDrawerClosingRequest, Hanouty.Desktop.Wpf.CashDrawerClosingResult>? closeDrawer,
+        Func<decimal, bool>? setOpeningCash) => CashDrawerCalls++;
 }

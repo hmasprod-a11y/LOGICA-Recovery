@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
     [ValidateSet('win-x64','win-x86')][string]$Runtime = 'win-x64',
-    [ValidateSet('catalogue-only','financial')][string]$Mode = 'catalogue-only'
+    [ValidateSet('catalogue-only','financial')][string]$Mode = 'catalogue-only',
+    [switch]$IncludeAcceptanceTests
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -24,6 +25,7 @@ $args = @('publish',$project,'-c','Release','-r',$Runtime,'--self-contained','tr
     '-p:PublishSingleFile=false','-p:HanoutyWpfAsLibrary=true',
     "-p:ArchitectureProject=$architecture",'-o',$publish)
 if ($Mode -eq 'financial') { $args += "-p:CheckoutProductionProject=$checkout" }
+if ($IncludeAcceptanceTests) { $args += '-p:IncludeAcceptanceTests=true' }
 & dotnet @args
 if ($LASTEXITCODE -ne 0) { throw "WPF $Mode publish failed." }
 foreach ($name in @('Hanouty.Desktop.Bootstrap.exe','Hanouty.Desktop.Wpf.dll','Hanouty.ArchitectureBridge.dll')) {

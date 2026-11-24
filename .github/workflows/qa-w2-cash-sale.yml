@@ -193,7 +193,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $package = Join-Path $env:RUNNER_TEMP 'hanouty-financial-package'
-          ./scripts/Package-HanoutyWpf.ps1 -OutputDirectory $package -Runtime win-x64 -Mode financial
+          ./scripts/Package-HanoutyWpf.ps1 -OutputDirectory $package -Runtime win-x64 -Mode financial -IncludeAcceptanceTests
           if ($LASTEXITCODE -ne 0) { throw 'Financial WPF package publish failed' }
       - name: Test extracted financial package and double-click startup
         shell: pwsh
