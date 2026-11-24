@@ -3,6 +3,7 @@
     <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
     <StartupObject>Hanouty.Desktop.Bootstrap.Program</StartupObject>
+    <CheckoutProductionProject Condition="'$(CheckoutProductionProject)' == '' and '$(HanoutyCatalogueOnly)' != 'true'">../checkout-mariadb-production/CheckoutMariaDbProduction.csproj</CheckoutProductionProject>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Hanouty.ProtectedCopy.Gui.Acceptance" />

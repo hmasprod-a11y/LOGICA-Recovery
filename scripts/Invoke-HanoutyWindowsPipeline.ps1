@@ -17,19 +17,22 @@ try {
     }
     Write-Host "Using dotnet SDK: $dotnetVersion"
 
-    Write-Host '=== [2/5] Restoring and building unified Hanouty.sln ===' -ForegroundColor Cyan
-    & dotnet restore Hanouty.sln
-    if ($LASTEXITCODE -ne 0) { throw 'dotnet restore Hanouty.sln failed.' }
-    & dotnet build Hanouty.sln -c Release --no-restore -m:1
-    if ($LASTEXITCODE -ne 0) { throw 'dotnet build Hanouty.sln failed.' }
-
-    Write-Host '=== [3/5] Running unit and WPF UI tests ===' -ForegroundColor Cyan
     $tests = @(
         'modernization/architecture/Hanouty.ArchitectureBridge.Tests/Hanouty.ArchitectureBridge.Tests.csproj',
         'modernization/architecture/CashboxLifecycle.Tests/CashboxLifecycle.Tests.csproj',
         'modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj',
         'modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj'
     )
+
+    Write-Host '=== [2/5] Building core app and test projects ===' -ForegroundColor Cyan
+    foreach ($proj in ($tests + @('modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj'))) {
+        & dotnet build $proj -c Release -m:1
+        if ($LASTEXITCODE -ne 0) { throw "Build failed: $proj" }
+    }
+    & dotnet build licensing/Hanouty.Licensing.Smoke/Hanouty.Licensing.Smoke.csproj -c Release -f net10.0
+    if ($LASTEXITCODE -ne 0) { throw 'Build failed: Hanouty.Licensing.Smoke' }
+
+    Write-Host '=== [3/5] Running unit and WPF UI tests ===' -ForegroundColor Cyan
     foreach ($proj in $tests) {
         Write-Host "Running $proj ..."
         & dotnet run --project $proj -c Release --no-build

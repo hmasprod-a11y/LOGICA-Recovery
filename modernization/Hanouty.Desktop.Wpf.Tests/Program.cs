@@ -1901,7 +1901,7 @@ Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selectio
     try
     {
         _ = new Hanouty.Desktop.Wpf.CustomerSettlementDialog(
-            new Hanouty.Desktop.Wpf.CustomerCreditStatementRow("", "Client Sans Id", 10m),
+            new Hanouty.Desktop.Wpf.CustomerCreditStatementRow("", "Client Sans Id", 0m, 10m, 0m, 0m, 10m),
             new[] { "ESPECE" },
             _ => true);
         throw new Exception("Expected ArgumentException for empty CustomerId.");
@@ -1910,7 +1910,7 @@ Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selectio
     try
     {
         _ = new Hanouty.Desktop.Wpf.CustomerSettlementDialog(
-            new Hanouty.Desktop.Wpf.CustomerCreditStatementRow("C-1", "", 10m),
+            new Hanouty.Desktop.Wpf.CustomerCreditStatementRow("C-1", "", 0m, 10m, 0m, 0m, 10m),
             new[] { "ESPECE" },
             _ => true);
         throw new Exception("Expected ArgumentException for empty Customer name.");
@@ -1919,7 +1919,7 @@ Console.WriteLine("PASS: WPF MVVM catalogue, image, scanner, duplicate, selectio
 
     // WP2: verify ICashierDialogService injection on MainWindow
     {
-        var mw = new Hanouty.Desktop.Wpf.MainWindow();
+        var mw = new Hanouty.Desktop.Wpf.MainWindow(new EmptyCatalogueReader(), new RecordingSelection(), new RecordingSubmission());
         var fakeDialogs = new RecordingCashierDialogService();
         mw.ConfigureDialogService(fakeDialogs);
         try
