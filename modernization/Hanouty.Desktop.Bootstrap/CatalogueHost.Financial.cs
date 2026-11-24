@@ -531,8 +531,15 @@ public sealed partial record CatalogueHost
             return !vm.CheckoutUncertain && binding.Session.PendingCount == 0;
         }, () => MariaDbCashCheckoutServices.IsCreditSaleEnabled(WorkstationPrinterProfile.FeatureDirectory(settings)));
         var cashClosing = new CashDrawerClosing(settings.ConnectionString);
+        var cashboxLifecycle = new Hanouty.Architecture.Cashbox.CashboxLifecycle();
         window.ConfigureCashDrawerClosing((counted, cashierOnly) =>
         {
+            if (vm.CheckoutUncertain) cashboxLifecycle.MarkReconciliationRequired();
+            if (cashboxLifecycle.Phase == Hanouty.Architecture.Cashbox.CashboxPhase.ReconciliationRequired)
+            {
+                System.Windows.MessageBox.Show(window, "Une opération financière est en attente de vérification avant la clôture.", "Clôture");
+                return false;
+            }
             if (!CanChangeContext() || !vm.FinancialSessionActive ||
                 activeCashierId is not { } cashier || binding.Session.PendingCount != 0)
             {
@@ -620,6 +627,8 @@ public sealed partial record CatalogueHost
                 if (string.IsNullOrEmpty(pin) || !ConfirmCashDrawer(window,
                     $"Enregistrer {opening:N2} MAD comme fond de caisse ?", "Fond de caisse")) return false;
                 cashClosing.SetOpening(cashier, pin, opening);
+                if (cashboxLifecycle.Phase == Hanouty.Architecture.Cashbox.CashboxPhase.Closed)
+                    cashboxLifecycle.Open($"session-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}", opening);
                 return true;
             }
             catch (Exception ex) when (ex is MySqlException or InvalidOperationException or UnauthorizedAccessException)
@@ -1078,6 +1087,80 @@ public sealed partial record CatalogueHost
             }
             finally { reviewing = false; }
         });
+        var purchaseOrders = new PurchaseOrderStore(settings.ConnectionString);
+        window.ConfigurePurchaseOrders(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive) return;
+            new PurchaseOrderDialog(
+                () => purchaseOrders.ListOrders()
+                    .Select(o => new PurchaseOrderViewRow(o.OrderNumber, o.Supplier, o.OrderDate, o.Total, o.Status))
+                    .ToArray(),
+                (sup, lines) => purchaseOrders.CreateOrder(
+                    "", sup, lines.Select(l => new PurchaseOrderLineInput(l.ArticleId, l.Code, l.ArticleName, l.Quantity, l.UnitPrice)).ToArray()))
+            { Owner = window }.ShowDialog();
+        });
+
+        var stockAlerts = new StockAlertsReader(settings.ConnectionString);
+        window.ConfigureStockAlerts(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive) return;
+            new StockAlertsDialog(
+                threshold => stockAlerts.ReadNegativeOrLowStock(threshold)
+                    .Select(a => new StockAlertViewRow(a.Code, a.Article, a.Stock, a.ModeStock)).ToArray(),
+                (from, to) => stockAlerts.ReadExpiringLots(from, to)
+                    .Select(e => new ExpiryAlertViewRow(e.Code, e.Article, e.ExpiryDate, e.Quantity, e.LotNumber)).ToArray())
+            { Owner = window }.ShowDialog();
+        });
+
+        var salesStats = new SalesStatisticsReader(settings.ConnectionString);
+        window.ConfigureMarginStatistics(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive) return;
+            new SalesStatisticsDialog((from, to) =>
+            {
+                var sum = salesStats.ReadSummary(from, to);
+                var top = salesStats.ReadTopArticles(from, to)
+                    .Select(t => new TopArticleViewRow(t.Code, t.Article, t.Quantity, t.NetTotal)).ToArray();
+                return new SalesStatisticsViewData(sum.TotalSalesNet, sum.TotalCost, sum.GrossMargin, sum.TicketCount, top);
+            })
+            { Owner = window }.ShowDialog();
+        });
+
+        window.ConfigureBarcodeLabels(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive) return;
+            new BarcodeLabelDialog() { Owner = window }.ShowDialog();
+        });
+
+        var userStore = new MariaDbUserStore(settings.ConnectionString);
+        window.ConfigureUserManagement(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive) return;
+            new UserManagementDialog(
+                () => userStore.ListUsers(),
+                (u, p, r) => userStore.CreateUser(u, p, r),
+                id => userStore.DeleteUser(id))
+            { Owner = window }.ShowDialog();
+        });
+
+        var backupService = new DatabaseBackupRestoreService(settings.ConnectionString, AppContext.BaseDirectory);
+        window.ConfigureBackupRestore(() =>
+        {
+            if (!CanChangeContext() || !vm.FinancialSessionActive) return;
+            new BackupRestoreDialog(
+                async dir =>
+                {
+                    var res = await backupService.CreateBackupAsync(dir);
+                    return $"Sauvegarde créée : {res.BackupFilePath}\nSHA-256 : {res.Sha256}";
+                },
+                async file =>
+                {
+                    var safetyDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(file) ?? AppContext.BaseDirectory, "pre-restore-safety");
+                    await backupService.RestoreBackupAsync(file, safetyDir);
+                })
+            { Owner = window }.ShowDialog();
+        });
+
         window.ConfigureReviewedCheckout(result.TryReviewResolvedCheckout);
         return result;
     }

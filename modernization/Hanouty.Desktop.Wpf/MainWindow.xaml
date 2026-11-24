@@ -72,6 +72,18 @@
                 <Button Content="Réception fournisseur" Click="OpenPurchaseReceipt_Click" HorizontalAlignment="Left"
                         IsEnabled="{Binding FinancialSessionActive}" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
                         AutomationProperties.Name="Open purchase receipt"/>
+                <Button Content="Commandes (BC)" Click="OpenPurchaseOrders_Click"
+                        IsEnabled="{Binding FinancialSessionActive}" MinHeight="36" Padding="12,4" Margin="0,0,8,0"/>
+                <Button Content="Alertes stock" Click="OpenStockAlerts_Click"
+                        IsEnabled="{Binding FinancialSessionActive}" MinHeight="36" Padding="12,4" Margin="0,0,8,0"/>
+                <Button Content="Statistiques &amp; marges" Click="OpenMarginStatistics_Click"
+                        IsEnabled="{Binding FinancialSessionActive}" MinHeight="36" Padding="12,4" Margin="0,0,8,0"/>
+                <Button Content="Étiquettes" Click="OpenBarcodeLabels_Click"
+                        IsEnabled="{Binding FinancialSessionActive}" MinHeight="36" Padding="12,4" Margin="0,0,8,0"/>
+                <Button Content="Utilisateurs" Click="OpenUserManagement_Click"
+                        IsEnabled="{Binding FinancialSessionActive}" MinHeight="36" Padding="12,4" Margin="0,0,8,0"/>
+                <Button Content="Sauvegarde / Restauration" Click="OpenBackupRestore_Click"
+                        IsEnabled="{Binding FinancialSessionActive}" MinHeight="36" Padding="12,4" Margin="0,0,8,0"/>
                 <Button Content="Prix du catalogue" Click="OpenCataloguePrices_Click" HorizontalAlignment="Left"
                         IsEnabled="{Binding FinancialSessionActive}" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
                         AutomationProperties.Name="Open catalogue prices"/>

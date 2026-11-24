@@ -35,6 +35,54 @@ public partial class MainWindow : Window
         DialogService.ShowCustomerCreditStatement(_readCustomerCreditStatement, modes, _submitCustomerSettlement);
     }
 
+    private Action? _openPurchaseOrders;
+    public void ConfigurePurchaseOrders(Action open) => _openPurchaseOrders = open;
+    private void OpenPurchaseOrders_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false, CheckoutUncertain: false })
+            _openPurchaseOrders?.Invoke();
+    }
+
+    private Action? _openStockAlerts;
+    public void ConfigureStockAlerts(Action open) => _openStockAlerts = open;
+    private void OpenStockAlerts_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false, CheckoutUncertain: false })
+            _openStockAlerts?.Invoke();
+    }
+
+    private Action? _openMarginStatistics;
+    public void ConfigureMarginStatistics(Action open) => _openMarginStatistics = open;
+    private void OpenMarginStatistics_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false, CheckoutUncertain: false })
+            _openMarginStatistics?.Invoke();
+    }
+
+    private Action? _openBarcodeLabels;
+    public void ConfigureBarcodeLabels(Action open) => _openBarcodeLabels = open;
+    private void OpenBarcodeLabels_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false, CheckoutUncertain: false })
+            _openBarcodeLabels?.Invoke();
+    }
+
+    private Action? _openUserManagement;
+    public void ConfigureUserManagement(Action open) => _openUserManagement = open;
+    private void OpenUserManagement_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false, CheckoutUncertain: false })
+            _openUserManagement?.Invoke();
+    }
+
+    private Action? _openBackupRestore;
+    public void ConfigureBackupRestore(Action open) => _openBackupRestore = open;
+    private void OpenBackupRestore_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false, CheckoutUncertain: false })
+            _openBackupRestore?.Invoke();
+    }
+
     private Action? _openSupplierSettlements;
     public void ConfigureSupplierSettlements(Action open) => _openSupplierSettlements = open;
     private void OpenSupplierSettlements_Click(object sender, RoutedEventArgs e)

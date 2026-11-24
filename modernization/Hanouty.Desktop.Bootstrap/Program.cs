@@ -27,6 +27,14 @@ public static class Program
         {
             try
             {
+                var licenseDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HANOUTY");
+                var licenseDecision = HanoutyLicenseStartupGate.EvaluateLocalLicense(licenseDir);
+                if (!licenseDecision.MaySell)
+                {
+                    MessageBox.Show("Licence invalide ou expirée : " + licenseDecision.Reason,
+                        "HANOUTY — Licence", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return 3;
+                }
                 var settings = WorkstationConfiguration.Interactive();
                 if (settings is null) return 0;
                 var application = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
