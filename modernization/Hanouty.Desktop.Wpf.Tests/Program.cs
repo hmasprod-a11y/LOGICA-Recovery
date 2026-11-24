@@ -2221,7 +2221,7 @@ sealed class RecordingCashierDialogService : ICashierDialogService
     public int InventoryCalls { get; private set; }
     public int CashDrawerCalls { get; private set; }
     public void ShowCustomerCreditStatement(
-        Func<string?, DateTime, DateTime, IReadOnlyList<Hanouty.Desktop.Wpf.CustomerCreditStatementRow>> readStatement,
+        Func<DateTime, DateTime, IReadOnlyList<Hanouty.Desktop.Wpf.CustomerCreditStatementRow>> readStatement,
         IReadOnlyList<string>? paymentModes,
         Func<Hanouty.Desktop.Wpf.CustomerSettlementRequest, bool>? submitSettlement) => StatementCalls++;
     public void ShowInventoryCount(Hanouty.Desktop.Wpf.IInventoryCountWorkflow workflow) => InventoryCalls++;

@@ -20,7 +20,7 @@ try {
     Write-Host '=== [2/5] Restoring and building unified Hanouty.sln ===' -ForegroundColor Cyan
     & dotnet restore Hanouty.sln
     if ($LASTEXITCODE -ne 0) { throw 'dotnet restore Hanouty.sln failed.' }
-    & dotnet build Hanouty.sln -c Release --no-restore
+    & dotnet build Hanouty.sln -c Release --no-restore -m:1
     if ($LASTEXITCODE -ne 0) { throw 'dotnet build Hanouty.sln failed.' }
 
     Write-Host '=== [3/5] Running unit and WPF UI tests ===' -ForegroundColor Cyan

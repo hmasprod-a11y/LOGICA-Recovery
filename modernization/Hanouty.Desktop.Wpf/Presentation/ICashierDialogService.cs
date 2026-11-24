@@ -7,7 +7,7 @@ namespace Hanouty.Desktop.Wpf.Presentation;
 public interface ICashierDialogService
 {
     void ShowCustomerCreditStatement(
-        Func<string?, DateTime, DateTime, IReadOnlyList<CustomerCreditStatementRow>> readStatement,
+        Func<DateTime, DateTime, IReadOnlyList<CustomerCreditStatementRow>> readStatement,
         IReadOnlyList<string>? paymentModes,
         Func<CustomerSettlementRequest, bool>? submitSettlement);
 
@@ -21,7 +21,7 @@ public interface ICashierDialogService
 internal sealed class WpfCashierDialogService(Window owner) : ICashierDialogService
 {
     public void ShowCustomerCreditStatement(
-        Func<string?, DateTime, DateTime, IReadOnlyList<CustomerCreditStatementRow>> readStatement,
+        Func<DateTime, DateTime, IReadOnlyList<CustomerCreditStatementRow>> readStatement,
         IReadOnlyList<string>? paymentModes,
         Func<CustomerSettlementRequest, bool>? submitSettlement) =>
         new CustomerCreditStatementDialog(readStatement, paymentModes, submitSettlement) { Owner = owner }.ShowDialog();
