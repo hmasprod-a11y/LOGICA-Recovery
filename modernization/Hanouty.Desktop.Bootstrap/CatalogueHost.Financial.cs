@@ -534,7 +534,7 @@ public sealed partial record CatalogueHost
         var cashboxLifecycle = new Hanouty.Architecture.Cashbox.CashboxLifecycle();
         window.ConfigureCashDrawerClosing((counted, cashierOnly) =>
         {
-            if (vm.CheckoutUncertain) cashboxLifecycle.MarkReconciliationRequired();
+            if (vm.CheckoutUncertain && cashboxLifecycle.Phase == Hanouty.Architecture.Cashbox.CashboxPhase.Open) cashboxLifecycle.MarkOutcomeUnknown();
             if (cashboxLifecycle.Phase == Hanouty.Architecture.Cashbox.CashboxPhase.ReconciliationRequired)
             {
                 System.Windows.MessageBox.Show(window, "Une opération financière est en attente de vérification avant la clôture.", "Clôture");
