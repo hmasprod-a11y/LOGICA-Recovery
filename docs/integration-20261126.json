@@ -1,0 +1,39 @@
+{
+  "date": "2026-11-26",
+  "base": "18648f4f75642f4726c659f0c2b298d8185b5ccf",
+  "reviewed_branch": "feat/wp1-stabilization-solution-20261124",
+  "reviewed_tip": "5f45e067b76bcb33f218156b4dd86652a4c8577b",
+  "preserved_daily_snapshot": "958cbbc53224614fcb19fd330fe02144dbb86db0",
+  "included": [
+    "Unified solution and isolated build intermediates",
+    "Clean production publish separated from disposable acceptance commands",
+    "Cashbox lifecycle/replay contracts and tests (existing persisted cashier workflow retained)",
+    "Dialog service wired to existing authorized cash workflows",
+    "One initial cashier PIN, memory-only session; backend role/password checks retained",
+    "Original quantity permission and touch quantity/clear-basket controls",
+    "Authorized manual stock increase/decrease/actual quantity with atomic audit and replay",
+    "Eleven original workstation settings with CAS and numeric keypad",
+    "Twelfth additive stock migration and owned-demo upgrades"
+  ],
+  "withheld_wp1": {
+    "purchases": "SQL names differ from recovered schema",
+    "users_and_backup_restore": "Session-only authorization does not enforce ADMIN",
+    "stock_alerts": "Lot/expiry SQL references unavailable N_LOT",
+    "barcode_labels": "Consolas text is not a scannable barcode",
+    "new_cashbox_host": "In-memory wiring does not persist full original lifecycle",
+    "dev_launcher_and_inno": "Does not meet existing verified delivery path",
+    "startup_license_gate": "Not part of accepted daily startup"
+  },
+  "limitations": [
+    "Not a commercial-release certification",
+    "Sale price override remains outside this integration",
+    "Legacy WP1 progress documents describe source-branch work, not acceptance of withheld modules",
+    "Source-mode demo tests do not certify previously delivered archive bytes"
+  ],
+  "local_validation": {
+    "stock_adjustment": "17 actual SQL/WPF assertions passed; ../integrated-stock-evidence",
+    "original_settings": "17 actual SQL/WPF assertions passed; ../integrated-original-settings-evidence",
+    "daily_cashier": "Two actual WPF sales across restart; one initial PIN each session, stock editor/journal/statistics/settings open; ../integrated-daily-session-final-20261126",
+    "clean_publish": "Self-contained financial production graph published without acceptance code"
+  }
+}

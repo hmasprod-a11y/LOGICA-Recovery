@@ -1,0 +1,60 @@
+﻿param([Parameter(Mandatory=$true)][string]$BundleDirectory,[Parameter(Mandatory=$true)][string]$EvidenceDirectory,[string]$Dotnet='dotnet',[switch]$SourceApplication)
+$ErrorActionPreference='Stop'
+Set-StrictMode -Version Latest
+Add-Type -AssemblyName System.Security
+$evidence=[IO.Path]::GetFullPath($EvidenceDirectory)
+New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+$root=Join-Path $evidence ('fresh-'+[Guid]::NewGuid().ToString('N'))
+$launcher=Join-Path $BundleDirectory 'Start-Hanouty-Demo.ps1'
+$preparation=Start-Process -FilePath (Join-Path $env:WINDIR 'System32/WindowsPowerShell/v1.0/powershell.exe') -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"'+$launcher+'"'),'-DemoRoot',('"'+$root+'"'),'-PrepareOnly') -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput (Join-Path $evidence 'prepare-output.txt') -RedirectStandardError (Join-Path $evidence 'prepare-error.txt')
+if($preparation.ExitCode -ne 0){throw 'Fresh offline demo preparation through the actual hidden shortcut process failed.'}
+$keyBefore=(Get-FileHash -LiteralPath (Join-Path $root 'local-key.bin')).Hash
+$seedBefore=(Get-FileHash -LiteralPath (Join-Path $root 'ready.json')).Hash
+$repo=Split-Path $PSScriptRoot
+$runner=Join-Path $evidence 'verifier'
+& $Dotnet build (Join-Path $repo 'modernization/demo-acceptance/DemoAcceptance.csproj') -c Release -p:CheckoutProductionProject=../checkout-mariadb-production/CheckoutMariaDbProduction.csproj -o $runner -v:q
+if($LASTEXITCODE -ne 0){throw 'Demo UI verifier did not build.'}
+# Exercise the DLLs extracted from the delivered archive, not the locally
+# rebuilt application. Only the verifier executable remains from this build.
+$application=@(Get-ChildItem -LiteralPath $root -Directory | Where-Object Name -like 'application-*')
+if($application.Count -ne 1){throw 'Expected one extracted demonstration application.'}
+if(-not $SourceApplication){Copy-Item -Path (Join-Path $application[0].FullName '*') -Destination $runner -Recurse -Force}
+$runtimeManifest=Get-Content -LiteralPath (Join-Path $application[0].FullName 'HANOUTY-MANIFEST.json') -Raw | ConvertFrom-Json
+if(-not $SourceApplication){foreach($file in $runtimeManifest.files){if((Get-FileHash -LiteralPath (Join-Path $runner $file.file)).Hash -ine $file.sha256){throw 'UI verifier is not using the delivered application bytes.'}}}
+$previous=@{};foreach($name in @('HANOUTY_CATALOGUE_CONNECTION','HANOUTY_DATA_DIRECTORY','HANOUTY_WORKSTATION')){$previous[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
+try{
+    foreach($pass in 1..2){
+        if($pass -eq 2){
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $launcher -DemoRoot $root -PrepareOnly
+            if($LASTEXITCODE -ne 0){throw 'Demo restart failed.'}
+            if((Get-FileHash -LiteralPath (Join-Path $root 'local-key.bin')).Hash -cne $keyBefore -or (Get-FileHash -LiteralPath (Join-Path $root 'ready.json')).Hash -cne $seedBefore){throw 'Restart replaced the saved demonstration.'}
+        }
+        $bytes=[Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes((Join-Path $root 'local-key.bin')),$null,[Security.Cryptography.DataProtectionScope]::CurrentUser)
+        $password=[Text.Encoding]::UTF8.GetString($bytes);[Array]::Clear($bytes,0,$bytes.Length)
+        $bin=Join-Path $root 'runtime-10.11.14/mariadb-10.11.14-winx64/bin'
+        $probe=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);try{$probe.Start();$port=([Net.IPEndPoint]$probe.LocalEndpoint).Port}finally{$probe.Stop()}
+        $data=Join-Path $root 'database';$server=$null
+        try{
+            $server=Start-Process -FilePath (Join-Path $bin 'mariadbd.exe') -ArgumentList @(('--defaults-file="'+(Join-Path $data 'my.ini')+'"'),'--bind-address=127.0.0.1',"--port=$port") -WindowStyle Hidden -PassThru
+            $ready=$false
+            for($attempt=0;$attempt -lt 40;$attempt++){Start-Sleep -Milliseconds 500;& (Join-Path $bin 'mariadb-admin.exe') --host=127.0.0.1 --port=$port --user=root --password=$password ping 2>$null | Out-Null;if($LASTEXITCODE -eq 0){$ready=$true;break}}
+            if(-not $ready){throw 'Owned demo verification database did not start.'}
+            if($SourceApplication -and $pass -eq 1){
+                $fixtureSql="USE hanouty_demo;UPDATE TABLE_NUM SET ARTICLE=0 WHERE ID=0 AND ARTICLE IS NULL AND NOT EXISTS (SELECT 1 FROM TABLE_ARTICLES WHERE ID_ARTICLE REGEXP '^ART[0-9]+$');"+[IO.File]::ReadAllText((Join-Path $repo 'input/migrations/20261122-daily-stock-adjustments.sql'))
+                foreach($pair in @(@('MODIF_STOCK_MANUEL','True'),@('GESTION_CLOTURE','True'),@('CLOTURE_CAISSIER_OBLIGER','False'),@('FONDS_CAISSE','0'))){$fixtureSql+="`nINSERT INTO TABLE_PARAMETRES (OBJET,VALEUR) SELECT '$($pair[0])','$($pair[1])' WHERE NOT EXISTS (SELECT 1 FROM TABLE_PARAMETRES WHERE BINARY OBJET=BINARY '$($pair[0])');"}
+                $fixtureSql | & (Join-Path $bin 'mariadb.exe') --host=127.0.0.1 --port=$port --user=root --password=$password --default-character-set=utf8mb4
+                if($LASTEXITCODE -ne 0){throw 'Owned source-only fixture upgrade failed.'}
+            }
+            $env:HANOUTY_CATALOGUE_CONNECTION="Server=127.0.0.1;Port=$port;Database=hanouty_demo;Uid=root;Pwd=$password;SslMode=Disabled;"
+            $env:HANOUTY_DATA_DIRECTORY=Join-Path $root 'catalogue';$env:HANOUTY_WORKSTATION='01'
+            & $Dotnet (Join-Path $runner 'Hanouty.ProtectedCopy.Gui.Acceptance.dll') (Join-Path $evidence "pass-$pass")
+            if($LASTEXITCODE -ne 0){throw "Demo PIN/scanner/coin payment verification failed on pass$pass."}
+        }finally{if($server -and -not $server.HasExited){& (Join-Path $bin 'mariadb-admin.exe') --host=127.0.0.1 --port=$port --user=root --password=$password shutdown 2>$null | Out-Null;$server.WaitForExit(15000)}}
+    }
+    $first=Get-Content -LiteralPath (Join-Path $evidence 'pass-1/demo-ui.json') -Raw | ConvertFrom-Json
+    $second=Get-Content -LiteralPath (Join-Path $evidence 'pass-2/demo-ui.json') -Raw | ConvertFrom-Json
+    if($first.PreviousCounter -ne 0 -or $second.PreviousCounter -ne $first.CurrentCounter -or $second.CurrentCounter -ne 2){throw 'Sales did not persist across restart.'}
+    foreach($proof in @($first,$second)){foreach($field in @('StockSectionOpens','JournalSectionOpens','StatisticsSectionOpens','SettingsSectionOpens')){if($proof.$field -ne $true){throw "Section did not open: $field"}}}
+    @{OfflineFreshStart=$true;NoLogicaConfiguration=$true;Pin1234=$true;ActualWpfSales=$true;StockPosted=$true;RestartPreservesSales=$true;TwoSales=$true;DeliveredApplicationBytes=(-not $SourceApplication);SourceApplication=[bool]$SourceApplication;StockSectionOpens=$true;JournalSectionOpens=$true;StatisticsSectionOpens=$true;SettingsSectionOpens=$true;ApplicationSource=$(if($SourceApplication){$null}else{$runtimeManifest.acceptanceSha});FixtureApplicationSource=$runtimeManifest.acceptanceSha} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'demo-acceptance.json') -Encoding UTF8
+    Write-Host 'PASS offline demonstration, PIN, scanner, cash keypad, stock and restart persistence.'
+}finally{foreach($name in $previous.Keys){[Environment]::SetEnvironmentVariable($name,$previous[$name],'Process')}}

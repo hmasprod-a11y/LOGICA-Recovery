@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj" />
+    <PackageReference Include="MySql.Data" Version="9.5.0" />
+    <Compile Include="../Hanouty.Desktop.Bootstrap/SalesJournalReader.cs" Link="Production/SalesJournalReader.cs" />
+    <Compile Include="../Hanouty.Desktop.Bootstrap/SalesJournalWorkflow.cs" Link="Production/SalesJournalWorkflow.cs" />
+  </ItemGroup>
+</Project>

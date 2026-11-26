@@ -1,0 +1,367 @@
+<Window x:Class="Hanouty.Desktop.Wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Hanouty.Desktop.Wpf"
+        Title="HANOUTY POS — Caisse" Height="760" Width="1280"
+        MinHeight="600" MinWidth="760" WindowStartupLocation="CenterScreen" Background="#EDF2F7" FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True" SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display" TextOptions.TextRenderingMode="ClearType">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolVisibility"/><local:CashierFeedbackConverter x:Key="CashierFeedback"/>
+        <Style x:Key="TouchButton" TargetType="Button">
+            <Setter Property="MinHeight" Value="44"/><Setter Property="Padding" Value="14,8"/><Setter Property="FontSize" Value="14"/>
+            <Setter Property="Background" Value="White"/><Setter Property="Foreground" Value="#173D64"/><Setter Property="BorderBrush" Value="#BBCBDC"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="#166AEE"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.7"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.45"/></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderThickness" Value="2"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="Button" BasedOn="{StaticResource TouchButton}"/>
+        <Style TargetType="TextBox"><Setter Property="FontSize" Value="16"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="BorderBrush" Value="#BBCBDC"/></Style>
+        <Style TargetType="DataGrid"><Setter Property="Background" Value="White"/><Setter Property="BorderBrush" Value="#D5DFE9"/><Setter Property="GridLinesVisibility" Value="Horizontal"/><Setter Property="HorizontalGridLinesBrush" Value="#E7EDF4"/><Setter Property="HeadersVisibility" Value="Column"/><Setter Property="AlternatingRowBackground" Value="#F5F8FC"/></Style>
+        <Style TargetType="DataGridColumnHeader"><Setter Property="Background" Value="#E6EEF7"/><Setter Property="Foreground" Value="#173D64"/><Setter Property="Padding" Value="8,3"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+        <Style TargetType="DataGridCell"><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="6,2"/></Style>
+        <Style TargetType="TabItem"><Setter Property="Padding" Value="14,10"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+        <Style TargetType="RadioButton"><Setter Property="Background" Value="White"/><Setter Property="Foreground" Value="#173D64"/><Setter Property="MinHeight" Value="44"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton"><Border x:Name="Tab" Background="{TemplateBinding Background}" CornerRadius="8" Padding="16,10"><ContentPresenter VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True"><Setter TargetName="Tab" Property="Background" Value="#173D64"/><Setter Property="Foreground" Value="White"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>
+    </Window.Resources>
+    <Grid>
+    <DockPanel Margin="14" FlowDirection="{Binding LayoutDirection}">
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+            <DockPanel>
+                <WrapPanel DockPanel.Dock="Right">
+                    <Button Content="Fond de caisse" Click="SetOpeningCash_Click" MinHeight="36" Padding="12,4"
+                            Margin="0,0,8,0" IsEnabled="{Binding FinancialSessionActive}"/>
+                    <Button Content="Clôture de caisse" Click="CountCashDrawer_Click" MinHeight="36" Padding="12,4"
+                            IsEnabled="{Binding FinancialSessionActive}"/>
+                    <Button Content="Caissier" Click="CashierEntry_Click" MinHeight="36" Padding="10,4" Margin="8,0,0,0" AutomationProperties.Name="Enter cashier and fresh cash tender"/>
+                    <Button Content="Déconnexion" Click="EndFinancialSession_Click" MinHeight="36" Padding="10,4" Margin="8,0,0,0"
+                            IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="End cashier session"/>
+                </WrapPanel>
+                <StackPanel><TextBlock Text="Hanouty POS" FontSize="24" FontWeight="SemiBold"/><TextBlock x:Name="CashierSessionLabel" Text="Session fermée" FontSize="12" TextTrimming="CharacterEllipsis"/></StackPanel>
+            </DockPanel>
+            <StackPanel Margin="0,6,0,0" AutomationProperties.Name="Sections HANOUTY">
+                <WrapPanel VerticalAlignment="Top">
+                <RadioButton x:Name="SalesSection" GroupName="HanoutySection" Content="Vente" IsChecked="True"
+                             MinHeight="36" Padding="12,4" Margin="0,0,8,0"/>
+                <RadioButton x:Name="ReturnsSection" GroupName="HanoutySection" Content="Retours"
+                             MinHeight="36" Padding="12,4" Margin="0,0,8,0"/>
+                <Button Content="Stock" Click="OpenDailyStock_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
+                        IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Ouvrir les articles et le stock"/>
+                <Button Content="Paramètres" Click="OpenWorkstationSettings_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
+                        IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Paramètres du poste"/>
+                <Button Content="Journal" Click="OpenSalesJournal_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
+                        IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Ouvrir le journal des ventes"/>
+                <Button Content="Statistiques" Click="OpenSalesStatistics_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
+                        IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Ouvrir les statistiques des ventes"/>
+                    <Button Content="Attentes" Click="RestoreWaitingSale_Click" MinHeight="36" Padding="9,4" Margin="0,0,6,0" IsEnabled="{Binding FinancialSessionActive}"/>
+                    <Button Content="Mettre en attente" Click="ParkSale_Click" MinHeight="36" Padding="9,4" Margin="0,0,8,0" IsEnabled="{Binding FinancialSessionActive}"/>
+                </WrapPanel>
+                <Expander Header="Fonctions" Margin="0,4,0,0" AutomationProperties.Name="Fonctions de caisse et gestion">
+                <WrapPanel>
+                <Button Content="Fichiers clients" Click="OpenCustomerFiles_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
+                        IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Gérer les fichiers clients"/>
+                <Button Content="Devis · BL · Factures" Click="OpenBusinessDocuments_Click" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
+                        IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Ouvrir les documents commerciaux"/>
+
+                <Button Content="État des crédits clients" Click="OpenCustomerCreditStatement_Click"
+                        HorizontalAlignment="Left" Margin="0,4" Padding="12,6" />
+                <Button Content="Comptes et règlements fournisseurs" Click="OpenSupplierSettlements_Click"
+                        HorizontalAlignment="Left" Margin="0,4" Padding="12,6" />
+                <Button Content="Inventaire physique" Click="OpenInventory_Click" HorizontalAlignment="Left"
+                        MinHeight="36" Padding="12,4" Margin="0,0,8,0" AutomationProperties.Name="Open physical inventory workflow"/>
+                <Button x:Name="ExpensesButton" Content="Dépenses" Click="OpenExpenses_Click" Visibility="Collapsed"
+                        IsEnabled="{Binding FinancialSessionActive}" MinHeight="36" Padding="12,4" Margin="0,0,8,0"/>
+                <Button Content="Bons de sortie" Click="OpenStockIssues_Click"
+                        IsEnabled="{Binding FinancialSessionActive}" MinHeight="36" Padding="12,4" Margin="0,0,8,0"/>
+                <Button Content="Réception fournisseur" Click="OpenPurchaseReceipt_Click" HorizontalAlignment="Left"
+                        IsEnabled="{Binding FinancialSessionActive}" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
+                        AutomationProperties.Name="Open purchase receipt"/>
+                <Button Content="Prix du catalogue" Click="OpenCataloguePrices_Click" HorizontalAlignment="Left"
+                        IsEnabled="{Binding FinancialSessionActive}" MinHeight="36" Padding="12,4" Margin="0,0,8,0"
+                        AutomationProperties.Name="Open catalogue prices"/>
+                    <Menu Background="Transparent"><MenuItem Header="Affichage" Padding="10,8"><MenuItem Header="Lecture de droite à gauche"
+                        IsCheckable="True" IsChecked="{Binding IsRightToLeft, Mode=TwoWay}" AutomationProperties.Name="Right-to-left layout"/></MenuItem></Menu>
+                </WrapPanel>
+                </Expander>
+            </StackPanel>
+
+        </StackPanel>
+        <Grid>
+            <ScrollViewer Visibility="{Binding IsChecked, ElementName=ReturnsSection, Converter={StaticResource BoolVisibility}}"
+                          VerticalScrollBarVisibility="Auto">
+                <StackPanel MaxWidth="600" HorizontalAlignment="Stretch" Margin="8">
+                        <TextBlock Text="Retour de vente" FontSize="26" FontWeight="SemiBold" Margin="0,0,0,18"/>
+                          <ComboBox x:Name="ReturnPaymentMode" SelectedIndex="0" MinHeight="40" Margin="0,0,0,12"
+                                    SelectionChanged="ReturnPaymentMode_SelectionChanged" IsEnabled="{Binding FinancialSessionActive}"
+                                    AutomationProperties.Name="Mode du retour">
+                              <ComboBoxItem Content="Retour espèces" Tag="Cash"/>
+                              <ComboBoxItem Content="Retour crédit — réduire la dette" Tag="Credit"/>
+                              <ComboBoxItem Content="Retour CARTE — remboursement externe confirmé" Tag="Card"/>
+                              <ComboBoxItem Content="Retour partiel espèces" Tag="PartialCash"/>
+                          </ComboBox>
+                        <TextBlock Text="Numéro du ticket" Margin="0,0,0,6"/>
+                        <TextBox x:Name="OriginalSaleSearch" MinHeight="36" TextChanged="OriginalSaleSearch_TextChanged"
+                                 AutomationProperties.Name="Search original receipt identity"/>
+                        <Button Content="Rechercher le ticket" Click="SearchOriginalSales_Click"
+                                MinHeight="40" Margin="0,6,0,6"/>
+                        <ListBox x:Name="OriginalSaleResults" SelectionChanged="OriginalSaleResults_SelectionChanged" DisplayMemberPath="ReceiptLabel"
+                                 Height="80" AutomationProperties.Name="Persisted original sale results"/>
+                        <Button Content="Vérifier le ticket sélectionné" Click="SelectOriginalSale_Click"
+                                MinHeight="40" Margin="0,6,0,6"/>
+                        <TextBlock x:Name="ReturnScopeLabel" Text="Le remboursement porte sur le ticket complet."
+                                   Margin="0,8,0,4" TextWrapping="Wrap"/>
+                          <Button x:Name="ConfirmFullReturnButton" Content="Rembourser le ticket en espèces" Click="ConfirmReturnDraft_Click"
+                                MinHeight="44" Margin="0,4,0,4"/>
+                        <TextBlock x:Name="ReturnDraftStatus" Text="Sélectionnez un ticket"
+                                   TextWrapping="Wrap" AutomationProperties.Name="Return draft status"/>
+                        <TextBlock x:Name="OriginalSaleStatus" Text="Aucun ticket sélectionné"
+                                   TextWrapping="Wrap" AutomationProperties.Name="Original sale review status"/>
+                    </StackPanel>
+            </ScrollViewer>
+            <Grid Visibility="{Binding IsChecked, ElementName=SalesSection, Converter={StaticResource BoolVisibility}}">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="2*" MinWidth="430"/><ColumnDefinition Width="3*"/></Grid.ColumnDefinitions>
+                <DockPanel Grid.Column="1" Margin="18,0,0,0">
+                    <StackPanel DockPanel.Dock="Top">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Catalogue" FontWeight="SemiBold" FontSize="18" VerticalAlignment="Center"/>
+                            <Button Content="Actualiser" Command="{Binding ReloadCommand}" Margin="16,0,0,0" Padding="12,6" MinHeight="40" AutomationProperties.Name="Reload local catalogue"/>
+                        </StackPanel>
+                        <Label Content="_Code-barres" Target="{Binding ElementName=ScannerInput}" Padding="0"
+                               Margin="0,10,0,4"/>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Content="Ajouter" Command="{Binding ScanCommand}"
+                                    MinWidth="86" MinHeight="40" Margin="8,0,0,0"
+                                    AutomationProperties.Name="Scan barcode"/>
+                            <TextBox x:Name="ScannerInput" Text="{Binding ScannerText, UpdateSourceTrigger=PropertyChanged}"
+                                     Padding="8" MinHeight="40"
+                                     AutomationProperties.Name="Barcode scanner input" IsEnabled="{Binding CanSelectProduct}">
+                                <TextBox.InputBindings>
+                                    <KeyBinding Key="Enter" Command="{Binding ScanCommand}"/>
+                                </TextBox.InputBindings>
+                            </TextBox>
+                        </DockPanel>
+                        <TextBlock Text="{Binding ScanFeedback, Converter={StaticResource CashierFeedback}}" Margin="0,6,0,8" TextWrapping="Wrap"
+                                   AutomationProperties.Name="Barcode result"/>
+                        <Label Content="_Rechercher un article" Target="{Binding ElementName=CatalogueSearch}" Padding="0"
+                               Margin="0,0,0,4"/>
+                        <TextBox x:Name="CatalogueSearch" Margin="0,0,0,8" Padding="8" MinHeight="40"
+                                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Search catalogue"/>
+                        <TextBlock Text="Choisissez l’article correspondant à ce code-barres." Margin="0,4,0,4"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding HasBarcodeAmbiguity, Converter={StaticResource BoolVisibility}}"/>
+                        <ListBox ItemsSource="{Binding BarcodeCandidates}" Height="90" DisplayMemberPath="Name"
+                                 Visibility="{Binding HasBarcodeAmbiguity, Converter={StaticResource BoolVisibility}}"
+                                 SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
+                                 AutomationProperties.Name="Barcode candidates">
+                            <ListBox.InputBindings>
+                                <KeyBinding Key="Enter" Command="{Binding SelectCommand}"/>
+                            </ListBox.InputBindings>
+                        </ListBox>
+                        <Button Content="Ajouter l’article sélectionné" Command="{Binding SelectCommand}"
+                                Visibility="{Binding HasBarcodeAmbiguity, Converter={StaticResource BoolVisibility}}"
+                                MinHeight="44" Margin="0,4,0,8" Padding="12,8"
+                                AutomationProperties.Name="Choose barcode variant" IsEnabled="{Binding CanSelectProduct}"/>
+                    </StackPanel>
+                    <TabControl>
+                        <TabItem Header="Articles · toucher pour ajouter">
+                            <DockPanel Background="White">
+                                <ComboBox DockPanel.Dock="Top" ItemsSource="{Binding Families}" SelectedItem="{Binding SelectedFamily}" MinHeight="44" Margin="10" Padding="10" AutomationProperties.Name="Famille des articles"/>
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl x:Name="TouchProductTiles" ItemsSource="{Binding VisibleProducts}" Margin="6">
+                                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate><DataTemplate>
+                                            <Button Width="150" Height="132" Margin="4" Padding="10" BorderThickness="2"
+                                                    Command="{Binding DataContext.SelectCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Click="TouchProduct_Click"
+                                                    IsEnabled="{Binding DataContext.CanSelectProduct, RelativeSource={RelativeSource AncestorType=Window}}" AutomationProperties.Name="{Binding Name}">
+                                                <StackPanel Width="122">
+                                                    <Image Source="{Binding ImagePath}" Height="48" Stretch="Uniform"><Image.Style><Style TargetType="Image"><Style.Triggers><DataTrigger Binding="{Binding ImagePath}" Value="{x:Null}"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></Image.Style></Image>
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" TextAlignment="Center" MaxHeight="42" Foreground="#172B42"/>
+                                                    <TextBlock Text="{Binding DisplayUnitPriceMad, StringFormat={}{0:0.00} MAD}" FontSize="19" FontWeight="Bold" Foreground="#173D64" TextAlignment="Center" Margin="0,5,0,0"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate></ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </DockPanel>
+                        </TabItem>
+                        <TabItem Header="Liste des articles">
+                          <DockPanel>
+                            <Button DockPanel.Dock="Bottom" Content="Ajouter l’article sélectionné au panier" Click="TouchProduct_Click" Command="{Binding SelectCommand}" IsEnabled="{Binding CanSelectProduct}" Margin="4" AutomationProperties.Name="Ajouter la sélection au panier"/>
+
+                            <DataGrid ItemsSource="{Binding VisibleProducts}" AutoGenerateColumns="False" EnableRowVirtualization="True"
+                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                      IsReadOnly="True" SelectionMode="Single" SelectionUnit="FullRow" RowHeight="36" ColumnHeaderHeight="28"
+                                      SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
+                                      AutomationProperties.Name="Product list" MouseDoubleClick="ProductList_MouseDoubleClick">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Article" Binding="{Binding Name}" Width="*"/>
+                                    <DataGridTextColumn Header="Code-barres" Binding="{Binding Barcode}" Width="130"/>
+                                    <DataGridTextColumn Header="Prix MAD" Binding="{Binding DisplayUnitPriceMad, StringFormat={}{0:F2}}" Width="100"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                          </DockPanel>
+                        </TabItem>
+                        <TabItem Header="Articles avec photo">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                          AutomationProperties.Name="Products with photos">
+                                <ItemsControl ItemsSource="{Binding PhotoProducts}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button MinWidth="108" MinHeight="112" Padding="6" Margin="3"
+                                                    Command="{Binding DataContext.SelectCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding}"
+                                                    AutomationProperties.Name="{Binding Name}"
+                                                    IsEnabled="{Binding DataContext.CanSelectProduct, RelativeSource={RelativeSource AncestorType=Window}}">
+                                                <StackPanel Width="96">
+                                                    <Image Source="{Binding ImagePath}" Width="80" Height="72" Stretch="Uniform"
+                                                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                                               HorizontalAlignment="Center" MaxWidth="96"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </TabItem>
+                    </TabControl>
+                </DockPanel>
+                <Grid Grid.Column="0" x:Name="CashierSalePane">
+                    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <GroupBox x:Name="BasketPanel" Grid.Row="0" Margin="0,0,0,6" ClipToBounds="True"
+                              AutomationProperties.Name="Current Host basket">
+                        <GroupBox.Header>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Panier" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                <Button x:Name="CreditSaleButton" Content="Crédit" Click="CreditSale_Click" Visibility="Collapsed"
+                                        MinHeight="36" Margin="8,0,0,0" Padding="10,3" AutomationProperties.Name="Valider une vente à crédit"/>
+                                <Button x:Name="ManualDiscountButton" Content="Remise" Click="ManualDiscount_Click"
+                                        Visibility="Collapsed" MinHeight="36" Margin="8,0,0,0" Padding="10,3"
+                                        AutomationProperties.Name="Review manual discount"/>
+                                <TextBlock Text="{Binding SelectedItem.ArticleName, ElementName=CashierBasket, TargetNullValue=''}"
+                                           MaxWidth="80" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                <Button Content="Vider" Click="ClearBasket_Click" MinHeight="36" Margin="8,0,0,0" Padding="10,3" AutomationProperties.Name="Vider le panier"/>
+                            </StackPanel>
+                        </GroupBox.Header>
+                        <DataGrid x:Name="CashierBasket" Margin="4" SelectionMode="Single" SelectionUnit="FullRow"
+                                  ItemsSource="{Binding BasketLines}" AutoGenerateColumns="False" IsReadOnly="True"
+                                  CanUserAddRows="False" EnableRowVirtualization="True" RowHeight="44" HeadersVisibility="Column"
+                                  ColumnHeaderHeight="26" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                  AutomationProperties.Name="Basket article quantity price">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Article" Binding="{Binding ArticleName}" Width="*" MinWidth="110">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                                            <Setter Property="VerticalAlignment" Value="Center"/>
+                                            <Setter Property="ToolTip" Value="{Binding ArticleName}"/>
+                                            <Setter Property="TextWrapping" Value="Wrap"/>
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTemplateColumn Header="Quantité" Width="104">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions>
+                                                <Button Grid.Column="0" Content="−" Padding="0" Click="DecreaseBasketQuantity_Click" MinHeight="36" FontSize="18" AutomationProperties.Name="Diminuer la quantité"/>
+                                                <Button Grid.Column="1" Content="{Binding Quantity}" Click="EditBasketQuantity_Click" Padding="0" BorderThickness="0" MinHeight="36" AutomationProperties.Name="Saisir la quantité au pavé"/>
+                                                <Button Grid.Column="2" Content="+" Padding="0" Click="IncreaseBasketQuantity_Click" MinHeight="36" FontSize="18" AutomationProperties.Name="Augmenter la quantité"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Prix MAD" Width="70">
+                                    <DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding UnitPriceMad, StringFormat={}{0:F2}}"/>
+                                        <TextBlock Text="{Binding DiscountPercent, StringFormat='Remise {0:0.##}%'}" FontSize="10">
+                                            <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding DiscountPercent}" Value="0"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="Net MAD" Binding="{Binding NetAmountMad, StringFormat={}{0:F2}}" Width="80"/>
+                                <DataGridTemplateColumn Header="" Width="32">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate><Button Content="×" Padding="0" Foreground="#B42318" Click="RemoveBasketLine_Click" MinHeight="36" FontSize="18" ToolTip="Retirer cet article" AutomationProperties.Name="Retirer cet article"/></DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </GroupBox>
+                    <Border Grid.Row="1" Visibility="{Binding CheckoutUncertain, Converter={StaticResource BoolVisibility}}"
+                            Padding="6" BorderBrush="#C79036" BorderThickness="1" Margin="0,0,0,6">
+                        <ScrollViewer x:Name="CashierWorkflowScroll" MaxHeight="150" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="Cashier workflow scroll region">
+                            <StackPanel>
+                                <TextBlock Text="Vérifiez l’opération avant de recommencer." TextWrapping="Wrap" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding CommitFeedback, Converter={StaticResource CashierFeedback}}" TextWrapping="Wrap" AutomationProperties.Name="Checkout result"/>
+                                <TextBlock Text="{Binding PendingOperationId, StringFormat='Référence : {0}'}" TextWrapping="Wrap" AutomationProperties.Name="Pending operation identity"/>
+                                <Button Content="Vérifier l’opération" Command="{Binding ReconcileCommand}" IsEnabled="{Binding CheckoutUncertain}" MinHeight="40" AutomationProperties.Name="Reconcile uncertain checkout"/>
+                                <Button Content="Confirmer le résultat et préparer un nouveau panier" Click="ReviewResolvedCheckout_Click"
+                                        IsEnabled="{Binding CanReviewResolvedCheckout}" MinHeight="40" Margin="0,4,0,0"
+                                        AutomationProperties.Name="Review resolved checkout with cashier PIN"/>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                    <Border x:Name="FixedPaymentPanel" Grid.Row="2" Padding="8" BorderThickness="1" BorderBrush="#B9C5D1" Background="#F2F6FA" CornerRadius="6">
+                        <StackPanel>
+                            <DockPanel Height="36">
+                                <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,8,0" MaxWidth="230">
+                                    <TextBlock Text="TOTAL · MAD" FontWeight="Bold" FontSize="14"/>
+                                    <TextBlock x:Name="LastSaleSummary" TextTrimming="CharacterEllipsis" FontSize="10"
+                                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+                                </StackPanel>
+                                <Viewbox Stretch="Uniform" StretchDirection="DownOnly">
+                                    <TextBlock x:Name="TrustedBasketTotal" Text="Total indisponible" FontSize="30" FontWeight="Bold" Foreground="#173D64"
+                                               FlowDirection="LeftToRight" AutomationProperties.Name="Trusted basket total MAD"/>
+                                </Viewbox>
+                            </DockPanel>
+                            <Button Content="Actualiser le total du panier" Visibility="Collapsed" Click="RefreshTrustedBasketTotal_Click"
+                                    AutomationProperties.Name="Read trusted basket total"/>
+                            <UniformGrid Columns="3" Margin="0,4,0,0">
+                                <Button Content="Espèces" Click="EnterTender_Click" MinHeight="44" FontSize="15"
+                                        IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Enter sale cash tender"/>
+                                <Button Content="CARTE" Click="PayByCard_Click" MinHeight="44" FontSize="15"
+                                        IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Pay sale by card"/>
+                                <Button Content="Mixte" Click="PayMixed_Click" MinHeight="44" FontSize="15"
+                                        IsEnabled="{Binding FinancialSessionActive}" AutomationProperties.Name="Pay sale with cash and card"/>
+                            </UniformGrid>
+                            <Grid Height="20" Margin="0,3,0,0">
+                            <TextBlock Text="{Binding CommitFeedback, Converter={StaticResource CashierFeedback}}" TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}">
+                                <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers>
+                                    <MultiDataTrigger><MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding Text, ElementName=ManualDiscountStatus}" Value=""/>
+                                        <Condition Binding="{Binding Text, ElementName=CardPaymentStatus}" Value=""/>
+                                    </MultiDataTrigger.Conditions><Setter Property="Visibility" Value="Visible"/></MultiDataTrigger>
+                                </Style.Triggers></Style></TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock x:Name="ManualDiscountStatus" TextTrimming="CharacterEllipsis" AutomationProperties.Name="Manual discount status"
+                                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}">
+                                <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed"/></Trigger></Style.Triggers></Style></TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock x:Name="CardPaymentStatus" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}">
+                                <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed"/></Trigger></Style.Triggers></Style></TextBlock.Style>
+                            </TextBlock>
+                            </Grid>
+                            <Button x:Name="CompleteCheckoutButton" Content="ENCAISSER" Click="CompleteCheckout_Click" IsEnabled="{Binding CanBeginCheckout}"
+                                    MinHeight="50" FontSize="18" FontWeight="Bold" Margin="0,6,0,0">
+                                <Button.Style><Style TargetType="Button" BasedOn="{StaticResource TouchButton}"><Setter Property="Background" Value="#166AEE"/><Setter Property="Foreground" Value="White"/><Style.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#D9E0E6"/><Setter Property="Foreground" Value="#647280"/></Trigger></Style.Triggers></Style></Button.Style>
+                                <AutomationProperties.Name>Complete checkout</AutomationProperties.Name>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Grid>
+        </Grid>
+    </DockPanel>
+    <Border Background="#F4F7FB" Panel.ZIndex="5">
+        <Border.Style><Style TargetType="Border"><Setter Property="Visibility" Value="Visible"/><Style.Triggers><DataTrigger Binding="{Binding FinancialSessionActive}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></Border.Style>
+        <Border Background="White" BorderBrush="#D5DFE9" BorderThickness="1" CornerRadius="12" Padding="36" MaxWidth="520" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <StackPanel><TextBlock Text="HANOUTY" FontSize="32" FontWeight="Bold" Foreground="#173D64"/><TextBlock Text="Ouvrir la caisse" FontSize="24" Margin="0,12,0,8"/><TextBlock Text="Entrez votre code d’accès sur le pavé pour commencer." TextWrapping="Wrap" Foreground="#536578" Margin="0,0,0,20"/>
+                <Button Content="Saisir mon code" Click="CashierEntry_Click" Background="#173D64" Foreground="White" FontSize="20" MinHeight="64" AutomationProperties.Name="Ouvrir la caisse avec mon code"/>
+                <TextBlock Text="{Binding Text, ElementName=CashierSessionLabel}" TextWrapping="Wrap" Margin="0,16,0,0" Foreground="#536578"/>
+            </StackPanel>
+        </Border>
+    </Border>
+    </Grid>
+</Window>

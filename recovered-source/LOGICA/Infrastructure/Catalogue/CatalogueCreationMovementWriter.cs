@@ -12,8 +12,17 @@ namespace LOGICA.Infrastructure.Catalogue
             var command = new MySqlCommand();
             if (connection.State != ConnectionState.Open)
                 connection.Open();
-            // Preserve the two clock reads and deferred raw text reads after opening.
-            command.CommandText = "INSERT  INTO   TABLE_MOUVEMENTS_STOCK               ( DATES , HEURE , LIBELLE, ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE)         values           ( '" + DateTime.Now.ToString("yyyy-MM-dd") + "' ,  '" + DateTime.Now.ToString("HH:mm:ss") + "'  ,'Création d''article'    ,'" + articleId + "' ,'" + readCode() + "' ,'" + readArticle() + "'  ,'" + readStock() + "'       )        ";
+            // Preserve the original two clock reads and deferred form reads after opening.
+            // The movement is written after article persistence in the legacy workflow:
+            // quotes in a barcode/name must never turn that second write into invalid SQL.
+            command.CommandText = "INSERT INTO TABLE_MOUVEMENTS_STOCK (DATES, HEURE, LIBELLE, ID_ARTICLE, CODE_ARTICLE, ARTICLE, QUANTITE) " +
+                "VALUES (@dates, @heure, 'Création d''article', @articleId, @code, @article, @quantity)";
+            command.Parameters.AddWithValue("@dates", DateTime.Now.ToString("yyyy-MM-dd"));
+            command.Parameters.AddWithValue("@heure", DateTime.Now.ToString("HH:mm:ss"));
+            command.Parameters.AddWithValue("@articleId", articleId);
+            command.Parameters.AddWithValue("@code", readCode());
+            command.Parameters.AddWithValue("@article", readArticle());
+            command.Parameters.AddWithValue("@quantity", readStock());
             command.Connection = connection;
             command.ExecuteNonQuery();
             // Deliberately reached only on success, matching the existing failure path.

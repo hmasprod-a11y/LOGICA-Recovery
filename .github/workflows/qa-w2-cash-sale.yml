@@ -1,0 +1,480 @@
+name: QA W2 financial production graph and acceptance
+on:
+  push:
+    branches: [integration/hanouty-qa-desktop-inventory-20261102]
+    paths:
+      - '.github/workflows/qa-w2-cash-sale.yml'
+      - 'modernization/Hanouty.Desktop.Bootstrap/**'
+      - 'modernization/Hanouty.Desktop.Wpf/**'
+      - 'modernization/Hanouty.Desktop.Wpf.Tests/**'
+      - 'modernization/receipt-printing-acceptance/**'
+      - 'modernization/checkout-mariadb-boundary/**'
+      - 'modernization/checkout-mariadb-production/**'
+      - 'modernization/architecture/**'
+      - 'modernization/inventory/**'
+      - 'input/migrations/20261120-stock-issue-create-operations.sql'
+      - 'scripts/Test-HanoutySupplierAvoir.ps1'
+      - 'recovered-source/LOGICA/Application/Checkout/**'
+      - 'recovered-source/LOGICA/Infrastructure/Checkout/**'
+      - 'scripts/Package-HanoutyWpf.ps1'
+      - 'scripts/Install-Hanouty*'
+      - 'scripts/Test-HanoutyInstallation.ps1'
+      - 'scripts/Test-HanoutyFinancialPackage.ps1'
+      - 'scripts/Start-Hanouty-Test.ps1'
+      - 'scripts/Start-Hanouty-Test.cmd'
+      - 'scripts/HANOUTY-TEST-START-HERE.txt'
+  pull_request:
+    branches: [integration/hanouty-qa-desktop-inventory-20261102]
+    paths:
+      - '.github/workflows/qa-w2-cash-sale.yml'
+      - 'modernization/Hanouty.Desktop.Bootstrap/**'
+      - 'modernization/Hanouty.Desktop.Wpf/**'
+      - 'modernization/Hanouty.Desktop.Wpf.Tests/**'
+      - 'modernization/receipt-printing-acceptance/**'
+      - 'modernization/checkout-mariadb-boundary/**'
+      - 'modernization/checkout-mariadb-production/**'
+      - 'modernization/architecture/**'
+      - 'modernization/inventory/**'
+      - 'input/migrations/20261120-stock-issue-create-operations.sql'
+      - 'scripts/Test-HanoutySupplierAvoir.ps1'
+      - 'recovered-source/LOGICA/Application/Checkout/**'
+      - 'recovered-source/LOGICA/Infrastructure/Checkout/**'
+      - 'scripts/Package-HanoutyWpf.ps1'
+      - 'scripts/Install-Hanouty*'
+      - 'scripts/Test-HanoutyInstallation.ps1'
+      - 'scripts/Test-HanoutyFinancialPackage.ps1'
+      - 'scripts/Start-Hanouty-Test.ps1'
+      - 'scripts/Start-Hanouty-Test.cmd'
+      - 'scripts/HANOUTY-TEST-START-HERE.txt'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  w2-financial-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root-test-only
+          MARIADB_DATABASE: checkout_disposable
+          MARIADB_USER: checkout_test
+          MARIADB_PASSWORD: checkout-test-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run current-commit production Checkout return boundary
+        env:
+          CHECKOUT_TEST_CONNECTION: Server=127.0.0.1;Port=3306;Database=checkout_disposable;Uid=checkout_test;Pwd=checkout-test-only;SslMode=Disabled;
+        run: |
+          set -euo pipefail
+          arch="$PWD/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj"
+          test -f "$arch"
+          dotnet run --project modernization/checkout-mariadb-boundary/CheckoutMariaDbBoundary.csproj --configuration Release --property:ArchitectureProject="$arch"
+          echo 'PASS: current-commit production Checkout/MariaDB return boundary'
+  w2-wpf-mariadb-e2e:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build and test one current-source WPF/Checkout/Host graph
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory evidence -Force | Out-Null
+          $sha = (git rev-parse HEAD).Trim()
+          if ($sha -ne $env:GITHUB_SHA) { throw "Source SHA mismatch: checkout=$sha event=$env:GITHUB_SHA" }
+          "qa=$sha" | Set-Content evidence/source-manifest.txt
+          $architectureProject = (Resolve-Path 'modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj').Path
+          $checkoutProject = (Resolve-Path 'modernization/checkout-mariadb-production/CheckoutMariaDbProduction.csproj').Path
+          $wpfProject = 'modernization/Hanouty.Desktop.Wpf/Hanouty.Desktop.Wpf.csproj'
+          $hostProject = 'modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj'
+          dotnet build $checkoutProject -c Release --nologo "-p:ArchitectureProject=$architectureProject"
+          if ($LASTEXITCODE -ne 0) { throw 'CHECKOUT_OWNER: current SHA production Checkout build failed' }
+          dotnet build $wpfProject -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'WPF_OWNER: current SHA WPF build failed' }
+          dotnet build $hostProject -c Release --nologo "-p:ArchitectureProject=$architectureProject" "-p:CheckoutProductionProject=$checkoutProject"
+          if ($LASTEXITCODE -ne 0) { throw 'HOST_OWNER: current SHA real financial Host build failed' }
+          dotnet run --project modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'WPF_OWNER: current SHA Windows STA suite failed' }
+          dotnet run --project modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'ARCHITECTURE_OWNER: current SHA WPF/Checkout adapter suite failed' }
+          dotnet run --project modernization/stock-authorization-acceptance/StockAuthorizationAcceptance.csproj -c Release -- --no-database
+          if ($LASTEXITCODE -ne 0) { throw 'INVENTORY_OWNER: current SHA manual-write denial gate failed' }
+          dotnet run --project modernization/receipt-printing-acceptance/ReceiptPrintingAcceptance.csproj -c Release -- ./evidence/receipt-summary
+          if ($LASTEXITCODE -ne 0) { throw 'DESKTOP_OWNER: LOGICA receipt summary/rendering acceptance failed' }
+          $manifest = "checkout=$sha" + [Environment]::NewLine + "architecture=$sha" + [Environment]::NewLine + "wpf=$sha" + [Environment]::NewLine + "host=$sha"
+          $manifest | Set-Content evidence/composed-source-manifest.txt
+      - name: Start checksum-verified disposable MariaDB without installing a service
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dbRoot = Join-Path $env:RUNNER_TEMP 'hanouty-w2-cash-mariadb'
+          New-Item -ItemType Directory -Force $dbRoot | Out-Null
+          $url = 'https://archive.mariadb.org/mariadb-10.11.14/winx64-packages'
+          $archiveUrl = "$url/mariadb-10.11.14-winx64.zip"
+          $headers = & curl.exe --fail --location --head --retry 3 --retry-delay 3 --connect-timeout 30 --max-time 60 --silent --show-error $archiveUrl 2> "$dbRoot/headers-error.txt"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not inspect MariaDB archive.' }
+          $lengthHeader = @($headers | Where-Object { $_ -match '^Content-Length:\s*\d+' })[-1]
+          $length = [long]($lengthHeader -replace '^Content-Length:\s*', '').Trim()
+          if ($length -le 0) { throw 'MariaDB archive length unavailable.' }
+          $partSize = [long][Math]::Ceiling($length / 32)
+          0..31 | ForEach-Object -Parallel {
+            # curl retries transient server responses; inspect its final exit code.
+            $ErrorActionPreference = 'Continue'
+            $PSNativeCommandUseErrorActionPreference = $false
+            $part = $_
+            $first = $part * $using:partSize
+            $last = [Math]::Min($using:length - 1, $first + $using:partSize - 1)
+            $output = Join-Path $using:dbRoot ("archive-{0:D2}.part" -f $part)
+            $verifiedPart = $false
+            for ($attempt = 0; $attempt -lt 2; $attempt++) {
+              & curl.exe --fail --location --range "$first-$last" --retry 4 --retry-all-errors --retry-max-time 90 --connect-timeout 30 --max-time 90 --silent --show-error $using:archiveUrl --output $output 2> "$output.error"
+              if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $output -PathType Leaf) -and
+                  (Get-Item -LiteralPath $output).Length -eq ($last - $first + 1)) {
+                $verifiedPart = $true; break
+              }
+            }
+            if (-not $verifiedPart) { throw "MariaDB archive part $part failed verification." }
+          } -ThrottleLimit 8
+          $archive = [IO.File]::Create("$dbRoot/server.zip")
+          try {
+            foreach ($part in 0..31) {
+              $source = [IO.File]::OpenRead((Join-Path $dbRoot ("archive-{0:D2}.part" -f $part)))
+              try { $source.CopyTo($archive) } finally { $source.Dispose() }
+            }
+          } finally { $archive.Dispose() }
+          $checks = (Invoke-WebRequest "$url/sha256sums.txt" -TimeoutSec 30 -MaximumRetryCount 3 -RetryIntervalSec 2).Content
+          $expected = (($checks -split '\r?\n' | Where-Object { $_ -match 'mariadb-10.11.14-winx64.zip\s*$' }) -split '\s+')[0]
+          if ((Get-FileHash "$dbRoot/server.zip" -Algorithm SHA256).Hash -ne $expected) { throw 'MariaDB checksum mismatch' }
+          Set-Content -LiteralPath (Join-Path $dbRoot 'sha256sums.txt') -Value $checks -Encoding UTF8
+          Expand-Archive "$dbRoot/server.zip" "$dbRoot/server"
+          $bin = (Get-ChildItem "$dbRoot/server" -Recurse -Filter mariadb-install-db.exe | Select-Object -First 1).Directory.FullName
+          & "$bin/mariadb-install-db.exe" "--datadir=$dbRoot/data" --password=logica-ci-only --port=3307
+          if ($LASTEXITCODE -ne 0) { throw 'Disposable MariaDB initialization failed' }
+          $server = Start-Process "$bin/mariadbd.exe" -ArgumentList @("--defaults-file=$dbRoot/data/my.ini", '--bind-address=127.0.0.1', '--port=3307') -WindowStyle Hidden -PassThru
+          "HANOUTY_W2_SERVER_PID=$($server.Id)" | Out-File $env:GITHUB_ENV -Append
+          "HANOUTY_W2_MARIADB_BIN=$bin" | Out-File $env:GITHUB_ENV -Append
+          $ready = $false
+          for ($i=0; $i -lt 30; $i++) {
+            & "$bin/mariadb-admin.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only ping 2>$null
+            if ($LASTEXITCODE -eq 0) { $ready=$true; break }
+            Start-Sleep -Seconds 1
+          }
+          if (-not $ready) { throw 'Disposable MariaDB did not become ready' }
+      - name: Configure isolated W2 fixture database
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bin = $env:HANOUTY_W2_MARIADB_BIN
+          "CREATE DATABASE logica_ci CHARACTER SET utf8mb4; CREATE USER 'w2_test'@'localhost' IDENTIFIED BY 'w2-disposable-only'; GRANT ALL ON logica_ci.* TO 'w2_test'@'localhost';" | & "$bin/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only
+          if ($LASTEXITCODE -ne 0) { throw 'Disposable W2 account/schema setup failed' }
+          $data = Join-Path $env:RUNNER_TEMP 'hanouty-w2-data'
+          New-Item -ItemType Directory -Force $data | Out-Null
+          "HANOUTY_CATALOGUE_CONNECTION=Server=127.0.0.1;Port=3307;Database=logica_ci;Uid=w2_test;Pwd=w2-disposable-only;SslMode=Disabled;" | Out-File $env:GITHUB_ENV -Append
+          "HANOUTY_DATA_DIRECTORY=$data" | Out-File $env:GITHUB_ENV -Append
+          "HANOUTY_W2_TEST_PIN=1234" | Out-File $env:GITHUB_ENV -Append
+      - name: Publish self-contained financial WPF package from this SHA
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Join-Path $env:RUNNER_TEMP 'hanouty-financial-package'
+          ./scripts/Package-HanoutyWpf.ps1 -OutputDirectory $package -Runtime win-x64 -Mode financial -IncludeAcceptanceTests
+          if ($LASTEXITCODE -ne 0) { throw 'Financial WPF package publish failed' }
+      - name: Test extracted financial package and double-click startup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:HANOUTY_W2_DISPOSABLE_MARKER = 'I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY'
+          $package = Join-Path $env:RUNNER_TEMP 'hanouty-financial-package'
+          ./scripts/Test-HanoutyFinancialPackage.ps1 -PackageDirectory $package -EvidenceDirectory './evidence' -SourceSha $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Extracted financial package acceptance failed' }
+      - name: Require executed same-SHA cash-sale and full-ticket refund proof
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $report = Get-Content evidence/w2/w2-cash-sale.json -Raw | ConvertFrom-Json
+          foreach ($field in @('CashierDialogProductionBound','TrustedQuoteDisplayed','DialogTwoSalesSameHost','LogoutLoginUi','ModalPriceChangeRejected','WindowLoaded','EditedContextRejected','SingleSessionBinding','ReviewCallbackAuthenticated','WrongReviewPinRejected','UnknownReviewBlocked','NoFinancialReplayOnReview','ExplicitReviewedUiReset','PinDialogRenderedAndCleared','InitialCashierPinUi','InitialPinCancelAndWrongRejected','CashChangeSql','SameHostDifferentTotals','PaymentContextConsumed','StaleContextBoundaryRejected','DirectSessionStaleRejected','ContextFrozenDuringPin','CashierSwitchAuthenticated','UnknownContextChangeBlocked','ChangeRowRollback','EmptyBasket','TicketPaymentStockSql','Duplicate','ProcessRestart','WrongPinRejected','WrongTotalRejected','StalePriceRejected','AfterPaymentRollback','UnknownJournalLocked','LostAcknowledgementPersisted','Reconciliation','FullCashReturnThroughWpfUi','FullCashReturnSqlReadback','FullCashReturnRollback','FullCashReturnIdempotency')) {
+            if ($report.$field -ne $true) { throw "Missing executed same-SHA acceptance assertion: $field" }
+          }
+          if ($report.W2Accepted -ne $true) { throw 'W2 remains unaccepted: full real WPF/MariaDB evidence missing' }
+          $pricing = Get-Content evidence/w2/w2-logica-pricing.json -Raw | ConvertFrom-Json
+          foreach ($field in @('CataloguePromotion','QuantityThreshold','CultureFrEn','DomainRounding','InvalidPolicyRejected','WaitingSnapshot','StaleWaitingRejected','CashWpf','CardWpf','MixedSql','OriginalNetRefund','ZeroNetLineRefund','ReceiptData','Duplicate','StockCashReconciled')) {
+            if ($pricing.$field -ne $true) { throw "Missing executed LOGICA pricing proof: $field" }
+          }
+          $manual = Get-Content evidence/w2/w2-manual-discounts.json -Raw | ConvertFrom-Json
+          foreach ($field in @('ExactOriginalRoles','GlobalAndSelectedPercentAndDh','OriginalZeroReset','BothCultures','NonPositiveTicketRejected','PreviewPriceRaceRejected','FreshWaitingAuthorization','RevocationBeforePosting','AtomicWaitingConsumption','OriginalReceiptNetAndChange','DurableReplay','DifferentOperationDenied','OriginalManualNetRefund','CashierTouchReviewAndPayment','BasketAndFixedPaymentVisible','RevokedManagerRejected','DatabaseScopeBound','SelectedGrossRounding','DiscountedCardWpf','DiscountedMixedSql')) {
+            if ($manual.$field -ne $true) { throw "Missing executed manual discount proof: $field" }
+          }
+          $credit = Get-Content evidence/w2/w2-credit-sales.json -Raw | ConvertFrom-Json
+          foreach ($field in @('OriginalConfiguration','AnonymousAndDuplicateCustomerDenied','ReviewedIdentityRechecked','FreshCashierPin','QueryAndSelectionInvalidation','ExplicitCreditConfirmation','AtomicDebtStockNoPayment','CashUnchangedAtCredit','ReceiptCustomerAndTwoCopies','DurableDuplicate','NextCashSaleAnonymous','NewDebtPartialAndFullSettlement','LostAcknowledgementReview','Rollback','ClosingAndStockReconciled','ManualDiscountCredit')) {
+            if ($credit.$field -ne $true) { throw "Missing executed credit sale proof: $field" }
+          }
+          $customers = Get-Content evidence/w2/w2-customer-files.json -Raw | ConvertFrom-Json
+          foreach ($field in @('OriginalClNumbering','FullMetadata','OptionalUniqueCode','ImmutableIdentity','FourDecimalSignedTouch','OpeningHistoryAtomic','InitialCreditSeparate','StaleSnapshotDenied','ExactRoleAndRevocation','FreshCashierPin','CreateReplay','HistoryReplay','JournalRollback','RecoveryAfterRestart','LocalLease','NoCashStockSideEffects','ExistingCreditAndStatementLinked')) {
+            if ($customers.$field -ne $true) { throw "Missing executed customer file proof: $field" }
+          }
+          $configuration = Get-Content evidence/w2/w2-workstation-configuration.json -Raw | ConvertFrom-Json
+          foreach ($field in @('EncryptedCurrentUser','ReloadWithoutEnvironment','InvalidConfigurationPreservesPrevious','DamagedCiphertextRejected','ActualSetupDialog','NoFinancialWrites','PersistentUnicodePrinterProfile','InvalidPrinterPreservesPrevious','PrinterSeparatedByRegister')) {
+            if ($configuration.$field -ne $true) { throw "Missing workstation setup proof: $field" }
+          }
+          $returns = Get-Content evidence/w2/w2-full-return-modes.json -Raw | ConvertFrom-Json
+          foreach ($field in @('CreditReturnUi','CardReturnUi','ExplicitDebtConfirmation','ExplicitExternalCardConfirmation','CanceledConfirmationNoWrite','FreshCashierPin','ModeFrozenDuringReview','CashUnchanged','DebtAndCardReconciled','OriginalStockRestored','ConsumedOriginalExcluded')) {
+            if ($returns.$field -ne $true) { throw "Missing full-return proof: $field" }
+          }
+          $partial = Get-Content evidence/w2/w2-partial-cash-return.json -Raw | ConvertFrom-Json
+          foreach ($field in @('ActualHost','OriginalTicketSelection','TouchQuantityKeypad','ExplicitReview','FreshPinEachReturn','TwoCumulativeReturns','OriginalStockAndCashRestored','FullyConsumedOriginalExcluded','ExactCentWholeQuantityScope')) {
+            if ($partial.$field -ne $true) { throw "Missing partial-return proof: $field" }
+          }
+          $pinLogin = Get-Content evidence/w2/w2-pin-login.json -Raw | ConvertFrom-Json
+          foreach ($field in @('OriginalPinIdentityLookup','ActualNumericKeypad','NoTypedIdentityOrRegister','FixedRegister','ArabicAndAccentIdentity','WrongCanceledAndSharedPinDenied','NestedSessionChangesDenied','MaskedControlCleared','NoFinancialAuthorityOrWrites')) {
+            if ($pinLogin.$field -ne $true) { throw "Missing original PIN login proof: $field" }
+          }
+          $daily = Get-Content evidence/w2/w2-daily-sections.json -Raw | ConvertFrom-Json
+          foreach ($field in @('ActualStockNavigation','ExistingArticlesRead','ExistingCatalogueWorkflowLinked','SessionAndSectionsFrozen','ActualAdminSettingsPortal','OriginalSettingsDialogLinked','SameDatabaseAndCashier','NoFinancialWrites','PrimarySectionsVisible')) {
+            if ($daily.$field -ne $true) { throw "Missing connected daily section proof: $field" }
+          }
+          $documents = Get-Content evidence/w2/w2-business-documents.json -Raw | ConvertFrom-Json
+          foreach ($field in @('OriginalThreeKinds','PersistedTaxTotals','LiteralSearchAndLastDay','CustomerAndLines','UserValidationDenied','FreshManagerPin','StaleSnapshotDenied','AtomicValidationRollback','ValidatedReadback','MismatchDenied','PrintData','ActualDirectoryUi','NoCashStockEffects')) {
+            if ($documents.$field -ne $true) { throw "Missing business-document proof: $field" }
+          }
+          $unicode = Get-Content evidence/w2/w2-unicode-settlement.json -Raw | ConvertFrom-Json
+          foreach ($field in @('ExactUnicodeReplay','NoDuplicatePayment','ModifiedPersistedNotesDenied')) {
+            if ($unicode.$field -ne $true) { throw "Missing Unicode settlement replay proof: $field" }
+          }
+          Write-Host "PASS W2 accepted on source SHA $env:GITHUB_SHA: financial workflows and persisted workstation setup"
+      - name: Verify supplier AVOIR, statement signs, stock and actual WPF settlement on its own database
+        shell: pwsh
+        run: |
+          ./scripts/Test-HanoutySupplierAvoir.ps1 -MariaDbBin $env:HANOUTY_W2_MARIADB_BIN -EvidenceDirectory ./evidence/supplier-avoir
+          $proof = Get-Content ./evidence/supplier-avoir/supplier-avoir-wpf.json -Raw | ConvertFrom-Json
+          foreach ($field in @('ActualStockIssueEntry','SignedTouchPrice','VisibleReviewedTotal','FreshPin','PersistedDocument','StockUnchangedBeforeValidation','SharedStatementSign','PartialExactAndAdvanceSettlement','SettlementRollback')) {
+            if ($proof.$field -ne $true) { throw "Missing supplier AVOIR UI proof: $field" }
+          }
+      - name: Verify original daily stock filters and workflow hooks independently
+        shell: pwsh
+        run: |
+          ./scripts/Test-HanoutyDailyStock.ps1 -MariaDbBin $env:HANOUTY_W2_MARIADB_BIN -EvidenceDirectory ./evidence/daily-stock -Port 33081
+          $proof = Get-Content ./evidence/daily-stock/daily-stock-acceptance.json -Raw | ConvertFrom-Json
+          if (@($proof.PSObject.Properties).Count -ne 13) { throw 'Incomplete daily stock evidence' }
+          foreach ($property in $proof.PSObject.Properties) {
+            if ($property.Value -ne $true) { throw "Missing daily stock proof: $($property.Name)" }
+          }
+      - name: Verify original settings atomic save, rollback and uncertain acknowledgement
+        shell: pwsh
+        run: |
+          "CREATE DATABASE settings_disposable CHARACTER SET utf8mb4; GRANT ALL ON settings_disposable.* TO 'w2_test'@'localhost';" | & "$env:HANOUTY_W2_MARIADB_BIN/mariadb.exe" --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only
+          if ($LASTEXITCODE -ne 0) { throw 'Disposable settings schema creation failed' }
+          $env:HANOUTY_SETTINGS_TEST_CONNECTION = $env:HANOUTY_CATALOGUE_CONNECTION.Replace('Database=logica_ci;', 'Database=settings_disposable;')
+          dotnet run --project modernization/daily-settings-acceptance/DailySettingsAcceptance.csproj -c Release -- ./evidence/daily-settings
+          if ($LASTEXITCODE -ne 0) { throw 'Daily original settings acceptance failed' }
+          $proof = Get-Content ./evidence/daily-settings/daily-logica-settings-acceptance.json -Raw | ConvertFrom-Json
+          if (@($proof.PSObject.Properties).Count -ne 19) { throw 'Incomplete original settings evidence' }
+          foreach ($property in $proof.PSObject.Properties) {
+            if ($property.Value -ne $true) { throw "Missing original settings proof: $($property.Name)" }
+          }
+      - name: Verify writable daily stock with original authorization and durable replay
+        shell: pwsh
+        run: ./scripts/DailyStockAdjustmentAcceptance.ps1 -MariaDbBin $env:HANOUTY_W2_MARIADB_BIN -EvidenceDirectory ./evidence/daily-stock-adjustments
+      - name: Verify extended original settings and numeric keypad without repeated PIN
+        shell: pwsh
+        run: ./scripts/Test-HanoutyOriginalSettings.ps1 -MariaDbBin $env:HANOUTY_W2_MARIADB_BIN -EvidenceDirectory ./evidence/original-settings
+      - name: Verify protected original-data preparation and actual copied-profile cashier
+        shell: pwsh
+        run: |
+          ./scripts/Test-HanoutyProtectedCopy.ps1 -MariaDbBin $env:HANOUTY_W2_MARIADB_BIN -EvidenceDirectory ./evidence/protected-copy -Port 33082
+          $backend = Get-Content ./evidence/protected-copy/backend/acceptance.json -Raw | ConvertFrom-Json
+          foreach ($field in @('Ready','SelectOnlySourceAccount','ProductionSaleOnCopy','OriginalAutoIncrementZeroPreserved','FirstCheckoutStockPaymentCounter','CheckoutReplay','SourceChangeRefused','InvalidOriginalCounterRefused','SourceUnchanged','OriginalSchemaFixture','Utf8Copy','InjectedAfterImportRefused','SameSchemaRefused','ExistingSchemaRefused','ExistingFolderRefused','TemporaryCredentialsRemoved')) {
+            if ($backend.$field -ne $true) { throw "Missing protected database proof: $field" }
+          }
+          if ($backend.MigrationCount -ne 12) { throw 'Missing protected preparation migrations' }
+          $gui = Get-Content ./evidence/protected-copy/gui/protected-copy-gui.json -Raw | ConvertFrom-Json
+          if (@($gui.PSObject.Properties).Count -ne 12) { throw 'Incomplete protected-copy GUI evidence' }
+          foreach ($property in $gui.PSObject.Properties) {
+            if ($property.Value -ne $true) { throw "Missing protected first-setup proof: $($property.Name)" }
+          }
+      - name: Verify Windows installation preserves the previous version and refuses a changed package
+        shell: pwsh
+        run: ./scripts/Test-HanoutyInstallation.ps1 -PackageDirectory ./evidence -EvidenceDirectory ./evidence
+      - name: Build verified customer installation without disposable test launchers
+        shell: pwsh
+        run: |
+          $customer = ./scripts/Build-HanoutyCustomerDelivery.ps1 -FinancialZip ./evidence/HANOUTY-WPF-net10-FINANCIAL-ACCEPTED-win-x64.zip -AcceptanceFile ./evidence/financial-package-acceptance.json -SourceSha $env:GITHUB_SHA -OutputDirectory (Join-Path $env:RUNNER_TEMP 'HANOUTY-INSTALLATION')
+          $customer | ConvertTo-Json | Set-Content ./evidence/customer-delivery.json -Encoding UTF8
+          "HANOUTY_CUSTOMER_DELIVERY_ZIP=$($customer.Zip)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Upload verified customer Windows installation
+        uses: actions/upload-artifact@v4
+        with:
+          name: HANOUTY-INSTALLATION-WINDOWS
+          path: ${{ env.HANOUTY_CUSTOMER_DELIVERY_ZIP }}
+          if-no-files-found: error
+          retention-days: 14
+      - name: Build and verify offline PIN-only demonstration with persistent trials
+        shell: pwsh
+        run: |
+          $runtime = Join-Path $env:RUNNER_TEMP 'hanouty-w2-cash-mariadb'
+          $demo = Join-Path $env:RUNNER_TEMP 'HANOUTY-DEMO'
+          ./scripts/Build-HanoutyDemo.ps1 -AcceptedPackageDirectory ./evidence -MariaDbArchive (Join-Path $runtime 'server.zip') -MariaDbChecksums (Join-Path $runtime 'sha256sums.txt') -OutputDirectory $demo
+          ./scripts/Test-HanoutyDemo.ps1 -BundleDirectory $demo -EvidenceDirectory ./evidence/demo
+          $proof = Get-Content ./evidence/demo/demo-acceptance.json -Raw | ConvertFrom-Json
+          foreach ($field in @('OfflineFreshStart','NoLogicaConfiguration','Pin1234','ActualWpfSales','StockPosted','RestartPreservesSales','TwoSales')) {
+            if ($proof.$field -ne $true) { throw "Missing independent demonstration proof: $field" }
+          }
+          "HANOUTY_DEMO_ZIP=$demo.zip" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Upload verified offline PIN-only demonstration
+        uses: actions/upload-artifact@v4
+        with:
+          name: HANOUTY-DEMO-PIN-1234
+          path: ${{ env.HANOUTY_DEMO_ZIP }}
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload full W2 source and SQL evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-w2-same-sha-financial-evidence
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload accepted standalone financial WPF package
+        uses: actions/upload-artifact@v4
+        with:
+          name: HANOUTY-WPF-financial-accepted
+          path: |
+            evidence/HANOUTY-WPF-net10-FINANCIAL-ACCEPTED-win-x64.zip
+            evidence/financial-package-acceptance.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Assemble one-click Windows test bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = Join-Path $env:RUNNER_TEMP 'HANOUTY-WPF-TEST-BUNDLE'
+          New-Item -ItemType Directory -Force $bundle | Out-Null
+          Copy-Item 'evidence/HANOUTY-WPF-net10-FINANCIAL-ACCEPTED-win-x64.zip' $bundle
+          Copy-Item 'evidence/financial-package-acceptance.json' $bundle
+          Copy-Item 'scripts/Start-Hanouty-Test.ps1' $bundle
+          Copy-Item 'scripts/Start-Hanouty-Test.cmd' $bundle
+          Copy-Item 'scripts/Install-Hanouty.ps1' $bundle
+          Copy-Item 'scripts/Install-Hanouty.cmd' $bundle
+          Copy-Item 'scripts/HANOUTY-TEST-START-HERE.txt' (Join-Path $bundle 'LE-MOI-DEMARRER.txt')
+          # Ship the SAME official bytes already verified and exercised above.
+          $verifiedRuntime = Join-Path $env:RUNNER_TEMP 'hanouty-w2-cash-mariadb'
+          Copy-Item -LiteralPath (Join-Path $verifiedRuntime 'server.zip') -Destination (Join-Path $bundle 'mariadb-10.11.14-winx64.zip')
+          Copy-Item -LiteralPath (Join-Path $verifiedRuntime 'sha256sums.txt') -Destination (Join-Path $bundle 'mariadb-sha256sums.txt')
+      - name: Stop only this workflow's disposable MariaDB server
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:HANOUTY_W2_SERVER_PID) {
+            $server = Get-Process -Id ([int]$env:HANOUTY_W2_SERVER_PID) -ErrorAction SilentlyContinue
+            if ($server -and $server.ProcessName -eq 'mariadbd') { Stop-Process -Id $server.Id }
+          }
+      - name: Confirm the workflow database has stopped before isolated launcher test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $available = $false
+          for ($i = 0; $i -lt 30; $i++) {
+            $probe = [Net.Sockets.TcpClient]::new()
+            try { $probe.Connect('127.0.0.1', 3307); $stillListening = $true }
+            catch { $stillListening = $false }
+            finally { $probe.Dispose() }
+            if (-not $stillListening) { $available = $true; break }
+            Start-Sleep -Seconds 1
+          }
+          if (-not $available) { throw 'Disposable MariaDB did not release port 3307 before launcher verification.' }
+      - name: Verify the one-click bundle and restore from a fresh Windows application profile
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = Join-Path $env:RUNNER_TEMP 'HANOUTY-WPF-TEST-BUNDLE'
+          $profile = Join-Path $env:RUNNER_TEMP ("hanouty-launcher-" + [Guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $profile | Out-Null
+          # A truly fresh profile: no preseeded runtime cache, no startup network.
+          function Invoke-WebRequest { throw 'Offline launcher attempted an HTTP download.' }
+          function Invoke-RestMethod { throw 'Offline launcher attempted an HTTP request.' }
+          function curl.exe { throw 'Offline launcher attempted curl.' }
+          if (Test-Path -LiteralPath (Join-Path $profile 'HANOUTY-Test')) {
+            throw 'Launcher profile was not fresh.'
+          }
+          $previousLocalAppData = $env:LOCALAPPDATA
+          $occupied = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 3307)
+          try {
+            $env:LOCALAPPDATA = $profile
+            $occupied.Start()
+            & (Join-Path $bundle 'Start-Hanouty-Test.ps1') -VerifyOnly
+            if ($LASTEXITCODE -ne 0) { throw 'Launcher failed with a fresh profile and port 3307 occupied.' }
+          } finally {
+            $occupied.Stop()
+            $env:LOCALAPPDATA = $previousLocalAppData
+          }
+
+          $reports = @(Get-ChildItem -LiteralPath (Join-Path $profile 'HANOUTY-Test/evidence') -Recurse -File -Filter 'backup-restore.json')
+          if ($reports.Count -ne 1) { throw 'Expected one backup and restore report from the fresh profile.' }
+          $report = Get-Content -LiteralPath $reports[0].FullName -Raw | ConvertFrom-Json
+          if ($report.RestoreVerified -ne $true -or $report.CreditDemoEnabled -ne $true -or $report.BackupSha256 -notmatch '^[0-9a-fA-F]{64}$') {
+            throw 'The launcher did not prove a successful database restore.'
+          }
+          $proof = New-Item -ItemType Directory -Path 'evidence/windows-launcher' -Force
+          Copy-Item -LiteralPath $reports[0].FullName -Destination $proof.FullName
+          Copy-Item -LiteralPath 'evidence/source-manifest.txt' -Destination $proof.FullName
+          # An altered bundled checksum must fail before a database starts.
+          $runtimeChecksums = Join-Path $bundle 'mariadb-sha256sums.txt'
+          $originalChecksums = [IO.File]::ReadAllBytes($runtimeChecksums)
+          $badProfile = Join-Path $env:RUNNER_TEMP ("hanouty-tampered-runtime-" + [Guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $badProfile | Out-Null
+          try {
+            Set-Content -LiteralPath $runtimeChecksums -Value (('0' * 64) + '  mariadb-10.11.14-winx64.zip') -Encoding UTF8
+            $env:LOCALAPPDATA = $badProfile
+            & (Join-Path $bundle 'Start-Hanouty-Test.ps1') -VerifyOnly
+            if ($LASTEXITCODE -eq 0) { throw 'Tampered runtime checksum was accepted.' }
+            $failures = @(Get-ChildItem -LiteralPath (Join-Path $badProfile 'HANOUTY-Test/evidence') -Recurse -File -Filter 'setup-failure.txt')
+            if ($failures.Count -ne 1 -or (Get-Content -LiteralPath $failures[0].FullName -Raw) -notmatch 'Bundled MariaDB runtime integrity verification failed') {
+              throw 'Tamper test failed for a reason other than verified runtime integrity.'
+            }
+          } finally {
+            [IO.File]::WriteAllBytes($runtimeChecksums, $originalChecksums)
+            $env:LOCALAPPDATA = $previousLocalAppData
+          }
+          # The expected negative test exit was validated above, not a workflow failure.
+          $global:LASTEXITCODE = 0
+          @{ OfflineRuntimeBundled = $true; FreshProfileNoCache = $true; HttpDownloadsBlocked = $true;
+             Port3307Occupied = $true; RuntimeTamperRejected = $true; RestoreVerified = $true;
+             SourceSha = $env:GITHUB_SHA } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $proof.FullName 'offline-runtime.json') -Encoding UTF8
+      - name: Upload Windows launcher restore evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: hanouty-windows-launcher-restore-evidence
+          path: evidence/windows-launcher/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove verified temporary extraction from download bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $extracted = Join-Path (Join-Path $env:RUNNER_TEMP 'HANOUTY-WPF-TEST-BUNDLE') 'hanouty-app'
+          $marker = Join-Path $extracted '.hanouty-test-package'
+          if (-not (Test-Path -LiteralPath $marker -PathType Leaf)) { throw 'Temporary extraction ownership marker missing; refusing cleanup.' }
+          Remove-Item -LiteralPath $extracted -Recurse -Force
+      - name: Upload one-click Windows test bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: HANOUTY-WPF-TEST-BUNDLE
+          path: ${{ runner.temp }}/HANOUTY-WPF-TEST-BUNDLE/
+          if-no-files-found: error
+          retention-days: 14

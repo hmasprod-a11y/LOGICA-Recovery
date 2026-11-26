@@ -1,0 +1,154 @@
+using Hanouty.Desktop.Bootstrap;
+using MySql.Data.MySqlClient;
+
+const string connectionString = "Server=127.0.0.1;Port=3307;Database=stock_issue_history_ci;Uid=stock_issue_ci;Pwd=stock-issue-ci-only";
+using var connection = new MySqlConnection(connectionString);
+connection.Open();
+
+Execute("""
+    CREATE TABLE TABLE_PASS (ListUser VARCHAR(64), ListPass VARCHAR(64), Catégorie VARCHAR(64)) ENGINE=InnoDB;
+    CREATE TABLE TABLE_ARTICLES (ID_ARTICLE VARCHAR(64) PRIMARY KEY, STOCK DECIMAL(16,3)) ENGINE=InnoDB;
+    CREATE TABLE TABLE_SORTIES_ENTETE (ID_BS VARCHAR(64) PRIMARY KEY, TYPE TEXT, NOTES TEXT, ETAT VARCHAR(32),
+        ID_FOURNISSEUR VARCHAR(64), FOURNISSEUR TEXT, TOTAL_NET_ACHATS DECIMAL(16,3)) ENGINE=InnoDB;
+    CREATE TABLE TABLE_SORTIES_DETAILS (ID_BS VARCHAR(64), ID_ARTICLE VARCHAR(64), Code TEXT, Article TEXT,
+        Qté DECIMAL(16,3), ETAT VARCHAR(32), ID_FOURNISSEUR VARCHAR(64)) ENGINE=InnoDB;
+    CREATE TABLE TABLE_MOUVEMENTS_STOCK (DATES VARCHAR(16), HEURE VARCHAR(16), LIBELLE VARCHAR(128),
+        ID_ARTICLE VARCHAR(64), CODE_ARTICLE TEXT, ARTICLE TEXT, QUANTITE DECIMAL(16,3)) ENGINE=InnoDB;
+    INSERT INTO TABLE_PASS VALUES ('Manager','1234','MANAGER');
+    INSERT INTO TABLE_ARTICLES VALUES ('A',12.750),('B',4.125);
+    INSERT INTO TABLE_SORTIES_ENTETE (ID_BS, TYPE, NOTES, ETAT) VALUES
+        ('BS-OK','PERTE','Verre cassé','ENREGISTRER'),('BS-FAIL','TRANSFERT','','ENREGISTRER'),
+        ('BS-OLD','AUTRE','','ENREGISTRER');
+    INSERT INTO TABLE_SORTIES_DETAILS (ID_BS, ID_ARTICLE, Code, Article, Qté, ETAT) VALUES
+        ('BS-OK','A','001','Verre',2.25,'ENREGISTRER'),('BS-OK','B','001','Plat',0.50,'ENREGISTRER'),
+        ('BS-FAIL','A','001','Verre',1,'ENREGISTRER'),('BS-FAIL','B','002','Plat',1,'ENREGISTRER'),
+        ('BS-OLD','A','001','Verre',0.50,'ENREGISTRER');
+    """);
+
+var articles = new[]
+{
+    new StockIssueValidation.ArticleChoice("ART-1", "00042", "Verre"),
+    new StockIssueValidation.ArticleChoice("ART-2", "00042", "Verre"),
+    new StockIssueValidation.ArticleChoice("ART-3", "", "Plat")
+};
+Require(articles.Count(article => article.Matches("00042")) == 2 &&
+    articles.Count(article => article.Matches("verre")) == 2 &&
+    articles.Single(article => article.Matches("art-2")).Id == "ART-2" &&
+    articles[0].Label != articles[1].Label,
+    "Article search hid or could not distinguish a shared code.");
+
+var service = new StockIssueValidation(connectionString);
+var old = service.Validate("BS-OLD", service.ReadForValidation("BS-OLD"), "Manager", "1234");
+Require(!old.HistorySaved, "Legacy schema incorrectly reported detailed history.");
+Execute(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "migration.sql")));
+var legacy = service.ReadHistory("BS-OLD").Single();
+Require(legacy.ArticleId == "A" && legacy.Quantity == 0.50m && legacy.Article == "Verre" &&
+    legacy.Actor == "" && legacy.Reason == "" && legacy.StockBefore is null &&
+    legacy.StockAfter is null && legacy.StockChange is null && legacy.ValidatedUtc is null,
+    "Legacy movement was lost or unavailable details were fabricated.");
+Require(service.ReadHistory("bs-old").Length == 0, "History matched a different document identity.");
+
+Execute("UPDATE TABLE_SORTIES_ENTETE SET TYPE='AVOIR' WHERE ID_BS='BS-FAIL'");
+var withoutSupplier = service.ReadForValidation("BS-FAIL");
+Reject<InvalidOperationException>(() => service.Validate("BS-FAIL", withoutSupplier, "Manager", "1234"));
+Execute("UPDATE TABLE_SORTIES_ENTETE SET ID_FOURNISSEUR='F1', FOURNISSEUR='Premier' WHERE ID_BS='BS-FAIL'");
+Execute("UPDATE TABLE_SORTIES_DETAILS SET ID_FOURNISSEUR='F1' WHERE ID_BS='BS-FAIL'");
+var reviewedSupplier = service.ReadForValidation("BS-FAIL");
+Require(reviewedSupplier.SupplierId == "F1" && reviewedSupplier.SupplierName == "Premier",
+    "Supplier was not exposed in the reviewed credit.");
+Execute("UPDATE TABLE_SORTIES_ENTETE SET ID_FOURNISSEUR='F2', FOURNISSEUR='Second' WHERE ID_BS='BS-FAIL'");
+Reject<InvalidOperationException>(() => service.Validate("BS-FAIL", reviewedSupplier, "Manager", "1234"));
+Reject<InvalidOperationException>(() => service.ReadForValidation("BS-FAIL"));
+Execute("UPDATE TABLE_SORTIES_DETAILS SET ID_FOURNISSEUR='F2' WHERE ID_BS='BS-FAIL'");
+var withoutAmount = service.ReadForValidation("BS-FAIL");
+Reject<InvalidOperationException>(() => service.Validate("BS-FAIL", withoutAmount, "Manager", "1234"));
+Execute("UPDATE TABLE_SORTIES_ENTETE SET TOTAL_NET_ACHATS=-15 WHERE ID_BS='BS-FAIL'");
+var reviewedAmount = service.ReadForValidation("BS-FAIL");
+Require(reviewedAmount.PurchaseTotal == -15m, "Signed amount was not available for review.");
+Execute("UPDATE TABLE_SORTIES_ENTETE SET TOTAL_NET_ACHATS=-20 WHERE ID_BS='BS-FAIL'");
+Reject<InvalidOperationException>(() => service.Validate("BS-FAIL", reviewedAmount, "Manager", "1234"));
+Require(service.ReadHistory("BS-FAIL").Length == 0, "Rejected supplier credit left history.");
+
+var reviewed = service.ReadForValidation("BS-OK");
+Reject<UnauthorizedAccessException>(() => service.Validate("BS-OK", reviewed, "Manager", "wrong"));
+Execute("UPDATE TABLE_SORTIES_ENTETE SET NOTES='Modifiée' WHERE ID_BS='BS-OK'");
+Reject<InvalidOperationException>(() => service.Validate("BS-OK", reviewed, "Manager", "1234"));
+Require(service.ReadHistory("BS-OK").Length == 0, "Rejected document left detailed history.");
+
+var result = service.Validate("BS-OK", service.ReadForValidation("BS-OK"), "Manager", "1234");
+var movements = new StockIssueValidation(connectionString).ReadHistory("BS-OK");
+Require(result.HistorySaved && movements.Length == 2, "Committed document could not be reopened.");
+Require(movements[0].Actor == "Manager" && movements[0].Reason == "PERTE · Modifiée" &&
+    movements[0].Reference == "BS-OK" && movements[0].Code == "001" && movements[0].Article == "Verre" &&
+    movements[0].Quantity == 2.25m && movements[0].StockBefore == 12.25m && movements[0].StockAfter == 10m &&
+    result.Movements[0].ArticleId == "A" && result.Movements[1].ArticleId == "B" &&
+    movements[0].ArticleId == "A" && movements[1].ArticleId == "B" && movements[1].Code == "001" &&
+    movements[1].StockBefore == 4.125m && movements[1].StockAfter == 3.625m &&
+    movements[0].StockChange == -2.25m && movements[1].StockChange == -0.50m &&
+    movements[0].ValidatedUtc?.Kind == DateTimeKind.Utc && movements[0].ValidatedUtc == movements[1].ValidatedUtc,
+    "Persistent movement evidence differs from the committed document.");
+Reject<InvalidOperationException>(() => service.Validate("BS-OK", reviewed, "Manager", "1234"));
+Require(service.ReadHistory("BS-OK").Length == 2, "Replay changed history.");
+
+Execute("""
+    CREATE TRIGGER reject_second_history BEFORE INSERT ON hanouty_stock_issue_history FOR EACH ROW
+    BEGIN
+        IF NEW.ARTICLE_ID = 'B' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Forced history failure'; END IF;
+    END
+    """);
+Reject<MySqlException>(() => service.Validate("BS-FAIL", service.ReadForValidation("BS-FAIL"), "Manager", "1234"));
+Require(service.ReadHistory("BS-FAIL").Length == 0 && service.Read("BS-FAIL").Length == 2 &&
+    Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE='Bon de Sortie | BS-FAIL'") == 0 &&
+    Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='A'") == 10m &&
+    Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='B'") == 3.625m,
+    "History failure did not roll back stock, legacy journal and document.");
+Execute("DROP TRIGGER reject_second_history");
+var credit = service.ReadForValidation("BS-FAIL");
+Execute("UPDATE TABLE_SORTIES_DETAILS SET ID_FOURNISSEUR='F3' WHERE ID_BS='BS-FAIL' AND ID_ARTICLE='B'");
+Reject<InvalidOperationException>(() => service.Validate("BS-FAIL", credit, "Manager", "1234"));
+Require(service.ReadHistory("BS-FAIL").Length == 0 &&
+    Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='B'") == 3.625m,
+    "A supplier change on a credit line posted stock.");
+Execute("UPDATE TABLE_SORTIES_DETAILS SET ID_FOURNISSEUR='F2' WHERE ID_BS='BS-FAIL' AND ID_ARTICLE='B'");
+var outgoingBefore = Scalar("SELECT SUM(TOTAL_NET_ACHATS) FROM TABLE_SORTIES_ENTETE WHERE ID_FOURNISSEUR='F2'");
+Require(service.ReadHistoryWithCredit("BS-FAIL").Credit is null &&
+    service.ReadHistoryWithCredit("BS-OK").Credit is null, "Draft or ordinary issue appeared as a supplier credit.");
+var committedCredit = service.Validate("BS-FAIL", credit, "Manager", "1234");
+var (creditMovements, storedCredit) = new StockIssueValidation(connectionString).ReadHistoryWithCredit("BS-FAIL");
+Require(creditMovements.Length == 2 && storedCredit is { SupplierId: "F2", SupplierName: "Second", PurchaseTotal: -20m },
+    "Reopening a supplier credit did not return the stored document details.");
+Require(committedCredit.HistorySaved && committedCredit.Movements.Length == 2 &&
+    service.ReadHistory("BS-FAIL").Length == 2 &&
+    Scalar("SELECT COUNT(*) FROM TABLE_SORTIES_ENTETE WHERE ID_BS='BS-FAIL' AND ETAT='VALIDER' AND ID_FOURNISSEUR='F2'") == 1 &&
+    Scalar("SELECT SUM(TOTAL_NET_ACHATS) FROM TABLE_SORTIES_ENTETE WHERE ID_FOURNISSEUR='F2'") == outgoingBefore,
+    "Validating an existing credit did not preserve its recorded amount and stock evidence.");
+Reject<InvalidOperationException>(() => service.Validate("BS-FAIL", credit, "Manager", "1234"));
+Require(Scalar("SELECT COUNT(*) FROM TABLE_MOUVEMENTS_STOCK WHERE LIBELLE='Bon de Sortie | BS-FAIL'") == 2 &&
+    Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='A'") == 9m &&
+    Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='B'") == 2.625m,
+    "Replaying the credit posted stock twice.");
+Console.WriteLine("PASS stock issue history persistence, supplier credit, reopen, authorization, replay and rollback.");
+
+void Execute(string sql)
+{
+    using var command = new MySqlCommand(sql, connection);
+    command.ExecuteNonQuery();
+}
+
+decimal Scalar(string sql)
+{
+    using var command = new MySqlCommand(sql, connection);
+    return Convert.ToDecimal(command.ExecuteScalar());
+}
+
+static void Require(bool condition, string message)
+{
+    if (!condition) throw new InvalidOperationException(message);
+}
+
+static void Reject<T>(Action action) where T : Exception
+{
+    try { action(); }
+    catch (T) { return; }
+    throw new InvalidOperationException($"Expected rejection: {typeof(T).Name}");
+}

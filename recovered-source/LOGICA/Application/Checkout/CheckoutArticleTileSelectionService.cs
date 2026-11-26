@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Data;
 
@@ -38,7 +39,7 @@ namespace LOGICA.ApplicationLayer.Checkout
                 String.IsNullOrEmpty(Convert.ToString(article["ID_ARTICLE"])))
                 throw new InvalidOperationException("Image tile article identity is incomplete.");
             return new CheckoutArticleTileReference(
-                Convert.ToString(article["Code"]), Convert.ToString(article["ID_ARTICLE"]));
+                Convert.ToString(article["Code"]) ?? string.Empty, Convert.ToString(article["ID_ARTICLE"]) ?? string.Empty);
         }
 
         // Typed result for a future UI: distinguish missing, ambiguous and
@@ -55,7 +56,7 @@ namespace LOGICA.ApplicationLayer.Checkout
 
         // Preserve the legacy null-or-row surface, but never return a deleted
         // row, a reused article ID, or a match from a corrupt result set.
-        internal static DataRow FindExact(DataTable candidates, CheckoutArticleTileReference tile)
+        internal static DataRow? FindExact(DataTable candidates, CheckoutArticleTileReference tile)
         {
             return EvaluateExact(candidates, tile).SelectedRow;
         }

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- Only the Bootstrap executable is published to customers. -->
+    <OutputType Condition="'$(HanoutyWpfAsLibrary)' == 'true'">Library</OutputType>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(HanoutyWpfAsLibrary)' == 'true'">
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets/Cash/*" />
+    <InternalsVisibleTo Include="Hanouty.Desktop.Wpf.Tests" />
+    <ProjectReference Include="../architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj" />
+  </ItemGroup>
+</Project>

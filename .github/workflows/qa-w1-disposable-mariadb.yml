@@ -1,0 +1,99 @@
+name: QA W1 disposable MariaDB production catalogue integration
+on:
+  push:
+    branches: [integration/hanouty-qa-desktop-inventory-20261102]
+    paths:
+      - 'qa/tests/Hanouty.W1.RealMariaDb/**'
+      - '.github/workflows/qa-w1-disposable-mariadb.yml'
+  pull_request:
+    paths:
+      - '.github/workflows/qa-w1-disposable-mariadb.yml'
+      - '.github/workflows/qa-wpf-architecture-adapter.yml'
+      - 'qa/tests/Hanouty.W1.RealMariaDb/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  real-inventory-mariadb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: disposable-ci-only
+          MARIADB_DATABASE: hanouty_w1_disposable
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      HANOUTY_W1_TEST_CONNECTION: 'Server=127.0.0.1;Port=3306;Database=hanouty_w1_disposable;Uid=root;Pwd=disposable-ci-only;SslMode=None'
+      HANOUTY_W1_DISPOSABLE_MARKER: I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: qa
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 4e8f03efab78cd8c1d01c877d825760bec578698
+          path: combined
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: f934763edbb0ae15c5e2a449bf6440b0d1bcca39
+          path: architecture
+          persist-credentials: false
+      - name: Verify source provenance and compose real Architecture plus Inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence combined/modernization/architecture combined/qa/tests
+          test "$(git -C qa rev-parse HEAD)" = "${{ github.sha }}"
+          test "$(git -C combined rev-parse HEAD)" = 4e8f03efab78cd8c1d01c877d825760bec578698
+          test "$(git -C architecture rev-parse HEAD)" = f934763edbb0ae15c5e2a449bf6440b0d1bcca39
+          rm -rf combined/modernization/architecture/Hanouty.ArchitectureBridge
+          cp -a architecture/modernization/architecture/Hanouty.ArchitectureBridge combined/modernization/architecture/
+          cp -a qa/qa/tests/Hanouty.W1.RealMariaDb combined/qa/tests/
+          printf 'qa=%s\ninventory=%s\narchitecture=%s\n' "${{ github.sha }}" 4e8f03efab78cd8c1d01c877d825760bec578698 f934763edbb0ae15c5e2a449bf6440b0d1bcca39 > evidence/sources.txt
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Scope baseline nullable diagnostics to recovered legacy files only
+        shell: bash
+        run: |
+          cat > combined/recovered-source/LOGICA/.editorconfig <<'EOF'
+          [**/*.cs]
+          dotnet_diagnostic.CS8600.severity = none
+          dotnet_diagnostic.CS8603.severity = none
+          dotnet_diagnostic.CS8618.severity = none
+          EOF
+          echo 'Only recovered-source/LOGICA nullable baseline scoped; new code still warnaserror.'
+      - name: Compile production Inventory MariaDB reader with actual Architecture contract
+        run: dotnet build combined/qa/tests/Hanouty.W1.RealMariaDb/Hanouty.W1.RealMariaDb.csproj -c Release --nologo
+      - name: Exercise disposable MariaDB production reader and regressions
+        run: dotnet run --no-build -c Release --project combined/qa/tests/Hanouty.W1.RealMariaDb/Hanouty.W1.RealMariaDb.csproj
+      - name: Validate executable regression output is not a static source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f combined/qa/tests/Hanouty.W1.RealMariaDb/bin/Release/net10.0/Hanouty.W1.RealMariaDb.dll
+          echo 'Compiled and executed against disposable MariaDB; WPF EXE remains a separate acceptance gate.'
+      - name: Assert production WPF/Architecture/Inventory source contract exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f combined/modernization/inventory/Hanouty.Inventory.MariaDb/MariaDbCatalogueReader.cs
+          test -f combined/modernization/architecture/Hanouty.ArchitectureBridge/CheckoutComposition.cs
+          grep -q 'class MariaDbCatalogueReader : ICatalogueReader' combined/modernization/inventory/Hanouty.Inventory.MariaDb/MariaDbCatalogueReader.cs
+          grep -q 'interface ICatalogueReader' combined/modernization/architecture/Hanouty.ArchitectureBridge/CheckoutComposition.cs
+          echo 'WPF host registration is not exercised by this test; do not classify as W1 acceptance.'
+      - name: Preserve exact-source manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-w1-real-mariadb-source-evidence
+          path: evidence/
+          if-no-files-found: error

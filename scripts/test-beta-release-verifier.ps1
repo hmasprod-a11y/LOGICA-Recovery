@@ -1,6 +1,20 @@
 # Isolated contract and adversarial tests for the independent offline release verifier.
 $ErrorActionPreference = 'Stop'
 $verifier = Join-Path $PSScriptRoot 'verify-beta-rc.ps1'
+# Parse before any fixture setup. An accidental duplicated/truncated tail must
+# fail with a targeted diagnostic, not after costly CI build and packaging.
+$tokens = $null
+$parseErrors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile(
+    $verifier, [ref]$tokens, [ref]$parseErrors)
+if ($parseErrors.Count -gt 0) {
+    throw "Release verifier PowerShell syntax invalid: $($parseErrors[0])"
+}
+$sourceText = [IO.File]::ReadAllText($verifier)
+if (($sourceText.Split(@('Add-Type -AssemblyName System.IO.Compression.FileSystem'), [StringSplitOptions]::None).Count -ne 2) -or
+    ($sourceText.Split(@('Write-Host "PASS: offline beta RC1 verification:'), [StringSplitOptions]::None).Count -ne 2)) {
+    throw 'Release verifier contains duplicated execution blocks'
+}
 $work = Join-Path ([IO.Path]::GetTempPath()) ('logica-beta-verifier-' + [Guid]::NewGuid().ToString('N'))
 $src = Join-Path $work 'src'
 $release = Join-Path $work 'release'
@@ -10,7 +24,7 @@ $manifest = Join-Path $release 'LOGICA-2.0-Beta-RC1-file-manifest.json'
 $sums = Join-Path $release 'SHA256SUMS.txt'
 $commit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 function Write-FixtureManifest {
-    $entries = @(Get-ChildItem -LiteralPath $src -Recurse -File | ForEach-Object {
+    $entries = @(Get-ChildItem -LiteralPath $src -Recurse -File -Force | ForEach-Object {
         [pscustomobject]@{
             path = $_.FullName.Substring($src.Length + 1).Replace([char]92, '/')
             size = $_.Length
@@ -21,7 +35,19 @@ function Write-FixtureManifest {
 }
 function Write-FixtureZip {
     if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
-    Compress-Archive -Path (Join-Path $src '*') -DestinationPath $zip -CompressionLevel Optimal
+    # Compress-Archive silently omits hidden files (notably .env on Linux).
+    # Construct the fixture from the same -Force file inventory as the manifest,
+    # so security regressions actually exercise every private filename.
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($fixtureFile in @(Get-ChildItem -LiteralPath $src -Recurse -File -Force)) {
+            $entryName = $fixtureFile.FullName.Substring($src.Length + 1).Replace([char]92, '/')
+            [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $archive, $fixtureFile.FullName, $entryName,
+                [System.IO.Compression.CompressionLevel]::Optimal)
+        }
+    } finally { $archive.Dispose() }
     $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
 }
@@ -132,6 +158,39 @@ try {
             Remove-Item -LiteralPath $privatePath -Force
         }
     }
+    # Regression for the complete private-state predicate: both filename and
+    # nested-directory forms must be rejected by the independent verifier.
+    foreach ($private in @('nested/.env', 'nested/.env.production', 'nested/.env.test', 'nested/credentials.json', 'nested/private.pfx',
+                           'nested/backup.sql', 'nested/dump.sql.gz',
+                           'nested/mysql-data/table.ibd', '.ssh/known_hosts')) {
+        $privatePath = Join-Path $src $private
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $privatePath) | Out-Null
+        [IO.File]::WriteAllText($privatePath, 'isolated dummy fixture')
+        try {
+            Write-FixtureManifest
+            Write-FixtureZip
+            Assert-Rejected "private manifest entry $private" 'Credential, database state or backup forbidden in release manifest'
+        } finally {
+            Remove-Item -LiteralPath $privatePath -Force
+        }
+    }
+    # The real Windows POS suite builds these executables for CI only.
+    # Even a correctly hashed manifest must not allow them into the customer ZIP.
+    foreach ($smoke in @('PosSmoke.exe', 'DesktopPaymentCultureSmoke.exe',
+                         'DesktopArticleDeleteSmoke.exe', 'DesktopArticleDeleteSmoke.exe.config',
+                         'DesktopSolderGuardSmoke.exe', 'DesktopSolderGuardSmoke.exe.config',
+                         'CatalogueDuplicateMariaDbSmoke.exe', 'CatalogueDuplicateMariaDbSmoke.exe.config',
+                         'CatalogueCreationMariaDbSmoke.exe', 'CatalogueCreationMariaDbSmoke.exe.config')) {
+        $smokePath = Join-Path $src $smoke
+        [IO.File]::WriteAllText($smokePath, 'isolated QA-only binary fixture')
+        try {
+            Write-FixtureManifest
+            Write-FixtureZip
+            Assert-Rejected "bundled QA executable $smoke" "QA test executable forbidden in customer release"
+        } finally {
+            Remove-Item -LiteralPath $smokePath -Force
+        }
+    }
     Write-FixtureManifest
     Write-FixtureZip
     & $verifier -ZipPath $zip -ManifestPath $manifest -SumsPath $sums -ExpectedCommit $commit | Out-Null
@@ -200,6 +259,33 @@ try {
     $digest = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
     "$digest  LOGICA-2.0-Beta-RC1-Windows-x86.zip" | Set-Content -LiteralPath $sums -Encoding ASCII
     Assert-Rejected 'excessive ZIP entry count' 'Beta ZIP entry count exceeds safety limit'
+    # The independent ZIP verifier must reject sensitive files even when the
+    # attacker supplies a matching manifest and ZIP SHA256 (not just extra files).
+    foreach ($private in @('nested/.env', 'nested/credentials.json', 'nested/private-key.pem',
+                           'nested/backup.sql', 'nested/data.ibd', 'nested/dump.sql.gz',
+                           '.ssh/id_rsa', 'bd/mysql-data/ibdata1')) {
+        $privatePath = Join-Path $src $private
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $privatePath) | Out-Null
+        [IO.File]::WriteAllText($privatePath, 'isolated dummy private state')
+        try {
+            Write-FixtureManifest
+            Write-FixtureZip
+            # Legacy bd/mysql-data is rejected by the earlier dedicated guard;
+            # all other private payloads use the general manifest guard.
+            $expectedDiagnostic = if ($private -eq 'bd/mysql-data/ibdata1') {
+                'Forbidden persisted test data in manifest'
+            } else {
+                'Credential, database state or backup forbidden in release manifest'
+            }
+            Assert-Rejected "private payload $private" $expectedDiagnostic
+        } finally {
+            Remove-Item -LiteralPath $privatePath -Force
+        }
+    }
+    Write-FixtureManifest
+    Write-FixtureZip
+    & $verifier -ZipPath $zip -ManifestPath $manifest -SumsPath $sums -ExpectedCommit $commit | Out-Null
+    Write-Host 'PASS: clean release accepted after private payload probes'
     # Highly compressible payloads must fail before content is streamed or extracted.
     Write-FixtureZip
     $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Update)

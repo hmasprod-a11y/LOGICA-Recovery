@@ -1,0 +1,71 @@
+name: QA Inventory exact-source Windows compiler acceptance
+on:
+  push:
+    branches:
+      - integration/hanouty-qa-desktop-inventory-20261102
+    paths:
+      - '.github/workflows/qa-inventory-windows-compiler.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inventory-compiler:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout reviewed Inventory source
+        uses: actions/checkout@v4
+        with:
+          ref: a88f482e7075783c7a4cd5e6dc8f43af97005156
+          path: inventory
+          persist-credentials: false
+      - name: Assert exact reviewed Inventory commit
+        shell: pwsh
+        run: |
+          $actual = (git -C inventory rev-parse HEAD).Trim()
+          if ($actual -cne 'a88f482e7075783c7a4cd5e6dc8f43af97005156') { throw "Inventory provenance mismatch: $actual" }
+          "qa=${{ github.sha }}`ninventory=$actual" | Set-Content source-provenance.txt
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore original runtime dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Expand-Archive inventory/input/LOGICA-dependencies.zip -DestinationPath inventory/dependencies -Force
+      - name: Compile original Windows POS and preserve every diagnostic
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force evidence | Out-Null
+          dotnet build inventory/recovered-source/LOGICA.csproj -c Release --nologo -v:q -o inventory/dist *> evidence/windows-build.log
+          $exit = $LASTEXITCODE
+          $diagnostics = @(Get-Content evidence/windows-build.log | Select-String 'error CS0234:')
+          $records = @($diagnostics | ForEach-Object {
+            $line = $_.Line
+            if ($line -match '(?<file>[^\\/:]+\.cs)\((?<line>\d+),(?<column>\d+)\): error CS0234: (?<detail>.+)') {
+              [pscustomobject]@{ file=$Matches.file; line=[int]$Matches.line; column=[int]$Matches.column; detail=$Matches.detail }
+            }
+          } | Sort-Object file,line,column -Unique)
+          if ($diagnostics.Count -gt 0 -and $records.Count -eq 0) {
+            throw 'CS0234 diagnostics detected but parser did not extract any file/line: do not report false clean result'
+          }
+          $records | ConvertTo-Json -Depth 4 | Set-Content evidence/cs0234-diagnostics.json
+          Write-Host "CS0234 diagnostics: $($records.Count); compiler exit: $exit"
+          foreach ($group in ($records | Group-Object file | Sort-Object Name)) {
+            Write-Host "$($group.Name): $($group.Count) lines $((@($group.Group.line) -join ','))"
+          }
+          if ($exit -ne 0) { throw "Inventory Windows compiler failed; full log and deduplicated diagnostics uploaded" }
+          if ($records.Count -ne 0) { throw "Compiler reported CS0234 despite successful exit" }
+          Write-Host 'PASS: reviewed Inventory source compiled on Windows with no CS0234'
+      - name: Upload exact-source compiler evidence, including failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hanouty-inventory-compiler-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            source-provenance.txt
+            evidence/windows-build.log
+            evidence/cs0234-diagnostics.json

@@ -411,7 +411,7 @@ public class ToastForm : Form
 
 	public void PlayBackgroundSoundResource()
 	{
-		((Computer)MyProject.Computer).Audio.Play(Application.StartupPath + "\\notif.wav", (AudioPlayMode)1);
+		((Computer)MyProject.Computer).Audio.Play(global::System.Windows.Forms.Application.StartupPath + "\\notif.wav", (AudioPlayMode)1);
 	}
 
 	private void ToastForm_Activated(object sender, EventArgs e)

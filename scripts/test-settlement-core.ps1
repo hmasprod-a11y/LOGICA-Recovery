@@ -1,6 +1,14 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-$compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework/v4.0.30319/csc.exe'
+# Match the domain gate's Roslyn compiler: the .NET Framework inbox csc cannot parse
+# nullable reference directives in shared settlement source. Preserve x86 and
+# the existing isolated source list; do not change any business assertions.
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+if (-not (Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio vswhere.exe missing; modern C# compiler required.' }
+$vs = (& $vswhere -latest -products '*' -requires Microsoft.Component.MSBuild -property installationPath | Select-Object -First 1)
+if (-not $vs) { throw 'Visual Studio MSBuild installation missing; cannot compile settlement tests.' }
+$compiler = Join-Path $vs 'MSBuild/Current/Bin/Roslyn/csc.exe'
+if (-not (Test-Path -LiteralPath $compiler)) { throw 'Visual Studio Roslyn csc.exe missing.' }
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('logica-settlement-core-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temporary | Out-Null
 try {

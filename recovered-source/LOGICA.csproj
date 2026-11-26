@@ -112,4 +112,10 @@
       <Private>true</Private>
     </Reference>
   </ItemGroup>
+  <!-- ArchitectureBridge/.NET 10 checkout adapters are compiled by modernization/checkout-mariadb-production, not the legacy net48 WinForms host. -->
+  <ItemGroup>
+    <Compile Remove="LOGICA/Infrastructure/Checkout/AuthorizedCheckoutMariaDbPort.cs" />
+    <Compile Remove="LOGICA/Infrastructure/Checkout/MariaDbCashCheckoutPreparation.cs" />
+    <Compile Remove="LOGICA/Infrastructure/Checkout/MySqlCheckoutAtomicPostingBoundary.cs" />
+  </ItemGroup>
 </Project>
