@@ -33,7 +33,7 @@ internal static class Program
         void QueuePin(bool capture=false){host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{var prompt=app.Windows.Cast<Window>().SingleOrDefault(w=>w.Owner==host.Window&&Controls<PasswordBox>(w).Any());try{Require(prompt is not null,"PIN keypad did not open.");if(capture)Capture(prompt!,Path.Combine(evidence,"demo-pin.png"));Controls<PasswordBox>(prompt!).Single().Password="1234";Controls<Button>(prompt!).Single(b=>b.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));}catch(Exception ex){failure=ex;prompt?.Close();}}));}
         void VisitSection(string buttonName,string expectedType,string image)
         {
-            var opened=false;var stockEditorOpened=false;var articleCreated=false;var expires=DateTime.UtcNow.AddSeconds(20);
+            var opened=false;var stockEditorOpened=false;var articleCreated=false;var articleEdited=false;var expires=DateTime.UtcNow.AddSeconds(20);
             var timer=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(100)};
             timer.Tick+=(_,_)=>{
                 if(DateTime.UtcNow>expires){Console.Error.WriteLine("Section did not open: "+buttonName);Environment.Exit(1);}
@@ -58,6 +58,21 @@ internal static class Program
                             }));
                             Controls<Button>(modal).Single(b=>Equals(b.Content,"Ajouter un article")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                             Require(articleCreated,"New article action was ignored.");
+                        }
+                        if(modal is DailyStockDialog&&!articleEdited)
+                        {
+                            var articles=Controls<DataGrid>(modal).Single(g=>System.Windows.Automation.AutomationProperties.GetName(g)=="Articles et stocks trouvés");
+                            articles.SelectedItem=articles.Items.Cast<DailyStockReader.Article>().Single(a=>a.Code=="NEW-"+beforeCounter);
+                            host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{
+                                var editor=app.Windows.OfType<CataloguePriceDialog>().Single(w=>w.IsVisible);
+                                Controls<TextBox>(editor).Single(t=>System.Windows.Automation.AutomationProperties.GetName(t)=="Nom de la fiche").Text="Article modifié depuis le stock";
+                                var save=Controls<Button>(editor).Single(b=>Equals(b.Content,"Enregistrer la fiche"));
+                                Require(save.IsEnabled,"Selected stock article did not load its editable card.");save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                                Require(Convert.ToInt32(Scalar("SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Code='NEW-"+beforeCounter+"' AND Article='Article modifié depuis le stock'"))==1,"Selected article card did not persist its edit.");
+                                Capture(editor,Path.Combine(evidence,"demo-edit-article.png"));articleEdited=true;editor.Close();
+                            }));
+                            Controls<Button>(modal).Single(b=>Equals(b.Content,"Modifier la fiche article")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            Require(articleEdited,"Edit article action was ignored.");
                         }
                         if(modal is DailyStockDialog&&!stockEditorOpened)
                         {
@@ -121,7 +136,7 @@ internal static class Program
                 VisitSection("Ouvrir le journal des ventes","SalesJournalDialog","demo-journal.png");
                 VisitSection("Ouvrir les statistiques des ventes","SalesJournalDialog","demo-statistics.png");
                 VisitSection("Paramètres du poste","WorkstationSettingsMenu","demo-settings.png");
-                File.WriteAllText(Path.Combine(evidence,"demo-ui.json"),JsonSerializer.Serialize(new{NoLogicaConfiguration=true,TwelveProducts=true,Pin1234=true,TouchSelection=true,OriginalPriceVisible=true,FamilyFilter=true,Scanner1002=true,FixedPayButton=true,CashCalculatorWithoutRepeatedPin=true,OnePinAtLogin=true,StockAndCounter=true,NextCustomerTotal=true,StockSectionOpens=true,StockEditorWrites=true,ThreeStockModesPersisted=true,CreateArticleFromStock=true,JournalSectionOpens=true,StatisticsSectionOpens=true,SettingsSectionOpens=true,PreviousCounter=beforeCounter,CurrentCounter=beforeCounter+1}));result=0;
+                File.WriteAllText(Path.Combine(evidence,"demo-ui.json"),JsonSerializer.Serialize(new{NoLogicaConfiguration=true,TwelveProducts=true,Pin1234=true,TouchSelection=true,OriginalPriceVisible=true,FamilyFilter=true,Scanner1002=true,FixedPayButton=true,CashCalculatorWithoutRepeatedPin=true,OnePinAtLogin=true,StockAndCounter=true,NextCustomerTotal=true,StockSectionOpens=true,StockEditorWrites=true,ThreeStockModesPersisted=true,CreateArticleFromStock=true,EditArticleFromStock=true,JournalSectionOpens=true,StatisticsSectionOpens=true,SettingsSectionOpens=true,PreviousCounter=beforeCounter,CurrentCounter=beforeCounter+1}));result=0;
             }catch(Exception ex){Console.Error.WriteLine(ex);}finally{pinGuard.Stop();host.Window.Close();app.Shutdown();}
         }));
         app.Run(host.Window);return result;
