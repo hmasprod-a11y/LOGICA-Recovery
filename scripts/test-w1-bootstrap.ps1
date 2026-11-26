@@ -31,7 +31,7 @@ GRANT SELECT ON logica_ci.TABLE_ARTICLES TO 'hanouty_w1_read'@'127.0.0.1';
 $client = Join-Path $MariaDbBin 'mariadb.exe'
 & $client --host=127.0.0.1 --port=3307 --user=root --password=logica-ci-only -e $sql
 if ($LASTEXITCODE -ne 0) { throw 'Disposable schema setup failed' }
-$env:HANOUTY_CATALOGUE_CONNECTION = 'Server=127.0.0.1;Port=3307;Database=logica_ci;Uid=hanouty_w1_read;Pwd=disposable-read-only;SslMode=None;Connection Timeout=5;'
+$env:HANOUTY_CATALOGUE_CONNECTION = 'Server=127.0.0.1;Port=3307;Database=logica_ci;Uid=hanouty_w1_read;Pwd=disposable-read-only;SslMode=Disabled;Connection Timeout=5;'
 $env:HANOUTY_DATA_DIRECTORY = $data
 $process = Start-Process -FilePath ([IO.Path]::GetFullPath($HostExe)) -ArgumentList @('--catalogue-only','--verify-disposable-catalogue',('"' + $evidence + '"')) -PassThru -WindowStyle Hidden
 try {
