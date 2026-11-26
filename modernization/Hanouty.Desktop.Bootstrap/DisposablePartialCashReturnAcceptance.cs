@@ -15,6 +15,7 @@ internal static partial class DisposableCashSaleAcceptance
 {
     private static void VerifyPartialCashReturnUi(CatalogueSettings settings, string pin)
     {
+        TraceStep("Partial cash return touch quantities and fresh PIN");
         using (var stream = typeof(DisposableCashSaleAcceptance).Assembly.GetManifestResourceStream("Hanouty.PartialCashReturnMigration"))
         using (var reader = new StreamReader(stream ?? throw new InvalidOperationException("Partial return test migration missing."))) Sql(settings, reader.ReadToEnd());
         Func<MySqlConnection> connections = () => new MySqlConnection(settings.ConnectionString);
@@ -52,6 +53,22 @@ internal static partial class DisposableCashSaleAcceptance
                             TouchCataloguePrice(partial, input, quantity, true);
                             CatalogueControls<CheckBox>(partial).Single().IsChecked = true;
                             picked = true;
+                            // A DispatcherTimer cannot tick again while its own handler is
+                            // blocked in the next ShowDialog. Queue that PIN independently.
+                            partial.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
+                            {
+                                var prompt = Application.Current.Windows.Cast<Window>().SingleOrDefault(window =>
+                                    window.Owner == host.Window && CatalogueControls<PasswordBox>(window).Any());
+                                try
+                                {
+                                    Require(prompt is not null, "Partial return confirmation did not request its PIN.");
+                                    CatalogueControls<PasswordBox>(prompt!).Single().Password = pin;
+                                    enteredPin = true;
+                                    CatalogueControls<Button>(prompt!).Single(button => button.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                                }
+                                catch (Exception ex) { failure = ex; prompt?.Close(); }
+                            }));
+                            timer.Stop();
                             CatalogueControls<Button>(partial).Single(button => button.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                         }
                         else if (modal is not null && CatalogueControls<PasswordBox>(modal).SingleOrDefault() is { } password && !enteredPin)

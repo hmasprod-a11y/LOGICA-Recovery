@@ -24,7 +24,7 @@ jobs:
       - name: Build actual combined host and Adapter regression
         shell: pwsh
         run: |
-          dotnet build modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj -c Release --nologo
+          dotnet build modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj -c Release --nologo -p:HanoutyCatalogueOnly=true
           if ($LASTEXITCODE -ne 0) { throw 'Combined host failed to build' }
           dotnet run --project modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Adapter regression failed' }

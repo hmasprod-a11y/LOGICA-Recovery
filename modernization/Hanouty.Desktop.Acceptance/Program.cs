@@ -8,6 +8,8 @@ public static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        if (args.Length == 2 && args[0] == "--verify-disposable-cash-sale")
+            return DisposableCashSaleAcceptance.Run(Path.GetFullPath(args[1]));
         if (args.Length != 1)
         {
             Console.Error.WriteLine("Usage: Hanouty.Desktop.Acceptance <evidence-output.json>");
