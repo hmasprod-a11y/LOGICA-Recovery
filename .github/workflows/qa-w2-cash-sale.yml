@@ -287,6 +287,12 @@ jobs:
           foreach ($property in $proof.PSObject.Properties) {
             if ($property.Value -ne $true) { throw "Missing original settings proof: $($property.Name)" }
           }
+      - name: Verify writable daily stock with original authorization and durable replay
+        shell: pwsh
+        run: ./scripts/DailyStockAdjustmentAcceptance.ps1 -MariaDbBin $env:HANOUTY_W2_MARIADB_BIN -EvidenceDirectory ./evidence/daily-stock-adjustments
+      - name: Verify extended original settings and numeric keypad without repeated PIN
+        shell: pwsh
+        run: ./scripts/Test-HanoutyOriginalSettings.ps1 -MariaDbBin $env:HANOUTY_W2_MARIADB_BIN -EvidenceDirectory ./evidence/original-settings
       - name: Verify protected original-data preparation and actual copied-profile cashier
         shell: pwsh
         run: |

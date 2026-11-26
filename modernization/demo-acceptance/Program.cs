@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -33,14 +33,32 @@ internal static class Program
         void QueuePin(bool capture=false){host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{var prompt=app.Windows.Cast<Window>().SingleOrDefault(w=>w.Owner==host.Window&&Controls<PasswordBox>(w).Any());try{Require(prompt is not null,"PIN keypad did not open.");if(capture)Capture(prompt!,Path.Combine(evidence,"demo-pin.png"));Controls<PasswordBox>(prompt!).Single().Password="1234";Controls<Button>(prompt!).Single(b=>b.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));}catch(Exception ex){failure=ex;prompt?.Close();}}));}
         void VisitSection(string buttonName,string expectedType,string image)
         {
-            var opened=false;var expires=DateTime.UtcNow.AddSeconds(20);
+            var opened=false;var stockEditorOpened=false;var expires=DateTime.UtcNow.AddSeconds(20);
             var timer=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(100)};
             timer.Tick+=(_,_)=>{
                 if(DateTime.UtcNow>expires){Console.Error.WriteLine("Section did not open: "+buttonName);Environment.Exit(1);}
-                foreach(var modal in app.Windows.Cast<Window>().Where(w=>w.Owner==host.Window&&w.IsVisible).ToArray())
+                foreach(var modal in app.Windows.Cast<Window>().Where(w=>w.Owner==host.Window&&w.IsVisible).Reverse().ToArray())
                 {
                     if(Controls<PasswordBox>(modal).Any())throw new InvalidOperationException("Opening a section requested a repeated PIN.");
-                    if(modal.GetType().Name==expectedType){Capture(modal,Path.Combine(evidence,image));opened=true;modal.Close();return;}
+                    if(modal is DailyStockAdjustmentDialog){Capture(modal,Path.Combine(evidence,"demo-stock-editor.png"));stockEditorOpened=true;modal.Close();return;}
+                    if(modal.GetType().Name==expectedType)
+                    {
+                        if(modal is DailyStockDialog&&!stockEditorOpened)
+                        {
+                            var grid=Controls<DataGrid>(modal).Single(g=>System.Windows.Automation.AutomationProperties.GetName(g)=="Articles et stocks trouvés");
+                            grid.SelectedItem=grid.Items.Cast<DailyStockReader.Article>().Single(a=>a.Id=="DEMO-1");
+                            var adjust=Controls<Button>(modal).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="Modifier le stock de l’article");
+                            Require(adjust.IsEnabled,"Integrated stock adjustment action is disabled.");
+                            host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{
+                                var editor=app.Windows.OfType<DailyStockAdjustmentDialog>().SingleOrDefault(w=>w.IsVisible);
+                                if(editor is null){Console.Error.WriteLine("Integrated stock adjustment editor missing.");Environment.Exit(1);return;}
+                                Capture(editor,Path.Combine(evidence,"demo-stock-editor.png"));stockEditorOpened=true;editor.Close();
+                            }));
+                            adjust.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            Require(stockEditorOpened,"Integrated stock adjustment did not open its editor.");
+                        }
+                        Capture(modal,Path.Combine(evidence,image));opened=true;modal.Close();return;
+                    }
                 }
             };
             timer.Start();try{var button=Controls<Button>(host.Window).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)==buttonName);Require(button.IsEnabled,"Section disabled: "+buttonName);button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));}finally{timer.Stop();}
@@ -77,7 +95,7 @@ internal static class Program
                 VisitSection("Ouvrir le journal des ventes","SalesJournalDialog","demo-journal.png");
                 VisitSection("Ouvrir les statistiques des ventes","SalesJournalDialog","demo-statistics.png");
                 VisitSection("Paramètres du poste","WorkstationSettingsMenu","demo-settings.png");
-                File.WriteAllText(Path.Combine(evidence,"demo-ui.json"),JsonSerializer.Serialize(new{NoLogicaConfiguration=true,TwelveProducts=true,Pin1234=true,TouchSelection=true,OriginalPriceVisible=true,FamilyFilter=true,Scanner1002=true,FixedPayButton=true,CoinsAndFreshPin=true,StockAndCounter=true,NextCustomerTotal=true,StockSectionOpens=true,JournalSectionOpens=true,StatisticsSectionOpens=true,SettingsSectionOpens=true,PreviousCounter=beforeCounter,CurrentCounter=beforeCounter+1}));result=0;
+                File.WriteAllText(Path.Combine(evidence,"demo-ui.json"),JsonSerializer.Serialize(new{NoLogicaConfiguration=true,TwelveProducts=true,Pin1234=true,TouchSelection=true,OriginalPriceVisible=true,FamilyFilter=true,Scanner1002=true,FixedPayButton=true,CashCalculatorWithoutRepeatedPin=true,OnePinAtLogin=true,StockAndCounter=true,NextCustomerTotal=true,StockSectionOpens=true,JournalSectionOpens=true,StatisticsSectionOpens=true,SettingsSectionOpens=true,PreviousCounter=beforeCounter,CurrentCounter=beforeCounter+1}));result=0;
             }catch(Exception ex){Console.Error.WriteLine(ex);}finally{pinGuard.Stop();host.Window.Close();app.Shutdown();}
         }));
         app.Run(host.Window);return result;

@@ -12,7 +12,9 @@ using MySql.Data.MySqlClient;
 internal static class OriginalWorkstationSettingsAcceptance
 {
  [STAThread] static void Main(string[] args){
- var cs=new MySqlConnectionStringBuilder{Server="127.0.0.1",Port=33082,UserID="root",Password="settings-test-only",CharacterSet="utf8mb4",Pooling=false};
+ if(Environment.GetEnvironmentVariable("HANOUTY_ORIGINAL_SETTINGS_DISPOSABLE")!="I_ACKNOWLEDGE_DISPOSABLE_DB_ONLY")throw new InvalidOperationException("Explicit disposable settings server required.");
+ var cs=new MySqlConnectionStringBuilder(Environment.GetEnvironmentVariable("HANOUTY_ORIGINAL_SETTINGS_CONNECTION")??throw new InvalidOperationException("Disposable settings connection missing.")){CharacterSet="utf8mb4",Pooling=false};
+ if(cs.Server!="127.0.0.1")throw new InvalidOperationException("Disposable loopback required.");
  using var db=new MySqlConnection(cs.ConnectionString);db.Open();
  void Sql(string text){using var cmd=new MySqlCommand(text,db);cmd.ExecuteNonQuery();}
  string Value(string text){using var cmd=new MySqlCommand(text,db);return Convert.ToString(cmd.ExecuteScalar())??"";}

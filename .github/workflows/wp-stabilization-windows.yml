@@ -37,6 +37,6 @@ jobs:
           dotnet publish modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj `
             -c Release -r win-x64 --self-contained true `
             -p:PublishSingleFile=false -p:HanoutyWpfAsLibrary=true `
-            -p:ArchitectureProject=modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj `
-            -p:CheckoutProductionProject=modernization/checkout-mariadb-production/CheckoutMariaDbProduction.csproj `
+            -p:ArchitectureProject="${{ github.workspace }}/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj" `
+            -p:CheckoutProductionProject="${{ github.workspace }}/modernization/checkout-mariadb-production/CheckoutMariaDbProduction.csproj" `
             -o "${{ runner.temp }}/hanouty-prod-publish"

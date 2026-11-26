@@ -8,6 +8,8 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$architecture = Join-Path $root 'modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj'
+$checkout = Join-Path $root 'modernization/checkout-mariadb-production/CheckoutMariaDbProduction.csproj'
 Push-Location $root
 try {
     Write-Host '=== [1/5] Checking Windows prerequisites (.NET 10 SDK) ===' -ForegroundColor Cyan
@@ -42,29 +44,21 @@ try {
     & dotnet run --project licensing/Hanouty.Licensing.Smoke/Hanouty.Licensing.Smoke.csproj -c Release -f net10.0 --no-build
     if ($LASTEXITCODE -ne 0) { throw 'Licensing smoke test failed.' }
 
-    Write-Host '=== [4/5] Publishing production self-contained EXE (without acceptance code) ===' -ForegroundColor Cyan
+    Write-Host '=== [4/5] Publishing engineering candidate (without acceptance code) ===' -ForegroundColor Cyan
     $publishDir = Join-Path ([IO.Path]::GetFullPath($OutputRoot)) 'publish'
-    if (Test-Path $publishDir) { Remove-Item $publishDir -Recurse -Force }
+    if (Test-Path -LiteralPath $publishDir) { throw 'Choose a new output directory; existing published files are preserved.' }
     & dotnet publish modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj `
         -c Release -r $Runtime --self-contained true `
         -p:PublishSingleFile=false -p:HanoutyWpfAsLibrary=true `
-        -p:ArchitectureProject=modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj `
-        -p:CheckoutProductionProject=modernization/checkout-mariadb-production/CheckoutMariaDbProduction.csproj `
+        "-p:ArchitectureProject=$architecture" `
+        "-p:CheckoutProductionProject=$checkout" `
         -o $publishDir
     if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed.' }
 
-    Write-Host '=== [5/5] Building Windows Installer (Inno Setup) if available ===' -ForegroundColor Cyan
-    if (-not $SkipInstaller) {
-        $iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
-        if ($null -ne $iscc) {
-            & $iscc.Source "/DPublishDir=$publishDir" (Join-Path $root 'scripts/Hanouty-Installer.iss')
-            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installer build failed.' }
-        } else {
-            Write-Warning 'iscc.exe (Inno Setup 6) not found in PATH; skipping installer packaging. Published EXE is ready.'
-        }
-    }
+    Write-Host '=== [5/5] Candidate built; financial package acceptance remains required ===' -ForegroundColor Cyan
+    Write-Host "Candidate EXE: $(Join-Path $publishDir 'Hanouty.Desktop.Bootstrap.exe')"
+    Write-Host 'Use the W2 workflow and verified customer-delivery builder for a distributable installer.'
 
-    Write-Host "DONE. Production EXE: $(Join-Path $publishDir 'Hanouty.Desktop.Bootstrap.exe')" -ForegroundColor Green
 }
 finally {
     Pop-Location

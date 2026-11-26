@@ -6,6 +6,8 @@ namespace Hanouty.Desktop.Wpf;
 
 public partial class MainWindow : Window
 {
+    private ICashierDialogService? dialogService;
+    public ICashierDialogService DialogService { get => dialogService ??= new WpfCashierDialogService(this); set => dialogService = value ?? throw new ArgumentNullException(nameof(value)); }
     private Func<DateTime, DateTime, IReadOnlyList<CustomerCreditStatementRow>>? _readCustomerCreditStatement;
 
     private Func<IReadOnlyList<string>>? _customerPaymentModes;
@@ -32,7 +34,7 @@ public partial class MainWindow : Window
             MessageBox.Show(this, "Les modes de paiement sont indisponibles. Le relevé reste consultable, sans règlement.",
                 "Règlement client", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-        new CustomerCreditStatementDialog(_readCustomerCreditStatement, modes, _submitCustomerSettlement) { Owner = this }.ShowDialog();
+        DialogService.ShowCustomerCreditStatement(_readCustomerCreditStatement, modes, _submitCustomerSettlement);
     }
 
     private Action? _openSupplierSettlements;
@@ -90,7 +92,7 @@ public partial class MainWindow : Window
             MessageBox.Show(this, "Ouvrez une session et terminez le panier en cours.", "Inventaire");
             return;
         }
-        new InventoryCountWindow(workflow) { Owner = this }.ShowDialog();
+        DialogService.ShowInventoryCount(workflow);
     }
 
     private Func<bool>? _restoreWaitingSale;
@@ -179,7 +181,7 @@ public partial class MainWindow : Window
             return;
 
         if (_closeCashDrawer is not null)
-            new CashDrawerCountDialog(_closeCashDrawer, null) { Owner = this }.ShowDialog();
+            DialogService.ShowCashDrawerCount(_closeCashDrawer, null);
     }
 
     private void SetOpeningCash_Click(object sender, RoutedEventArgs e)
@@ -188,7 +190,7 @@ public partial class MainWindow : Window
             DataContext is not CatalogueViewModel { FinancialSessionActive: true, CheckoutBusy: false })
             return;
 
-        new CashDrawerCountDialog(null, _setOpeningCash) { Owner = this }.ShowDialog();
+        DialogService.ShowCashDrawerCount(null, _setOpeningCash);
     }
 
     // Test assembly only: permits recording adapters for STA view tests. Production callers

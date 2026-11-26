@@ -12,7 +12,7 @@ public static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        #if HANOUTY_FINANCIAL
+        #if HANOUTY_FINANCIAL && HANOUTY_ACCEPTANCE
         if (args.Length == 2 && args[0] == "--verify-disposable-cash-sale")
             return DisposableCashSaleAcceptance.Run(Path.GetFullPath(args[1]));
 #endif
