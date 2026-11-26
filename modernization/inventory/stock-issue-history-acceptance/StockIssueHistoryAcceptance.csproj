@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MySql.Data" Version="9.4.0" />
+    <PackageReference Include="MySql.Data" Version="9.5.0" />
     <Compile Include="../../Hanouty.Desktop.Bootstrap/StockIssueValidation.cs" Link="StockIssueValidation.cs" />
     <Compile Include="../../Hanouty.Desktop.Bootstrap/InventoryDocumentValidation.cs" Link="InventoryDocumentValidation.cs" />
     <None Include="../../../input/migrations/20261117-stock-issue-history.sql" Link="migration.sql" CopyToOutputDirectory="PreserveNewest" />
