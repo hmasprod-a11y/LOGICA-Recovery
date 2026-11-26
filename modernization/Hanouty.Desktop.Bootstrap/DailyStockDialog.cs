@@ -6,14 +6,14 @@ namespace Hanouty.Desktop.Bootstrap;
 
 internal sealed record DailyStockHooks(Action<DailyStockReader.Article>? OpenArticle = null, Action? OpenInventory = null,
     Action? OpenReceipts = null, Action? OpenStockIssues = null, Action? OpenCatalogue = null,
-    Action<DailyStockReader.Article>? AdjustStock = null);
+    Action<DailyStockReader.Article>? AdjustStock = null, Action? NewArticle = null);
 
 internal sealed class DailyStockDialog : Window
 {
     internal DailyStockDialog(DailyStockReader reader, DailyStockReader.Access access, DailyStockHooks? hooks = null)
     {
         hooks ??= new DailyStockHooks();
-        Title = "Articles et stock"; Width = 1120; Height = 740; MinWidth = 780; MinHeight = 520;
+        Title = "Articles et stock"; Width = 1120; Height = 740; WindowState = WindowState.Maximized; MinWidth = 780; MinHeight = 520;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         var panel = new DockPanel { Margin = new Thickness(16) };
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
@@ -31,7 +31,7 @@ internal sealed class DailyStockDialog : Window
         var exact = Filter("Recherche exacte"); var ignoreZero = Filter("Ignorer les stocks à zéro"); var alerts = Filter("Alertes stock"); var negative = Filter("Stocks négatifs");
         var actions = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) }; top.Children.Add(actions);
         Button ActionButton(string text) { var button = new Button { Content = text, MinHeight = 40, Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(0, 0, 8, 0) }; actions.Children.Add(button); return button; }
-        var find = ActionButton("Rechercher / Actualiser"); var card = ActionButton("Ouvrir la fiche article"); card.Visibility = hooks.OpenArticle is null ? Visibility.Collapsed : Visibility.Visible;
+        var find = ActionButton("Rechercher / Actualiser"); var card = ActionButton("Modifier la fiche article"); card.Visibility = hooks.OpenArticle is null ? Visibility.Collapsed : Visibility.Visible;
         var adjust=ActionButton("Augmenter / diminuer le stock");adjust.Visibility=hooks.AdjustStock is null?Visibility.Collapsed:Visibility.Visible;
         System.Windows.Automation.AutomationProperties.SetName(adjust,"Modifier le stock de l’article");
         void Hook(string text, Action? action)
@@ -79,6 +79,7 @@ internal sealed class DailyStockDialog : Window
                 var result = reader.Search(access, new DailyStockReader.Query(query.Text.Trim(), exact.IsChecked == true, family.SelectedIndex <= 0 ? "" : family.SelectedItem as string ?? "",
                     ignoreZero.IsChecked == true, alerts.IsChecked == true, negative.IsChecked == true));
                 grid.ItemsSource = result.Articles;
+                if (result.Articles.Length == 1) grid.SelectedIndex = 0;
                 status.Text = result.HasMore ? "Plus de200 articles : précisez les filtres pour consulter la suite." : $"{result.Articles.Length} article(s) · stock relu à {DateTime.Now:HH:mm:ss}.";
             }
             catch (Exception ex) { status.Text = ex.Message; }
@@ -87,6 +88,7 @@ internal sealed class DailyStockDialog : Window
         foreach (var filter in new[] { exact, ignoreZero, alerts, negative }) { filter.Checked += (_, _) => Invalidate(); filter.Unchecked += (_, _) => Invalidate(); }
         grid.SelectionChanged += (_, _) => Selection(); find.Click += (_, _) => Load();
         query.KeyDown += (_, args) => { if (args.Key == System.Windows.Input.Key.Enter) { args.Handled = true; Load(); } };
+        grid.MouseDoubleClick += (_, _) => { if (card.IsEnabled) card.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); };
         card.Click += (_, _) => { if (grid.SelectedItem is not DailyStockReader.Article row) return; try { reader.Recheck(access); hooks.OpenArticle?.Invoke(row); Load(); } catch (Exception ex) { status.Text = ex.Message; } };
         adjust.Click+=(_,_)=>{if(grid.SelectedItem is not DailyStockReader.Article row)return;try{reader.Recheck(access);hooks.AdjustStock?.Invoke(row);Load();}catch(Exception ex){status.Text=ex.Message;}};
         movements.Click += (_, _) =>
@@ -102,6 +104,8 @@ internal sealed class DailyStockDialog : Window
             catch (Exception ex) { status.Text = ex.Message; }
         };
         first.SelectedDateChanged += (_, _) => journal.ItemsSource = null; last.SelectedDateChanged += (_, _) => journal.ItemsSource = null;
+        Hook("Ajouter un article", hooks.NewArticle);
+        if (hooks.NewArticle is not null) { var addArticle = actions.Children[actions.Children.Count - 1]; actions.Children.Remove(addArticle); actions.Children.Insert(0, addArticle); }
         Hook("Inventaire physique", hooks.OpenInventory); Hook("Réceptions", hooks.OpenReceipts); Hook("Bons de sortie / Avoirs", hooks.OpenStockIssues);
         Hook("Catalogue et prix", hooks.OpenCatalogue);
         Content = panel; Selection(); Loaded += (_, _) => Load();

@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$AcceptedPackageDirectory,[Parameter(Mandatory=$true)][string]$MariaDbArchive,[Parameter(Mandatory=$true)][string]$MariaDbChecksums,[Parameter(Mandatory=$true)][string]$OutputDirectory)
+﻿param([Parameter(Mandatory=$true)][string]$AcceptedPackageDirectory,[Parameter(Mandatory=$true)][string]$MariaDbArchive,[Parameter(Mandatory=$true)][string]$MariaDbChecksums,[Parameter(Mandatory=$true)][string]$OutputDirectory)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $repo=Split-Path $PSScriptRoot
@@ -18,7 +18,7 @@ $sql=[Text.StringBuilder]::new()
 [void]$sql.AppendLine("CREATE DATABASE hanouty_demo CHARACTER SET utf8mb4; USE hanouty_demo; SET SESSION sql_mode='NO_AUTO_VALUE_ON_ZERO'; SET default_storage_engine=InnoDB;")
 foreach($table in $tables){[void]$sql.AppendLine($table.Value)}
 foreach($file in (Get-ChildItem -LiteralPath (Join-Path $repo 'input/migrations') -Filter '*.sql' | Sort-Object Name)){[void]$sql.AppendLine([IO.File]::ReadAllText($file.FullName))}
-[void]$sql.AppendLine("INSERT INTO TABLE_NUM (ID,CL,CLIENT,INV,BC,BR,BS) VALUES (0,0,0,0,0,0,0);")
+[void]$sql.AppendLine("INSERT INTO TABLE_NUM (ID,CL,CLIENT,INV,BC,BR,BS,ARTICLE) VALUES (0,0,0,0,0,0,0,0);")
 $passDdl=($tables | Where-Object {$_.Value -match '^CREATE TABLE\s+`TABLE_PASS`'}).Value
 $permissions=@([regex]::Matches($passDdl,'`([^`]+)`\s+varchar') | ForEach-Object {$_.Groups[1].Value} | Where-Object {$_ -notin @('ID_USER','ListUser','ListPass','Catégorie')})
 $columns=(@('ID_USER','ListUser','ListPass','Catégorie')+$permissions | ForEach-Object {'`'+$_+'`'}) -join ','
@@ -32,7 +32,7 @@ $i=0
 foreach($product in $products){$i++; $cost=([decimal]$product[2]).ToString([Globalization.CultureInfo]::InvariantCulture); $price=([decimal]$product[3]).ToString([Globalization.CultureInfo]::InvariantCulture); $name=$product[0].Replace("'","''"); [void]$sql.AppendLine("INSERT INTO TABLE_ARTICLES (ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V_1,PRIX_V_2,STOCK,Alert,TAUX_TVA,PROMOTION,Images,VISIBLE,TYPE) VALUES ('DEMO-$i','$('{0:D4}' -f (1000+$i))','$name','$($product[1])',$cost,$cost,$price,$price,100,5,0,0,'0','OUI','ARTICLE');")}
 New-Item -ItemType Directory -Path $out -Force | Out-Null
 [IO.File]::WriteAllText((Join-Path $out 'demo.sql'),$sql.ToString(),[Text.UTF8Encoding]::new($false))
-$upgrade=[IO.File]::ReadAllText((Join-Path $repo 'input/migrations/20261122-daily-stock-adjustments.sql'))
+$upgrade="UPDATE TABLE_NUM SET ARTICLE=0 WHERE ID=0 AND ARTICLE IS NULL AND NOT EXISTS (SELECT 1 FROM TABLE_ARTICLES WHERE ID_ARTICLE REGEXP '^ART[0-9]+$');`n"+[IO.File]::ReadAllText((Join-Path $repo 'input/migrations/20261122-daily-stock-adjustments.sql'))
 foreach($pair in @(@('MODIF_STOCK_MANUEL','True'),@('GESTION_CLOTURE','True'),@('CLOTURE_CAISSIER_OBLIGER','False'),@('FONDS_CAISSE','0'))){$upgrade+="`nINSERT INTO TABLE_PARAMETRES (OBJET,VALEUR) SELECT '$($pair[0])','$($pair[1])' WHERE NOT EXISTS (SELECT 1 FROM TABLE_PARAMETRES WHERE BINARY OBJET=BINARY '$($pair[0])');"}
 [IO.File]::WriteAllText((Join-Path $out 'demo-upgrades.sql'),$upgrade,[Text.UTF8Encoding]::new($false))
 Copy-Item -LiteralPath $payload -Destination $out

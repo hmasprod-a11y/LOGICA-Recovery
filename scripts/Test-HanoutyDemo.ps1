@@ -40,7 +40,7 @@ try{
             for($attempt=0;$attempt -lt 40;$attempt++){Start-Sleep -Milliseconds 500;& (Join-Path $bin 'mariadb-admin.exe') --host=127.0.0.1 --port=$port --user=root --password=$password ping 2>$null | Out-Null;if($LASTEXITCODE -eq 0){$ready=$true;break}}
             if(-not $ready){throw 'Owned demo verification database did not start.'}
             if($SourceApplication -and $pass -eq 1){
-                $fixtureSql='USE hanouty_demo;'+[IO.File]::ReadAllText((Join-Path $repo 'input/migrations/20261122-daily-stock-adjustments.sql'))
+                $fixtureSql="USE hanouty_demo;UPDATE TABLE_NUM SET ARTICLE=0 WHERE ID=0 AND ARTICLE IS NULL AND NOT EXISTS (SELECT 1 FROM TABLE_ARTICLES WHERE ID_ARTICLE REGEXP '^ART[0-9]+$');"+[IO.File]::ReadAllText((Join-Path $repo 'input/migrations/20261122-daily-stock-adjustments.sql'))
                 foreach($pair in @(@('MODIF_STOCK_MANUEL','True'),@('GESTION_CLOTURE','True'),@('CLOTURE_CAISSIER_OBLIGER','False'),@('FONDS_CAISSE','0'))){$fixtureSql+="`nINSERT INTO TABLE_PARAMETRES (OBJET,VALEUR) SELECT '$($pair[0])','$($pair[1])' WHERE NOT EXISTS (SELECT 1 FROM TABLE_PARAMETRES WHERE BINARY OBJET=BINARY '$($pair[0])');"}
                 $fixtureSql | & (Join-Path $bin 'mariadb.exe') --host=127.0.0.1 --port=$port --user=root --password=$password --default-character-set=utf8mb4
                 if($LASTEXITCODE -ne 0){throw 'Owned source-only fixture upgrade failed.'}

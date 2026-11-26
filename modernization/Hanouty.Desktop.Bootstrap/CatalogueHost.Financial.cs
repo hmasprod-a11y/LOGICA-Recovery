@@ -834,6 +834,8 @@ public sealed partial record CatalogueHost
                 var access = reader.Authorize(actor, role => Active() ? window.PromptCashDrawerApproval(role) : "");
                 if (!Active()) throw new InvalidOperationException("La session du stock a changé.");
                 new DailyStockDialog(reader, access, new DailyStockHooks(
+                    OpenArticle: selected => Child(() => OpenCatalogue(selected.Id)),
+                    NewArticle: () => Child(() => OpenCatalogue(creating: true)),
                     OpenInventory: () => Child(window.ShowInventoryFromStock),
                     OpenReceipts: () => Child(window.ShowReceiptsFromStock),
                     OpenStockIssues: () => Child(window.ShowStockIssuesFromStock),
@@ -847,7 +849,7 @@ public sealed partial record CatalogueHost
                     }))) { Owner = window }.ShowDialog();
             }
             catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
-            { System.Windows.MessageBox.Show(window, ex is UnauthorizedAccessException or InvalidOperationException ? ex.Message : "Stock indisponible.", "Articles et stock"); }
+            { window.SetBasketActionFeedback(ex is UnauthorizedAccessException or InvalidOperationException ? ex.Message : "Stock indisponible. Vérifiez la connexion et les données du poste."); }
             finally { dailyStockChild = false; dailyStockOpen = false; vm.ReloadCatalogue(); }
         });
         window.ConfigureWorkstationSettings(() =>
@@ -976,7 +978,7 @@ public sealed partial record CatalogueHost
             return customerCredits.Read(from, to);
         });
 
-        window.ConfigureCataloguePrices(() =>
+        void OpenCatalogue(string? selectedId = null, bool creating = false)
         {
             if (!CanChangeStockContext() || activeCashierId is not { } actor || binding.Session.PendingCount != 0)
                 return;
@@ -1030,10 +1032,11 @@ public sealed partial record CatalogueHost
                     return string.IsNullOrWhiteSpace(pin) ? null : editor.Import(lines, actor, pin).Count;
                 }
                 finally { reviewing = false; }
-            }, selectImportFile) { Owner = window };
+            }, selectImportFile, selectedId, creating) { Owner = window };
             dialog.ShowDialog();
             vm.ReloadCatalogue();
-        });
+        }
+        window.ConfigureCataloguePrices(() => OpenCatalogue());
         vm.PrintCommittedSale = (operation, payment) =>
         {
             var directory = WorkstationPrinterProfile.DirectoryFor(settings, twoDigitWorkstation);
