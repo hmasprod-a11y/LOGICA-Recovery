@@ -124,18 +124,25 @@ public sealed partial record CatalogueHost
         string twoDigitWorkstation, Func<System.Windows.Window, string?>? selectImportFile = null) =>
         CreateWorkstationCore(settings, twoDigitWorkstation, selectImportFile, null);
 
+    // Daily LOGICA flow: authenticate once at entry, then use that session for
+    // ordinary operations. Explicit engineering APIs retain their fresh-PIN seam.
+    public static CatalogueHost CreateDailyCashierWorkstation(CatalogueSettings settings,
+        string twoDigitWorkstation, Func<System.Windows.Window, string?>? selectImportFile = null) =>
+        CreateWorkstationCore(settings, twoDigitWorkstation, selectImportFile, null, true);
+
     internal static CatalogueHost CreateCashierWorkstationWithAcknowledgementFault(
         CatalogueSettings settings, string twoDigitWorkstation, Action afterCommitFault) =>
         CreateWorkstationCore(settings, twoDigitWorkstation, null, afterCommitFault);
 
     private static CatalogueHost CreateWorkstationCore(CatalogueSettings settings,
-        string twoDigitWorkstation, Func<System.Windows.Window, string?>? selectImportFile, Action? afterCommitFault)
+        string twoDigitWorkstation, Func<System.Windows.Window, string?>? selectImportFile, Action? afterCommitFault, bool sessionAuthorization = false)
     {
         MainWindow? window = null;
+        var credentials = sessionAuthorization ? new CashierSessionCredentials() : null;
         var host = CreateFinancialCore(settings, twoDigitWorkstation,
-            () => window?.PromptCashierPin() ??
+            () => credentials?.Read() ?? window?.PromptCashierPin() ??
                 throw new InvalidOperationException("Cashier window unavailable."),
-            null, afterCommitFault, afterCommitFault is null ? null : ex => Console.Error.WriteLine(ex), selectImportFile);
+            null, afterCommitFault, afterCommitFault is null ? null : ex => Console.Error.WriteLine(ex), selectImportFile, credentials);
         window = host.Window;
         return host;
     }
@@ -160,7 +167,7 @@ public sealed partial record CatalogueHost
         string twoDigitWorkstation, Func<string> transientPinProvider,
         AuthorizedCheckoutPaymentContext? initialContext, Action? afterCommitAcknowledgementFault,
         Action<Exception>? postingFailureDiagnostic,
-        Func<System.Windows.Window, string?>? selectImportFile = null)
+        Func<System.Windows.Window, string?>? selectImportFile = null, CashierSessionCredentials? sessionCredentials = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(transientPinProvider);
@@ -208,6 +215,8 @@ public sealed partial record CatalogueHost
         if (!vm.CatalogueAvailable)
             throw new InvalidOperationException("Local financial catalogue could not be loaded.");
         var result = new CatalogueHost(window, vm, binding.Session);
+        string ReadCashierPin(string actor) => sessionCredentials?.Read(actor) ?? window.PromptCashierPin(actor);
+        window.Closed += (_, _) => sessionCredentials?.Dispose();
         string? lastReviewed = null;
         var reviewing = false;
         var customerFilesOpen = false;
@@ -325,6 +334,7 @@ public sealed partial record CatalogueHost
             if (!CanChangeContext() || binding.Session.PendingCount != 0) return false;
             captured = null;
             activeCashierId = null;
+            sessionCredentials?.Clear();
             manualDiscount = null;
             waitingSaleId = null;
             contextConsumed = true;
@@ -382,8 +392,19 @@ public sealed partial record CatalogueHost
         window.ConfigureBasketQuantity((articleId, quantity) =>
         {
             if (!CanChangeContext() || !vm.FinancialSessionActive ||
-                activeCashierId is null || !binding.Session.SetPendingQuantity(articleId, quantity))
+                activeCashierId is null)
                 return false;
+            if(sessionCredentials is not null)
+            {
+                try
+                {
+                    MariaDbCashCheckoutServices.VerifyCashierSession(connections,activeCashierId,()=>ReadCashierPin(activeCashierId));
+                    if(!OriginalCashierPermissions.Authorize(connections,activeCashierId,quantity==0?"ANNULATION":"MODIF_QTE",window.PromptCashDrawerApproval))
+                    {window.SetBasketActionFeedback("Cette modification n’est pas autorisée pour le caissier.");return false;}
+                }
+                catch(Exception ex)when(ex is not OutOfMemoryException and not StackOverflowException){window.SetBasketActionFeedback("La session ou les droits ont changé. Reconnectez le caissier.");return false;}
+            }
+            if(!binding.Session.SetPendingQuantity(articleId,quantity))return false;
             if (binding.Session.PendingCount == 0) waitingSaleId = null;
             CurrentManualDiscount();
             captured = null;
@@ -391,6 +412,18 @@ public sealed partial record CatalogueHost
             context = new CashierPaymentContext(activeCashierId, twoDigitWorkstation, "MAD", "Cash", 0m);
             vm.PaymentContext = context;
             return true;
+        });
+        window.ConfigureBasketClear(()=>
+        {
+            if(!CanChangeContext()||!vm.FinancialSessionActive||activeCashierId is not {} actor||binding.Session.PendingCount==0)return false;
+            try
+            {
+                MariaDbCashCheckoutServices.VerifyCashierSession(connections,actor,()=>ReadCashierPin(actor));
+                if(sessionCredentials is not null&&!OriginalCashierPermissions.Authorize(connections,actor,"ANNULATION",window.PromptCashDrawerApproval))return false;
+                binding.Session.DiscardInvalidated();manualDiscount=null;waitingSaleId=null;captured=null;contextConsumed=true;
+                context=new CashierPaymentContext(actor,twoDigitWorkstation,"MAD","Cash",0m);vm.PaymentContext=context;return true;
+            }
+            catch(Exception ex)when(ex is not OutOfMemoryException and not StackOverflowException){window.SetBasketActionFeedback("Le panier n’a pas été annulé. Vérifiez la session et les droits.");return false;}
         });
         window.ConfigurePinLogin(pin =>
         {
@@ -406,6 +439,7 @@ public sealed partial record CatalogueHost
             { window.SetLoginFeedback("Code d’accès incorrect ou utilisateur indisponible."); return false; }
             finally { reviewing = false; }
             if (!CanChangeContext() || binding.Session.PendingCount != 0 || ReadTrustedTotal() != 0m) return false;
+            sessionCredentials?.Bind(cashier, pin);
             activeCashierId = cashier; captured = null; contextConsumed = true; manualDiscount = null; waitingSaleId = null;
             context = new CashierPaymentContext(cashier, twoDigitWorkstation, "MAD", "Cash", 0m);
             vm.PaymentContext = context; vm.FinancialSessionActive = true;
@@ -425,7 +459,7 @@ public sealed partial record CatalogueHost
                 try
                 {
                     MariaDbCashCheckoutServices.VerifyCashierSession(connections, cashier,
-                        () => window.PromptCashierPin(cashier));
+                        () => ReadCashierPin(cashier));
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
                 { return false; }
@@ -543,7 +577,7 @@ public sealed partial record CatalogueHost
             reviewing = true;
             try
             {
-                var pin = window.PromptCashierPin(cashier);
+                var pin = ReadCashierPin(cashier);
                 if (string.IsNullOrEmpty(pin)) return false;
                 var role = cashClosing.RequiredApprovalRole(cashier, pin);
                 var approvalPin = role is null ? null : window.PromptCashDrawerApproval(role);
@@ -616,7 +650,7 @@ public sealed partial record CatalogueHost
             reviewing = true;
             try
             {
-                var pin = window.PromptCashierPin(cashier);
+                var pin = ReadCashierPin(cashier);
                 if (string.IsNullOrEmpty(pin) || !ConfirmCashDrawer(window,
                     $"Enregistrer {opening:N2} MAD comme fond de caisse ?", "Fond de caisse")) return false;
                 cashClosing.SetOpening(cashier, pin, opening);
@@ -636,7 +670,7 @@ public sealed partial record CatalogueHost
             reviewing = true;
             try
             {
-                var pin = window.PromptCashierPin(cashier);
+                var pin = ReadCashierPin(cashier);
                 if (string.IsNullOrEmpty(pin)) return;
                 var role = cashClosing.RequiredApprovalRole(cashier, pin, expense: true);
                 var approval = role is null ? null : window.PromptCashDrawerApproval(role);
@@ -666,7 +700,7 @@ public sealed partial record CatalogueHost
                 if (!CanChangeStockContext() || !vm.FinancialSessionActive || activeCashierId != actor ||
                     binding.Session.PendingCount != 0) return "";
                 reviewing = true;
-                try { return window.PromptCashierPin(actor); }
+                try { return ReadCashierPin(actor); }
                 finally { reviewing = false; }
             });
         });
@@ -678,7 +712,7 @@ public sealed partial record CatalogueHost
             {
                 if (!CanChangeStockContext() || activeCashierId != actor || binding.Session.PendingCount != 0) return "";
                 reviewing = true;
-                try { return window.PromptCashierPin(actor); }
+                try { return ReadCashierPin(actor); }
                 finally { reviewing = false; }
             }) { Owner = window };
             dialog.ShowDialog();
@@ -695,7 +729,7 @@ public sealed partial record CatalogueHost
                 reviewing = true;
                 try
                 {
-                    var pin = window.PromptCashierPin(actor);
+                    var pin = ReadCashierPin(actor);
                     if (string.IsNullOrWhiteSpace(pin)) return false;
                     receipt.Validate(reviewed, actor, pin);
                     return true;
@@ -708,7 +742,7 @@ public sealed partial record CatalogueHost
                 reviewing = true;
                 try
                 {
-                    var pin = window.PromptCashierPin(actor);
+                    var pin = ReadCashierPin(actor);
                     return string.IsNullOrWhiteSpace(pin) ? null :
                         receipt.CreateFromOrder(order, lines, actor, pin);
                 }
@@ -720,7 +754,7 @@ public sealed partial record CatalogueHost
                 reviewing = true;
                 try
                 {
-                    var pin = window.PromptCashierPin(actor);
+                    var pin = ReadCashierPin(actor);
                     if (string.IsNullOrWhiteSpace(pin) ||
                         !ConfirmCashDrawer(window, $"Annuler le bon {reviewed.Id} et libérer la quantité réservée ?",
                             "Annulation du bon")) return false;
@@ -735,7 +769,7 @@ public sealed partial record CatalogueHost
                 reviewing = true;
                 try
                 {
-                    var pin = window.PromptCashierPin(actor);
+                    var pin = ReadCashierPin(actor);
                     return string.IsNullOrWhiteSpace(pin) ? null :
                         receipt.CreateOrder(supplier, lines, actor, pin);
                 }
@@ -764,7 +798,7 @@ public sealed partial record CatalogueHost
                     reviewing = true;
                     try
                     {
-                        var pin = window.PromptCashierPin(actor);
+                        var pin = ReadCashierPin(actor);
                         if (string.IsNullOrWhiteSpace(pin) || !vm.FinancialSessionActive || activeCashierId != actor ||
                             vm.CheckoutBusy || vm.CheckoutUncertain || binding.Session.PendingCount != 0) return false;
                         return service.Record(request, actor, pin);
@@ -803,7 +837,14 @@ public sealed partial record CatalogueHost
                     OpenInventory: () => Child(window.ShowInventoryFromStock),
                     OpenReceipts: () => Child(window.ShowReceiptsFromStock),
                     OpenStockIssues: () => Child(window.ShowStockIssuesFromStock),
-                    OpenCatalogue: () => Child(window.ShowCatalogueFromStock))) { Owner = window }.ShowDialog();
+                    OpenCatalogue: () => Child(window.ShowCatalogueFromStock),
+                    AdjustStock: sessionCredentials is null ? null : selected => Child(()=>
+                    {
+                        var service=new DailyStockAdjustmentService(settings.ConnectionString,
+                            ()=>Active()&&dailyStockChild?sessionCredentials.VerifiedActor:null,()=>ReadCashierPin(actor));
+                        var authorization=service.Authorize(window.PromptCashDrawerApproval);
+                        new DailyStockAdjustmentDialog(service,authorization,selected,settings.DataDirectory){Owner=window}.ShowDialog();
+                    }))) { Owner = window }.ShowDialog();
             }
             catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
             { System.Windows.MessageBox.Show(window, ex is UnauthorizedAccessException or InvalidOperationException ? ex.Message : "Stock indisponible.", "Articles et stock"); }
@@ -818,7 +859,7 @@ public sealed partial record CatalogueHost
             {
                 var settingsStore = new DailyLogicaSettingsStore(settings.ConnectionString);
                 // LOGICA FUN_CAT_ACCES grants PARAMETRES to ADMIN only.
-                var access = settingsStore.Authorize(actor, () => window.PromptCashierPin(actor));
+                var access = settingsStore.Authorize(actor, () => ReadCashierPin(actor));
                 void Authorize()
                 {
                     if (!businessDocumentsOpen || !vm.FinancialSessionActive || activeCashierId != actor ||
@@ -832,13 +873,21 @@ public sealed partial record CatalogueHost
                     () =>
                     {
                         Authorize();
+                        if(sessionCredentials is not null)
+                        {
+                            var originalStore=new OriginalWorkstationSettingsStore(settings.ConnectionString,
+                                ()=>businessDocumentsOpen&&vm.FinancialSessionActive&&activeCashierId==actor&&ReferenceEquals(context,settingsContext)?actor:null,
+                                ()=>ReadCashierPin(actor));
+                            new OriginalWorkstationSettingsDialog(new OriginalWorkstationSettingsWorkflow(originalStore)){Owner=window}.ShowDialog();
+                            return;
+                        }
                         var workflow = new DailyLogicaSettingsWorkflow(settingsStore, access, () =>
                             businessDocumentsOpen && vm.FinancialSessionActive && activeCashierId == actor && ReferenceEquals(context, settingsContext) &&
                             !vm.CheckoutBusy && !vm.CheckoutUncertain && vm.PendingOperationId is null && binding.Session.PendingCount == 0 && binding.Session.State == CheckoutCommitState.Ready,
-                            () => window.PromptCashierPin(actor));
+                            () => ReadCashierPin(actor));
                         new DailyLogicaSettingsDialog(workflow) { Owner = window }.ShowDialog();
                     },
-                    () => { Authorize(); new WorkstationPrinterDialog(settings, twoDigitWorkstation, Authorize) { Owner = window }.ShowDialog(); })
+                    () => { Authorize(); new WorkstationPrinterDialog(settings, twoDigitWorkstation, Authorize) { Owner = window }.ShowDialog(); },sessionCredentials is not null)
                     { Owner = window }.ShowDialog();
             }
             catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
@@ -856,7 +905,7 @@ public sealed partial record CatalogueHost
                     ReferenceEquals(context, journalContext) && !vm.CheckoutBusy && !vm.CheckoutUncertain &&
                     vm.PendingOperationId is null && binding.Session.PendingCount == 0 && binding.Session.State == CheckoutCommitState.Ready;
                 var reader = new SalesJournalReader(settings.ConnectionString);
-                var access = reader.Authorize(actor, () => window.PromptCashierPin(actor), statistics);
+                var access = reader.Authorize(actor, () => ReadCashierPin(actor), statistics);
                 if (!Active()) throw new InvalidOperationException("La session du journal a changé.");
                 var workflow = new SalesJournalWorkflow(reader, access, Active, selected =>
                 {
@@ -877,7 +926,7 @@ public sealed partial record CatalogueHost
             {
                 bool Active() => businessDocumentsOpen && vm.FinancialSessionActive && activeCashierId == actor &&
                     !vm.CheckoutBusy && !vm.CheckoutUncertain && vm.PendingOperationId is null && binding.Session.PendingCount == 0 && binding.Session.State == CheckoutCommitState.Ready;
-                var workflow = new BusinessDocumentsWorkflow(new BusinessDocumentStore(settings.ConnectionString, actor), Active, () => window.PromptCashierPin(actor));
+                var workflow = new BusinessDocumentsWorkflow(new BusinessDocumentStore(settings.ConnectionString, actor), Active, () => ReadCashierPin(actor));
                 new BusinessDocumentsDialog(workflow) { Owner = window }.ShowDialog();
             }
             catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
@@ -896,7 +945,7 @@ public sealed partial record CatalogueHost
                     !vm.CheckoutBusy && !vm.CheckoutUncertain && vm.PendingOperationId is null &&
                     binding.Session.PendingCount == 0 && binding.Session.State == CheckoutCommitState.Ready;
                 using var workflow = new CustomerFilesWorkflow(store, access, settings.ConnectionString, twoDigitWorkstation,
-                    settings.DataDirectory, Active, () => window.PromptCashierPin(actor));
+                    settings.DataDirectory, Active, () => ReadCashierPin(actor));
                 new CustomerFilesDialog(workflow) { Owner = window }.ShowDialog();
             }
             catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException)
@@ -912,7 +961,7 @@ public sealed partial record CatalogueHost
             reviewing = true;
             try
             {
-                var pin = window.PromptCashierPin(actor);
+                var pin = ReadCashierPin(actor);
                 if (string.IsNullOrWhiteSpace(pin) || !vm.FinancialSessionActive || activeCashierId != actor ||
                     vm.CheckoutBusy || vm.CheckoutUncertain || binding.Session.PendingCount != 0) return false;
                 return customerSettlements.Record(request, actor, pin);
@@ -939,7 +988,7 @@ public sealed partial record CatalogueHost
                 reviewing = true;
                 try
                 {
-                    var pin = window.PromptCashierPin(actor);
+                    var pin = ReadCashierPin(actor);
                     if (string.IsNullOrWhiteSpace(pin)) return false;
                     editor.Update(reviewed, price, actor, pin);
                     return true;
@@ -952,7 +1001,7 @@ public sealed partial record CatalogueHost
                 reviewing = true;
                 try
                 {
-                    var pin = window.PromptCashierPin(actor);
+                    var pin = ReadCashierPin(actor);
                     return string.IsNullOrWhiteSpace(pin) ? null :
                         editor.Create(name, barcode, family, price, actor, pin, variantOf);
                 }
@@ -964,7 +1013,7 @@ public sealed partial record CatalogueHost
                 reviewing = true;
                 try
                 {
-                    var pin = window.PromptCashierPin(actor);
+                    var pin = ReadCashierPin(actor);
                     if (string.IsNullOrWhiteSpace(pin)) return false;
                     editor.UpdateCard(card, name, barcode, family, details, actor, pin);
                     return true;
@@ -977,7 +1026,7 @@ public sealed partial record CatalogueHost
                 reviewing = true;
                 try
                 {
-                    var pin = window.PromptCashierPin(actor);
+                    var pin = ReadCashierPin(actor);
                     return string.IsNullOrWhiteSpace(pin) ? null : editor.Import(lines, actor, pin).Count;
                 }
                 finally { reviewing = false; }

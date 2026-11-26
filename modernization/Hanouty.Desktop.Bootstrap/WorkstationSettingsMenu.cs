@@ -4,7 +4,7 @@ using System.Windows.Controls;
 namespace Hanouty.Desktop.Bootstrap;
 internal sealed class WorkstationSettingsMenu : Window
 {
-    internal WorkstationSettingsMenu(Action ticketSettings, Action printerSettings)
+    internal WorkstationSettingsMenu(Action ticketSettings, Action printerSettings,bool extended=false)
     {
         Title = "Paramètres de la caisse"; Width = 540; SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner; ResizeMode = ResizeMode.NoResize;
@@ -25,7 +25,7 @@ internal sealed class WorkstationSettingsMenu : Window
             };
             panel.Children.Add(button);
         }
-        Choice("Ticket et modes de paiement", "Modèle, branchement, numéro, QR, modes de paiement et pied du ticket LOGICA.", ticketSettings);
+        Choice(extended?"Vente, stock, caisse et ticket":"Ticket et modes de paiement", extended?"Options LOGICA de vente, correction du stock, clôtures, fonds de caisse et ticket.":"Modèle, branchement, numéro, QR, modes de paiement et pied du ticket LOGICA.", ticketSettings);
         Choice("Imprimante de ce poste", "Choisir l’imprimante Windows et conserver ce choix lors des mises à jour.", printerSettings);
         panel.Children.Add(status);
         var close = new Button { Content = "Fermer", IsCancel = true, MinHeight = 40, Margin = new Thickness(0, 14, 0, 0) }; panel.Children.Add(close);

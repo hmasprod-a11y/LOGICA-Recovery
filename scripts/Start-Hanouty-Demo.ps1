@@ -73,6 +73,7 @@ try {
         Run-Sql ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'demo.sql'))) | Out-Null
         @{Version=1;SeedSha256=(Get-FileHash -LiteralPath (Join-Path $PSScriptRoot 'demo.sql')).Hash} | ConvertTo-Json | Set-Content -LiteralPath $seedMarker -Encoding UTF8
     }
+    if(Test-Path -LiteralPath (Join-Path $PSScriptRoot 'demo-upgrades.sql')){Run-Sql ('USE hanouty_demo;'+[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'demo-upgrades.sql'))) | Out-Null}
     $appData=Join-Path $root 'catalogue'; New-Item -ItemType Directory -Force -Path (Join-Path $appData 'bd/images') | Out-Null
     if(-not(Test-Path -LiteralPath (Join-Path $appData 'gestion_credit.sni'))){[IO.File]::WriteAllText((Join-Path $appData 'gestion_credit.sni'),'True')}
     if(-not(Test-Path -LiteralPath (Join-Path $appData 'PRINTER_CL.sni'))){[IO.File]::WriteAllText((Join-Path $appData 'PRINTER_CL.sni'),'0')}

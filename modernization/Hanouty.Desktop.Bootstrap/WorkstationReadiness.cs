@@ -9,7 +9,7 @@ internal static class WorkstationReadiness
         var required = new[] { "TABLE_PASS", "TABLE_ARTICLES", "TABLE_NUM", "TABLE_VENTES_ENTETE", "TABLE_VENTES_JOURNAL", "TABLE_VENTES_REGLEMENTS",
             "hanouty_checkout_operations", "hanouty_cash_return_consumption", "hanouty_purchase_receipt_order", "hanouty_catalogue_price_audit",
             "hanouty_stock_issue_history", "hanouty_client_settlement_operations", "hanouty_supplier_settlement_operations", "hanouty_customer_file_operations",
-            "hanouty_return_line_consumption", "hanouty_stock_issue_create_operations" };
+            "hanouty_return_line_consumption", "hanouty_stock_issue_create_operations", "hanouty_daily_stock_adjustments" };
         foreach (var table in required)
         {
             using var command = new MySqlCommand("SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@name", db);

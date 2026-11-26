@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$BundleDirectory,[Parameter(Mandatory=$true)][string]$EvidenceDirectory,[string]$Dotnet='dotnet')
+param([Parameter(Mandatory=$true)][string]$BundleDirectory,[Parameter(Mandatory=$true)][string]$EvidenceDirectory,[string]$Dotnet='dotnet',[switch]$SourceApplication)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 Add-Type -AssemblyName System.Security
@@ -18,9 +18,9 @@ if($LASTEXITCODE -ne 0){throw 'Demo UI verifier did not build.'}
 # rebuilt application. Only the verifier executable remains from this build.
 $application=@(Get-ChildItem -LiteralPath $root -Directory | Where-Object Name -like 'application-*')
 if($application.Count -ne 1){throw 'Expected one extracted demonstration application.'}
-Copy-Item -Path (Join-Path $application[0].FullName '*') -Destination $runner -Recurse -Force
+if(-not $SourceApplication){Copy-Item -Path (Join-Path $application[0].FullName '*') -Destination $runner -Recurse -Force}
 $runtimeManifest=Get-Content -LiteralPath (Join-Path $application[0].FullName 'HANOUTY-MANIFEST.json') -Raw | ConvertFrom-Json
-foreach($file in $runtimeManifest.files){if((Get-FileHash -LiteralPath (Join-Path $runner $file.file)).Hash -ine $file.sha256){throw 'UI verifier is not using the delivered application bytes.'}}
+if(-not $SourceApplication){foreach($file in $runtimeManifest.files){if((Get-FileHash -LiteralPath (Join-Path $runner $file.file)).Hash -ine $file.sha256){throw 'UI verifier is not using the delivered application bytes.'}}}
 $previous=@{};foreach($name in @('HANOUTY_CATALOGUE_CONNECTION','HANOUTY_DATA_DIRECTORY','HANOUTY_WORKSTATION')){$previous[$name]=[Environment]::GetEnvironmentVariable($name,'Process')}
 try{
     foreach($pass in 1..2){
@@ -49,6 +49,6 @@ try{
     $second=Get-Content -LiteralPath (Join-Path $evidence 'pass-2/demo-ui.json') -Raw | ConvertFrom-Json
     if($first.PreviousCounter -ne 0 -or $second.PreviousCounter -ne $first.CurrentCounter -or $second.CurrentCounter -ne 2){throw 'Sales did not persist across restart.'}
     foreach($proof in @($first,$second)){foreach($field in @('StockSectionOpens','JournalSectionOpens','StatisticsSectionOpens','SettingsSectionOpens')){if($proof.$field -ne $true){throw "Section did not open: $field"}}}
-    @{OfflineFreshStart=$true;NoLogicaConfiguration=$true;Pin1234=$true;ActualWpfSales=$true;StockPosted=$true;RestartPreservesSales=$true;TwoSales=$true;DeliveredApplicationBytes=$true;StockSectionOpens=$true;JournalSectionOpens=$true;StatisticsSectionOpens=$true;SettingsSectionOpens=$true;ApplicationSource=$runtimeManifest.acceptanceSha} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'demo-acceptance.json') -Encoding UTF8
+    @{OfflineFreshStart=$true;NoLogicaConfiguration=$true;Pin1234=$true;ActualWpfSales=$true;StockPosted=$true;RestartPreservesSales=$true;TwoSales=$true;DeliveredApplicationBytes=(-not $SourceApplication);SourceApplication=[bool]$SourceApplication;StockSectionOpens=$true;JournalSectionOpens=$true;StatisticsSectionOpens=$true;SettingsSectionOpens=$true;ApplicationSource=$runtimeManifest.acceptanceSha} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'demo-acceptance.json') -Encoding UTF8
     Write-Host 'PASS offline demonstration, PIN, scanner, cash keypad, stock and restart persistence.'
 }finally{foreach($name in $previous.Keys){[Environment]::SetEnvironmentVariable($name,$previous[$name],'Process')}}

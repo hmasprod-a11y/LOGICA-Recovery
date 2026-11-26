@@ -138,7 +138,7 @@ internal static class Program
                     Capture(host.Window, Path.Combine(evidence, "prepared-cashier-sale.png"));
                 }
                 finally { host.Window.Close(); }
-                File.WriteAllText(Path.Combine(evidence, "protected-copy-gui.json"), JsonSerializer.Serialize(new { ActualPreparationWizard = true, FailedCopyPreservesProfile = true, OriginalSchema = true, ElevenEmbeddedMigrations = true,
+                File.WriteAllText(Path.Combine(evidence, "protected-copy-gui.json"), JsonSerializer.Serialize(new { ActualPreparationWizard = true, FailedCopyPreservesProfile = true, OriginalSchema = true, TwelveEmbeddedMigrations = true,
                     EncryptedProfileActivatedAfterValidation = true, CatalogueImageVerified = true, OriginalPrinterAndCreditFilesPreserved = true, UnicodePinLogin = true,
                     ActualScannerCashCoinsAndFreshPin = true, FixedPayButtonOpensCalculatorAndPosts = true, FirstSaleStockCounterPayment = true, OriginalDatabaseUnchanged = true }));
                 Console.WriteLine("PASS protected first-setup wizard, copied files/profile and real scanner/coin/PIN sale with original database unchanged."); result = 0;

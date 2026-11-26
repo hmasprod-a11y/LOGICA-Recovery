@@ -5,6 +5,7 @@ internal static class ProtectedCopySchemaValidation
     internal static void Validate(MySqlConnection db)
     {
         var journals = new Dictionary<string,(string Columns,string Primary)> {
+            ["hanouty_daily_stock_adjustments"]=("OPERATION_ID:char,ACTOR:varchar,SESSION_HASH:char,ARTICLE_ROW_ID:bigint,ARTICLE_ID:varchar,BEFORE_STOCK:decimal,AFTER_STOCK:decimal,DELTA:decimal,MOVEMENT_ID:bigint,AUDIT_LABEL:varchar,PAYLOAD:longtext,CREATED_UTC:datetime","OPERATION_ID"),
             ["hanouty_checkout_operations"]=("operation_id:varchar,created_utc:timestamp","operation_id"),
             ["hanouty_cash_return_consumption"]=("original_ticket_id:varchar,return_operation_id:varchar,consumed_quantity:decimal","original_ticket_id"),
             ["hanouty_return_line_consumption"]=("original_ticket_id:varchar,article_id:varchar,returned_quantity:decimal,returned_net:decimal,last_operation_id:varchar","original_ticket_id,article_id"),

@@ -295,7 +295,7 @@ jobs:
           foreach ($field in @('Ready','SelectOnlySourceAccount','ProductionSaleOnCopy','OriginalAutoIncrementZeroPreserved','FirstCheckoutStockPaymentCounter','CheckoutReplay','SourceChangeRefused','InvalidOriginalCounterRefused','SourceUnchanged','OriginalSchemaFixture','Utf8Copy','InjectedAfterImportRefused','SameSchemaRefused','ExistingSchemaRefused','ExistingFolderRefused','TemporaryCredentialsRemoved')) {
             if ($backend.$field -ne $true) { throw "Missing protected database proof: $field" }
           }
-          if ($backend.MigrationCount -ne 11) { throw 'Missing protected preparation migrations' }
+          if ($backend.MigrationCount -ne 12) { throw 'Missing protected preparation migrations' }
           $gui = Get-Content ./evidence/protected-copy/gui/protected-copy-gui.json -Raw | ConvertFrom-Json
           if (@($gui.PSObject.Properties).Count -ne 12) { throw 'Incomplete protected-copy GUI evidence' }
           foreach ($property in $gui.PSObject.Properties) {

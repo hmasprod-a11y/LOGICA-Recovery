@@ -9,6 +9,7 @@
     <InternalsVisibleTo Include="Hanouty.ProtectedCopy.Gui.Acceptance" />
     <InternalsVisibleTo Include="Hanouty.Desktop.Acceptance" />
     <Compile Include="../../recovered-source/LOGICA/Application/Checkout/LogicaFrenchThreeColumn.cs" Link="LogicaFrenchThreeColumn.cs" />
+    <Compile Include="../../recovered-source/LOGICA/Application/Inventory/StockAdjustmentPlan.cs" Link="StockAdjustmentPlan.cs" />
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
     <Compile Include="../../recovered-source/LOGICA/Application/Checkout/ReceiptPrintRoute.cs" Link="ReceiptPrintRoute.cs" />
     <EmbeddedResource Include="Assets/LogicaReceiptLogo.jpg" LogicalName="LogicaReceiptLogo.jpg" />

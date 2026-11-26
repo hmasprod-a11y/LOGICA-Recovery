@@ -25,12 +25,16 @@ $columns=(@('ID_USER','ListUser','ListPass','Catégorie')+$permissions | ForEach
 $values=(@("'DEMO-ADMIN'","'Responsable DEMO'","'1234'","'ADMIN'")+@($permissions | ForEach-Object {"'VISIBLE'"})) -join ','
 [void]$sql.AppendLine("INSERT INTO TABLE_PASS ($columns) VALUES ($values);")
 foreach($pair in @(@('MODELE_TICKET','FR_3C'),@('BRANCHEMENT','USB'),@('AFFICHER_MODE_P','True'),@('AFFICHER_N_TICKET','True'),@('AFFICHER_CODE_BARRE','True'),@('PIED_TICKET','HANOUTY - DEMONSTRATION'),@('FENETRE_MODE_P','True'))){[void]$sql.AppendLine("INSERT INTO TABLE_PARAMETRES (OBJET,VALEUR) VALUES ('$($pair[0])','$($pair[1])');")}
+foreach($pair in @(@('MODIF_STOCK_MANUEL','True'),@('GESTION_CLOTURE','True'),@('CLOTURE_CAISSIER_OBLIGER','False'),@('FONDS_CAISSE','0'))){[void]$sql.AppendLine("INSERT INTO TABLE_PARAMETRES (OBJET,VALEUR) VALUES ('$($pair[0])','$($pair[1])');")}
 [void]$sql.AppendLine("INSERT INTO TABLE_MODE_P (MODE_P,Images) VALUES ('ESPECES','0'),('CARTE','0'); INSERT INTO TABLE_FAMILLES (Famille) VALUES ('Epicerie'),('Boissons'),('Entretien');")
 $products=@(@('Lait 1 L','Epicerie',4.5,6),@('Eau 1.5 L','Boissons',3,5),@('Sucre 1 kg','Epicerie',7,9),@('Huile 1 L','Epicerie',14,18),@('Farine 1 kg','Epicerie',5,7),@('The 200 g','Epicerie',12,16),@('Cafe 250 g','Epicerie',20,25),@('Biscuit','Epicerie',1.5,2),@('Jus 1 L','Boissons',9,12),@('Savon','Entretien',4,6),@('Lessive','Entretien',16,20),@('Riz 1 kg','Epicerie',11,15))
 $i=0
 foreach($product in $products){$i++; $cost=([decimal]$product[2]).ToString([Globalization.CultureInfo]::InvariantCulture); $price=([decimal]$product[3]).ToString([Globalization.CultureInfo]::InvariantCulture); $name=$product[0].Replace("'","''"); [void]$sql.AppendLine("INSERT INTO TABLE_ARTICLES (ID_ARTICLE,Code,Article,Famille,PRIX_A,PRIX_MP,PRIX_V_1,PRIX_V_2,STOCK,Alert,TAUX_TVA,PROMOTION,Images,VISIBLE,TYPE) VALUES ('DEMO-$i','$('{0:D4}' -f (1000+$i))','$name','$($product[1])',$cost,$cost,$price,$price,100,5,0,0,'0','OUI','ARTICLE');")}
 New-Item -ItemType Directory -Path $out -Force | Out-Null
 [IO.File]::WriteAllText((Join-Path $out 'demo.sql'),$sql.ToString(),[Text.UTF8Encoding]::new($false))
+$upgrade=[IO.File]::ReadAllText((Join-Path $repo 'input/migrations/20261122-daily-stock-adjustments.sql'))
+foreach($pair in @(@('MODIF_STOCK_MANUEL','True'),@('GESTION_CLOTURE','True'),@('CLOTURE_CAISSIER_OBLIGER','False'),@('FONDS_CAISSE','0'))){$upgrade+="`nINSERT INTO TABLE_PARAMETRES (OBJET,VALEUR) SELECT '$($pair[0])','$($pair[1])' WHERE NOT EXISTS (SELECT 1 FROM TABLE_PARAMETRES WHERE BINARY OBJET=BINARY '$($pair[0])');"}
+[IO.File]::WriteAllText((Join-Path $out 'demo-upgrades.sql'),$upgrade,[Text.UTF8Encoding]::new($false))
 Copy-Item -LiteralPath $payload -Destination $out
 Copy-Item -LiteralPath (Join-Path $AcceptedPackageDirectory 'financial-package-acceptance.json') -Destination $out
 Copy-Item -LiteralPath $MariaDbArchive -Destination (Join-Path $out 'mariadb-10.11.14-winx64.zip')

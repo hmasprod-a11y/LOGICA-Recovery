@@ -30,7 +30,7 @@ public static class Program
                 var settings = WorkstationConfiguration.Interactive();
                 if (settings is null) return 0;
                 var application = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
-                var workstation = CatalogueHost.CreateCashierWorkstation(settings, settings.WorkstationId);
+                var workstation = CatalogueHost.CreateDailyCashierWorkstation(settings, settings.WorkstationId);
                 workstation.Window.WindowState = WindowState.Maximized;
                 application.MainWindow = workstation.Window;
                 workstation.Window.Loaded += (_, _) => workstation.Window.ShowPinLogin();
