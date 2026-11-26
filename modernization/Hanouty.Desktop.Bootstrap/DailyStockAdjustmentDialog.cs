@@ -10,6 +10,7 @@ internal sealed class DailyStockAdjustmentDialog : Window
     internal DailyStockAdjustmentService.Result? Saved { get; private set; }
     internal DailyStockAdjustmentDialog(DailyStockAdjustmentService service, DailyStockAdjustmentService.Authorization authorization, DailyStockReader.Article selected, string dataDirectory)
     {
+        StockWorkspaceAppearance.Apply(this);
         var workflow = new DailyStockAdjustmentWorkflow(service, authorization, dataDirectory);
         try
         {

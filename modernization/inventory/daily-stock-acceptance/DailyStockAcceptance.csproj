@@ -4,5 +4,6 @@
     <PackageReference Include="MySql.Data" Version="9.5.0" />
     <Compile Include="../../Hanouty.Desktop.Bootstrap/DailyStockReader.cs" Link="DailyStockReader.cs" />
     <Compile Include="../../Hanouty.Desktop.Bootstrap/DailyStockDialog.cs" Link="DailyStockDialog.cs" />
+    <Compile Include="../../Hanouty.Desktop.Bootstrap/StockWorkspaceAppearance.cs" Link="StockWorkspaceAppearance.cs" />
   </ItemGroup>
 </Project>

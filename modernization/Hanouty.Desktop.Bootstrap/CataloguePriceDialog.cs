@@ -16,11 +16,11 @@ internal sealed class CataloguePriceDialog : Window
     internal CataloguePriceDialog(CataloguePriceEditor service, Func<CataloguePriceEditor.Price, decimal, bool> save,
         Func<string, string, string, decimal, string?, string?> create,
         Func<CataloguePriceEditor.Card, string, string, string, CataloguePriceEditor.CardDetails, bool> saveCard,
-        Func<IReadOnlyList<CataloguePriceEditor.ImportLine>, int?> import, Func<Window, string?>? selectImportFile = null)
+        Func<IReadOnlyList<CataloguePriceEditor.ImportLine>, int?> import, Func<Window, string?>? selectImportFile = null, string? selectedArticleId = null, bool creating = false)
     {
-        Title = "Prix du catalogue";
-        Width = 460;
-        SizeToContent = SizeToContent.Height;
+        StockWorkspaceAppearance.Apply(this);
+        Title = "Articles — fiche et prix";
+        Width = 900; Height = 720; MinWidth = 640; MinHeight = 520;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         var panel = new StackPanel { Margin = new Thickness(20) };
         var id = new TextBox { MinHeight = 36, IsReadOnly = true, Visibility = Visibility.Collapsed };
@@ -222,7 +222,19 @@ internal sealed class CataloguePriceDialog : Window
         editFields.Children.Add(apply);
         edit.Content = editFields;
         panel.Children.Add(edit);
-        Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        panel.Children.Remove(card); panel.Children.Remove(edit); panel.Children.Remove(status);
+        card.IsExpanded = edit.IsExpanded = true;
+        var pages = new TabControl();
+        TabItem Page(string label, UIElement body) { var tab = new TabItem { Header = label, Content = new ScrollViewer { Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto } }; pages.Items.Add(tab); return tab; }
+        Page("Rechercher / Prix", panel);
+        var createPage = Page("Ajouter un article", card);
+        var editPage = Page("Modifier la fiche", edit);
+        var layout = new DockPanel { Margin = new Thickness(12) };
+        status.FontSize = 16; status.MinHeight = 34; DockPanel.SetDock(status, Dock.Bottom); layout.Children.Add(status); layout.Children.Add(pages); Content = layout;
+        Loaded += (_, _) => {
+            if (creating) { pages.SelectedItem = createPage; name.Focus(); }
+            else if (selectedArticleId is not null) { id.Text = selectedArticleId; open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); readCard.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); pages.SelectedItem = editPage; }
+        };
         MaxHeight = SystemParameters.WorkArea.Height;
 
         CataloguePriceEditor.Card? reviewedCard = null;

@@ -105,14 +105,14 @@ internal static class DailyStockAcceptance
                 grid.SelectedItem = grid.Items.OfType<DailyStockReader.Article>().Single(row => row.Id == "A");
                 Require(Button("Afficher les mouvements").IsEnabled, "Selecting an unambiguous article did not enable history.");
                 Capture(dialog, Path.Combine(evidence, "daily-stock-overview.png"));
-                Click(Button("Ouvrir la fiche article")); Require(opened == "A", "Article hook targeted another barcode variant.");
+                Click(Button("Modifier la fiche article")); Require(opened == "A", "Article hook targeted another barcode variant.");
                 grid.SelectedItem = grid.Items.OfType<DailyStockReader.Article>().Single(row => row.Id == "A");
                 Click(Button("Afficher les mouvements"));
                 var journal = Named<DataGrid>("Journal des mouvements de l’article");
                 Require(journal.Items.Count == 2 && journal.IsReadOnly, "Actual movement UI did not show the selected article's journal.");
                 Capture(dialog, Path.Combine(evidence, "daily-stock-movements.png"));
                 Require(journal.Columns.All(column => column.ActualWidth >= 80), "Movement columns collapsed to unreadable widths after changing tabs.");
-                query.Text = "003"; Require(grid.Items.Count == 0 && journal.Items.Count == 0 && !Button("Ouvrir la fiche article").IsEnabled,
+                query.Text = "003"; Require(grid.Items.Count == 0 && journal.Items.Count == 0 && !Button("Modifier la fiche article").IsEnabled,
                     "Changing a stock query kept the previous actionable selection/history.");
                 Click(Button("Inventaire physique")); Require(inventoryHooks == 1, "Existing inventory hook was not invoked.");
             }

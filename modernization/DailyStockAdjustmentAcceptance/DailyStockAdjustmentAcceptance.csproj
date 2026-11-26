@@ -11,5 +11,6 @@
     <Compile Include="../Hanouty.Desktop.Bootstrap/DailyStockAdjustmentSchema.cs" Link="DailyStockAdjustmentSchema.cs" />
     <Compile Include="../Hanouty.Desktop.Bootstrap/DailyStockAdjustmentWorkflow.cs" Link="DailyStockAdjustmentWorkflow.cs" />
     <Compile Include="../Hanouty.Desktop.Bootstrap/DailyStockAdjustmentDialog.cs" Link="DailyStockAdjustmentDialog.cs" />
+    <Compile Include="../Hanouty.Desktop.Bootstrap/StockWorkspaceAppearance.cs" Link="StockWorkspaceAppearance.cs" />
   </ItemGroup>
 </Project>

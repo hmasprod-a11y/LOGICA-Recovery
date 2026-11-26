@@ -33,29 +33,70 @@ internal static class Program
         void QueuePin(bool capture=false){host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{var prompt=app.Windows.Cast<Window>().SingleOrDefault(w=>w.Owner==host.Window&&Controls<PasswordBox>(w).Any());try{Require(prompt is not null,"PIN keypad did not open.");if(capture)Capture(prompt!,Path.Combine(evidence,"demo-pin.png"));Controls<PasswordBox>(prompt!).Single().Password="1234";Controls<Button>(prompt!).Single(b=>b.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));}catch(Exception ex){failure=ex;prompt?.Close();}}));}
         void VisitSection(string buttonName,string expectedType,string image)
         {
-            var opened=false;var stockEditorOpened=false;var expires=DateTime.UtcNow.AddSeconds(20);
+            var opened=false;var stockEditorOpened=false;var articleCreated=false;var articleEdited=false;var expires=DateTime.UtcNow.AddSeconds(20);
             var timer=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(100)};
             timer.Tick+=(_,_)=>{
                 if(DateTime.UtcNow>expires){Console.Error.WriteLine("Section did not open: "+buttonName);Environment.Exit(1);}
                 foreach(var modal in app.Windows.Cast<Window>().Where(w=>w.Owner==host.Window&&w.IsVisible).Reverse().ToArray())
                 {
                     if(Controls<PasswordBox>(modal).Any())throw new InvalidOperationException("Opening a section requested a repeated PIN.");
-                    if(modal is DailyStockAdjustmentDialog){Capture(modal,Path.Combine(evidence,"demo-stock-editor.png"));stockEditorOpened=true;modal.Close();return;}
+                    if(modal is DailyStockAdjustmentDialog){return;}
                     if(modal.GetType().Name==expectedType)
                     {
+                        if(modal is DailyStockDialog&&!articleCreated)
+                        {
+                            host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{
+                                var editor=app.Windows.OfType<CataloguePriceDialog>().Single(w=>w.IsVisible);
+                                TextBox Field(string label)=>Controls<TextBox>(editor).Single(t=>System.Windows.Automation.AutomationProperties.GetName(t)==label);
+                                Field("Nom du nouvel article").Text="Article ajouté depuis le stock";
+                                Field("Code-barres du nouvel article").Text="NEW-"+beforeCounter;
+                                Controls<ComboBox>(editor).Single(t=>System.Windows.Automation.AutomationProperties.GetName(t)=="Famille du nouvel article").SelectedItem="Epicerie";
+                                Field("Prix du nouvel article").Text="7";
+                                Controls<Button>(editor).Single(b=>Equals(b.Content,"Créer l’article")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                                Require(Convert.ToInt32(Scalar("SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Code='NEW-"+beforeCounter+"' AND PRIX_V_1=7"))==1,"Stock workspace did not create the article: "+string.Join(" | ",Controls<TextBlock>(editor).Select(t=>t.Text)));
+                                Capture(editor,Path.Combine(evidence,"demo-new-article.png"));articleCreated=true;editor.Close();
+                            }));
+                            Controls<Button>(modal).Single(b=>Equals(b.Content,"Ajouter un article")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            Require(articleCreated,"New article action was ignored.");
+                        }
+                        if(modal is DailyStockDialog&&!articleEdited)
+                        {
+                            var articles=Controls<DataGrid>(modal).Single(g=>System.Windows.Automation.AutomationProperties.GetName(g)=="Articles et stocks trouvés");
+                            articles.SelectedItem=articles.Items.Cast<DailyStockReader.Article>().Single(a=>a.Code=="NEW-"+beforeCounter);
+                            host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{
+                                var editor=app.Windows.OfType<CataloguePriceDialog>().Single(w=>w.IsVisible);
+                                Controls<TextBox>(editor).Single(t=>System.Windows.Automation.AutomationProperties.GetName(t)=="Nom de la fiche").Text="Article modifié depuis le stock";
+                                var save=Controls<Button>(editor).Single(b=>Equals(b.Content,"Enregistrer la fiche"));
+                                Require(save.IsEnabled,"Selected stock article did not load its editable card.");save.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                                Require(Convert.ToInt32(Scalar("SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Code='NEW-"+beforeCounter+"' AND Article='Article modifié depuis le stock'"))==1,"Selected article card did not persist its edit.");
+                                Capture(editor,Path.Combine(evidence,"demo-edit-article.png"));articleEdited=true;editor.Close();
+                            }));
+                            Controls<Button>(modal).Single(b=>Equals(b.Content,"Modifier la fiche article")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            Require(articleEdited,"Edit article action was ignored.");
+                        }
                         if(modal is DailyStockDialog&&!stockEditorOpened)
                         {
                             var grid=Controls<DataGrid>(modal).Single(g=>System.Windows.Automation.AutomationProperties.GetName(g)=="Articles et stocks trouvés");
-                            grid.SelectedItem=grid.Items.Cast<DailyStockReader.Article>().Single(a=>a.Id=="DEMO-1");
+                            foreach (var adjustmentMode in new[] {0,1,2})
+                            {
+                            stockEditorOpened=false;
+                            grid.SelectedItem=grid.Items.Cast<DailyStockReader.Article>().Single(a=>a.Id=="DEMO-3");
                             var adjust=Controls<Button>(modal).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="Modifier le stock de l’article");
                             Require(adjust.IsEnabled,"Integrated stock adjustment action is disabled.");
                             host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{
                                 var editor=app.Windows.OfType<DailyStockAdjustmentDialog>().SingleOrDefault(w=>w.IsVisible);
                                 if(editor is null){Console.Error.WriteLine("Integrated stock adjustment editor missing.");Environment.Exit(1);return;}
-                                Capture(editor,Path.Combine(evidence,"demo-stock-editor.png"));stockEditorOpened=true;editor.Close();
+                                var before = Convert.ToDecimal(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='DEMO-3'"));
+                                Controls<ComboBox>(editor).Single(c=>System.Windows.Automation.AutomationProperties.GetName(c)=="Action sur le stock").SelectedIndex=adjustmentMode;
+                                Controls<TextBox>(editor).Single().Text=adjustmentMode==2?(before+3).ToString(System.Globalization.CultureInfo.CurrentCulture):"2";
+                                Capture(editor,Path.Combine(evidence,"demo-stock-editor.png"));
+                                Controls<Button>(editor).Single(b=>b.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                                Require(!editor.IsVisible && Convert.ToDecimal(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='DEMO-3'"))==(adjustmentMode==0?before+2:adjustmentMode==1?before-2:before+3),"Stock editor failed to persist the requested quantity through the actual daily host.");
+                                stockEditorOpened=true;
                             }));
                             adjust.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                             Require(stockEditorOpened,"Integrated stock adjustment did not open its editor.");
+                            }
                         }
                         Capture(modal,Path.Combine(evidence,image));opened=true;modal.Close();return;
                     }
@@ -67,11 +108,11 @@ internal static class Program
         host.Window.Loaded+=(_,_)=>host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{
             try{
                 Require(WorkstationReadiness.IsReady(settings),"Demo database is not ready.");
-                Require(Convert.ToInt32(Scalar("SELECT COUNT(*) FROM TABLE_ARTICLES"))==12,"Demo catalogue missing.");
+                Require(Convert.ToInt32(Scalar("SELECT COUNT(*) FROM TABLE_ARTICLES"))==12+beforeCounter,"Demo catalogue missing or a previous created article was lost.");
                 QueuePin(true);Require(host.Window.ShowPinLogin(),"Demo PIN rejected.");if(failure is not null)throw failure;
                 pinGuard.Start();
                 Require(host.ViewModel.VisibleProducts.Single(p=>p.Id=="DEMO-1").DisplayUnitPriceMad==6m,"Original catalogue price not displayed.");
-                host.ViewModel.SelectedFamily="Boissons";Require(host.ViewModel.VisibleProducts.Count==2,"Family selection did not filter original catalogue.");
+                host.ViewModel.SelectedFamily="Boissons";Require(host.ViewModel.VisibleProducts.Count==Convert.ToInt32(Scalar("SELECT COUNT(*) FROM TABLE_ARTICLES WHERE Famille='Boissons'")),"Family selection did not filter original catalogue.");
                 host.ViewModel.SelectedFamily="Toutes les familles";host.Window.UpdateLayout();
                 Require(host.Window.RefreshTrustedBasketTotal(),"Signed-in empty basket total unavailable.");
                 Capture(host.Window,Path.Combine(evidence,"demo-catalogue.png"));
@@ -95,7 +136,7 @@ internal static class Program
                 VisitSection("Ouvrir le journal des ventes","SalesJournalDialog","demo-journal.png");
                 VisitSection("Ouvrir les statistiques des ventes","SalesJournalDialog","demo-statistics.png");
                 VisitSection("Paramètres du poste","WorkstationSettingsMenu","demo-settings.png");
-                File.WriteAllText(Path.Combine(evidence,"demo-ui.json"),JsonSerializer.Serialize(new{NoLogicaConfiguration=true,TwelveProducts=true,Pin1234=true,TouchSelection=true,OriginalPriceVisible=true,FamilyFilter=true,Scanner1002=true,FixedPayButton=true,CashCalculatorWithoutRepeatedPin=true,OnePinAtLogin=true,StockAndCounter=true,NextCustomerTotal=true,StockSectionOpens=true,JournalSectionOpens=true,StatisticsSectionOpens=true,SettingsSectionOpens=true,PreviousCounter=beforeCounter,CurrentCounter=beforeCounter+1}));result=0;
+                File.WriteAllText(Path.Combine(evidence,"demo-ui.json"),JsonSerializer.Serialize(new{NoLogicaConfiguration=true,TwelveProducts=true,Pin1234=true,TouchSelection=true,OriginalPriceVisible=true,FamilyFilter=true,Scanner1002=true,FixedPayButton=true,CashCalculatorWithoutRepeatedPin=true,OnePinAtLogin=true,StockAndCounter=true,NextCustomerTotal=true,StockSectionOpens=true,StockEditorWrites=true,ThreeStockModesPersisted=true,CreateArticleFromStock=true,EditArticleFromStock=true,JournalSectionOpens=true,StatisticsSectionOpens=true,SettingsSectionOpens=true,PreviousCounter=beforeCounter,CurrentCounter=beforeCounter+1}));result=0;
             }catch(Exception ex){Console.Error.WriteLine(ex);}finally{pinGuard.Stop();host.Window.Close();app.Shutdown();}
         }));
         app.Run(host.Window);return result;
