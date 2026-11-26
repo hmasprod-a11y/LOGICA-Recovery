@@ -896,6 +896,24 @@ catch (UnauthorizedAccessException) { identityBackendDenied = true; }
 Assert(permissionBackendDenied && identityBackendDenied,
     "manual stock authorization fails closed on identity and permission backend exceptions");
 
+// WP3: verify UserRoleMatrix permissions & validation
+if (!UserRoleMatrix.HasPermission("ADMIN", HanoutyPermission.ManageUsers) ||
+    !UserRoleMatrix.HasPermission("ADMIN", HanoutyPermission.BackupAndRestore))
+    throw new Exception("ADMIN must have full permissions.");
+if (UserRoleMatrix.HasPermission("MANAGER", HanoutyPermission.ManageUsers) ||
+    !UserRoleMatrix.HasPermission("MANAGER", HanoutyPermission.ValidateInventory))
+    throw new Exception("MANAGER permissions mismatch.");
+if (UserRoleMatrix.HasPermission("UTILISATEUR", HanoutyPermission.ApplyManualDiscount) ||
+    !UserRoleMatrix.HasPermission("UTILISATEUR", HanoutyPermission.PosSell))
+    throw new Exception("UTILISATEUR permissions mismatch.");
+try
+{
+    UserRoleMatrix.ValidateNewUser("a", "1234", "ADMIN");
+    throw new Exception("Short username must be rejected.");
+}
+catch (ArgumentException) { }
+Console.WriteLine("UserRoleMatrix tests passed.");
+
 sealed class StubVerifiedStockActorSource : IVerifiedStockActorSource
 {
     public VerifiedStockActor? Actor { get; set; }

@@ -5,7 +5,8 @@ using System.Windows.Data;
 namespace Hanouty.Desktop.Bootstrap;
 
 internal sealed record DailyStockHooks(Action<DailyStockReader.Article>? OpenArticle = null, Action? OpenInventory = null,
-    Action? OpenReceipts = null, Action? OpenStockIssues = null, Action? OpenCatalogue = null);
+    Action? OpenReceipts = null, Action? OpenStockIssues = null, Action? OpenCatalogue = null,
+    Action<DailyStockReader.Article>? AdjustStock = null);
 
 internal sealed class DailyStockDialog : Window
 {
@@ -31,6 +32,8 @@ internal sealed class DailyStockDialog : Window
         var actions = new WrapPanel { Margin = new Thickness(0, 0, 0, 8) }; top.Children.Add(actions);
         Button ActionButton(string text) { var button = new Button { Content = text, MinHeight = 40, Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(0, 0, 8, 0) }; actions.Children.Add(button); return button; }
         var find = ActionButton("Rechercher / Actualiser"); var card = ActionButton("Ouvrir la fiche article"); card.Visibility = hooks.OpenArticle is null ? Visibility.Collapsed : Visibility.Visible;
+        var adjust=ActionButton("Augmenter / diminuer le stock");adjust.Visibility=hooks.AdjustStock is null?Visibility.Collapsed:Visibility.Visible;
+        System.Windows.Automation.AutomationProperties.SetName(adjust,"Modifier le stock de l’article");
         void Hook(string text, Action? action)
         {
             if (action is null) return;
@@ -63,7 +66,7 @@ internal sealed class DailyStockDialog : Window
         historyPanel.Children.Add(journal);
         void Selection()
         {
-            var row = grid.SelectedItem as DailyStockReader.Article; card.IsEnabled = movements.IsEnabled = row is { CanonicalIdentity: true };
+            var row = grid.SelectedItem as DailyStockReader.Article; adjust.IsEnabled = card.IsEnabled = movements.IsEnabled = row is { CanonicalIdentity: true };
             selected.Text = row is null ? "Sélectionnez un article dans le stock actuel." : $"{row.Name} · {row.Code} · Stock : {row.Stock:0.###}";
             journal.ItemsSource = null;
         }
@@ -85,6 +88,7 @@ internal sealed class DailyStockDialog : Window
         grid.SelectionChanged += (_, _) => Selection(); find.Click += (_, _) => Load();
         query.KeyDown += (_, args) => { if (args.Key == System.Windows.Input.Key.Enter) { args.Handled = true; Load(); } };
         card.Click += (_, _) => { if (grid.SelectedItem is not DailyStockReader.Article row) return; try { reader.Recheck(access); hooks.OpenArticle?.Invoke(row); Load(); } catch (Exception ex) { status.Text = ex.Message; } };
+        adjust.Click+=(_,_)=>{if(grid.SelectedItem is not DailyStockReader.Article row)return;try{reader.Recheck(access);hooks.AdjustStock?.Invoke(row);Load();}catch(Exception ex){status.Text=ex.Message;}};
         movements.Click += (_, _) =>
         {
             journal.ItemsSource = null;

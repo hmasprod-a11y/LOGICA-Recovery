@@ -1,0 +1,23 @@
+namespace Hanouty.Desktop.Bootstrap;
+
+internal static class DailyStockAdjustmentSchema
+{
+    // Explicit migration for a protected prepared copy. Never executed at startup or by the service.
+    internal const string Sql = """
+        CREATE TABLE IF NOT EXISTS hanouty_daily_stock_adjustments (
+          OPERATION_ID CHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
+          ACTOR VARCHAR(255) NOT NULL,
+          SESSION_HASH CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+          ARTICLE_ROW_ID BIGINT NOT NULL,
+          ARTICLE_ID VARCHAR(255) NOT NULL,
+          BEFORE_STOCK DECIMAL(48,18) NOT NULL,
+          AFTER_STOCK DECIMAL(48,18) NOT NULL,
+          DELTA DECIMAL(48,18) NOT NULL,
+          MOVEMENT_ID BIGINT NOT NULL,
+          AUDIT_LABEL VARCHAR(255) NOT NULL,
+          PAYLOAD LONGTEXT NOT NULL,
+          CREATED_UTC DATETIME(6) NOT NULL,
+          UNIQUE KEY ux_daily_stock_adjustment_movement (MOVEMENT_ID)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        """;
+}

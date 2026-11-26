@@ -11,6 +11,7 @@ internal static partial class DisposableCashSaleAcceptance
 {
     private static void VerifyWorkstationConfiguration(CatalogueSettings settings)
     {
+        TraceStep("Saved workstation setup on current fixture schema");
         PrepareDailyFixtureSchema(settings);
         Directory.CreateDirectory(Path.Combine(settings.DataDirectory, "bd", "images"));
         var root = Path.Combine(EvidenceDirectory, "workstation-configuration"); Directory.CreateDirectory(root);
@@ -49,7 +50,7 @@ internal static partial class DisposableCashSaleAcceptance
         var dialog = new WorkstationSetupDialog(path);
         Exception? failure = null;
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
-        timer.Tick += (_, _) => { failure ??= new TimeoutException("Workstation setup did not complete."); timer.Stop(); dialog.Close(); };
+        timer.Tick += (_, _) => { failure ??= new TimeoutException("Workstation setup did not complete."); timer.Stop(); foreach (var child in Application.Current.Windows.Cast<Window>().Where(window => window.Owner == dialog).ToArray()) child.Close(); dialog.Close(); };
         dialog.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
         {
             try

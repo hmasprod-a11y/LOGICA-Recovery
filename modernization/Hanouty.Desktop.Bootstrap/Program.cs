@@ -12,7 +12,7 @@ public static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        #if HANOUTY_FINANCIAL
+        #if HANOUTY_FINANCIAL && HANOUTY_ACCEPTANCE
         if (args.Length == 2 && args[0] == "--verify-disposable-cash-sale")
             return DisposableCashSaleAcceptance.Run(Path.GetFullPath(args[1]));
 #endif
@@ -30,7 +30,7 @@ public static class Program
                 var settings = WorkstationConfiguration.Interactive();
                 if (settings is null) return 0;
                 var application = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
-                var workstation = CatalogueHost.CreateCashierWorkstation(settings, settings.WorkstationId);
+                var workstation = CatalogueHost.CreateDailyCashierWorkstation(settings, settings.WorkstationId);
                 workstation.Window.WindowState = WindowState.Maximized;
                 application.MainWindow = workstation.Window;
                 workstation.Window.Loaded += (_, _) => workstation.Window.ShowPinLogin();

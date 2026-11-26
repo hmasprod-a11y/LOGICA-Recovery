@@ -239,7 +239,8 @@
                                         Visibility="Collapsed" MinHeight="36" Margin="8,0,0,0" Padding="10,3"
                                         AutomationProperties.Name="Review manual discount"/>
                                 <TextBlock Text="{Binding SelectedItem.ArticleName, ElementName=CashierBasket, TargetNullValue=''}"
-                                           MaxWidth="180" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                           MaxWidth="80" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                                <Button Content="Vider" Click="ClearBasket_Click" MinHeight="36" Margin="8,0,0,0" Padding="10,3" AutomationProperties.Name="Vider le panier"/>
                             </StackPanel>
                         </GroupBox.Header>
                         <DataGrid x:Name="CashierBasket" Margin="4" SelectionMode="Single" SelectionUnit="FullRow"
@@ -263,7 +264,7 @@
                                         <DataTemplate>
                                             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="36"/><ColumnDefinition Width="*"/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions>
                                                 <Button Grid.Column="0" Content="−" Padding="0" Click="DecreaseBasketQuantity_Click" MinHeight="36" FontSize="18" AutomationProperties.Name="Diminuer la quantité"/>
-                                                <TextBlock Grid.Column="1" Text="{Binding Quantity}" TextAlignment="Center" VerticalAlignment="Center"/>
+                                                <Button Grid.Column="1" Content="{Binding Quantity}" Click="EditBasketQuantity_Click" Padding="0" BorderThickness="0" MinHeight="36" AutomationProperties.Name="Saisir la quantité au pavé"/>
                                                 <Button Grid.Column="2" Content="+" Padding="0" Click="IncreaseBasketQuantity_Click" MinHeight="36" FontSize="18" AutomationProperties.Name="Augmenter la quantité"/>
                                             </Grid>
                                         </DataTemplate>

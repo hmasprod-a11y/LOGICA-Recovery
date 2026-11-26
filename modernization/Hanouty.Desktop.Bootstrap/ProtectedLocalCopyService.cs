@@ -36,6 +36,7 @@ internal sealed class ProtectedLocalCopyService
         ["20261120-partial-cash-return-consumption.sql"] = "ed6e6d2f920016d9729756764b2782dc8133791d9a813943dc4f1580940b09b6",
         ["20261120-stock-issue-create-operations.sql"] = "2a3da4bccf7e086dbf9cf3b37a7bd3501e29e5226d4e1cd193e6054ab6bfe0a6",
         ["20261121-checkout-and-full-return-journals.sql"] = "a86d03070c01fe7bec9c8527264ab68275631b0c4c919b7aa54672ba71245dc6",
+        ["20261122-daily-stock-adjustments.sql"] = "03143e117c22093909467ae08752876a42f0cc6244ec29d023f79b5721032584",
     };
     private readonly Action<string>? checkpoint;
     internal ProtectedLocalCopyService(Action<string>? checkpoint = null) => this.checkpoint = checkpoint;
@@ -164,7 +165,7 @@ internal sealed class ProtectedLocalCopyService
                 if (ancestor.Exists && (ancestor.Attributes & FileAttributes.ReparsePoint) != 0) throw new InvalidOperationException("Les liens et redirections de dossier sont refusés.");
             var dump = Path.Combine(Path.GetFullPath(r.MariaDbBinDirectory), "mariadb-dump.exe"); var client = Path.Combine(Path.GetFullPath(r.MariaDbBinDirectory), "mariadb.exe");
             if (!File.Exists(dump) || !File.Exists(client)) throw new InvalidOperationException("Les outils MariaDB officiels doivent être sélectionnés.");
-            if (r.Migrations.Count != 11 || r.Migrations.Select(m => m.Name).Distinct(StringComparer.Ordinal).Count() != 11) throw new InvalidOperationException("Les onze migrations livrées sont requises.");
+            if (r.Migrations.Count != AcceptedMigrations.Count || r.Migrations.Select(m => m.Name).Distinct(StringComparer.Ordinal).Count() != AcceptedMigrations.Count) throw new InvalidOperationException("Toutes les migrations livrées sont requises.");
             foreach (var m in r.Migrations)
                 if (!AcceptedMigrations.TryGetValue(m.Name, out var acceptedHash) || !string.Equals(acceptedHash, m.Sha256, StringComparison.OrdinalIgnoreCase) || !string.Equals(Hash(Encoding.UTF8.GetBytes(m.Sql.Replace("\r\n", "\n"))), m.Sha256, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Migration absente ou empreinte invalide.");
             using var source = Connect(r, r.Source, r.SourceDatabase); Execute(source, "SET SESSION TRANSACTION READ ONLY");
@@ -235,7 +236,7 @@ internal sealed class ProtectedLocalCopyService
     private static void ValidatePrepared(MySqlConnection db, string workstation)
     {
         var tables = Describe(db, db.Database); ValidateOriginal(db, tables, workstation);
-        foreach (var name in new[] { "hanouty_checkout_operations", "hanouty_cash_return_consumption", "hanouty_return_line_consumption", "hanouty_purchase_receipt_order", "hanouty_catalogue_price_audit", "hanouty_stock_issue_history", "hanouty_client_settlement_operations", "hanouty_supplier_settlement_operations", "hanouty_customer_file_operations", "hanouty_stock_issue_create_operations" })
+        foreach (var name in new[] { "hanouty_checkout_operations", "hanouty_cash_return_consumption", "hanouty_return_line_consumption", "hanouty_purchase_receipt_order", "hanouty_catalogue_price_audit", "hanouty_stock_issue_history", "hanouty_client_settlement_operations", "hanouty_supplier_settlement_operations", "hanouty_customer_file_operations", "hanouty_stock_issue_create_operations", "hanouty_daily_stock_adjustments" })
             if (!tables.Any(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase))) throw new InvalidOperationException("Journal de sécurité manquant : " + name);
     }
 }

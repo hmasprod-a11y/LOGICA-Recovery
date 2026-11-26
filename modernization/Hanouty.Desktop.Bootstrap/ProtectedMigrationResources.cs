@@ -17,7 +17,7 @@ internal static class ProtectedMigrationResources
             var sql = reader.ReadToEnd().Replace("\r\n", "\n").Replace("\r", "\n");
             result.Add(new(name[prefix.Length..], sql, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sql))).ToLowerInvariant()));
         }
-        if (result.Count != 11) throw new InvalidOperationException("Les migrations de préparation ne sont pas complètes.");
+        if (result.Count != 12) throw new InvalidOperationException("Les migrations de préparation ne sont pas complètes.");
         return result.AsReadOnly();
     }
 }

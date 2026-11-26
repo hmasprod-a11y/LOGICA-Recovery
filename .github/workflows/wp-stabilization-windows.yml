@@ -1,0 +1,42 @@
+name: Hanouty WP1-WP2 Windows Verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'feat/wp1-*'
+      - 'feat/wp2-*'
+  pull_request:
+    branches:
+      - 'integration/**'
+
+jobs:
+  windows-build-and-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore and build unified Hanouty.sln
+        run: |
+          dotnet restore Hanouty.sln
+          dotnet build Hanouty.sln -c Release --no-restore
+      - name: Run ArchitectureBridge tests
+        run: dotnet run --project modernization/architecture/Hanouty.ArchitectureBridge.Tests/Hanouty.ArchitectureBridge.Tests.csproj -c Release --no-build
+      - name: Run CashboxLifecycle tests
+        run: dotnet run --project modernization/architecture/CashboxLifecycle.Tests/CashboxLifecycle.Tests.csproj -c Release --no-build
+      - name: Run WpfContractAdapter tests
+        run: dotnet run --project modernization/architecture/Hanouty.WpfContractAdapter.Tests/Hanouty.WpfContractAdapter.Tests.csproj -c Release --no-build
+      - name: Run WPF UI tests
+        run: dotnet run --project modernization/Hanouty.Desktop.Wpf.Tests/Hanouty.Desktop.Wpf.Tests.csproj -c Release --no-build
+      - name: Run Licensing Smoke tests (net10.0)
+        run: dotnet run --project licensing/Hanouty.Licensing.Smoke/Hanouty.Licensing.Smoke.csproj -c Release -f net10.0 --no-build
+      - name: Publish clean production Bootstrap (without acceptance code)
+        run: |
+          dotnet publish modernization/Hanouty.Desktop.Bootstrap/Hanouty.Desktop.Bootstrap.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=false -p:HanoutyWpfAsLibrary=true `
+            -p:ArchitectureProject="${{ github.workspace }}/modernization/architecture/Hanouty.ArchitectureBridge/Hanouty.ArchitectureBridge.csproj" `
+            -p:CheckoutProductionProject="${{ github.workspace }}/modernization/checkout-mariadb-production/CheckoutMariaDbProduction.csproj" `
+            -o "${{ runner.temp }}/hanouty-prod-publish"

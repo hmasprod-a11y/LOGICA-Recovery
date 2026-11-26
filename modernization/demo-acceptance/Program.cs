@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -27,18 +27,38 @@ internal static class Program
         object? Scalar(string sql){using var command=new MySqlCommand(sql,db);return command.ExecuteScalar();}
         var beforeStock=Convert.ToDecimal(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='DEMO-1'"));
         var beforeCounter=Convert.ToInt32(Scalar("SELECT CL FROM TABLE_NUM WHERE ID=0"));
-        var host=CatalogueHost.CreateCashierWorkstation(settings,"01");Exception? failure=null;
+        var host=CatalogueHost.CreateDailyCashierWorkstation(settings,"01");Exception? failure=null;
+        var pinGuard=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(100)};
+        pinGuard.Tick+=(_,_)=>{if(app.Windows.Cast<Window>().Any(w=>w.IsVisible&&Controls<PasswordBox>(w).Any())){Console.Error.WriteLine("An ordinary authenticated operation requested another PIN.");Environment.Exit(1);}};
         void QueuePin(bool capture=false){host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{var prompt=app.Windows.Cast<Window>().SingleOrDefault(w=>w.Owner==host.Window&&Controls<PasswordBox>(w).Any());try{Require(prompt is not null,"PIN keypad did not open.");if(capture)Capture(prompt!,Path.Combine(evidence,"demo-pin.png"));Controls<PasswordBox>(prompt!).Single().Password="1234";Controls<Button>(prompt!).Single(b=>b.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));}catch(Exception ex){failure=ex;prompt?.Close();}}));}
         void VisitSection(string buttonName,string expectedType,string image)
         {
-            var opened=false;var expires=DateTime.UtcNow.AddSeconds(20);
+            var opened=false;var stockEditorOpened=false;var expires=DateTime.UtcNow.AddSeconds(20);
             var timer=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(100)};
             timer.Tick+=(_,_)=>{
                 if(DateTime.UtcNow>expires){Console.Error.WriteLine("Section did not open: "+buttonName);Environment.Exit(1);}
-                foreach(var modal in app.Windows.Cast<Window>().Where(w=>w.Owner==host.Window&&w.IsVisible).ToArray())
+                foreach(var modal in app.Windows.Cast<Window>().Where(w=>w.Owner==host.Window&&w.IsVisible).Reverse().ToArray())
                 {
-                    if(Controls<PasswordBox>(modal).FirstOrDefault() is { } pin){pin.Password="1234";Controls<Button>(modal).Single(b=>b.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));return;}
-                    if(modal.GetType().Name==expectedType){Capture(modal,Path.Combine(evidence,image));opened=true;modal.Close();return;}
+                    if(Controls<PasswordBox>(modal).Any())throw new InvalidOperationException("Opening a section requested a repeated PIN.");
+                    if(modal is DailyStockAdjustmentDialog){Capture(modal,Path.Combine(evidence,"demo-stock-editor.png"));stockEditorOpened=true;modal.Close();return;}
+                    if(modal.GetType().Name==expectedType)
+                    {
+                        if(modal is DailyStockDialog&&!stockEditorOpened)
+                        {
+                            var grid=Controls<DataGrid>(modal).Single(g=>System.Windows.Automation.AutomationProperties.GetName(g)=="Articles et stocks trouvés");
+                            grid.SelectedItem=grid.Items.Cast<DailyStockReader.Article>().Single(a=>a.Id=="DEMO-1");
+                            var adjust=Controls<Button>(modal).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)=="Modifier le stock de l’article");
+                            Require(adjust.IsEnabled,"Integrated stock adjustment action is disabled.");
+                            host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{
+                                var editor=app.Windows.OfType<DailyStockAdjustmentDialog>().SingleOrDefault(w=>w.IsVisible);
+                                if(editor is null){Console.Error.WriteLine("Integrated stock adjustment editor missing.");Environment.Exit(1);return;}
+                                Capture(editor,Path.Combine(evidence,"demo-stock-editor.png"));stockEditorOpened=true;editor.Close();
+                            }));
+                            adjust.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                            Require(stockEditorOpened,"Integrated stock adjustment did not open its editor.");
+                        }
+                        Capture(modal,Path.Combine(evidence,image));opened=true;modal.Close();return;
+                    }
                 }
             };
             timer.Start();try{var button=Controls<Button>(host.Window).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)==buttonName);Require(button.IsEnabled,"Section disabled: "+buttonName);button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));}finally{timer.Stop();}
@@ -49,6 +69,7 @@ internal static class Program
                 Require(WorkstationReadiness.IsReady(settings),"Demo database is not ready.");
                 Require(Convert.ToInt32(Scalar("SELECT COUNT(*) FROM TABLE_ARTICLES"))==12,"Demo catalogue missing.");
                 QueuePin(true);Require(host.Window.ShowPinLogin(),"Demo PIN rejected.");if(failure is not null)throw failure;
+                pinGuard.Start();
                 Require(host.ViewModel.VisibleProducts.Single(p=>p.Id=="DEMO-1").DisplayUnitPriceMad==6m,"Original catalogue price not displayed.");
                 host.ViewModel.SelectedFamily="Boissons";Require(host.ViewModel.VisibleProducts.Count==2,"Family selection did not filter original catalogue.");
                 host.ViewModel.SelectedFamily="Toutes les familles";host.Window.UpdateLayout();
@@ -63,7 +84,7 @@ internal static class Program
                 var basketButtons=Visuals<Button>((DataGrid)host.Window.FindName("CashierBasket")).Where(b=>b.Content is string glyph&&glyph is "+" or "−" or "×").ToArray();
                 Require(basketButtons.Length>=6&&basketButtons.All(b=>b.ActualWidth-b.Padding.Left-b.Padding.Right>=18),"Quantity or remove glyph is clipped inside its basket button.");
                 Capture(host.Window,Path.Combine(evidence,"demo-basket.png"));
-                host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{var payment=app.Windows.OfType<CashierEntryDialog>().SingleOrDefault();try{Require(payment is not null,"Fixed pay button did not open cash calculator.");Capture(payment!,Path.Combine(evidence,"demo-cash.png"));foreach(var coin in new[]{"10 MAD","1 MAD"})Controls<Button>(payment!).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)==coin).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));QueuePin();Controls<Button>(payment!).Single(b=>b.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));}catch(Exception ex){failure=ex;payment?.Close();}}));
+                host.Window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>{var payment=app.Windows.OfType<CashierEntryDialog>().SingleOrDefault();try{Require(payment is not null,"Fixed pay button did not open cash calculator.");Capture(payment!,Path.Combine(evidence,"demo-cash.png"));foreach(var coin in new[]{"10 MAD","1 MAD"})Controls<Button>(payment!).Single(b=>System.Windows.Automation.AutomationProperties.GetName(b)==coin).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Controls<Button>(payment!).Single(b=>b.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));}catch(Exception ex){failure=ex;payment?.Close();}}));
                 var pay=(Button)host.Window.FindName("CompleteCheckoutButton");Require(pay.IsEnabled,"Payment action disabled before receiving cash.");pay.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));if(failure is not null)throw failure;
                 Require(host.Session.PendingCount==0&&!host.ViewModel.CheckoutUncertain,"Demo sale failed.");
                 Require(Convert.ToDecimal(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='DEMO-1'"))==beforeStock-1&&Convert.ToInt32(Scalar("SELECT CL FROM TABLE_NUM WHERE ID=0"))==beforeCounter+1,"Stock and counter not posted.");
@@ -74,8 +95,8 @@ internal static class Program
                 VisitSection("Ouvrir le journal des ventes","SalesJournalDialog","demo-journal.png");
                 VisitSection("Ouvrir les statistiques des ventes","SalesJournalDialog","demo-statistics.png");
                 VisitSection("Paramètres du poste","WorkstationSettingsMenu","demo-settings.png");
-                File.WriteAllText(Path.Combine(evidence,"demo-ui.json"),JsonSerializer.Serialize(new{NoLogicaConfiguration=true,TwelveProducts=true,Pin1234=true,TouchSelection=true,OriginalPriceVisible=true,FamilyFilter=true,Scanner1002=true,FixedPayButton=true,CoinsAndFreshPin=true,StockAndCounter=true,NextCustomerTotal=true,StockSectionOpens=true,JournalSectionOpens=true,StatisticsSectionOpens=true,SettingsSectionOpens=true,PreviousCounter=beforeCounter,CurrentCounter=beforeCounter+1}));result=0;
-            }catch(Exception ex){Console.Error.WriteLine(ex);}finally{host.Window.Close();app.Shutdown();}
+                File.WriteAllText(Path.Combine(evidence,"demo-ui.json"),JsonSerializer.Serialize(new{NoLogicaConfiguration=true,TwelveProducts=true,Pin1234=true,TouchSelection=true,OriginalPriceVisible=true,FamilyFilter=true,Scanner1002=true,FixedPayButton=true,CashCalculatorWithoutRepeatedPin=true,OnePinAtLogin=true,StockAndCounter=true,NextCustomerTotal=true,StockSectionOpens=true,JournalSectionOpens=true,StatisticsSectionOpens=true,SettingsSectionOpens=true,PreviousCounter=beforeCounter,CurrentCounter=beforeCounter+1}));result=0;
+            }catch(Exception ex){Console.Error.WriteLine(ex);}finally{pinGuard.Stop();host.Window.Close();app.Shutdown();}
         }));
         app.Run(host.Window);return result;
     }
