@@ -18,6 +18,7 @@ internal sealed class CataloguePriceDialog : Window
         Func<CataloguePriceEditor.Card, string, string, string, CataloguePriceEditor.CardDetails, bool> saveCard,
         Func<IReadOnlyList<CataloguePriceEditor.ImportLine>, int?> import, Func<Window, string?>? selectImportFile = null, string? selectedArticleId = null, bool creating = false)
     {
+        StockWorkspaceAppearance.Apply(this);
         Title = "Articles — fiche et prix";
         Width = 900; Height = 720; MinWidth = 640; MinHeight = 520;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;

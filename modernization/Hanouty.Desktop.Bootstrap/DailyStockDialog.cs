@@ -12,6 +12,7 @@ internal sealed class DailyStockDialog : Window
 {
     internal DailyStockDialog(DailyStockReader reader, DailyStockReader.Access access, DailyStockHooks? hooks = null)
     {
+        StockWorkspaceAppearance.Apply(this);
         hooks ??= new DailyStockHooks();
         Title = "Articles et stock"; Width = 1120; Height = 740; WindowState = WindowState.Maximized; MinWidth = 780; MinHeight = 520;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -20,6 +21,7 @@ internal sealed class DailyStockDialog : Window
         DockPanel.SetDock(status, Dock.Bottom); panel.Children.Add(status);
         var top = new StackPanel(); DockPanel.SetDock(top, Dock.Top); panel.Children.Add(top);
         top.Children.Add(new TextBlock { Text = "Articles et stock", FontSize = 26, FontWeight = FontWeights.SemiBold });
+        top.Children.Add(new TextBlock { Text = "Sélectionnez un article pour modifier sa fiche ou son stock.", Margin = new Thickness(0,6,0,6) });
         var query = new TextBox { MinHeight = 40, MaxLength = 255, Margin = new Thickness(0, 8, 0, 6) };
         System.Windows.Automation.AutomationProperties.SetName(query, "Rechercher par nom, code-barres ou référence");
         top.Children.Add(new TextBlock { Text = "Nom, code-barres ou référence" }); top.Children.Add(query);
@@ -73,13 +75,15 @@ internal sealed class DailyStockDialog : Window
         void Invalidate() { grid.ItemsSource = null; journal.ItemsSource = null; Selection(); status.Text = "Filtres modifiés : relancez la recherche."; }
         void Load()
         {
+            var previousRow = (grid.SelectedItem as DailyStockReader.Article)?.RowId;
             Invalidate(); tabs.SelectedItem = stockTab;
             try
             {
                 var result = reader.Search(access, new DailyStockReader.Query(query.Text.Trim(), exact.IsChecked == true, family.SelectedIndex <= 0 ? "" : family.SelectedItem as string ?? "",
                     ignoreZero.IsChecked == true, alerts.IsChecked == true, negative.IsChecked == true));
                 grid.ItemsSource = result.Articles;
-                if (result.Articles.Length == 1) grid.SelectedIndex = 0;
+                if (previousRow.HasValue) grid.SelectedItem = result.Articles.SingleOrDefault(article => article.RowId == previousRow);
+                if (grid.SelectedItem is null && result.Articles.Length == 1) grid.SelectedIndex = 0;
                 status.Text = result.HasMore ? "Plus de200 articles : précisez les filtres pour consulter la suite." : $"{result.Articles.Length} article(s) · stock relu à {DateTime.Now:HH:mm:ss}.";
             }
             catch (Exception ex) { status.Text = ex.Message; }
