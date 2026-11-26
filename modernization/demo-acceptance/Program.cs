@@ -88,10 +88,10 @@ internal static class Program
                                 if(editor is null){Console.Error.WriteLine("Integrated stock adjustment editor missing.");Environment.Exit(1);return;}
                                 var before = Convert.ToDecimal(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='DEMO-3'"));
                                 Controls<ComboBox>(editor).Single(c=>System.Windows.Automation.AutomationProperties.GetName(c)=="Action sur le stock").SelectedIndex=adjustmentMode;
-                                Controls<TextBox>(editor).Single().Text=adjustmentMode==2?"7":"2";
+                                Controls<TextBox>(editor).Single().Text=adjustmentMode==2?(before+3).ToString(System.Globalization.CultureInfo.CurrentCulture):"2";
                                 Capture(editor,Path.Combine(evidence,"demo-stock-editor.png"));
                                 Controls<Button>(editor).Single(b=>b.IsDefault).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                                Require(!editor.IsVisible && Convert.ToDecimal(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='DEMO-3'"))==(adjustmentMode==0?before+2:adjustmentMode==1?before-2:7),"Stock editor failed to persist the requested quantity through the actual daily host.");
+                                Require(!editor.IsVisible && Convert.ToDecimal(Scalar("SELECT STOCK FROM TABLE_ARTICLES WHERE ID_ARTICLE='DEMO-3'"))==(adjustmentMode==0?before+2:adjustmentMode==1?before-2:before+3),"Stock editor failed to persist the requested quantity through the actual daily host.");
                                 stockEditorOpened=true;
                             }));
                             adjust.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
